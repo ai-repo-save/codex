@@ -50,6 +50,7 @@ use codex_app_server_protocol::RawResponseItemCompletedNotification;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ServerRequestPayload;
+use codex_app_server_protocol::ThreadGoalClearedNotification;
 use codex_app_server_protocol::ThreadGoalUpdatedNotification;
 use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::ThreadRealtimeClosedNotification;
@@ -1198,6 +1199,16 @@ pub(crate) async fn apply_bespoke_event_handling(
             };
             outgoing
                 .send_global_server_notification(ServerNotification::ThreadGoalUpdated(
+                    notification,
+                ))
+                .await;
+        }
+        EventMsg::ThreadGoalCleared(thread_goal_cleared_event) => {
+            let notification = ThreadGoalClearedNotification {
+                thread_id: thread_goal_cleared_event.thread_id.to_string(),
+            };
+            outgoing
+                .send_global_server_notification(ServerNotification::ThreadGoalCleared(
                     notification,
                 ))
                 .await;

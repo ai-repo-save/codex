@@ -10295,6 +10295,149 @@ async fn update_goal_tool_marks_goal_complete() {
     assert_eq!(goal.status, ThreadGoalStatus::Complete);
 }
 
+async fn create_goal_for_clear_test(
+    session: &Arc<Session>,
+    turn_context: &Arc<TurnContext>,
+) -> anyhow::Result<()> {
+    let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));
+    CreateGoalHandler
+        .handle(ToolInvocation {
+            session: Arc::clone(session),
+            turn: Arc::clone(turn_context),
+            cancellation_token: CancellationToken::new(),
+            tracker: Arc::clone(&tracker),
+            call_id: "create-goal".to_string(),
+            tool_name: codex_tools::ToolName::plain("create_goal"),
+            source: ToolCallSource::Direct,
+            payload: ToolPayload::Function {
+                arguments: serde_json::json!({
+                    "objective": "Keep the watcher alive",
+                    "token_budget": 123,
+                })
+                .to_string(),
+            },
+        })
+        .await?;
+    Ok(())
+}
+
+async fn complete_goal_for_clear_test(
+    session: &Arc<Session>,
+    turn_context: &Arc<TurnContext>,
+) -> anyhow::Result<()> {
+    let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));
+    UpdateGoalHandler
+        .handle(ToolInvocation {
+            session: Arc::clone(session),
+            turn: Arc::clone(turn_context),
+            cancellation_token: CancellationToken::new(),
+            tracker,
+            call_id: "complete-goal".to_string(),
+            tool_name: codex_tools::ToolName::plain("update_goal"),
+            source: ToolCallSource::Direct,
+            payload: ToolPayload::Function {
+                arguments: serde_json::json!({
+                    "status": "complete",
+                })
+                .to_string(),
+            },
+        })
+        .await?;
+    Ok(())
+}
+
+fn goal_clear_test_user_input_op() -> Op {
+    Op::UserInput {
+        environments: None,
+        items: vec![UserInput::Text {
+            text: "start a fresh turn".to_string(),
+            text_elements: Vec::new(),
+        }],
+        final_output_json_schema: None,
+        responsesapi_client_metadata: None,
+        additional_context: Default::default(),
+        thread_settings: Default::default(),
+    }
+}
+
+async fn recv_thread_goal_cleared(rx: &async_channel::Receiver<Event>) -> anyhow::Result<Event> {
+    timeout(Duration::from_secs(1), async {
+        loop {
+            let event = rx.recv().await?;
+            if matches!(event.msg, EventMsg::ThreadGoalCleared(_)) {
+                return Ok(event);
+            }
+        }
+    })
+    .await?
+}
+
+#[tokio::test]
+async fn completed_goal_is_cleared_on_next_user_turn() -> anyhow::Result<()> {
+    let (session, turn_context, rx, _codex_home) = make_goal_session_and_context_with_rx().await;
+    create_goal_for_clear_test(&session, &turn_context).await?;
+    complete_goal_for_clear_test(&session, &turn_context).await?;
+
+    handlers::user_input_or_turn(
+        &session,
+        "sub-clear-goal".to_string(),
+        goal_clear_test_user_input_op(),
+        /*client_user_message_id*/ None,
+    )
+    .await;
+
+    let cleared_event = recv_thread_goal_cleared(&rx).await?;
+    let EventMsg::ThreadGoalCleared(cleared) = cleared_event.msg else {
+        panic!("expected thread goal cleared event");
+    };
+    assert_eq!(session.conversation_id, cleared.thread_id);
+    assert_eq!(Some("sub-clear-goal".to_string()), cleared.turn_id);
+
+    assert!(
+        session.get_thread_goal().await?.is_none(),
+        "completed goal should be deleted before the next turn starts"
+    );
+
+    create_goal_for_clear_test(&session, &turn_context).await?;
+    let goal = session
+        .get_thread_goal()
+        .await?
+        .expect("create_goal should succeed after clearing the completed goal");
+    assert_eq!(goal.objective, "Keep the watcher alive");
+    assert_eq!(goal.status, ThreadGoalStatus::Active);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn active_goal_is_not_cleared_on_next_user_turn() -> anyhow::Result<()> {
+    let (session, turn_context, rx, _codex_home) = make_goal_session_and_context_with_rx().await;
+    create_goal_for_clear_test(&session, &turn_context).await?;
+
+    handlers::user_input_or_turn(
+        &session,
+        "sub-keep-goal".to_string(),
+        goal_clear_test_user_input_op(),
+        /*client_user_message_id*/ None,
+    )
+    .await;
+
+    assert!(
+        timeout(Duration::from_millis(200), recv_thread_goal_cleared(&rx))
+            .await
+            .is_err(),
+        "active goals should not emit ThreadGoalCleared before the next turn"
+    );
+
+    let goal = session
+        .get_thread_goal()
+        .await?
+        .expect("active goal should remain persisted");
+    assert_eq!(goal.status, ThreadGoalStatus::Active);
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn rejects_escalated_permissions_when_policy_not_on_request() {
     use crate::exec_policy::ExecApprovalRequest;

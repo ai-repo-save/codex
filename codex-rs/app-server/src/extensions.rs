@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::Weak;
 
 use codex_app_server_protocol::ServerNotification;
+use codex_app_server_protocol::ThreadGoalClearedNotification;
 use codex_app_server_protocol::ThreadGoalUpdatedNotification;
 use codex_core::NewThread;
 use codex_core::StartThreadOptions;
@@ -59,6 +60,14 @@ impl ExtensionEventSink for AppServerExtensionEventSink {
                         },
                     ));
             }
+            EventMsg::ThreadGoalCleared(thread_goal_cleared_event) => {
+                self.outgoing
+                    .try_send_server_notification(ServerNotification::ThreadGoalCleared(
+                        ThreadGoalClearedNotification {
+                            thread_id: thread_goal_cleared_event.thread_id.to_string(),
+                        },
+                    ));
+            }
             msg => {
                 tracing::debug!(event_id = %event.id, ?msg, "dropping unsupported extension event");
             }
@@ -93,6 +102,7 @@ mod tests {
     use codex_app_server_protocol::ThreadGoal as AppServerThreadGoal;
     use codex_app_server_protocol::ThreadGoalStatus as AppServerThreadGoalStatus;
     use codex_protocol::protocol::ThreadGoal;
+    use codex_protocol::protocol::ThreadGoalClearedEvent;
     use codex_protocol::protocol::ThreadGoalStatus;
     use codex_protocol::protocol::ThreadGoalUpdatedEvent;
     use pretty_assertions::assert_eq;
@@ -159,6 +169,46 @@ mod tests {
                     created_at: 7,
                     updated_at: 8,
                 },
+            },
+            notification
+        );
+    }
+
+    #[tokio::test]
+    async fn app_server_event_sink_forwards_thread_goal_clears() {
+        let (outgoing_tx, mut outgoing_rx) = mpsc::channel(4);
+        let outgoing = Arc::new(OutgoingMessageSender::new(
+            outgoing_tx,
+            AnalyticsEventsClient::disabled(),
+        ));
+        let sink = app_server_extension_event_sink(outgoing);
+        let thread_id = ThreadId::default();
+
+        sink.emit(Event {
+            id: "call-2".to_string(),
+            msg: EventMsg::ThreadGoalCleared(ThreadGoalClearedEvent {
+                thread_id,
+                turn_id: Some("turn-2".to_string()),
+            }),
+        });
+
+        let envelope = timeout(Duration::from_secs(1), outgoing_rx.recv())
+            .await
+            .expect("timed out waiting for forwarded extension event")
+            .expect("outgoing channel closed unexpectedly");
+        let OutgoingEnvelope::Broadcast { message } = envelope else {
+            panic!("expected broadcast notification");
+        };
+        let OutgoingMessage::AppServerNotification(ServerNotification::ThreadGoalCleared(
+            notification,
+        )) = message
+        else {
+            panic!("expected thread goal cleared notification");
+        };
+
+        assert_eq!(
+            ThreadGoalClearedNotification {
+                thread_id: thread_id.to_string(),
             },
             notification
         );

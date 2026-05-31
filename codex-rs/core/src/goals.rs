@@ -33,6 +33,7 @@ use codex_protocol::config_types::ModeKind;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::ThreadGoal;
+use codex_protocol::protocol::ThreadGoalClearedEvent;
 use codex_protocol::protocol::ThreadGoalStatus;
 use codex_protocol::protocol::ThreadGoalUpdatedEvent;
 use codex_protocol::protocol::TokenUsage;
@@ -406,6 +407,64 @@ impl Session {
             .get_thread_goal(self.conversation_id)
             .await
             .map(|goal| goal.map(protocol_goal_from_state))
+    }
+
+    pub(crate) async fn clear_completed_thread_goal_before_user_turn(
+        self: &Arc<Self>,
+        turn_context: &TurnContext,
+    ) -> anyhow::Result<bool> {
+        if !self.enabled(Feature::Goals) {
+            return Ok(false);
+        }
+
+        let Some(state_db) = self.state_db_for_thread_goals().await? else {
+            return Ok(false);
+        };
+
+        let Some(goal) = state_db
+            .thread_goals()
+            .get_thread_goal(self.conversation_id)
+            .await?
+        else {
+            return Ok(false);
+        };
+
+        if goal.status != codex_state::ThreadGoalStatus::Complete {
+            return Ok(false);
+        }
+
+        if let Err(err) = self
+            .account_thread_goal_wall_clock_usage(
+                &state_db,
+                codex_state::GoalAccountingMode::ActiveOnly,
+                TerminalMetricEmission::Suppress,
+            )
+            .await
+        {
+            tracing::warn!(
+                "failed to account thread goal wall clock usage before clearing completed goal: {err}"
+            );
+        }
+
+        let cleared = state_db
+            .thread_goals()
+            .delete_thread_goal(self.conversation_id)
+            .await?;
+
+        if cleared {
+            self.goal_runtime_apply(GoalRuntimeEvent::ExternalClear)
+                .await?;
+            self.send_event(
+                turn_context,
+                EventMsg::ThreadGoalCleared(ThreadGoalClearedEvent {
+                    thread_id: self.conversation_id,
+                    turn_id: Some(turn_context.sub_id.clone()),
+                }),
+            )
+            .await;
+        }
+
+        Ok(cleared)
     }
 
     pub(crate) async fn set_thread_goal(
