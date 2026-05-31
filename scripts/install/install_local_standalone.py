@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the local Codex workspace and install a standalone release.
+"""Build the local Codex workspace and install a standalone package.
 
 This script encodes the canonical local install layout so agents and developers
 do not need to rediscover paths or pass fragile --bwrap-bin locations.
@@ -9,14 +9,10 @@ Key properties:
 - Keeps a target-scoped bwrap cache outside any release directory.
 - Never points --bwrap-bin at a path inside the directory being replaced.
 
-Build-time expectations (read ``--diagnose`` before running a full build):
-- ``codex-rs/Cargo.toml`` release profile uses fat LTO and ``codegen-units = 1``,
-  so a real rebuild/link of the ``codex`` release binary often takes many minutes
-  even for small source diffs that touch shared crates (for example ``protocol``).
-- ``just test`` builds debug artifacts; it does not warm the release musl tree at
-  ``codex-rs/target/<triple>/release/``.
-- Repackaging an existing entrypoint with ``--build never`` (or ``--build auto``
-  when the binary is already up to date) takes about one second and skips Cargo.
+Local iteration defaults to the ``dev-small`` Cargo profile (same as
+``build_codex_package.py``). Pass ``--cargo-profile release`` only when you
+intentionally want a production-like binary; release enables fat LTO and often
+spends many minutes in the final link step.
 """
 
 from __future__ import annotations
@@ -51,8 +47,9 @@ from codex_package.version import read_workspace_version  # noqa: E402
 
 DEFAULT_BIN_DIR = Path.home() / ".local" / "bin"
 DEFAULT_CODEX_HOME = Path.home() / ".codex"
-DEFAULT_CARGO_PROFILE = "release"
+DEFAULT_CARGO_PROFILE = "dev-small"
 DEFAULT_VARIANT = "codex"
+PRODUCTION_CARGO_PROFILE = "release"
 
 
 @dataclass(frozen=True)
@@ -66,6 +63,7 @@ class InstallPaths:
     vendor_dir: Path
     target: str
     version: str
+    cargo_profile: str
     release_name: str
     release_dir: Path
     bwrap_cache: Path
@@ -88,6 +86,8 @@ class InstallPaths:
         package_variant = PACKAGE_VARIANTS[variant]
         spec = TARGET_SPECS[resolved_target]
         release_name = f"{resolved_version}-{resolved_target}"
+        if cargo_profile != PRODUCTION_CARGO_PROFILE:
+            release_name = f"{release_name}-{cargo_profile}"
         standalone_root = resolved_codex_home / "packages" / "standalone"
         releases_dir = standalone_root / "releases"
         vendor_dir = standalone_root / "vendor"
@@ -102,6 +102,7 @@ class InstallPaths:
             vendor_dir=vendor_dir,
             target=resolved_target,
             version=resolved_version,
+            cargo_profile=cargo_profile,
             release_name=release_name,
             release_dir=releases_dir / release_name,
             bwrap_cache=vendor_dir / resolved_target / "bwrap",
@@ -357,10 +358,16 @@ def collect_diagnosis(paths: InstallPaths, *, build_mode: str, skip_build: bool)
 
     recommendation = "repackage only (--build auto or --build never)"
     if not skip_cargo:
-        recommendation = (
-            "cargo rebuild required; expect many minutes because release uses fat LTO "
-            "and codegen-units=1"
-        )
+        if paths.cargo_profile == PRODUCTION_CARGO_PROFILE:
+            recommendation = (
+                "cargo rebuild required; release uses fat LTO and codegen-units=1, "
+                "so expect many minutes in compile/link"
+            )
+        else:
+            recommendation = (
+                f"cargo rebuild required with {paths.cargo_profile}; this is the local "
+                "dev path and should be much faster than release"
+            )
 
     entrypoint_info: dict[str, object] | None = None
     if paths.cargo_entrypoint.is_file():
@@ -375,6 +382,7 @@ def collect_diagnosis(paths: InstallPaths, *, build_mode: str, skip_build: bool)
         "paths": {key: str(value) for key, value in asdict(paths).items()},
         "build": {
             "requestedMode": resolved_build_mode,
+            "cargoProfile": paths.cargo_profile,
             "entrypointStatus": status,
             "staleSources": details,
             "willSkipCargo": skip_cargo,
@@ -383,17 +391,18 @@ def collect_diagnosis(paths: InstallPaths, *, build_mode: str, skip_build: bool)
         },
         "cache": {
             "cargoTargetDir": str(cargo_target_dir()),
-            "cargoReleaseOutputDir": str(target_output_dir),
-            "cargoReleaseOutputDirSizeBytes": directory_size(target_output_dir),
+            "cargoOutputDir": str(target_output_dir),
+            "cargoOutputDirSizeBytes": directory_size(target_output_dir),
             "v8CacheRoot": str(v8_cache_root),
             "v8CacheExists": v8_cache_root.is_dir(),
             "bwrapCacheExists": paths.bwrap_cache.is_file(),
         },
         "notes": [
-            "just test builds debug artifacts and does not populate release musl output.",
+            "Default cargo profile is dev-small for local iteration; release is opt-in.",
+            "just test builds debug artifacts under codex-rs/target/debug, not dev-small musl.",
             "V8 prebuilt artifacts are cached under $TMPDIR/codex-package by build_codex_package.py.",
             "Use --build never to repackage in about one second when the entrypoint is already current.",
-            "Use --build always only when you intentionally want Cargo invoked again.",
+            "Use --cargo-profile release only when you need a production-like binary size/LTO build.",
         ],
         "entrypoint": entrypoint_info,
     }
@@ -414,6 +423,7 @@ def print_diagnosis(diagnosis: dict[str, object], *, as_json: bool) -> None:
     print("Local standalone install diagnosis")
     print(f"  recommendation: {build['recommendation']}")
     print(f"  build mode: {build['requestedMode']}")
+    print(f"  cargo profile: {build['cargoProfile']}")
     print(f"  entrypoint status: {build['entrypointStatus']}")
     print(f"  will skip cargo: {build['willSkipCargo']} ({build['decisionReason']})")
     stale_sources = build["staleSources"]
@@ -423,10 +433,10 @@ def print_diagnosis(diagnosis: dict[str, object], *, as_json: bool) -> None:
         for relative_path in stale_sources:
             print(f"    - {relative_path}")
 
-    release_size = cache["cargoReleaseOutputDirSizeBytes"]
+    release_size = cache["cargoOutputDirSizeBytes"]
     if isinstance(release_size, int):
-        print(f"  cargo release output size: {format_bytes(release_size)}")
-    print(f"  cargo release output dir: {cache['cargoReleaseOutputDir']}")
+        print(f"  cargo output size: {format_bytes(release_size)}")
+    print(f"  cargo output dir: {cache['cargoOutputDir']}")
     print(f"  v8 cache root: {cache['v8CacheRoot']} (exists={cache['v8CacheExists']})")
     print(f"  bwrap cache: {cache['bwrapCacheExists']}")
 
@@ -461,7 +471,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bin-dir", type=Path, help="Directory for the visible codex symlink (default: $CODEX_INSTALL_DIR or ~/.local/bin).")
     parser.add_argument("--target", choices=sorted(TARGET_SPECS), help="Rust target triple for the package.")
     parser.add_argument("--variant", choices=sorted(PACKAGE_VARIANTS), default=DEFAULT_VARIANT)
-    parser.add_argument("--cargo-profile", default=DEFAULT_CARGO_PROFILE)
+    parser.add_argument(
+        "--cargo-profile",
+        default=DEFAULT_CARGO_PROFILE,
+        help=(
+            "Cargo profile for local builds. Defaults to dev-small for fast iteration; "
+            "use release only for production-like binaries."
+        ),
+    )
     parser.add_argument(
         "--build",
         choices=["auto", "always", "never"],
@@ -521,6 +538,12 @@ def main() -> int:
 
     skip_cargo, skip_reason = should_skip_cargo(build_mode, paths)
     logging.info("Release target: %s", paths.release_name)
+    logging.info("Cargo profile: %s", paths.cargo_profile)
+    if paths.cargo_profile == PRODUCTION_CARGO_PROFILE:
+        logging.warning(
+            "Using release profile locally enables fat LTO; prefer dev-small unless you "
+            "explicitly need a production-like binary."
+        )
     logging.info("Staging directory: %s", staging_dir)
     logging.info("Visible command: %s", paths.bin_path)
     logging.info("Build mode: %s (%s)", build_mode, skip_reason)
