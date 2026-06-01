@@ -121,6 +121,7 @@ async fn user_turn_includes_skill_instructions() -> Result<()> {
                 && text.contains("<path>")
                 && text.contains(skill_body)
                 && text.contains(skill_path_str.as_ref())
+                && !text.contains("---\nname: demo")
         }),
         "expected skill instructions in user input, got {user_texts:?}"
     );

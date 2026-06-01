@@ -1621,9 +1621,7 @@ async fn skills_use_aliases_in_developer_message_under_budget_pressure() {
         "expected skill path to use root alias: {developer_messages:?}"
     );
     assert!(
-        developer_text.contains(
-            "expand the listed short `path` with the matching alias from `### Skill roots`"
-        ),
+        developer_text.contains("you must call the `use_skill` tool with its listed name"),
         "expected alias-specific skill instructions: {developer_messages:?}"
     );
     let _codex_home_guard = codex_home;

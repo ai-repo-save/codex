@@ -44,6 +44,33 @@ fn collect_mentions(
 }
 
 #[test]
+fn strip_skill_frontmatter_removes_yaml_header_and_leading_body_blank_lines() {
+    let contents = "---\nname: demo\ndescription: demo skill\n---\n\n# Demo\n\nUse it.\n";
+
+    let body = strip_skill_frontmatter(contents);
+
+    assert_eq!(body, "# Demo\n\nUse it.\n");
+}
+
+#[test]
+fn strip_skill_frontmatter_preserves_body_without_frontmatter() {
+    let contents = "# Demo\n\nUse it.\n";
+
+    let body = strip_skill_frontmatter(contents);
+
+    assert_eq!(body, contents);
+}
+
+#[test]
+fn strip_skill_frontmatter_preserves_invalid_frontmatter() {
+    let contents = "---\nname: demo\n# missing closing delimiter\n";
+
+    let body = strip_skill_frontmatter(contents);
+
+    assert_eq!(body, contents);
+}
+
+#[test]
 fn text_mentions_skill_requires_exact_boundary() {
     assert_eq!(
         true,

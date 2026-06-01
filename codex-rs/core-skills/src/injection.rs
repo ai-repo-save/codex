@@ -28,6 +28,49 @@ pub struct SkillInjection {
     pub contents: String,
 }
 
+pub fn strip_skill_frontmatter(contents: &str) -> &str {
+    let Some(rest) = contents.strip_prefix("---") else {
+        return contents;
+    };
+    let rest = rest
+        .strip_prefix("\r\n")
+        .or_else(|| rest.strip_prefix('\n'))
+        .unwrap_or(rest);
+
+    for delimiter in ["\n---\r\n", "\n---\n", "\r\n---\r\n", "\r\n---\n"] {
+        if let Some((_frontmatter, body)) = rest.split_once(delimiter) {
+            return body.trim_start_matches(['\r', '\n']);
+        }
+    }
+
+    contents
+}
+
+pub async fn load_skill_injection(
+    skill: &SkillMetadata,
+    loaded_skills: Option<&SkillLoadOutcome>,
+) -> Result<SkillInjection, String> {
+    let fs = loaded_skills
+        .and_then(|outcome| outcome.file_system_for_skill(skill))
+        .unwrap_or_else(|| Arc::clone(&LOCAL_FS));
+    let contents = fs
+        .read_file_text(&skill.path_to_skills_md, /*sandbox*/ None)
+        .await
+        .map_err(|err| {
+            format!(
+                "Failed to load skill {name} at {path}: {err:#}",
+                name = skill.name,
+                path = skill.path_to_skills_md.display()
+            )
+        })?;
+
+    Ok(SkillInjection {
+        name: skill.name.clone(),
+        path: skill.path_to_skills_md.to_string_lossy().into_owned(),
+        contents: strip_skill_frontmatter(&contents).to_string(),
+    })
+}
+
 pub async fn build_skill_injections(
     mentioned_skills: &[SkillMetadata],
     loaded_skills: Option<&SkillLoadOutcome>,
@@ -46,14 +89,8 @@ pub async fn build_skill_injections(
     let mut invocations = Vec::new();
 
     for skill in mentioned_skills {
-        let fs = loaded_skills
-            .and_then(|outcome| outcome.file_system_for_skill(skill))
-            .unwrap_or_else(|| Arc::clone(&LOCAL_FS));
-        match fs
-            .read_file_text(&skill.path_to_skills_md, /*sandbox*/ None)
-            .await
-        {
-            Ok(contents) => {
+        match load_skill_injection(skill, loaded_skills).await {
+            Ok(injection) => {
                 emit_skill_injected_metric(otel, skill, "ok");
                 invocations.push(SkillInvocation {
                     skill_name: skill.name.clone(),
@@ -62,19 +99,10 @@ pub async fn build_skill_injections(
                     plugin_id: skill.plugin_id.clone(),
                     invocation_type: InvocationType::Explicit,
                 });
-                result.items.push(SkillInjection {
-                    name: skill.name.clone(),
-                    path: skill.path_to_skills_md.to_string_lossy().into_owned(),
-                    contents,
-                });
+                result.items.push(injection);
             }
-            Err(err) => {
+            Err(message) => {
                 emit_skill_injected_metric(otel, skill, "error");
-                let message = format!(
-                    "Failed to load skill {name} at {path}: {err:#}",
-                    name = skill.name,
-                    path = skill.path_to_skills_md.display()
-                );
                 result.warnings.push(message);
             }
         }

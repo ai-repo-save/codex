@@ -16,6 +16,7 @@ use codex_protocol::openai_models::InputModality;
 use codex_protocol::openai_models::ToolMode;
 use codex_protocol::openai_models::WebSearchToolType;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::SkillScope;
 use codex_protocol::protocol::SubAgentSource;
 use codex_tools::DiscoverablePluginInfo;
 use codex_tools::DiscoverableTool;
@@ -27,9 +28,12 @@ use codex_tools::ToolExposure;
 use codex_tools::ToolName;
 use codex_tools::ToolOutput;
 use codex_tools::ToolSpec;
+use codex_utils_absolute_path::test_support::PathBufExt;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
+use crate::SkillLoadOutcome;
+use crate::SkillMetadata;
 use crate::session::tests::make_session_and_context;
 use crate::session::turn_context::TurnContext;
 use crate::tools::handlers::multi_agents_spec::MULTI_AGENT_V1_NAMESPACE;
@@ -190,6 +194,23 @@ async fn probe_with(
 
 async fn probe(configure_turn: impl FnOnce(&mut TurnContext)) -> ToolPlanProbe {
     probe_with(configure_turn, ToolPlanInputs::default()).await
+}
+
+fn test_skill(name: &str) -> SkillMetadata {
+    SkillMetadata {
+        name: name.to_string(),
+        description: format!("{name} description"),
+        short_description: None,
+        interface: None,
+        dependencies: None,
+        policy: None,
+        path_to_skills_md: codex_utils_absolute_path::test_support::test_path_buf(&format!(
+            "/tmp/{name}/SKILL.md"
+        ))
+        .abs(),
+        scope: SkillScope::Repo,
+        plugin_id: None,
+    }
 }
 
 fn set_feature(turn: &mut TurnContext, feature: Feature, enabled: bool) {
@@ -444,6 +465,42 @@ async fn request_user_input_tool_respects_experimental_config_gate() {
     .await;
     disabled.assert_visible_lacks(&["request_user_input"]);
     disabled.assert_registered_lacks(&["request_user_input"]);
+}
+
+#[tokio::test]
+async fn use_skill_tool_is_available_when_enabled_skills_exist() {
+    let plan = probe(|turn| {
+        let outcome = SkillLoadOutcome {
+            skills: vec![test_skill("demo")],
+            ..Default::default()
+        };
+        turn.turn_skills = crate::session::turn_context::TurnSkillsContext::new(Arc::new(outcome));
+    })
+    .await;
+
+    plan.assert_visible_contains(&["use_skill"]);
+    plan.assert_registered_contains(&["use_skill"]);
+}
+
+#[tokio::test]
+async fn use_skill_tool_is_hidden_without_available_skills_or_skill_instructions() {
+    let no_skills = probe(|_| {}).await;
+    no_skills.assert_visible_lacks(&["use_skill"]);
+    no_skills.assert_registered_lacks(&["use_skill"]);
+
+    let disabled_instructions = probe(|turn| {
+        let outcome = SkillLoadOutcome {
+            skills: vec![test_skill("demo")],
+            ..Default::default()
+        };
+        turn.turn_skills = crate::session::turn_context::TurnSkillsContext::new(Arc::new(outcome));
+        update_config(turn, |config| {
+            config.include_skill_instructions = false;
+        });
+    })
+    .await;
+    disabled_instructions.assert_visible_lacks(&["use_skill"]);
+    disabled_instructions.assert_registered_lacks(&["use_skill"]);
 }
 
 #[tokio::test]

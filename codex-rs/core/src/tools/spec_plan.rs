@@ -23,6 +23,7 @@ use crate::tools::handlers::ShellCommandHandlerOptions;
 use crate::tools::handlers::TestSyncHandler;
 use crate::tools::handlers::ToolSearchHandler;
 use crate::tools::handlers::UpdateGoalHandler;
+use crate::tools::handlers::UseSkillHandler;
 use crate::tools::handlers::ViewImageHandler;
 use crate::tools::handlers::WriteStdinHandler;
 use crate::tools::handlers::agent_jobs::ReportAgentJobResultHandler;
@@ -618,6 +619,18 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
         planned_tools.add(RequestUserInputHandler {
             available_modes: request_user_input_available_modes(features),
         });
+    }
+
+    if turn_context.config.include_skill_instructions
+        && !turn_context
+            .turn_skills
+            .outcome
+            .allowed_skills_for_implicit_invocation()
+            .is_empty()
+    {
+        planned_tools.add(UseSkillHandler::new(Arc::clone(
+            &turn_context.turn_skills.outcome,
+        )));
     }
 
     if features.enabled(Feature::RequestPermissionsTool) {

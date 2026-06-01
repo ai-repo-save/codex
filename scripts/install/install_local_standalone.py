@@ -175,6 +175,10 @@ def find_pnpm_bwrap_candidates(target: str) -> list[Path]:
 
 
 def refresh_bwrap_cache(paths: InstallPaths, source: Path) -> Path:
+    if source.resolve() == paths.bwrap_cache.resolve():
+        logging.debug("bwrap cache already current at %s", paths.bwrap_cache)
+        return paths.bwrap_cache
+
     logging.info("Caching bwrap at %s", paths.bwrap_cache)
     copy_executable(source, paths.bwrap_cache)
     return paths.bwrap_cache
