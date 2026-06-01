@@ -363,6 +363,20 @@ impl ToolOutput for ExecCommandToolOutput {
         ))
     }
 
+    fn post_tool_use_full_response(
+        &self,
+        _call_id: &str,
+        _payload: &ToolPayload,
+    ) -> Option<JsonValue> {
+        if self.process_id.is_some() || self.hook_command.is_none() {
+            return None;
+        }
+
+        Some(JsonValue::String(
+            String::from_utf8_lossy(&self.raw_output).to_string(),
+        ))
+    }
+
     fn code_mode_result(&self, _payload: &ToolPayload) -> JsonValue {
         #[derive(Serialize)]
         struct UnifiedExecCodeModeResult {

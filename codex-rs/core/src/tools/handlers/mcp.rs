@@ -219,6 +219,7 @@ impl CoreToolRuntime for McpHandler {
             tool_use_id: invocation.call_id.clone(),
             tool_input: result.post_tool_use_input(&invocation.payload)?,
             tool_response,
+            tool_response_full: None,
         })
     }
 }
@@ -472,6 +473,7 @@ mod tests {
                     }],
                     "structuredContent": { "bytes": 5 }
                 }),
+                tool_response_full: None,
             })
         );
     }

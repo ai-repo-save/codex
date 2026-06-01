@@ -97,6 +97,8 @@ pub(crate) trait CoreToolRuntime: ToolExecutor<ToolInvocation> {
 
                     serde_json::to_value(body).ok()
                 })?,
+            tool_response_full: result
+                .post_tool_use_full_response(&invocation.call_id, &invocation.payload),
         })
     }
 
@@ -233,6 +235,9 @@ pub(crate) struct PostToolUsePayload {
     pub(crate) tool_input: Value,
     /// Tool result exposed at `tool_response`.
     pub(crate) tool_response: Value,
+    /// Full-fidelity tool result exposed at `tool_response_full` when a tool has
+    /// one. Existing hooks should keep using `tool_response`.
+    pub(crate) tool_response_full: Option<Value>,
 }
 
 pub(crate) fn override_tool_exposure(
@@ -593,6 +598,7 @@ impl ToolRegistry {
                     post_tool_use_payload.tool_name.matcher_aliases().to_vec(),
                     post_tool_use_payload.tool_input,
                     post_tool_use_payload.tool_response,
+                    post_tool_use_payload.tool_response_full,
                 )
                 .await,
             )
@@ -607,26 +613,29 @@ impl ToolRegistry {
                 outcome.additional_contexts.clone(),
             )
             .await;
-            let replacement_text = if outcome.should_stop {
-                Some(
+            let replacement = if outcome.should_stop {
+                Some((
                     outcome
                         .feedback_message
                         .clone()
                         .or_else(|| outcome.stop_reason.clone())
                         .unwrap_or_else(|| "PostToolUse hook stopped execution".to_string()),
-                )
+                    /*success*/ None,
+                ))
+            } else if let Some(feedback_message) = outcome.feedback_message.clone() {
+                Some((feedback_message, /*success*/ None))
             } else {
-                outcome.feedback_message.clone()
+                outcome
+                    .updated_tool_output
+                    .clone()
+                    .map(|updated_tool_output| (updated_tool_output, /*success*/ Some(true)))
             };
-            if let Some(replacement_text) = replacement_text {
+            if let Some((replacement_text, success)) = replacement {
                 let mut guard = response_cell.lock().await;
                 if let Some(mut result) = guard.take() {
                     result.result = Box::new(PostToolUseFeedbackOutput {
                         original: result.result,
-                        model_visible: FunctionToolOutput::from_text(
-                            replacement_text,
-                            /*success*/ None,
-                        ),
+                        model_visible: FunctionToolOutput::from_text(replacement_text, success),
                     });
                     *guard = Some(result);
                 }

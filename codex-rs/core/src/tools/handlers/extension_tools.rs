@@ -299,6 +299,7 @@ mod tests {
                 tool_use_id: "call-extension".to_string(),
                 tool_input: json!({ "message": "hello" }),
                 tool_response: json!({ "ok": true }),
+                tool_response_full: None,
             })
         );
     }

@@ -21,6 +21,7 @@ import argparse
 import json
 import logging
 import os
+import platform
 import shutil
 import stat
 import subprocess
@@ -40,7 +41,7 @@ from codex_package.cargo import cargo_target_dir  # noqa: E402
 from codex_package.layout import validate_package_dir  # noqa: E402
 from codex_package.targets import PACKAGE_VARIANTS  # noqa: E402
 from codex_package.targets import TARGET_SPECS  # noqa: E402
-from codex_package.targets import default_target  # noqa: E402
+from codex_package.targets import normalize_machine  # noqa: E402
 from codex_package.v8 import default_cache_root  # noqa: E402
 from codex_package.version import read_workspace_version  # noqa: E402
 
@@ -50,6 +51,27 @@ DEFAULT_CODEX_HOME = Path.home() / ".codex"
 DEFAULT_CARGO_PROFILE = "dev-small"
 DEFAULT_VARIANT = "codex"
 PRODUCTION_CARGO_PROFILE = "release"
+LOCAL_HOST_TARGETS: dict[tuple[str, str], str] = {
+    ("linux", "aarch64"): "aarch64-unknown-linux-gnu",
+    ("linux", "x86_64"): "x86_64-unknown-linux-gnu",
+    ("darwin", "aarch64"): "aarch64-apple-darwin",
+    ("darwin", "x86_64"): "x86_64-apple-darwin",
+    ("windows", "aarch64"): "aarch64-pc-windows-msvc",
+    ("windows", "x86_64"): "x86_64-pc-windows-msvc",
+}
+
+
+def default_local_target() -> str:
+    system = platform.system().lower()
+    machine = normalize_machine(platform.machine())
+    target = LOCAL_HOST_TARGETS.get((system, machine))
+    if target is None:
+        supported = ", ".join(sorted(TARGET_SPECS))
+        raise RuntimeError(
+            f"Unsupported host platform {platform.system()}/{platform.machine()}. "
+            f"Pass --target explicitly. Supported targets: {supported}"
+        )
+    return target
 
 
 @dataclass(frozen=True)
@@ -81,7 +103,7 @@ class InstallPaths:
     ) -> InstallPaths:
         resolved_codex_home = (codex_home or Path(os.environ.get("CODEX_HOME", DEFAULT_CODEX_HOME))).expanduser().resolve()
         resolved_bin_dir = (bin_dir or Path(os.environ.get("CODEX_INSTALL_DIR", DEFAULT_BIN_DIR))).expanduser().resolve()
-        resolved_target = target or default_target()
+        resolved_target = target or default_local_target()
         resolved_version = read_workspace_version()
         package_variant = PACKAGE_VARIANTS[variant]
         spec = TARGET_SPECS[resolved_target]
@@ -265,25 +287,22 @@ def verify_install(paths: InstallPaths, *, variant: str) -> None:
     subprocess.run([str(paths.bin_path), "--version"], check=True)
 
 
-def git_changed_codex_rs_files() -> list[str]:
+def git_tracked_codex_rs_files() -> list[str]:
     result = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "diff", "--name-only", "HEAD", "--", "codex-rs"],
+        ["git", "-C", str(REPO_ROOT), "ls-files", "--", "codex-rs"],
         capture_output=True,
         text=True,
         check=True,
     )
-    cached = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "diff", "--cached", "--name-only", "--", "codex-rs"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    files = {line.strip() for line in (result.stdout + cached.stdout).splitlines() if line.strip()}
-    return sorted(files)
+    return sorted(line.strip() for line in result.stdout.splitlines() if line.strip())
 
 
 def is_relevant_build_input(relative_path: str) -> bool:
-    return relative_path.endswith((".rs", ".toml")) or relative_path.endswith("Cargo.lock")
+    return (
+        relative_path.endswith((".rs", ".toml"))
+        or relative_path.endswith("Cargo.lock")
+        or relative_path.startswith("codex-rs/hooks/schema/generated/")
+    )
 
 
 def entrypoint_build_status(paths: InstallPaths) -> tuple[str, list[str]]:
@@ -293,7 +312,7 @@ def entrypoint_build_status(paths: InstallPaths) -> tuple[str, list[str]]:
 
     bin_mtime = entrypoint.stat().st_mtime
     stale_files: list[str] = []
-    for relative_path in git_changed_codex_rs_files():
+    for relative_path in git_tracked_codex_rs_files():
         if not is_relevant_build_input(relative_path):
             continue
         source_path = REPO_ROOT / relative_path

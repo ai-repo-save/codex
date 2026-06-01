@@ -252,6 +252,7 @@ impl CoreToolRuntime for ShellCommandHandler {
             tool_use_id: invocation.call_id.clone(),
             tool_input: serde_json::json!({ "command": command }),
             tool_response,
+            tool_response_full: None,
         })
     }
 }

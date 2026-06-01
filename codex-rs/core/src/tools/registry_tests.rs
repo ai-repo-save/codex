@@ -202,6 +202,7 @@ async fn function_tools_expose_default_hook_payloads_and_rewrites() -> anyhow::R
             tool_use_id: "call-1".to_string(),
             tool_input: serde_json::json!({ "message": "hello" }),
             tool_response: serde_json::json!("echoed"),
+            tool_response_full: None,
         })
     );
 

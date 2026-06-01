@@ -33,6 +33,7 @@ pub struct PostToolUseRequest {
     pub tool_use_id: String,
     pub tool_input: Value,
     pub tool_response: Value,
+    pub tool_response_full: Option<Value>,
 }
 
 #[derive(Debug)]
@@ -42,6 +43,7 @@ pub struct PostToolUseOutcome {
     pub stop_reason: Option<String>,
     pub additional_contexts: Vec<String>,
     pub feedback_message: Option<String>,
+    pub updated_tool_output: Option<String>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -50,6 +52,8 @@ struct PostToolUseHandlerData {
     stop_reason: Option<String>,
     additional_contexts_for_model: Vec<String>,
     feedback_messages_for_model: Vec<String>,
+    updated_tool_output: Option<Value>,
+    updated_mcp_tool_output: Option<Value>,
 }
 
 pub(crate) fn preview(
@@ -87,6 +91,7 @@ pub(crate) async fn run(
             stop_reason: None,
             additional_contexts: Vec::new(),
             feedback_message: None,
+            updated_tool_output: None,
         };
     }
 
@@ -103,7 +108,7 @@ pub(crate) async fn run(
         }
     };
 
-    let results = dispatcher::execute_handlers(
+    let mut results = dispatcher::execute_handlers(
         shell,
         matched,
         input_json,
@@ -112,6 +117,8 @@ pub(crate) async fn run(
         parse_completed,
     )
     .await;
+    let updated_tool_output =
+        apply_updated_tool_outputs(&mut results, &request.tool_name, &request.tool_response);
 
     let additional_contexts = common::flatten_additional_contexts(
         results
@@ -140,6 +147,82 @@ pub(crate) async fn run(
         stop_reason,
         additional_contexts,
         feedback_message,
+        updated_tool_output,
+    }
+}
+
+fn apply_updated_tool_outputs(
+    results: &mut [dispatcher::ParsedHandler<PostToolUseHandlerData>],
+    tool_name: &str,
+    original_tool_response: &Value,
+) -> Option<String> {
+    let is_mcp_tool = tool_name.starts_with("mcp__");
+    let mut replacement = None;
+
+    for result in results {
+        let Some(updated_output) = selected_updated_output(result, is_mcp_tool) else {
+            continue;
+        };
+
+        if !is_mcp_tool && !same_value_kind(&updated_output, original_tool_response) {
+            result.completed.run.entries.push(HookOutputEntry {
+                kind: HookOutputEntryKind::Warning,
+                text: format!(
+                    "PostToolUse hook returned updatedToolOutput with {} value, but tool_response is {}",
+                    value_kind(&updated_output),
+                    value_kind(original_tool_response)
+                ),
+            });
+            continue;
+        }
+
+        replacement = Some(value_to_model_visible_text(updated_output));
+    }
+
+    replacement
+}
+
+fn selected_updated_output(
+    result: &mut dispatcher::ParsedHandler<PostToolUseHandlerData>,
+    is_mcp_tool: bool,
+) -> Option<Value> {
+    if let Some(updated_tool_output) = result.data.updated_tool_output.take() {
+        return Some(updated_tool_output);
+    }
+
+    if let Some(updated_mcp_tool_output) = result.data.updated_mcp_tool_output.take() {
+        if is_mcp_tool {
+            return Some(updated_mcp_tool_output);
+        }
+
+        result.completed.run.entries.push(HookOutputEntry {
+            kind: HookOutputEntryKind::Warning,
+            text: "PostToolUse hook returned updatedMCPToolOutput for a non-MCP tool".to_string(),
+        });
+    }
+
+    None
+}
+
+fn value_to_model_visible_text(value: Value) -> String {
+    match value {
+        Value::String(text) => text,
+        value => value.to_string(),
+    }
+}
+
+fn same_value_kind(left: &Value, right: &Value) -> bool {
+    value_kind(left) == value_kind(right)
+}
+
+fn value_kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
     }
 }
 
@@ -164,6 +247,7 @@ fn command_input_json(request: &PostToolUseRequest) -> Result<String, serde_json
         tool_name: request.tool_name.clone(),
         tool_input: request.tool_input.clone(),
         tool_response: request.tool_response.clone(),
+        tool_response_full: request.tool_response_full.clone(),
         tool_use_id: request.tool_use_id.clone(),
     })
 }
@@ -179,6 +263,8 @@ fn parse_completed(
     let mut stop_reason = None;
     let mut additional_contexts_for_model = Vec::new();
     let mut feedback_messages_for_model = Vec::new();
+    let mut updated_tool_output = None;
+    let mut updated_mcp_tool_output = None;
 
     match run_result.error.as_deref() {
         Some(error) => {
@@ -249,6 +335,9 @@ fn parse_completed(
                             });
                             feedback_messages_for_model.push(reason);
                         }
+                    } else {
+                        updated_tool_output = parsed.updated_tool_output;
+                        updated_mcp_tool_output = parsed.updated_mcp_tool_output;
                     }
                 } else if output_parser::looks_like_json(&run_result.stdout) {
                     status = HookRunStatus::Failed;
@@ -302,6 +391,8 @@ fn parse_completed(
             stop_reason,
             additional_contexts_for_model,
             feedback_messages_for_model,
+            updated_tool_output,
+            updated_mcp_tool_output,
         },
         completion_order: 0,
     }
@@ -314,6 +405,7 @@ fn serialization_failure_outcome(hook_events: Vec<HookCompletedEvent>) -> PostTo
         stop_reason: None,
         additional_contexts: Vec::new(),
         feedback_message: None,
+        updated_tool_output: None,
     }
 }
 
@@ -350,6 +442,35 @@ mod tests {
     }
 
     #[test]
+    fn command_input_exposes_full_tool_response_when_available() {
+        let mut request = request_for_tool_use("call-bash");
+        request.tool_response = json!("short output");
+        request.tool_response_full = Some(json!("short output plus the complete raw tail"));
+
+        let input_json = command_input_json(&request).expect("serialize command input");
+        let input: serde_json::Value =
+            serde_json::from_str(&input_json).expect("parse command input");
+
+        assert_eq!(
+            input,
+            json!({
+                "session_id": request.session_id.to_string(),
+                "turn_id": "turn-1",
+                "transcript_path": null,
+                "cwd": "/tmp",
+                "hook_event_name": "PostToolUse",
+                "model": "gpt-test",
+                "permission_mode": "default",
+                "tool_name": "Bash",
+                "tool_input": { "command": "echo hello" },
+                "tool_response": "short output",
+                "tool_response_full": "short output plus the complete raw tail",
+                "tool_use_id": "call-bash"
+            })
+        );
+    }
+
+    #[test]
     fn block_decision_stops_normal_processing() {
         let parsed = parse_completed(
             &handler(),
@@ -368,6 +489,8 @@ mod tests {
                 stop_reason: None,
                 additional_contexts_for_model: Vec::new(),
                 feedback_messages_for_model: vec!["bash output looked sketchy".to_string()],
+                updated_tool_output: None,
+                updated_mcp_tool_output: None,
             }
         );
         assert_eq!(parsed.completed.run.status, HookRunStatus::Blocked);
@@ -392,6 +515,8 @@ mod tests {
                 stop_reason: None,
                 additional_contexts_for_model: vec!["Remember the bash cleanup note.".to_string()],
                 feedback_messages_for_model: Vec::new(),
+                updated_tool_output: None,
+                updated_mcp_tool_output: None,
             }
         );
         assert_eq!(
@@ -404,7 +529,7 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_updated_mcp_tool_output_fails_open() {
+    fn updated_mcp_tool_output_is_recorded_for_valid_post_tool_use_output() {
         let parsed = parse_completed(
             &handler(),
             run_result(
@@ -422,14 +547,64 @@ mod tests {
                 stop_reason: None,
                 additional_contexts_for_model: Vec::new(),
                 feedback_messages_for_model: Vec::new(),
+                updated_tool_output: None,
+                updated_mcp_tool_output: Some(json!({ "ok": true })),
             }
         );
-        assert_eq!(parsed.completed.run.status, HookRunStatus::Failed);
+        assert_eq!(parsed.completed.run.status, HookRunStatus::Completed);
+        assert_eq!(parsed.completed.run.entries, Vec::<HookOutputEntry>::new());
+    }
+
+    #[test]
+    fn updated_tool_output_is_recorded_for_valid_post_tool_use_output() {
+        let parsed = parse_completed(
+            &handler(),
+            run_result(
+                Some(0),
+                r#"{"hookSpecificOutput":{"hookEventName":"PostToolUse","updatedToolOutput":"read /tmp/codex-output.txt"}}"#,
+                "",
+            ),
+            Some("turn-1".to_string()),
+        );
+
+        assert_eq!(
+            parsed.data,
+            PostToolUseHandlerData {
+                should_stop: false,
+                stop_reason: None,
+                additional_contexts_for_model: Vec::new(),
+                feedback_messages_for_model: Vec::new(),
+                updated_tool_output: Some(json!("read /tmp/codex-output.txt")),
+                updated_mcp_tool_output: None,
+            }
+        );
+        assert_eq!(parsed.completed.run.status, HookRunStatus::Completed);
+    }
+
+    #[test]
+    fn non_mcp_updated_mcp_tool_output_warns_without_replacement() {
+        let mut parsed = parse_completed(
+            &handler(),
+            run_result(
+                Some(0),
+                r#"{"hookSpecificOutput":{"hookEventName":"PostToolUse","updatedMCPToolOutput":"mcp-only replacement"}}"#,
+                "",
+            ),
+            Some("turn-1".to_string()),
+        );
+        let replacement = apply_updated_tool_outputs(
+            std::slice::from_mut(&mut parsed),
+            "Bash",
+            &json!("original output"),
+        );
+
+        assert_eq!(replacement, None);
         assert_eq!(
             parsed.completed.run.entries,
             vec![HookOutputEntry {
-                kind: HookOutputEntryKind::Error,
-                text: "PostToolUse hook returned unsupported updatedMCPToolOutput".to_string(),
+                kind: HookOutputEntryKind::Warning,
+                text: "PostToolUse hook returned updatedMCPToolOutput for a non-MCP tool"
+                    .to_string(),
             }]
         );
     }
@@ -449,6 +624,8 @@ mod tests {
                 stop_reason: None,
                 additional_contexts_for_model: Vec::new(),
                 feedback_messages_for_model: vec!["post hook says pause".to_string()],
+                updated_tool_output: None,
+                updated_mcp_tool_output: None,
             }
         );
         assert_eq!(parsed.completed.run.status, HookRunStatus::Completed);
@@ -473,6 +650,8 @@ mod tests {
                 stop_reason: Some("halt after bash output".to_string()),
                 additional_contexts_for_model: Vec::new(),
                 feedback_messages_for_model: vec!["post-tool hook says stop".to_string()],
+                updated_tool_output: None,
+                updated_mcp_tool_output: None,
             }
         );
         assert_eq!(parsed.completed.run.status, HookRunStatus::Stopped);
@@ -500,6 +679,8 @@ mod tests {
                 stop_reason: None,
                 additional_contexts_for_model: Vec::new(),
                 feedback_messages_for_model: Vec::new(),
+                updated_tool_output: None,
+                updated_mcp_tool_output: None,
             }
         );
         assert_eq!(parsed.completed.run.status, HookRunStatus::Completed);
@@ -586,6 +767,7 @@ mod tests {
             tool_use_id: tool_use_id.to_string(),
             tool_input: json!({ "command": "echo hello" }),
             tool_response: json!({"ok": true}),
+            tool_response_full: None,
         }
     }
 }

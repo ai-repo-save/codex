@@ -255,9 +255,9 @@ pub(crate) async fn run_permission_request_hooks(
 /// Runs matching `PostToolUse` hooks after a tool has produced a successful output.
 ///
 /// The `tool_name`, matcher aliases, `tool_input`, and `tool_response` values are
-/// already adapted by the tool handler into the stable hook contract. Passing
-/// raw internal tool data here would leak implementation details into user hook
-/// matchers and hook logs.
+/// already adapted by the tool handler into the stable hook contract.
+/// `tool_response_full` is an opt-in extension for tools that have a separate
+/// full-fidelity hook response, such as Bash raw output.
 pub(crate) async fn run_post_tool_use_hooks(
     sess: &Arc<Session>,
     turn_context: &Arc<TurnContext>,
@@ -266,6 +266,7 @@ pub(crate) async fn run_post_tool_use_hooks(
     matcher_aliases: Vec<String>,
     tool_input: Value,
     tool_response: Value,
+    tool_response_full: Option<Value>,
 ) -> PostToolUseOutcome {
     let request = PostToolUseRequest {
         session_id: sess.session_id().into(),
@@ -281,6 +282,7 @@ pub(crate) async fn run_post_tool_use_hooks(
         tool_use_id,
         tool_input,
         tool_response,
+        tool_response_full,
     };
     let hooks = sess.hooks();
     let preview_runs = hooks.preview_post_tool_use(&request);

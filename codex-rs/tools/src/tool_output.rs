@@ -41,6 +41,21 @@ pub trait ToolOutput: Send {
         None
     }
 
+    /// Returns an optional full-fidelity value exposed only to `PostToolUse`
+    /// hooks.
+    ///
+    /// This is separate from `post_tool_use_response` so existing hook
+    /// contracts can keep a stable, possibly truncated response while selected
+    /// tools expose raw output for hooks that want to rewrite the model-visible
+    /// result.
+    fn post_tool_use_full_response(
+        &self,
+        _call_id: &str,
+        _payload: &ToolPayload,
+    ) -> Option<JsonValue> {
+        None
+    }
+
     fn code_mode_result(&self, payload: &ToolPayload) -> JsonValue {
         response_input_to_code_mode_result(self.to_response_item("", payload))
     }
@@ -72,6 +87,14 @@ where
 
     fn post_tool_use_response(&self, call_id: &str, payload: &ToolPayload) -> Option<JsonValue> {
         (**self).post_tool_use_response(call_id, payload)
+    }
+
+    fn post_tool_use_full_response(
+        &self,
+        call_id: &str,
+        payload: &ToolPayload,
+    ) -> Option<JsonValue> {
+        (**self).post_tool_use_full_response(call_id, payload)
     }
 
     fn code_mode_result(&self, payload: &ToolPayload) -> JsonValue {

@@ -210,6 +210,9 @@ impl ClaudeHooksEngine {
         outcome.feedback_message = self
             .maybe_spill_text(session_id, outcome.feedback_message)
             .await;
+        outcome.updated_tool_output = self
+            .maybe_spill_text(session_id, outcome.updated_tool_output)
+            .await;
         outcome
     }
 

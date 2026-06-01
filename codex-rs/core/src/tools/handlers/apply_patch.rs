@@ -484,6 +484,7 @@ impl CoreToolRuntime for ApplyPatchHandler {
                 "command": apply_patch_payload_command(&invocation.payload)?,
             }),
             tool_response,
+            tool_response_full: None,
         })
     }
 }
