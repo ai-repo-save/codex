@@ -14996,6 +14996,13 @@
         },
         "type": "object"
       },
+      "SkillLoadStatus": {
+        "enum": [
+          "completed",
+          "failed"
+        ],
+        "type": "string"
+      },
       "SkillMetadata": {
         "properties": {
           "dependencies": {
@@ -16471,6 +16478,50 @@
               "type"
             ],
             "title": "McpToolCallThreadItem",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/v2/AbsolutePathBuf"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "status": {
+                "$ref": "#/definitions/v2/SkillLoadStatus"
+              },
+              "type": {
+                "enum": [
+                  "skillLoad"
+                ],
+                "title": "SkillLoadThreadItemType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "status",
+              "type"
+            ],
+            "title": "SkillLoadThreadItem",
             "type": "object"
           },
           {

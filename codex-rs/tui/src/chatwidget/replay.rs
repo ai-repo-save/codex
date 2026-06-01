@@ -138,6 +138,17 @@ impl ChatWidget {
                 ..
             } => self.on_mcp_tool_call_started(item),
             item @ ThreadItem::McpToolCall { .. } => self.on_mcp_tool_call_completed(item),
+            ThreadItem::SkillLoad {
+                name,
+                path,
+                status,
+                error,
+                ..
+            } => {
+                self.flush_answer_stream_with_separator();
+                self.add_to_history(history_cell::new_skill_load(name, path, status, error));
+                self.transcript.had_work_activity = true;
+            }
             ThreadItem::WebSearch { id, query, action } => {
                 self.on_web_search_begin(id.clone());
                 self.on_web_search_end(

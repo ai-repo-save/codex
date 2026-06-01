@@ -15,6 +15,7 @@ use codex_protocol::approvals::GuardianAssessmentDecisionSource as CoreGuardianA
 use codex_protocol::approvals::GuardianCommandSource as CoreGuardianCommandSource;
 use codex_protocol::items::AgentMessageContent as CoreAgentMessageContent;
 use codex_protocol::items::McpToolCallStatus as CoreMcpToolCallStatus;
+use codex_protocol::items::SkillLoadStatus as CoreSkillLoadStatus;
 use codex_protocol::items::TurnItem as CoreTurnItem;
 use codex_protocol::memory_citation::MemoryCitation as CoreMemoryCitation;
 use codex_protocol::memory_citation::MemoryCitationEntry as CoreMemoryCitationEntry;
@@ -299,6 +300,15 @@ pub enum ThreadItem {
     },
     #[serde(rename_all = "camelCase")]
     #[ts(rename_all = "camelCase")]
+    SkillLoad {
+        id: String,
+        name: String,
+        path: Option<AbsolutePathBuf>,
+        status: SkillLoadStatus,
+        error: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    #[ts(rename_all = "camelCase")]
     DynamicToolCall {
         id: String,
         namespace: Option<String>,
@@ -385,6 +395,7 @@ impl ThreadItem {
             | ThreadItem::CommandExecution { id, .. }
             | ThreadItem::FileChange { id, .. }
             | ThreadItem::McpToolCall { id, .. }
+            | ThreadItem::SkillLoad { id, .. }
             | ThreadItem::DynamicToolCall { id, .. }
             | ThreadItem::CollabAgentToolCall { id, .. }
             | ThreadItem::WebSearch { id, .. }
@@ -858,6 +869,13 @@ impl From<CoreTurnItem> for ThreadItem {
                     duration_ms,
                 }
             }
+            CoreTurnItem::SkillLoad(skill_load) => ThreadItem::SkillLoad {
+                id: skill_load.id,
+                name: skill_load.name,
+                path: skill_load.path,
+                status: SkillLoadStatus::from(skill_load.status),
+                error: skill_load.error,
+            },
             CoreTurnItem::ContextCompaction(compaction) => {
                 ThreadItem::ContextCompaction { id: compaction.id }
             }
@@ -982,6 +1000,23 @@ impl From<CoreMcpToolCallStatus> for McpToolCallStatus {
 #[ts(export_to = "v2/")]
 pub enum McpToolCallStatus {
     InProgress,
+    Completed,
+    Failed,
+}
+
+impl From<CoreSkillLoadStatus> for SkillLoadStatus {
+    fn from(value: CoreSkillLoadStatus) -> Self {
+        match value {
+            CoreSkillLoadStatus::Completed => SkillLoadStatus::Completed,
+            CoreSkillLoadStatus::Failed => SkillLoadStatus::Failed,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum SkillLoadStatus {
     Completed,
     Failed,
 }

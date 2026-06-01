@@ -18,6 +18,9 @@ use crate::tools::handlers::use_skill_spec::USE_SKILL_TOOL_NAME;
 use crate::tools::handlers::use_skill_spec::create_use_skill_tool;
 use crate::tools::registry::CoreToolRuntime;
 use crate::tools::registry::ToolExecutor;
+use codex_protocol::items::SkillLoadItem;
+use codex_protocol::items::SkillLoadStatus;
+use codex_protocol::items::TurnItem;
 
 #[derive(Clone)]
 pub struct UseSkillHandler {
@@ -49,17 +52,47 @@ impl ToolExecutor<ToolInvocation> for UseSkillHandler {
         &self,
         invocation: ToolInvocation,
     ) -> Result<Box<dyn crate::tools::context::ToolOutput>, FunctionCallError> {
-        let ToolInvocation { payload, .. } = invocation;
+        let ToolInvocation { payload, .. } = &invocation;
         let ToolPayload::Function { arguments } = payload else {
             return Err(FunctionCallError::RespondToModel(
                 "use_skill handler received unsupported payload".to_string(),
             ));
         };
-        let UseSkillArgs { name } = parse_arguments(&arguments)?;
-        let skill = enabled_skill_by_name(&self.skills, &name)?;
-        let skill_injection = load_skill_injection(skill, Some(&self.skills))
-            .await
-            .map_err(FunctionCallError::RespondToModel)?;
+        let UseSkillArgs { name } = parse_arguments(arguments)?;
+        let skill = match enabled_skill_by_name(&self.skills, &name) {
+            Ok(skill) => skill,
+            Err(err) => {
+                emit_skill_load_item(
+                    &invocation,
+                    &name,
+                    skill_path_for_name(&self.skills, &name),
+                    Err(&err),
+                )
+                .await;
+                return Err(err);
+            }
+        };
+        let skill_injection = match load_skill_injection(skill, Some(&self.skills)).await {
+            Ok(skill_injection) => skill_injection,
+            Err(message) => {
+                let err = FunctionCallError::RespondToModel(message);
+                emit_skill_load_item(
+                    &invocation,
+                    &name,
+                    Some(skill.path_to_skills_md.clone()),
+                    Err(&err),
+                )
+                .await;
+                return Err(err);
+            }
+        };
+        emit_skill_load_item(
+            &invocation,
+            &name,
+            Some(skill.path_to_skills_md.clone()),
+            Ok(()),
+        )
+        .await;
         let response = SkillInstructions::from(&skill_injection).body();
         Ok(boxed_tool_output(FunctionToolOutput::from_text(
             response,
@@ -103,6 +136,48 @@ fn enabled_skill_by_name<'a>(
                 "skill name `{name}` is ambiguous; matching SKILL.md paths: {paths}"
             )))
         }
+    }
+}
+
+async fn emit_skill_load_item(
+    invocation: &ToolInvocation,
+    name: &str,
+    path: Option<codex_utils_absolute_path::AbsolutePathBuf>,
+    result: Result<(), &FunctionCallError>,
+) {
+    let (status, error) = match result {
+        Ok(()) => (SkillLoadStatus::Completed, None),
+        Err(err) => (SkillLoadStatus::Failed, Some(err.to_string())),
+    };
+    invocation
+        .session
+        .emit_turn_item_completed(
+            invocation.turn.as_ref(),
+            TurnItem::SkillLoad(SkillLoadItem {
+                id: invocation.call_id.clone(),
+                name: name.to_string(),
+                path,
+                status,
+                error,
+            }),
+        )
+        .await;
+}
+
+fn skill_path_for_name(
+    skills: &SkillLoadOutcome,
+    name: &str,
+) -> Option<codex_utils_absolute_path::AbsolutePathBuf> {
+    let mut matches = skills
+        .skills
+        .iter()
+        .filter(|skill| skill.name == name)
+        .map(|skill| skill.path_to_skills_md.clone());
+    let path = matches.next()?;
+    if matches.next().is_some() {
+        None
+    } else {
+        Some(path)
     }
 }
 

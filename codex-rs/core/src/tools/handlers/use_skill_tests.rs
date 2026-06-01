@@ -1,11 +1,15 @@
 use super::*;
-use crate::session::tests::make_session_and_context;
+use crate::session::tests::make_session_and_context_with_rx;
 use crate::tools::context::ToolCallSource;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolPayload;
 use crate::turn_diff_tracker::TurnDiffTracker;
+use codex_protocol::items::SkillLoadItem;
+use codex_protocol::items::SkillLoadStatus;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ResponseInputItem;
+use codex_protocol::protocol::Event;
+use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::SkillScope;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use pretty_assertions::assert_eq;
@@ -31,27 +35,45 @@ fn skill_outcome(
     skills: Vec<codex_core_skills::SkillMetadata>,
     disabled_paths: HashSet<AbsolutePathBuf>,
 ) -> Arc<SkillLoadOutcome> {
-    Arc::new(SkillLoadOutcome {
-        skills,
-        disabled_paths,
-        ..Default::default()
-    })
+    let mut outcome = SkillLoadOutcome::default();
+    outcome.skills = skills;
+    outcome.disabled_paths = disabled_paths;
+    Arc::new(outcome)
+}
+
+async fn invocation_with_rx(name: &str) -> (ToolInvocation, async_channel::Receiver<Event>) {
+    let (session, turn, rx) = make_session_and_context_with_rx().await;
+    (
+        ToolInvocation {
+            session,
+            turn,
+            cancellation_token: tokio_util::sync::CancellationToken::new(),
+            tracker: Arc::new(Mutex::new(TurnDiffTracker::default())),
+            call_id: "call-use-skill".to_string(),
+            tool_name: ToolName::plain(USE_SKILL_TOOL_NAME),
+            source: ToolCallSource::Direct,
+            payload: ToolPayload::Function {
+                arguments: json!({ "name": name }).to_string(),
+            },
+        },
+        rx,
+    )
 }
 
 async fn invocation(name: &str) -> ToolInvocation {
-    let (session, turn) = make_session_and_context().await;
-    ToolInvocation {
-        session: session.into(),
-        turn: turn.into(),
-        cancellation_token: tokio_util::sync::CancellationToken::new(),
-        tracker: Arc::new(Mutex::new(TurnDiffTracker::default())),
-        call_id: "call-use-skill".to_string(),
-        tool_name: ToolName::plain(USE_SKILL_TOOL_NAME),
-        source: ToolCallSource::Direct,
-        payload: ToolPayload::Function {
-            arguments: json!({ "name": name }).to_string(),
-        },
-    }
+    let (invocation, _rx) = invocation_with_rx(name).await;
+    invocation
+}
+
+async fn next_skill_load_item(rx: &async_channel::Receiver<Event>) -> SkillLoadItem {
+    let event = rx.recv().await.expect("skill load item event");
+    let EventMsg::ItemCompleted(completed) = event.msg else {
+        panic!("expected completed skill load item");
+    };
+    let codex_protocol::items::TurnItem::SkillLoad(item) = completed.item else {
+        panic!("expected skill load item");
+    };
+    item
 }
 
 fn output_text(output: Box<dyn crate::tools::context::ToolOutput>) -> String {
@@ -96,8 +118,9 @@ async fn use_skill_loads_enabled_skill_body_without_frontmatter() {
         HashSet::new(),
     ));
 
+    let (invocation, rx) = invocation_with_rx("demo").await;
     let output = handler
-        .handle(invocation("demo").await)
+        .handle(invocation)
         .await
         .expect("use_skill should load the skill");
 
@@ -108,17 +131,38 @@ async fn use_skill_loads_enabled_skill_body_without_frontmatter() {
             skill_path.display()
         )
     );
+    assert_eq!(
+        next_skill_load_item(&rx).await,
+        SkillLoadItem {
+            id: "call-use-skill".to_string(),
+            name: "demo".to_string(),
+            path: Some(skill_path),
+            status: SkillLoadStatus::Completed,
+            error: None,
+        }
+    );
 }
 
 #[tokio::test]
 async fn use_skill_rejects_unknown_skill_name() {
     let handler = UseSkillHandler::new(skill_outcome(Vec::new(), HashSet::new()));
+    let (invocation, rx) = invocation_with_rx("missing").await;
 
-    let message = expect_respond_to_model(handler.handle(invocation("missing").await).await);
+    let message = expect_respond_to_model(handler.handle(invocation).await);
 
     assert_eq!(
         message,
         "skill `missing` was not found in the available skills list"
+    );
+    assert_eq!(
+        next_skill_load_item(&rx).await,
+        SkillLoadItem {
+            id: "call-use-skill".to_string(),
+            name: "missing".to_string(),
+            path: None,
+            status: SkillLoadStatus::Failed,
+            error: Some("skill `missing` was not found in the available skills list".to_string()),
+        }
     );
 }
 

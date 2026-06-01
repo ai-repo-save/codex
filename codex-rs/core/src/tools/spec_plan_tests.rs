@@ -470,10 +470,8 @@ async fn request_user_input_tool_respects_experimental_config_gate() {
 #[tokio::test]
 async fn use_skill_tool_is_available_when_enabled_skills_exist() {
     let plan = probe(|turn| {
-        let outcome = SkillLoadOutcome {
-            skills: vec![test_skill("demo")],
-            ..Default::default()
-        };
+        let mut outcome = SkillLoadOutcome::default();
+        outcome.skills = vec![test_skill("demo")];
         turn.turn_skills = crate::session::turn_context::TurnSkillsContext::new(Arc::new(outcome));
     })
     .await;
@@ -484,23 +482,26 @@ async fn use_skill_tool_is_available_when_enabled_skills_exist() {
 
 #[tokio::test]
 async fn use_skill_tool_is_hidden_without_available_skills_or_skill_instructions() {
-    let no_skills = probe(|_| {}).await;
+    let no_skills = probe(|turn| {
+        turn.turn_skills = crate::session::turn_context::TurnSkillsContext::new(Arc::new(
+            SkillLoadOutcome::default(),
+        ));
+    })
+    .await;
     no_skills.assert_visible_lacks(&["use_skill"]);
     no_skills.assert_registered_lacks(&["use_skill"]);
 
-    let disabled_instructions = probe(|turn| {
-        let outcome = SkillLoadOutcome {
-            skills: vec![test_skill("demo")],
-            ..Default::default()
-        };
+    let hidden_in_instructions = probe(|turn| {
+        let mut outcome = SkillLoadOutcome::default();
+        outcome.skills = vec![test_skill("demo")];
         turn.turn_skills = crate::session::turn_context::TurnSkillsContext::new(Arc::new(outcome));
         update_config(turn, |config| {
             config.include_skill_instructions = false;
         });
     })
     .await;
-    disabled_instructions.assert_visible_lacks(&["use_skill"]);
-    disabled_instructions.assert_registered_lacks(&["use_skill"]);
+    hidden_in_instructions.assert_visible_lacks(&["use_skill"]);
+    hidden_in_instructions.assert_registered_lacks(&["use_skill"]);
 }
 
 #[tokio::test]

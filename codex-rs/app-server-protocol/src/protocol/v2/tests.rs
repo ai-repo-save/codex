@@ -7,6 +7,8 @@ use codex_protocol::items::ImageViewItem;
 use codex_protocol::items::McpToolCallItem;
 use codex_protocol::items::McpToolCallStatus as CoreMcpToolCallStatus;
 use codex_protocol::items::ReasoningItem;
+use codex_protocol::items::SkillLoadItem;
+use codex_protocol::items::SkillLoadStatus as CoreSkillLoadStatus;
 use codex_protocol::items::TurnItem;
 use codex_protocol::items::UserMessageItem;
 use codex_protocol::items::WebSearchItem;
@@ -2574,6 +2576,47 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             error: None,
             duration_ms: Some(42),
         }
+    );
+
+    let skill_load_item = TurnItem::SkillLoad(SkillLoadItem {
+        id: "skill-1".to_string(),
+        name: "test-quality".to_string(),
+        path: Some(test_path_buf("/tmp/skills/test-quality/SKILL.md").abs()),
+        status: CoreSkillLoadStatus::Completed,
+        error: None,
+    });
+
+    assert_eq!(
+        ThreadItem::from(skill_load_item),
+        ThreadItem::SkillLoad {
+            id: "skill-1".to_string(),
+            name: "test-quality".to_string(),
+            path: Some(test_path_buf("/tmp/skills/test-quality/SKILL.md").abs()),
+            status: SkillLoadStatus::Completed,
+            error: None,
+        }
+    );
+}
+
+#[test]
+fn skill_load_thread_item_serializes_as_camel_case_contract() {
+    assert_eq!(
+        serde_json::to_value(ThreadItem::SkillLoad {
+            id: "skill-1".to_string(),
+            name: "test-quality".to_string(),
+            path: Some(test_path_buf("/tmp/skills/test-quality/SKILL.md").abs()),
+            status: SkillLoadStatus::Failed,
+            error: Some("skill `test-quality` is disabled".to_string()),
+        })
+        .expect("serialize skill load thread item"),
+        json!({
+            "type": "skillLoad",
+            "id": "skill-1",
+            "name": "test-quality",
+            "path": "/tmp/skills/test-quality/SKILL.md",
+            "status": "failed",
+            "error": "skill `test-quality` is disabled",
+        })
     );
 }
 

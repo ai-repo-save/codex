@@ -176,6 +176,9 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
                 .dim()
                 .into(),
         ],
+        ThreadItem::SkillLoad { name, status, .. } => {
+            vec![format!("skill: {name} · {status:?}").dim().into()]
+        }
         ThreadItem::DynamicToolCall {
             namespace,
             tool,

@@ -356,7 +356,8 @@ impl TurnToolCounts {
             ThreadItem::CollabAgentToolCall { .. } => self.subagent_tool_call += 1,
             ThreadItem::WebSearch { .. } => self.web_search += 1,
             ThreadItem::ImageGeneration { .. } => self.image_generation += 1,
-            ThreadItem::UserMessage { .. }
+            ThreadItem::SkillLoad { .. }
+            | ThreadItem::UserMessage { .. }
             | ThreadItem::HookPrompt { .. }
             | ThreadItem::AgentMessage { .. }
             | ThreadItem::Plan { .. }
@@ -1591,7 +1592,8 @@ fn tracked_tool_item_id(item: &ThreadItem) -> Option<&str> {
         | ThreadItem::CollabAgentToolCall { id, .. }
         | ThreadItem::WebSearch { id, .. }
         | ThreadItem::ImageGeneration { id, .. } => Some(id),
-        ThreadItem::UserMessage { .. }
+        ThreadItem::SkillLoad { .. }
+        | ThreadItem::UserMessage { .. }
         | ThreadItem::HookPrompt { .. }
         | ThreadItem::AgentMessage { .. }
         | ThreadItem::Plan { .. }

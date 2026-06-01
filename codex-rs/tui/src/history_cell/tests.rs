@@ -269,6 +269,57 @@ fn source_backed_cells_render_raw_source_without_prefix_or_style() {
 }
 
 #[test]
+fn skill_load_cell_renders_completed_skill_name_and_path() {
+    let path = test_path_buf("/tmp/skills/test-quality/SKILL.md").abs();
+    let cell = new_skill_load(
+        "test-quality".to_string(),
+        Some(path.clone()),
+        codex_app_server_protocol::SkillLoadStatus::Completed,
+        None,
+    );
+
+    assert_eq!(
+        render_lines(&cell.display_lines(/*width*/ 80)),
+        vec![
+            "• Read skill test-quality".to_string(),
+            format!("  └ {}", path.display()),
+        ]
+    );
+    assert_eq!(
+        render_lines(&cell.raw_lines()),
+        vec![
+            "Read skill test-quality".to_string(),
+            path.display().to_string()
+        ]
+    );
+}
+
+#[test]
+fn skill_load_cell_renders_failed_skill_error() {
+    let cell = new_skill_load(
+        "missing".to_string(),
+        None,
+        codex_app_server_protocol::SkillLoadStatus::Failed,
+        Some("skill `missing` was not found in the available skills list".to_string()),
+    );
+
+    assert_eq!(
+        render_lines(&cell.display_lines(/*width*/ 80)),
+        vec![
+            "• Failed to read skill missing".to_string(),
+            "  └ skill `missing` was not found in the available skills list".to_string(),
+        ]
+    );
+    assert_eq!(
+        render_lines(&cell.raw_lines()),
+        vec![
+            "Failed to read skill missing".to_string(),
+            "skill `missing` was not found in the available skills list".to_string(),
+        ]
+    );
+}
+
+#[test]
 fn proposed_plan_cell_renders_markdown_table() {
     let plan = new_proposed_plan(
         "## Plan\n\n| Step | Owner |\n| --- | --- |\n| Verify | Codex |\n".to_string(),
