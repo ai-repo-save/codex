@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import argparse
 import logging
+import shlex
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Sequence
@@ -16,6 +18,7 @@ DEFAULT_HOST = "192.168.50.8"
 DEFAULT_BRANCH = "main"
 DEFAULT_REMOTE_PATH = "/root/codex"
 DEFAULT_COMMAND = ("just", "codex", "--version")
+REMOTE_COMMAND_HEARTBEAT_SECONDS = 60.0
 
 
 @dataclass(frozen=True)
@@ -158,14 +161,15 @@ def sync_remote_checkout(config: Config) -> None:
 
 
 def run_remote_command(config: Config) -> None:
-    LOGGER.info("running remote command: %s", " ".join(config.command))
-    remote_command = " ".join(shell_quote(part) for part in config.command)
+    remote_command = shlex.join(config.command)
+    LOGGER.info("running remote command: %s", remote_command)
     run(
         (
             "ssh",
             config.host,
             f"set -euo pipefail; cd {shell_quote(config.remote_path)}; {remote_command}",
-        )
+        ),
+        heartbeat_interval_seconds=REMOTE_COMMAND_HEARTBEAT_SECONDS,
     )
 
 
@@ -279,9 +283,31 @@ def run(
     cwd: Path | None = None,
     stdout: int | None = None,
     text: bool = True,
+    heartbeat_interval_seconds: float | None = None,
 ) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]:
-    LOGGER.debug("running: %s", " ".join(command))
-    return subprocess.run(command, cwd=cwd, check=True, stdout=stdout, text=text)
+    LOGGER.debug("running: %s", shlex.join(command))
+    if stdout is not None or heartbeat_interval_seconds is None:
+        return subprocess.run(command, cwd=cwd, check=True, stdout=stdout, text=text)
+
+    started_at = time.monotonic()
+    next_heartbeat_at = started_at + heartbeat_interval_seconds
+    process = subprocess.Popen(command, cwd=cwd, text=text)
+    while True:
+        exit_code = process.poll()
+        if exit_code is not None:
+            if exit_code != 0:
+                raise subprocess.CalledProcessError(exit_code, command)
+            return subprocess.CompletedProcess(command, exit_code)
+
+        now = time.monotonic()
+        if now >= next_heartbeat_at:
+            LOGGER.info(
+                "still running after %.0fs: %s",
+                now - started_at,
+                shlex.join(command),
+            )
+            next_heartbeat_at = now + heartbeat_interval_seconds
+        time.sleep(min(1.0, heartbeat_interval_seconds))
 
 
 def shell_quote(value: str) -> str:
