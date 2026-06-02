@@ -1,5 +1,23 @@
 # Rust/codex-rs
 
+## Remote build and execution
+
+Local performance is insufficient for routine compile and execution work in this repository.
+When a task requires building, running, testing, or generating files from repository code, use
+`192.168.50.8` as the execution host.
+
+- Commit local source changes before remote execution, then push `main` to `origin`.
+- On the remote host, use `/root/codex` as the checkout path. Update it with `git fetch origin`,
+  `git checkout main`, and `git reset --hard origin/main` before running repository commands.
+- Run compile, test, codegen, and execution commands on the remote host, not on the local machine,
+  unless the command is a small local inspection that does not meaningfully depend on machine
+  performance.
+- If a remote command changes tracked files or produces artifacts that must be kept in the local
+  checkout, copy those files back to `/home/bluebird/git/codex` after the remote command finishes,
+  then inspect the local diff before continuing.
+- Do not leave remote-only source changes in `/root/codex`. The local checkout remains the source
+  of truth for editing and commits.
+
 In the codex-rs folder where the rust code lives:
 
 - Crate names are prefixed with `codex-`. For example, the `core` folder's crate is named `codex-core`
