@@ -564,6 +564,16 @@ impl Tui {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn new_for_tests(terminal: Terminal) -> Result<Self> {
+        let stderr_guard = terminal_stderr::TerminalStderrGuard::install()?;
+        Ok(Self::new(
+            terminal,
+            /*enhanced_keys_supported*/ false,
+            stderr_guard,
+        ))
+    }
+
     /// Set whether alternate screen is enabled. When false, enter_alt_screen() becomes a no-op.
     pub fn set_alt_screen_enabled(&mut self, enabled: bool) {
         self.alt_screen_enabled = enabled;

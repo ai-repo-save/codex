@@ -2109,7 +2109,6 @@ fn side_command_reproduces_stack_overflow_through_app_code_path() -> Result<()> 
         let mut app = Box::pin(make_test_app()).await;
         copy_rollout_into_codex_home(&source_rollout, app.config.codex_home.as_path())?;
         app.config.ephemeral = true;
-        app.chat_widget.config.ephemeral = true;
 
         let mut app_server = Box::pin(crate::start_embedded_app_server_for_picker(
             app.chat_widget.config_ref(),
@@ -2119,12 +2118,7 @@ fn side_command_reproduces_stack_overflow_through_app_code_path() -> Result<()> 
             ratatui::backend::CrosstermBackend::new(std::io::stdout()),
             ratatui::layout::Position { x: 0, y: 0 },
         )?;
-        let stderr_guard = tui::terminal_stderr::TerminalStderrGuard::install()?;
-        let mut tui = tui::Tui::new(
-            terminal,
-            /*enhanced_keys_supported*/ false,
-            stderr_guard,
-        );
+        let mut tui = tui::Tui::new_for_tests(terminal)?;
 
         app.handle_start_side(&mut tui, &mut app_server, parent_thread_id, None)
             .await?;
@@ -5704,14 +5698,22 @@ fn copy_rollout_into_codex_home(source_rollout: &Path, codex_home: &Path) -> Res
     let file_name = source_rollout
         .file_name()
         .and_then(|name| name.to_str())
-        .context("rollout path must have a UTF-8 filename")?;
+        .ok_or_else(|| color_eyre::eyre::eyre!("rollout path must have a UTF-8 filename"))?;
     let date = file_name
         .strip_prefix("rollout-")
         .and_then(|rest| rest.get(0..10))
-        .context("rollout filename must start with rollout-YYYY-MM-DD")?;
-    let year = date.get(0..4).context("rollout year missing")?;
-    let month = date.get(5..7).context("rollout month missing")?;
-    let day = date.get(8..10).context("rollout day missing")?;
+        .ok_or_else(|| {
+            color_eyre::eyre::eyre!("rollout filename must start with rollout-YYYY-MM-DD")
+        })?;
+    let year = date
+        .get(0..4)
+        .ok_or_else(|| color_eyre::eyre::eyre!("rollout year missing"))?;
+    let month = date
+        .get(5..7)
+        .ok_or_else(|| color_eyre::eyre::eyre!("rollout month missing"))?;
+    let day = date
+        .get(8..10)
+        .ok_or_else(|| color_eyre::eyre::eyre!("rollout day missing"))?;
     let destination_dir = codex_home.join("sessions").join(year).join(month).join(day);
     std::fs::create_dir_all(&destination_dir)?;
     std::fs::copy(source_rollout, destination_dir.join(file_name))?;
