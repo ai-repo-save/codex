@@ -17,11 +17,6 @@ async fn tmux_side_command_reproduces_stack_overflow_from_real_rollout() -> Resu
     if cfg!(windows) {
         return Ok(());
     }
-    if Command::new("tmux").arg("-V").output().is_err() {
-        eprintln!("skipping side stack repro because tmux is unavailable");
-        return Ok(());
-    }
-
     let source_rollout = match std::env::var_os("CODEX_SIDE_STACK_REPRO_ROLLOUT") {
         Some(value) => PathBuf::from(value),
         None => {
@@ -29,6 +24,17 @@ async fn tmux_side_command_reproduces_stack_overflow_from_real_rollout() -> Resu
             return Ok(());
         }
     };
+    let tmux_version = Command::new("tmux")
+        .arg("-V")
+        .output()
+        .context("failed to run tmux -V")?;
+    anyhow::ensure!(
+        tmux_version.status.success(),
+        "tmux -V failed with status {:?}\nstdout:\n{}\nstderr:\n{}",
+        tmux_version.status.code(),
+        String::from_utf8_lossy(&tmux_version.stdout),
+        String::from_utf8_lossy(&tmux_version.stderr)
+    );
     let thread_id = std::env::var("CODEX_SIDE_STACK_REPRO_THREAD_ID")
         .context("CODEX_SIDE_STACK_REPRO_THREAD_ID must be set")?;
     let resume_cwd = std::env::var_os("CODEX_SIDE_STACK_REPRO_CWD")
@@ -50,6 +56,7 @@ async fn tmux_side_command_reproduces_stack_overflow_from_real_rollout() -> Resu
     };
     let command = format!(
         "set -o pipefail; \
+         unset RUST_MIN_STACK; \
          export CODEX_HOME={codex_home}; \
          export OPENAI_API_KEY=dummy; \
          export RUST_LOG=trace; \
