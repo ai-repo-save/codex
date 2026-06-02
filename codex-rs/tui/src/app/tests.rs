@@ -22,7 +22,6 @@ use crate::history_cell::PlainHistoryCell;
 use crate::history_cell::UserHistoryCell;
 use crate::history_cell::new_session_info;
 use crate::multi_agents::AgentPickerThreadEntry;
-use crate::tui;
 use assert_matches::assert_matches;
 
 use crate::app_command::AppCommand as Op;
@@ -2080,57 +2079,6 @@ async fn open_agent_picker_allows_existing_agent_threads_when_feature_is_disable
         Ok(AppEvent::SelectAgentThread(selected_thread_id)) if selected_thread_id == thread_id
     );
     Ok(())
-}
-
-#[test]
-#[ignore = "requires CODEX_SIDE_STACK_REPRO_ROLLOUT and CODEX_SIDE_STACK_REPRO_THREAD_ID"]
-fn side_command_reproduces_stack_overflow_through_app_code_path() -> Result<()> {
-    const WORKER_THREADS: usize = 1;
-
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(WORKER_THREADS)
-        .enable_all()
-        .build()?;
-
-    runtime.block_on(async {
-        let source_rollout = match std::env::var_os("CODEX_SIDE_STACK_REPRO_ROLLOUT") {
-            Some(value) => PathBuf::from(value),
-            None => {
-                eprintln!(
-                    "skipping side stack repro because CODEX_SIDE_STACK_REPRO_ROLLOUT is unset"
-                );
-                return Ok(());
-            }
-        };
-        let parent_thread_id = ThreadId::from_string(
-            &std::env::var("CODEX_SIDE_STACK_REPRO_THREAD_ID")
-                .context("CODEX_SIDE_STACK_REPRO_THREAD_ID must be set")?,
-        )?;
-        let mut app = Box::pin(make_test_app()).await;
-        copy_rollout_into_codex_home(&source_rollout, app.config.codex_home.as_path())?;
-        app.config.ephemeral = true;
-        app.chat_widget.config.ephemeral = true;
-
-        let mut app_server = Box::pin(crate::start_embedded_app_server_for_picker(
-            app.chat_widget.config_ref(),
-        ))
-        .await?;
-        let terminal = crate::custom_terminal::Terminal::with_options_and_cursor_position(
-            ratatui::backend::CrosstermBackend::new(std::io::stdout()),
-            ratatui::layout::Position { x: 0, y: 0 },
-        )?;
-        let stderr_guard = tui::terminal_stderr::TerminalStderrGuard::install()?;
-        let mut tui = tui::Tui::new(
-            terminal,
-            /*enhanced_keys_supported*/ false,
-            stderr_guard,
-        );
-
-        app.handle_start_side(&mut tui, &mut app_server, parent_thread_id, None)
-            .await?;
-
-        Ok(())
-    })
 }
 
 #[tokio::test]
@@ -5698,22 +5646,4 @@ async fn side_backtrack_rejection_reports_unavailable_message_snapshot() {
 }
 async fn start_config_write_test_app_server(app: &App) -> Result<AppServerSession> {
     Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await
-}
-
-fn copy_rollout_into_codex_home(source_rollout: &Path, codex_home: &Path) -> Result<()> {
-    let file_name = source_rollout
-        .file_name()
-        .and_then(|name| name.to_str())
-        .context("rollout path must have a UTF-8 filename")?;
-    let date = file_name
-        .strip_prefix("rollout-")
-        .and_then(|rest| rest.get(0..10))
-        .context("rollout filename must start with rollout-YYYY-MM-DD")?;
-    let year = date.get(0..4).context("rollout year missing")?;
-    let month = date.get(5..7).context("rollout month missing")?;
-    let day = date.get(8..10).context("rollout day missing")?;
-    let destination_dir = codex_home.join("sessions").join(year).join(month).join(day);
-    std::fs::create_dir_all(&destination_dir)?;
-    std::fs::copy(source_rollout, destination_dir.join(file_name))?;
-    Ok(())
 }
