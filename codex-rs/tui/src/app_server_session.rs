@@ -1783,6 +1783,7 @@ mod tests {
     use codex_utils_absolute_path::test_support::PathBufExt;
     use codex_utils_absolute_path::test_support::test_path_buf;
     use pretty_assertions::assert_eq;
+    use std::fs;
     use tempfile::TempDir;
 
     async fn build_config(temp_dir: &TempDir) -> Config {
@@ -1791,6 +1792,24 @@ mod tests {
             .build()
             .await
             .expect("config should build")
+    }
+
+    fn copy_repro_rollout_into_codex_home(
+        codex_home: &std::path::Path,
+        source_rollout: &std::path::Path,
+    ) -> PathBuf {
+        let filename = source_rollout
+            .file_name()
+            .expect("repro rollout should have a filename");
+        let target_dir = codex_home
+            .join("sessions")
+            .join("2026")
+            .join("06")
+            .join("02");
+        fs::create_dir_all(&target_dir).expect("repro rollout target dir should be created");
+        let target = target_dir.join(filename);
+        fs::copy(source_rollout, &target).expect("repro rollout should be copied");
+        target
     }
 
     fn rate_limit_snapshot(limit_id: &str) -> RateLimitSnapshot {
@@ -1860,6 +1879,48 @@ mod tests {
                 "{message}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn side_stack_repro_typed_fork_real_rollout() {
+        let Some(source_rollout) = std::env::var_os("CODEX_SIDE_STACK_REPRO_ROLLOUT") else {
+            eprintln!("set CODEX_SIDE_STACK_REPRO_ROLLOUT to run side stack repro");
+            return;
+        };
+        let Some(thread_id) = std::env::var_os("CODEX_SIDE_STACK_REPRO_THREAD_ID") else {
+            eprintln!("set CODEX_SIDE_STACK_REPRO_THREAD_ID to run side stack repro");
+            return;
+        };
+        let source_rollout = PathBuf::from(source_rollout);
+        let thread_id = ThreadId::from_string(
+            thread_id
+                .to_str()
+                .expect("repro thread id should be valid unicode"),
+        )
+        .expect("repro thread id should parse");
+        let temp_dir = TempDir::new().expect("temp codex home should be created");
+        copy_repro_rollout_into_codex_home(temp_dir.path(), &source_rollout);
+        let mut config = build_config(&temp_dir).await;
+        config.ephemeral = true;
+        config.developer_instructions = Some("side stack repro".to_string());
+
+        let mut app_server = crate::start_embedded_app_server_for_picker(&config)
+            .await
+            .expect("embedded app server should start");
+        let forked = app_server
+            .fork_thread(config, thread_id)
+            .await
+            .expect("typed side-equivalent fork should complete");
+
+        assert_eq!(
+            forked.session.forked_from_id,
+            Some(thread_id),
+            "typed fork should preserve the source thread id"
+        );
+        assert!(
+            !forked.turns.is_empty(),
+            "typed fork should return copied turns when reproducing the current side path"
+        );
     }
 
     #[tokio::test]
