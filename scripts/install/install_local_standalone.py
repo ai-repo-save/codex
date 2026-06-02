@@ -101,8 +101,16 @@ class InstallPaths:
         variant: str,
         cargo_profile: str,
     ) -> InstallPaths:
-        resolved_codex_home = (codex_home or Path(os.environ.get("CODEX_HOME", DEFAULT_CODEX_HOME))).expanduser().resolve()
-        resolved_bin_dir = (bin_dir or Path(os.environ.get("CODEX_INSTALL_DIR", DEFAULT_BIN_DIR))).expanduser().resolve()
+        resolved_codex_home = (
+            (codex_home or Path(os.environ.get("CODEX_HOME", DEFAULT_CODEX_HOME)))
+            .expanduser()
+            .resolve()
+        )
+        resolved_bin_dir = (
+            (bin_dir or Path(os.environ.get("CODEX_INSTALL_DIR", DEFAULT_BIN_DIR)))
+            .expanduser()
+            .resolve()
+        )
         resolved_target = target or default_local_target()
         resolved_version = read_workspace_version()
         package_variant = PACKAGE_VARIANTS[variant]
@@ -113,7 +121,9 @@ class InstallPaths:
         standalone_root = resolved_codex_home / "packages" / "standalone"
         releases_dir = standalone_root / "releases"
         vendor_dir = standalone_root / "vendor"
-        entrypoint = cargo_profile_output_dir(spec, cargo_profile) / package_variant.entrypoint_name(spec)
+        entrypoint = cargo_profile_output_dir(
+            spec, cargo_profile
+        ) / package_variant.entrypoint_name(spec)
         return cls(
             codex_home=resolved_codex_home,
             bin_dir=resolved_bin_dir,
@@ -134,7 +144,9 @@ class InstallPaths:
 
 def configure_logging(*, verbose: bool) -> None:
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(level=level, format="%(levelname)s %(message)s", stream=sys.stderr, force=True)
+    logging.basicConfig(
+        level=level, format="%(levelname)s %(message)s", stream=sys.stderr, force=True
+    )
 
 
 def is_executable(path: Path) -> bool:
@@ -349,7 +361,10 @@ def should_skip_cargo(build_mode: str, paths: InstallPaths) -> tuple[bool, str]:
     preview = ", ".join(details[:5])
     if len(details) > 5:
         preview = f"{preview}, ..."
-    return False, f"{len(details)} changed source file(s) newer than entrypoint: {preview}"
+    return (
+        False,
+        f"{len(details)} changed source file(s) newer than entrypoint: {preview}",
+    )
 
 
 def format_bytes(num_bytes: int) -> str:
@@ -372,7 +387,9 @@ def directory_size(path: Path) -> int | None:
     return total
 
 
-def collect_diagnosis(paths: InstallPaths, *, build_mode: str, skip_build: bool) -> dict[str, object]:
+def collect_diagnosis(
+    paths: InstallPaths, *, build_mode: str, skip_build: bool
+) -> dict[str, object]:
     resolved_build_mode = resolve_build_mode(build_mode, skip_build, paths)
     status, details = entrypoint_build_status(paths)
     skip_cargo, skip_reason = should_skip_cargo(resolved_build_mode, paths)
@@ -465,7 +482,9 @@ def print_diagnosis(diagnosis: dict[str, object], *, as_json: bool) -> None:
 
     entrypoint = diagnosis["entrypoint"]
     if isinstance(entrypoint, dict):
-        print(f"  entrypoint: {entrypoint['path']} ({format_bytes(int(entrypoint['sizeBytes']))})")
+        print(
+            f"  entrypoint: {entrypoint['path']} ({format_bytes(int(entrypoint['sizeBytes']))})"
+        )
 
     print("Notes:")
     for note in notes:
@@ -490,10 +509,24 @@ def parse_args() -> argparse.Namespace:
         description="Build the local Codex workspace and install a standalone release.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--codex-home", type=Path, help="Codex home directory (default: $CODEX_HOME or ~/.codex).")
-    parser.add_argument("--bin-dir", type=Path, help="Directory for the visible codex symlink (default: $CODEX_INSTALL_DIR or ~/.local/bin).")
-    parser.add_argument("--target", choices=sorted(TARGET_SPECS), help="Rust target triple for the package.")
-    parser.add_argument("--variant", choices=sorted(PACKAGE_VARIANTS), default=DEFAULT_VARIANT)
+    parser.add_argument(
+        "--codex-home",
+        type=Path,
+        help="Codex home directory (default: $CODEX_HOME or ~/.codex).",
+    )
+    parser.add_argument(
+        "--bin-dir",
+        type=Path,
+        help="Directory for the visible codex symlink (default: $CODEX_INSTALL_DIR or ~/.local/bin).",
+    )
+    parser.add_argument(
+        "--target",
+        choices=sorted(TARGET_SPECS),
+        help="Rust target triple for the package.",
+    )
+    parser.add_argument(
+        "--variant", choices=sorted(PACKAGE_VARIANTS), default=DEFAULT_VARIANT
+    )
     parser.add_argument(
         "--cargo-profile",
         default=DEFAULT_CARGO_PROFILE,
@@ -517,7 +550,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Deprecated alias for --build never.",
     )
-    parser.add_argument("--print-paths", action="store_true", help="Print resolved install paths and exit.")
+    parser.add_argument(
+        "--print-paths",
+        action="store_true",
+        help="Print resolved install paths and exit.",
+    )
     parser.add_argument(
         "--diagnose",
         action="store_true",
@@ -602,7 +639,9 @@ def main() -> int:
             shutil.rmtree(staging_dir, ignore_errors=True)
         raise
 
-    logging.info("Installed standalone Codex %s to %s", paths.version, paths.release_dir)
+    logging.info(
+        "Installed standalone Codex %s to %s", paths.version, paths.release_dir
+    )
     logging.info("Run: %s", paths.bin_path)
     return 0
 

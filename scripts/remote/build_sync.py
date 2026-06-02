@@ -88,8 +88,12 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
             "builder, then copy remote Git-visible changes back locally."
         )
     )
-    parser.add_argument("--host", default=DEFAULT_HOST, help="SSH host for remote execution")
-    parser.add_argument("--branch", default=DEFAULT_BRANCH, help="Git branch to push and reset")
+    parser.add_argument(
+        "--host", default=DEFAULT_HOST, help="SSH host for remote execution"
+    )
+    parser.add_argument(
+        "--branch", default=DEFAULT_BRANCH, help="Git branch to push and reset"
+    )
     parser.add_argument(
         "--remote-path",
         default=DEFAULT_REMOTE_PATH,
@@ -204,7 +208,9 @@ def parse_porcelain_status(raw_status: bytes) -> StatusPlan:
         old_path = ""
         if "R" in status or "C" in status:
             if index >= len(entries) or not entries[index]:
-                raise ValueError(f"missing source path for porcelain status entry: {entry!r}")
+                raise ValueError(
+                    f"missing source path for porcelain status entry: {entry!r}"
+                )
             old_path = validate_git_path(entries[index].decode("utf-8"))
             index += 1
 
@@ -231,7 +237,9 @@ def validate_git_path(path: str) -> str:
     return path
 
 
-def apply_remote_changes(repo_root: Path, config: Config, status_plan: StatusPlan) -> None:
+def apply_remote_changes(
+    repo_root: Path, config: Config, status_plan: StatusPlan
+) -> None:
     for path in status_plan.delete_paths:
         delete_local_path(repo_root, path)
 
@@ -253,7 +261,9 @@ def apply_remote_changes(repo_root: Path, config: Config, status_plan: StatusPla
     )
     assert rsync.stdin is not None
     with rsync.stdin:
-        rsync.stdin.write(b"\0".join(path.encode("utf-8") for path in status_plan.copy_paths))
+        rsync.stdin.write(
+            b"\0".join(path.encode("utf-8") for path in status_plan.copy_paths)
+        )
         rsync.stdin.write(b"\0")
     exit_code = rsync.wait()
     if exit_code != 0:
