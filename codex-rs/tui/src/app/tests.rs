@@ -113,6 +113,78 @@ fn test_absolute_path(path: &str) -> AbsolutePathBuf {
     AbsolutePathBuf::try_from(PathBuf::from(path)).expect("absolute test path")
 }
 
+fn create_side_parent_rollout(
+    codex_home: &Path,
+    model_provider: &str,
+    prompt: &str,
+) -> color_eyre::Result<ThreadId> {
+    let thread_id = ThreadId::new();
+    let timestamp = "2025-01-05T12:00:00Z";
+    let filename_ts = "2025-01-05T12-00-00";
+    let rollout_path = codex_home
+        .join("sessions")
+        .join("2025")
+        .join("01")
+        .join("05")
+        .join(format!("rollout-{filename_ts}-{thread_id}.jsonl"));
+    let rollout_dir = rollout_path
+        .parent()
+        .expect("rollout path should have a parent directory");
+    std::fs::create_dir_all(rollout_dir)?;
+
+    let meta = codex_protocol::protocol::SessionMeta {
+        id: thread_id,
+        forked_from_id: None,
+        parent_thread_id: None,
+        timestamp: timestamp.to_string(),
+        cwd: PathBuf::from("/"),
+        originator: "codex".to_string(),
+        cli_version: "0.0.0".to_string(),
+        source: codex_protocol::protocol::SessionSource::Cli,
+        thread_source: None,
+        agent_path: None,
+        agent_nickname: None,
+        agent_role: None,
+        model_provider: Some(model_provider.to_string()),
+        base_instructions: None,
+        dynamic_tools: None,
+        memory_mode: None,
+        multi_agent_version: Some(codex_protocol::protocol::MultiAgentVersion::V1),
+    };
+    let payload =
+        serde_json::to_value(codex_protocol::protocol::SessionMetaLine { meta, git: None })?;
+    let lines = [
+        serde_json::json!({
+            "timestamp": timestamp,
+            "type": "session_meta",
+            "payload": payload
+        })
+        .to_string(),
+        serde_json::json!({
+            "timestamp": timestamp,
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": prompt}]
+            }
+        })
+        .to_string(),
+        serde_json::json!({
+            "timestamp": timestamp,
+            "type": "event_msg",
+            "payload": {
+                "type": "user_message",
+                "message": prompt,
+                "kind": "plain"
+            }
+        })
+        .to_string(),
+    ];
+    std::fs::write(rollout_path, lines.join("\n") + "\n")?;
+    Ok(thread_id)
+}
+
 async fn next_thread_settings_updated(
     app_server: &mut AppServerSession,
     thread_id: ThreadId,
@@ -3126,6 +3198,86 @@ async fn side_start_block_message_tracks_open_side_conversation() {
 
     app.side_threads.remove(&side_thread_id);
     assert_eq!(app.side_start_block_message(), None);
+}
+
+#[tokio::test]
+async fn side_thread_setup_does_not_return_parent_turns_to_tui() -> color_eyre::Result<()> {
+    let mut app = make_test_app().await;
+    let parent_prompt = "parent prompt remains model context";
+    let parent_thread_id = create_side_parent_rollout(
+        app.config.codex_home.as_path(),
+        &app.config.model_provider_id,
+        parent_prompt,
+    )?;
+    app.primary_thread_id = Some(parent_thread_id);
+
+    let mut app_server =
+        crate::start_embedded_app_server_for_picker(app.chat_widget.config_ref()).await?;
+    let forked = app_server
+        .fork_side_thread(app.side_fork_config(), parent_thread_id)
+        .await?;
+
+    assert_eq!(
+        forked.turns,
+        Vec::<Turn>::new(),
+        "side forks should not return copied parent turns to the TUI"
+    );
+
+    let side_thread_id = forked.session.thread_id;
+    let channel = app.ensure_thread_channel(side_thread_id);
+    {
+        let mut store = channel.store.lock().await;
+        App::install_side_thread_snapshot(&mut store, forked.session, forked.turns);
+    }
+    app.side_threads
+        .insert(side_thread_id, SideThreadState::new(parent_thread_id));
+
+    let inject_response = app_server
+        .thread_inject_items(side_thread_id, vec![App::side_boundary_prompt_item()])
+        .await?;
+    assert_eq!(
+        inject_response,
+        codex_app_server_protocol::ThreadInjectItemsResponse {}
+    );
+
+    let store = app
+        .thread_event_channels
+        .get(&side_thread_id)
+        .expect("side thread channel should be registered")
+        .store
+        .lock()
+        .await;
+    assert_eq!(store.turns, Vec::<Turn>::new());
+    assert_eq!(
+        store
+            .session
+            .as_ref()
+            .map(|session| (session.thread_id, session.forked_from_id)),
+        Some((side_thread_id, None))
+    );
+    drop(store);
+
+    let side_thread = app_server
+        .thread_read(side_thread_id, /*include_turns*/ false)
+        .await?;
+    assert_eq!(
+        (
+            side_thread.id,
+            side_thread.forked_from_id,
+            side_thread.ephemeral,
+            side_thread.path,
+            side_thread.turns,
+        ),
+        (
+            side_thread_id.to_string(),
+            Some(parent_thread_id.to_string()),
+            true,
+            None,
+            Vec::<Turn>::new(),
+        )
+    );
+
+    Ok(())
 }
 
 #[tokio::test]
