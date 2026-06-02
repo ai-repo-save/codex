@@ -195,6 +195,12 @@ pub(crate) struct AppServerStartedThread {
     pub(crate) turns: Vec<Turn>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ThreadForkTurnsMode {
+    Include,
+    Exclude,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TurnPermissionsOverride {
     /// Leave the app-server thread's sticky permission profile unchanged.
@@ -440,6 +446,25 @@ impl AppServerSession {
         config: Config,
         thread_id: ThreadId,
     ) -> Result<AppServerStartedThread> {
+        self.fork_thread_with_turns_mode(config, thread_id, ThreadForkTurnsMode::Include)
+            .await
+    }
+
+    pub(crate) async fn fork_side_thread(
+        &mut self,
+        config: Config,
+        thread_id: ThreadId,
+    ) -> Result<AppServerStartedThread> {
+        self.fork_thread_with_turns_mode(config, thread_id, ThreadForkTurnsMode::Exclude)
+            .await
+    }
+
+    async fn fork_thread_with_turns_mode(
+        &mut self,
+        config: Config,
+        thread_id: ThreadId,
+        turns_mode: ThreadForkTurnsMode,
+    ) -> Result<AppServerStartedThread> {
         let request_id = self.next_request_id();
         let session_config = self.session_config_with_effective_service_tier(&config);
         let response: ThreadForkResponse = self
@@ -451,6 +476,7 @@ impl AppServerSession {
                     thread_id,
                     self.thread_params_mode(),
                     self.remote_cwd_override.as_deref(),
+                    turns_mode,
                 ),
             })
             .await
@@ -1465,6 +1491,7 @@ fn thread_fork_params_from_config(
     thread_id: ThreadId,
     thread_params_mode: ThreadParamsMode,
     remote_cwd_override: Option<&std::path::Path>,
+    turns_mode: ThreadForkTurnsMode,
 ) -> ThreadForkParams {
     let permissions = permissions_selection_from_config(&config, thread_params_mode);
     let sandbox = permissions
@@ -1498,6 +1525,7 @@ fn thread_fork_params_from_config(
         developer_instructions: config.developer_instructions.clone(),
         ephemeral: config.ephemeral,
         thread_source: Some(ThreadSource::User),
+        exclude_turns: matches!(turns_mode, ThreadForkTurnsMode::Exclude),
         ..ThreadForkParams::default()
     }
 }
@@ -2034,6 +2062,7 @@ mod tests {
             thread_id,
             ThreadParamsMode::Remote,
             /*remote_cwd_override*/ None,
+            ThreadForkTurnsMode::Include,
         );
 
         assert_eq!(start.cwd, None);
@@ -2151,6 +2180,7 @@ mod tests {
             thread_id,
             ThreadParamsMode::Remote,
             Some(remote_cwd.as_path()),
+            ThreadForkTurnsMode::Include,
         );
 
         assert_eq!(start.cwd.as_deref(), Some("repo/on/server"));
@@ -2202,6 +2232,7 @@ mod tests {
             thread_id,
             ThreadParamsMode::Embedded,
             /*remote_cwd_override*/ None,
+            ThreadForkTurnsMode::Include,
         );
 
         let expected_service_tier = Some(Some(ServiceTier::Fast.request_value().to_string()));
@@ -2256,6 +2287,7 @@ mod tests {
             thread_id,
             ThreadParamsMode::Embedded,
             /*remote_cwd_override*/ None,
+            ThreadForkTurnsMode::Include,
         );
 
         assert_eq!(params.base_instructions.as_deref(), Some("Base override."));
@@ -2263,6 +2295,32 @@ mod tests {
             params.developer_instructions.as_deref(),
             Some("Developer override.")
         );
+        assert!(!params.exclude_turns);
+    }
+
+    #[tokio::test]
+    async fn side_thread_fork_params_exclude_response_turns() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config = build_config(&temp_dir).await;
+        let thread_id = ThreadId::new();
+
+        let normal_fork = thread_fork_params_from_config(
+            config.clone(),
+            thread_id,
+            ThreadParamsMode::Embedded,
+            /*remote_cwd_override*/ None,
+            ThreadForkTurnsMode::Include,
+        );
+        let side_fork = thread_fork_params_from_config(
+            config,
+            thread_id,
+            ThreadParamsMode::Embedded,
+            /*remote_cwd_override*/ None,
+            ThreadForkTurnsMode::Exclude,
+        );
+
+        assert!(!normal_fork.exclude_turns);
+        assert!(side_fork.exclude_turns);
     }
 
     #[tokio::test]
