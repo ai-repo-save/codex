@@ -84,6 +84,23 @@ fn has_subagent_notification(req: &ResponsesRequest) -> bool {
         .any(|text| text.contains("<subagent_notification>"))
 }
 
+fn message_texts_by_role_and_type(
+    request: &ResponsesRequest,
+    role: &str,
+    content_type: &str,
+) -> Vec<String> {
+    request
+        .input()
+        .into_iter()
+        .filter(|item| item.get("type").and_then(Value::as_str) == Some("message"))
+        .filter(|item| item.get("role").and_then(Value::as_str) == Some(role))
+        .filter_map(|item| item.get("content").and_then(Value::as_array).cloned())
+        .flatten()
+        .filter(|span| span.get("type").and_then(Value::as_str) == Some(content_type))
+        .filter_map(|span| span.get("text").and_then(Value::as_str).map(str::to_owned))
+        .collect()
+}
+
 fn tool_parameter_description(tool: &Value, parameter_name: &str) -> Option<String> {
     tool.get("parameters")
         .and_then(|parameters| parameters.get("properties"))
@@ -1021,7 +1038,19 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
         .last()
         .expect("child request log should capture at least one request");
     assert!(child_request.body_contains_text("Parent developer instructions."));
-    assert!(child_request.body_contains_text(CHILD_PROMPT));
+    assert!(
+        child_request
+            .message_input_texts("user")
+            .iter()
+            .any(|text| text == CHILD_PROMPT),
+        "spawned child's initial task should be delivered as user input"
+    );
+    assert!(
+        !message_texts_by_role_and_type(&child_request, "assistant", "output_text")
+            .iter()
+            .any(|text| text.contains(CHILD_PROMPT)),
+        "spawned child's initial task should not be delivered as assistant commentary"
+    );
 
     Ok(())
 }
