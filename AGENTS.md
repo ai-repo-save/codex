@@ -17,6 +17,12 @@ When a task requires building, running, testing, or generating files from reposi
 - Run compile, test, codegen, and execution commands on the remote host, not on the local machine,
   unless the command is a small local inspection that does not meaningfully depend on machine
   performance.
+- After a Codex CLI or agent-behavior code change has passed the relevant remote validation and no
+  blocking regression remains, install the updated build for local use by default with
+  `uv run --project scripts python scripts/remote/install_local_standalone.py`. A code fix that is
+  not made available to the local Codex CLI is not a complete handoff. Skip this install step only
+  when the user explicitly asks not to install it, the change is not intended to affect the local
+  CLI/agent runtime, or validation has not reached a stable state; report the reason when skipping.
 - If a remote command changes tracked files or produces artifacts that must be kept in the local
   checkout, copy those files back to `/home/bluebird/git/codex` after the remote command finishes,
   then inspect the local diff before continuing.
