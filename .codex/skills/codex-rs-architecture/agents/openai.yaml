@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Rust Architecture"
+  short_description: "Find Codex crates, flows, and validation paths"
+  default_prompt: "Use $codex-rs-architecture to locate the right Codex crate and validation path before changing agent, TUI, MCP, config, protocol, or app-server behavior."
