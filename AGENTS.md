@@ -7,9 +7,11 @@ When a task requires building, running, testing, or generating files from reposi
 `192.168.50.8` as the execution host.
 
 - Commit local source changes before remote execution, then push `main` to `origin`.
-- Prefer `uv run --project scripts python scripts/remote/build_sync.py -- <command>` for the
-  push, remote execution, and pull-back workflow. With no command it runs `just codex --version`
-  as a remote compile-and-execute smoke test.
+- Use single-purpose remote scripts instead of passing ad hoc commands to a generic wrapper.
+  `uv run --project scripts python scripts/remote/build_sync.py` performs only the remote
+  compile-and-execute smoke test. `uv run --project scripts python
+  scripts/remote/install_local_standalone.py` builds a standalone package remotely and installs
+  it as the local Codex CLI.
 - On the remote host, use `/root/codex` as the checkout path. Update it with `git fetch origin`,
   `git checkout main`, and `git reset --hard origin/main` before running repository commands.
 - Run compile, test, codegen, and execution commands on the remote host, not on the local machine,
