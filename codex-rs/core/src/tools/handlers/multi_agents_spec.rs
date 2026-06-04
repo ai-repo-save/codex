@@ -269,7 +269,7 @@ pub fn create_list_agents_tool() -> ToolSpec {
     ToolSpec::Function(ResponsesApiTool {
         name: "list_agents".to_string(),
         description:
-            "List live agents in the current root thread tree. Optionally filter by task-path prefix."
+            "List live agents in the current root thread tree. Includes the calling agent; use is_self to avoid waiting on yourself. Optionally filter by task-path prefix."
                 .to_string(),
         strict: false,
         defer_loading: None,
@@ -463,9 +463,13 @@ fn list_agents_output_schema() -> Value {
                         "last_task_message": {
                             "type": ["string", "null"],
                             "description": "Most recent user or inter-agent instruction received by the agent, when available."
+                        },
+                        "is_self": {
+                            "type": "boolean",
+                            "description": "True when this entry is the calling agent."
                         }
                     },
-                    "required": ["agent_name", "agent_status", "last_task_message"],
+                    "required": ["agent_name", "agent_status", "last_task_message", "is_self"],
                     "additionalProperties": false
                 },
                 "description": "Live agents visible in the current root thread tree."

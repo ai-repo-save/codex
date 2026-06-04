@@ -78,6 +78,7 @@ pub(crate) struct ListedAgent {
     pub(crate) agent_name: String,
     pub(crate) agent_status: AgentStatus,
     pub(crate) last_task_message: Option<String>,
+    pub(crate) is_self: bool,
 }
 
 fn default_agent_nickname_list() -> Vec<&'static str> {
@@ -975,6 +976,9 @@ impl AgentControl {
                     .map_err(CodexErr::UnsupportedOperation)
             })
             .transpose()?;
+        let caller_path = current_session_source
+            .get_agent_path()
+            .unwrap_or_else(AgentPath::root);
 
         let mut live_agents = self.state.live_agents();
         live_agents.sort_by(|left, right| {
@@ -1002,6 +1006,7 @@ impl AgentControl {
                 agent_name: root_path.to_string(),
                 agent_status: root_thread.agent_status().await,
                 last_task_message: Some(ROOT_LAST_TASK_MESSAGE.to_string()),
+                is_self: caller_path == root_path,
             });
         }
 
@@ -1025,10 +1030,15 @@ impl AgentControl {
                 .map(ToString::to_string)
                 .unwrap_or_else(|| thread_id.to_string());
             let last_task_message = metadata.last_task_message.clone();
+            let is_self = metadata
+                .agent_path
+                .as_ref()
+                .is_some_and(|agent_path| *agent_path == caller_path);
             agents.push(ListedAgent {
                 agent_name,
                 agent_status: thread.agent_status().await,
                 last_task_message,
+                is_self,
             });
         }
 

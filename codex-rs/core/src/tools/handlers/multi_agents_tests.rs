@@ -177,6 +177,7 @@ struct ListedAgentResult {
     agent_name: String,
     agent_status: serde_json::Value,
     last_task_message: Option<String>,
+    is_self: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1601,6 +1602,7 @@ async fn multi_agent_v2_list_agents_returns_completed_status_and_last_task_messa
         .find(|agent| agent.agent_name == "/root")
         .expect("root agent should be listed");
     assert_eq!(root_agent.last_task_message.as_deref(), Some("Main thread"));
+    assert!(root_agent.is_self);
     let worker = result
         .agents
         .iter()
@@ -1611,6 +1613,74 @@ async fn multi_agent_v2_list_agents_returns_completed_status_and_last_task_messa
         worker.last_task_message.as_deref(),
         Some("inspect this repo")
     );
+    assert!(!worker.is_self);
+    assert_eq!(success, Some(true));
+}
+
+#[tokio::test]
+async fn multi_agent_v2_list_agents_marks_calling_child_agent_as_self() {
+    let (mut session, mut turn) = make_session_and_context().await;
+    let manager = thread_manager();
+    let root = manager
+        .start_thread((*turn.config).clone())
+        .await
+        .expect("root thread should start");
+    session.services.agent_control = manager.agent_control();
+    session.conversation_id = root.thread_id;
+    let mut config = (*turn.config).clone();
+    let _ = config.features.enable(Feature::MultiAgentV2);
+    set_turn_config(&mut turn, config);
+
+    let session = Arc::new(session);
+    let turn = Arc::new(turn);
+    for task_name in ["worker", "reviewer"] {
+        let output = SpawnAgentHandlerV2::default()
+            .handle(invocation(
+                session.clone(),
+                turn.clone(),
+                "spawn_agent",
+                function_payload(json!({
+                    "message": format!("run {task_name}"),
+                    "task_name": task_name
+                })),
+            ))
+            .await
+            .expect("spawn_agent should succeed");
+        let _ = expect_text_output(output);
+    }
+
+    let worker_id = session
+        .services
+        .agent_control
+        .resolve_agent_reference(session.conversation_id, &turn.session_source, "worker")
+        .await
+        .expect("worker path should resolve");
+    let worker_thread = manager
+        .get_thread(worker_id)
+        .await
+        .expect("worker thread should exist");
+    let worker_turn = worker_thread.codex.session.new_default_turn().await;
+
+    let output = ListAgentsHandlerV2
+        .handle(invocation(
+            session,
+            worker_turn,
+            "list_agents",
+            function_payload(json!({})),
+        ))
+        .await
+        .expect("list_agents should succeed");
+    let (content, success) = expect_text_output(output);
+    let result: ListAgentsResult =
+        serde_json::from_str(&content).expect("list_agents result should be json");
+
+    let self_agents = result
+        .agents
+        .iter()
+        .filter(|agent| agent.is_self)
+        .map(|agent| agent.agent_name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(self_agents, vec!["/root/worker"]);
     assert_eq!(success, Some(true));
 }
 
@@ -1867,6 +1937,7 @@ async fn multi_agent_v2_list_agents_filters_by_relative_path_prefix() {
     assert_eq!(result.agents.len(), 1);
     assert_eq!(result.agents[0].agent_name, worker_path.as_str());
     assert_eq!(result.agents[0].last_task_message.as_deref(), Some("build"));
+    assert!(!result.agents[0].is_self);
 }
 
 #[tokio::test]
