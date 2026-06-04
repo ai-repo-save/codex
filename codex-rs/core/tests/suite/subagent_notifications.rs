@@ -17,6 +17,7 @@ use core_test_support::hooks::trust_discovered_hooks;
 use core_test_support::responses::ResponsesRequest;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
+use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_function_call_with_namespace;
 use core_test_support::responses::ev_response_created;
 use core_test_support::responses::ev_tool_search_call;
@@ -984,12 +985,7 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
         |req: &wiremock::Request| body_contains(req, TURN_1_PROMPT),
         sse(vec![
             ev_response_created("resp-turn1-1"),
-            ev_function_call_with_namespace(
-                SPAWN_CALL_ID,
-                MULTI_AGENT_V1_NAMESPACE,
-                "spawn_agent",
-                &spawn_args,
-            ),
+            ev_function_call(SPAWN_CALL_ID, "spawn_agent", &spawn_args),
             ev_completed("resp-turn1-1"),
         ]),
     )
@@ -1069,12 +1065,7 @@ async fn skills_toggle_skips_instructions_for_parent_and_spawned_child() -> Resu
         |req: &wiremock::Request| body_contains(req, TURN_1_PROMPT),
         sse(vec![
             ev_response_created("resp-turn1-1"),
-            ev_function_call_with_namespace(
-                SPAWN_CALL_ID,
-                MULTI_AGENT_V1_NAMESPACE,
-                "spawn_agent",
-                &spawn_args,
-            ),
+            ev_function_call(SPAWN_CALL_ID, "spawn_agent", &spawn_args),
             ev_completed("resp-turn1-1"),
         ]),
     )
