@@ -30,6 +30,7 @@ use serde_json::Value as JsonValue;
 
 pub(crate) use close_agent::Handler as CloseAgentHandler;
 pub(crate) use followup_task::Handler as FollowupTaskHandler;
+pub(crate) use inspect_agent::Handler as InspectAgentHandler;
 pub(crate) use list_agents::Handler as ListAgentsHandler;
 pub(crate) use send_message::Handler as SendMessageHandler;
 pub(crate) use spawn::Handler as SpawnAgentHandler;
@@ -37,6 +38,7 @@ pub(crate) use wait::Handler as WaitAgentHandler;
 
 mod close_agent;
 mod followup_task;
+mod inspect_agent;
 mod list_agents;
 mod message_tool;
 mod send_message;

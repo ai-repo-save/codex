@@ -278,6 +278,38 @@ pub fn create_list_agents_tool() -> ToolSpec {
     })
 }
 
+pub fn create_inspect_agent_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "target".to_string(),
+            JsonSchema::string(Some(
+                "Agent id or task name to inspect (from spawn_agent).".to_string(),
+            )),
+        ),
+        (
+            "tail_items".to_string(),
+            JsonSchema::integer(Some(
+                "Maximum number of recent transcript entries to return. Defaults to 20 and is capped at 100."
+                    .to_string(),
+            )),
+        ),
+    ]);
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "inspect_agent".to_string(),
+        description: "Inspect a live agent's status and bounded transcript tail. Use this to diagnose what an agent has recently done without waiting for it to finish."
+            .to_string(),
+        strict: false,
+        defer_loading: None,
+        parameters: JsonSchema::object(
+            properties,
+            Some(vec!["target".to_string()]),
+            Some(false.into()),
+        ),
+        output_schema: Some(inspect_agent_output_schema()),
+    })
+}
+
 pub fn create_close_agent_tool_v1() -> ToolSpec {
     let properties = BTreeMap::from([(
         "target".to_string(),
@@ -440,6 +472,59 @@ fn list_agents_output_schema() -> Value {
             }
         },
         "required": ["agents"],
+        "additionalProperties": false
+    })
+}
+
+fn transcript_tail_entry_output_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "role": {
+                "type": "string",
+                "description": "Transcript entry role, such as user, assistant, or tool."
+            },
+            "kind": {
+                "type": "string",
+                "description": "Transcript entry kind, such as message, function_call, or function_call_output."
+            },
+            "name": {
+                "type": ["string", "null"],
+                "description": "Tool or call name when the entry is associated with one."
+            },
+            "text": {
+                "type": "string",
+                "description": "Bounded plain-text summary of the transcript entry."
+            }
+        },
+        "required": ["role", "kind", "name", "text"],
+        "additionalProperties": false
+    })
+}
+
+fn inspect_agent_output_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "agent_name": {
+                "type": "string",
+                "description": "Canonical task name for the agent when available, otherwise the agent id."
+            },
+            "agent_status": {
+                "description": "Last known status of the agent.",
+                "allOf": [agent_status_output_schema()]
+            },
+            "last_task_message": {
+                "type": ["string", "null"],
+                "description": "Most recent user or inter-agent instruction received by the agent, when available. This is not transcript tail."
+            },
+            "transcript_tail": {
+                "type": "array",
+                "items": transcript_tail_entry_output_schema(),
+                "description": "Bounded recent entries derived from the agent's retained conversation history."
+            }
+        },
+        "required": ["agent_name", "agent_status", "last_task_message", "transcript_tail"],
         "additionalProperties": false
     })
 }

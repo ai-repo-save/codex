@@ -1014,6 +1014,7 @@ async fn multi_agent_feature_selects_one_agent_tool_family() {
         "followup_task",
         "assign_task",
         "list_agents",
+        "inspect_agent",
     ]);
     assert_eq!(
         v1.namespace_function_names(MULTI_AGENT_V1_NAMESPACE),
@@ -1040,6 +1041,7 @@ async fn multi_agent_feature_selects_one_agent_tool_family() {
         "wait_agent",
         "close_agent",
         "list_agents",
+        "inspect_agent",
     ]);
     v2.assert_visible_lacks(&["send_input", "resume_agent", "assign_task"]);
     let spawn_agent_description = match v2.visible_spec("spawn_agent") {
@@ -1159,6 +1161,7 @@ async fn multi_agent_v2_can_use_configured_tool_namespace() {
         "wait_agent",
         "close_agent",
         "list_agents",
+        "inspect_agent",
     ] {
         namespaced.assert_visible_lacks(&[tool_name]);
         assert!(
@@ -1195,7 +1198,12 @@ async fn multi_agent_v2_namespace_is_supported_by_bedrock_provider() {
     .await;
 
     plan.assert_visible_contains(&["agents"]);
-    plan.assert_visible_lacks(&["spawn_agent", "send_message", "list_agents"]);
+    plan.assert_visible_lacks(&[
+        "spawn_agent",
+        "send_message",
+        "list_agents",
+        "inspect_agent",
+    ]);
     assert!(
         !plan
             .registered_names
@@ -1240,6 +1248,7 @@ async fn code_mode_only_can_expose_namespaced_multi_agent_v2_as_normal_tools() {
         "wait_agent",
         "close_agent",
         "list_agents",
+        "inspect_agent",
     ] {
         assert!(
             plan.namespace_function_names("agents")

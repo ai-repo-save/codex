@@ -349,6 +349,47 @@ fn list_agents_tool_includes_path_prefix_and_agent_fields() {
 }
 
 #[test]
+fn inspect_agent_tool_includes_target_tail_and_transcript_fields() {
+    let ToolSpec::Function(ResponsesApiTool {
+        parameters,
+        output_schema,
+        ..
+    }) = create_inspect_agent_tool()
+    else {
+        panic!("inspect_agent should be a function tool");
+    };
+    assert_eq!(
+        parameters.schema_type,
+        Some(JsonSchemaType::Single(JsonSchemaPrimitiveType::Object))
+    );
+    let properties = parameters
+        .properties
+        .as_ref()
+        .expect("inspect_agent should use object params");
+    assert!(properties.contains_key("target"));
+    assert!(properties.contains_key("tail_items"));
+    assert_eq!(
+        parameters.required.as_ref(),
+        Some(&vec!["target".to_string()])
+    );
+
+    let output_schema = output_schema.expect("inspect_agent output schema");
+    assert_eq!(
+        output_schema["required"],
+        json!([
+            "agent_name",
+            "agent_status",
+            "last_task_message",
+            "transcript_tail"
+        ])
+    );
+    assert_eq!(
+        output_schema["properties"]["transcript_tail"]["items"]["required"],
+        json!(["role", "kind", "name", "text"])
+    );
+}
+
+#[test]
 fn list_agents_tool_status_schema_includes_interrupted() {
     let ToolSpec::Function(ResponsesApiTool { output_schema, .. }) = create_list_agents_tool()
     else {

@@ -10,6 +10,7 @@ use crate::thread_manager::thread_store_from_config;
 use crate::tools::context::ToolOutput;
 use crate::tools::handlers::multi_agents_v2::CloseAgentHandler as CloseAgentHandlerV2;
 use crate::tools::handlers::multi_agents_v2::FollowupTaskHandler as FollowupTaskHandlerV2;
+use crate::tools::handlers::multi_agents_v2::InspectAgentHandler as InspectAgentHandlerV2;
 use crate::tools::handlers::multi_agents_v2::ListAgentsHandler as ListAgentsHandlerV2;
 use crate::tools::handlers::multi_agents_v2::SendMessageHandler as SendMessageHandlerV2;
 use crate::tools::handlers::multi_agents_v2::SpawnAgentHandler as SpawnAgentHandlerV2;
@@ -28,6 +29,7 @@ use codex_protocol::config_types::ShellEnvironmentPolicy;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputBody;
+use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
@@ -175,6 +177,22 @@ struct ListedAgentResult {
     agent_name: String,
     agent_status: serde_json::Value,
     last_task_message: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InspectAgentResult {
+    agent_name: String,
+    agent_status: serde_json::Value,
+    last_task_message: Option<String>,
+    transcript_tail: Vec<TranscriptTailEntryResult>,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+struct TranscriptTailEntryResult {
+    role: String,
+    kind: String,
+    name: Option<String>,
+    text: String,
 }
 
 #[tokio::test]
@@ -1594,6 +1612,174 @@ async fn multi_agent_v2_list_agents_returns_completed_status_and_last_task_messa
         Some("inspect this repo")
     );
     assert_eq!(success, Some(true));
+}
+
+#[tokio::test]
+async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_history() {
+    const TASK_MESSAGE: &str = "inspect this repo";
+    const USER_MESSAGE: &str = "find the parser";
+    const ASSISTANT_MESSAGE: &str = "checking source files";
+    const TOOL_ARGS: &str = "{\"cmd\":\"rg parser\"}";
+    const TOOL_OUTPUT: &str = "parser.rs\nparser_tests.rs";
+
+    let (mut session, mut turn) = make_session_and_context().await;
+    let manager = thread_manager();
+    let root = manager
+        .start_thread((*turn.config).clone())
+        .await
+        .expect("root thread should start");
+    session.services.agent_control = manager.agent_control();
+    session.conversation_id = root.thread_id;
+    let mut config = (*turn.config).clone();
+    let _ = config.features.enable(Feature::MultiAgentV2);
+    set_turn_config(&mut turn, config);
+
+    let session = Arc::new(session);
+    let turn = Arc::new(turn);
+    let spawn_output = SpawnAgentHandlerV2::default()
+        .handle(invocation(
+            session.clone(),
+            turn.clone(),
+            "spawn_agent",
+            function_payload(json!({
+                "message": TASK_MESSAGE,
+                "task_name": "worker"
+            })),
+        ))
+        .await
+        .expect("spawn_agent should succeed");
+    let _ = expect_text_output(spawn_output);
+
+    let agent_id = session
+        .services
+        .agent_control
+        .resolve_agent_reference(session.conversation_id, &turn.session_source, "worker")
+        .await
+        .expect("worker path should resolve");
+    let child_thread = manager
+        .get_thread(agent_id)
+        .await
+        .expect("child thread should exist");
+    child_thread
+        .codex
+        .session
+        .replace_history(
+            vec![
+                ResponseItem::Message {
+                    id: None,
+                    role: "user".to_string(),
+                    content: vec![ContentItem::InputText {
+                        text: USER_MESSAGE.to_string(),
+                    }],
+                    phase: None,
+                },
+                ResponseItem::Message {
+                    id: None,
+                    role: "assistant".to_string(),
+                    content: vec![ContentItem::OutputText {
+                        text: ASSISTANT_MESSAGE.to_string(),
+                    }],
+                    phase: None,
+                },
+                ResponseItem::FunctionCall {
+                    id: None,
+                    name: "exec_command".to_string(),
+                    namespace: None,
+                    arguments: TOOL_ARGS.to_string(),
+                    call_id: "call-1".to_string(),
+                },
+                ResponseItem::FunctionCallOutput {
+                    call_id: "call-1".to_string(),
+                    output: FunctionCallOutputPayload {
+                        body: FunctionCallOutputBody::Text(TOOL_OUTPUT.to_string()),
+                        success: Some(true),
+                    },
+                },
+            ],
+            None,
+        )
+        .await;
+
+    let output = InspectAgentHandlerV2
+        .handle(invocation(
+            session.clone(),
+            turn.clone(),
+            "inspect_agent",
+            function_payload(json!({
+                "target": "worker",
+                "tail_items": 3
+            })),
+        ))
+        .await
+        .expect("inspect_agent should succeed");
+    let (content, success) = expect_text_output(output);
+    let result: InspectAgentResult =
+        serde_json::from_str(&content).expect("inspect_agent result should be json");
+
+    assert_eq!(result.agent_name, "/root/worker");
+    assert_eq!(result.agent_status, json!("pending_init"));
+    assert_eq!(result.last_task_message.as_deref(), Some(TASK_MESSAGE));
+    assert_eq!(
+        result.transcript_tail,
+        vec![
+            TranscriptTailEntryResult {
+                role: "assistant".to_string(),
+                kind: "message".to_string(),
+                name: None,
+                text: ASSISTANT_MESSAGE.to_string(),
+            },
+            TranscriptTailEntryResult {
+                role: "tool".to_string(),
+                kind: "function_call".to_string(),
+                name: Some("exec_command".to_string()),
+                text: TOOL_ARGS.to_string(),
+            },
+            TranscriptTailEntryResult {
+                role: "tool".to_string(),
+                kind: "function_call_output".to_string(),
+                name: Some("exec_command".to_string()),
+                text: TOOL_OUTPUT.to_string(),
+            },
+        ]
+    );
+    assert_eq!(success, Some(true));
+
+    child_thread
+        .codex
+        .session
+        .replace_history(
+            (0..101)
+                .map(|index| ResponseItem::Message {
+                    id: None,
+                    role: "user".to_string(),
+                    content: vec![ContentItem::InputText {
+                        text: format!("entry-{index}"),
+                    }],
+                    phase: None,
+                })
+                .collect(),
+            None,
+        )
+        .await;
+    let capped_output = InspectAgentHandlerV2
+        .handle(invocation(
+            session.clone(),
+            turn.clone(),
+            "inspect_agent",
+            function_payload(json!({
+                "target": "worker",
+                "tail_items": 1000
+            })),
+        ))
+        .await
+        .expect("inspect_agent should cap tail_items");
+    let (capped_content, _) = expect_text_output(capped_output);
+    let capped_result: InspectAgentResult =
+        serde_json::from_str(&capped_content).expect("inspect_agent capped result should be json");
+
+    assert_eq!(capped_result.transcript_tail.len(), 100);
+    assert_eq!(capped_result.transcript_tail[0].text, "entry-1");
+    assert_eq!(capped_result.transcript_tail[99].text, "entry-100");
 }
 
 #[tokio::test]

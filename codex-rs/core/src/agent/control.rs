@@ -1,4 +1,6 @@
 use crate::agent::AgentStatus;
+use crate::agent::inspect::InspectedAgent;
+use crate::agent::inspect::summarize_transcript_tail;
 use crate::agent::registry::AgentMetadata;
 use crate::agent::registry::AgentRegistry;
 use crate::agent::role::DEFAULT_ROLE_NAME;
@@ -1031,6 +1033,41 @@ impl AgentControl {
         }
 
         Ok(agents)
+    }
+
+    pub(crate) async fn inspect_agent(
+        &self,
+        agent_id: ThreadId,
+        tail_items: Option<usize>,
+    ) -> CodexResult<InspectedAgent> {
+        let state = self.upgrade()?;
+        let thread = state.get_thread(agent_id).await?;
+        let metadata = self.state.agent_metadata_for_thread(agent_id);
+        let agent_name = metadata
+            .as_ref()
+            .and_then(|metadata| metadata.agent_path.as_ref())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| agent_id.to_string());
+        let last_task_message = if metadata
+            .as_ref()
+            .and_then(|metadata| metadata.agent_path.as_ref())
+            .is_some_and(AgentPath::is_root)
+        {
+            Some(ROOT_LAST_TASK_MESSAGE.to_string())
+        } else {
+            metadata
+                .as_ref()
+                .and_then(|metadata| metadata.last_task_message.clone())
+        };
+        let history = thread.codex.session.clone_history().await;
+        let transcript_tail = summarize_transcript_tail(history.raw_items(), tail_items);
+
+        Ok(InspectedAgent {
+            agent_name,
+            agent_status: thread.agent_status().await,
+            last_task_message,
+            transcript_tail,
+        })
     }
 
     /// Starts a detached watcher for sub-agents spawned from another thread.
