@@ -1042,7 +1042,7 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
         "spawned child's initial task should be delivered as user input"
     );
     assert!(
-        !message_texts_by_role_and_type(&child_request, "assistant", "output_text")
+        !message_texts_by_role_and_type(child_request, "assistant", "output_text")
             .iter()
             .any(|text| text.contains(CHILD_PROMPT)),
         "spawned child's initial task should not be delivered as assistant commentary"
