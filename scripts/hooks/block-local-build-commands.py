@@ -1,0 +1,92 @@
+#!/usr/bin/env -S uv run python
+"""Block local build/test/codegen commands from Codex PreToolUse hooks."""
+
+import json
+import re
+import sys
+from dataclasses import dataclass
+from typing import Any
+
+
+BLOCK_REASON = (
+    "Local build/test/codegen commands are forbidden in this repository. "
+    "Run them on 192.168.50.8 instead."
+)
+
+BLOCKED_EXECUTABLE_RE = re.compile(
+    r"(^|[\s;&|()])(?:\S*/)?("
+    r"just|cargo|bazel|bazelisk|rustc|rustfmt|cargo-insta|cargo-nextest|"
+    r"make|ninja|cmake"
+    r")($|[\s;&|()])"
+)
+
+BLOCKED_PATH_RE = re.compile(
+    r"(^|[\s;&|])(?:\./|\../)?("
+    r"scripts/format\.py|"
+    r"scripts/build_codex_package\.py|"
+    r"scripts/install-local-standalone\.sh|"
+    r"scripts/install/install_local_standalone\.py"
+    r")($|[\s;&|])"
+)
+
+
+@dataclass(frozen=True)
+class HookRequest:
+    tool_name: str
+    command: str
+
+
+def main() -> int:
+    payload = json.load(sys.stdin)
+    request = parse_hook_request(payload)
+    if request is None:
+        return 0
+
+    if is_blocked_command(request.command):
+        print(json.dumps(block_decision(request.command), ensure_ascii=False))
+    return 0
+
+
+def parse_hook_request(payload: dict[str, Any]) -> HookRequest | None:
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return None
+
+    command = first_string_value(tool_input, ("command", "cmd"))
+    if command is None:
+        return None
+
+    tool_name = payload.get("tool_name")
+    return HookRequest(
+        tool_name=tool_name if isinstance(tool_name, str) else "",
+        command=command,
+    )
+
+
+def first_string_value(mapping: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, str):
+            return value
+    return None
+
+
+def is_blocked_command(command: str) -> bool:
+    return (
+        BLOCKED_EXECUTABLE_RE.search(command) is not None
+        or BLOCKED_PATH_RE.search(command) is not None
+    )
+
+
+def block_decision(command: str) -> dict[str, object]:
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": f"{BLOCK_REASON} Blocked command: {command}",
+        }
+    }
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

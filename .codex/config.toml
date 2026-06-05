@@ -1,0 +1,11 @@
+[features]
+hooks = true
+
+[hooks]
+
+[[hooks.PreToolUse]]
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "uv run --project scripts python scripts/hooks/block-local-build-commands.py"
+statusMessage = "checking local build command policy"
