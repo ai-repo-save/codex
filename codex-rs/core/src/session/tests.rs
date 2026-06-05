@@ -29,6 +29,8 @@ use codex_models_manager::bundled_models_response;
 use codex_models_manager::model_info;
 use codex_models_manager::test_support::construct_model_info_offline_for_tests;
 use codex_models_manager::test_support::get_model_offline_for_tests;
+use codex_prompts::GoalPromptTemplates;
+use codex_prompts::parse_goal_prompt_template;
 use codex_protocol::AgentPath;
 use codex_protocol::SessionId;
 use codex_protocol::ThreadId;
@@ -6953,6 +6955,17 @@ async fn make_goal_session_and_context_with_rx() -> (
     async_channel::Receiver<Event>,
     tempfile::TempDir,
 ) {
+    make_goal_session_and_context_with_config_with_rx(|_| {}).await
+}
+
+async fn make_goal_session_and_context_with_config_with_rx(
+    configure_goal_config: impl FnOnce(&mut Config),
+) -> (
+    Arc<Session>,
+    Arc<TurnContext>,
+    async_channel::Receiver<Event>,
+    tempfile::TempDir,
+) {
     let codex_home = tempfile::tempdir().expect("create temp dir");
     let (session, turn_context, rx) = make_session_and_context_with_auth_config_home_and_rx(
         CodexAuth::from_api_key("Test API Key"),
@@ -6963,6 +6976,7 @@ async fn make_goal_session_and_context_with_rx() -> (
                 .features
                 .enable(Feature::Goals)
                 .expect("goal mode should be enableable in tests");
+            configure_goal_config(config);
         },
     )
     .await;
@@ -9617,6 +9631,81 @@ async fn external_objective_change_steers_active_turn() -> anyhow::Result<()> {
             )
         }),
         "expected objective-updated steering prompt in pending input: {pending_input:?}"
+    );
+
+    sess.abort_all_tasks(TurnAbortReason::Replaced).await;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_objective_change_uses_configured_goal_prompt() -> anyhow::Result<()> {
+    let (sess, tc, _rx, _codex_home) =
+        make_goal_session_and_context_with_config_with_rx(|config| {
+            config.goal_prompt_templates = GoalPromptTemplates {
+                objective_updated_prompt: Some(
+                    parse_goal_prompt_template(
+                        "custom updated {{ objective }} / {{ remaining_tokens }}",
+                    )
+                    .expect("test goal prompt should parse"),
+                ),
+                ..GoalPromptTemplates::default()
+            };
+        })
+        .await;
+    sess.spawn_task(
+        Arc::clone(&tc),
+        Vec::new(),
+        NeverEndingTask {
+            kind: TaskKind::Regular,
+            listen_to_cancellation_token: false,
+        },
+    )
+    .await;
+
+    let state_db = goal_test_state_db(sess.as_ref()).await?;
+    let old_goal = state_db
+        .thread_goals()
+        .replace_thread_goal(
+            sess.conversation_id,
+            "Keep improving the benchmark",
+            codex_state::ThreadGoalStatus::Active,
+            /*token_budget*/ Some(10_000),
+        )
+        .await?;
+    let new_goal = state_db
+        .thread_goals()
+        .replace_thread_goal(
+            sess.conversation_id,
+            "Write <summary>",
+            codex_state::ThreadGoalStatus::Active,
+            /*token_budget*/ Some(10_000),
+        )
+        .await?;
+
+    sess.goal_runtime_apply(GoalRuntimeEvent::ExternalSet {
+        external_set: ExternalGoalSet {
+            goal: new_goal,
+            previous_status: ExternalGoalPreviousStatus::from(&old_goal),
+        },
+    })
+    .await?;
+
+    let pending_input = sess.input_queue.get_pending_input(&sess.active_turn).await;
+    assert!(
+        pending_input.iter().any(|item| {
+            matches!(
+                item,
+                TurnInput::ResponseItem(ResponseItem::Message { role, content, .. })
+                    if role == "user"
+                        && content.iter().any(|content| matches!(
+                            content,
+                            ContentItem::InputText { text }
+                                if text == "<codex_internal_context source=\"goal\">\ncustom updated Write &lt;summary&gt; / 10000\n</codex_internal_context>"
+                        ))
+            )
+        }),
+        "expected configured objective-updated steering prompt in pending input: {pending_input:?}"
     );
 
     sess.abort_all_tasks(TurnAbortReason::Replaced).await;

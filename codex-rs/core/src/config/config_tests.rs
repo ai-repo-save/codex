@@ -13,6 +13,7 @@ use codex_config::config_toml::AgentsToml;
 use codex_config::config_toml::AutoReviewToml;
 use codex_config::config_toml::ConfigToml;
 use codex_config::config_toml::ExperimentalRequestUserInput;
+use codex_config::config_toml::GoalsToml;
 use codex_config::config_toml::ProjectConfig;
 use codex_config::config_toml::RealtimeConfig;
 use codex_config::config_toml::RealtimeToml;
@@ -71,6 +72,10 @@ use codex_model_provider_info::OLLAMA_OSS_PROVIDER_ID;
 use codex_model_provider_info::WireApi;
 use codex_models_manager::bundled_models_response;
 use codex_network_proxy::NetworkMode;
+use codex_prompts::budget_limit_prompt_with_templates;
+use codex_prompts::continuation_prompt_with_templates;
+use codex_prompts::objective_updated_prompt_with_templates;
+use codex_protocol::ThreadId;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::models::ActivePermissionProfile;
@@ -90,6 +95,8 @@ use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::NetworkAccess;
 use codex_protocol::protocol::RealtimeVoice;
 use codex_protocol::protocol::SandboxPolicy;
+use codex_protocol::protocol::ThreadGoal;
+use codex_protocol::protocol::ThreadGoalStatus;
 use serde::Deserialize;
 use tempfile::tempdir;
 
@@ -6537,6 +6544,168 @@ async fn loads_compact_prompt_from_file() -> std::io::Result<()> {
     );
 
     Ok(())
+}
+
+#[tokio::test]
+async fn loads_goal_prompt_overrides_from_inline_config() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let cfg = ConfigToml {
+        goals: Some(GoalsToml {
+            continuation_prompt: Some(
+                "continue {{ objective }} {{ remaining_tokens }}".to_string(),
+            ),
+            objective_updated_prompt: Some("updated {{ objective }}".to_string()),
+            budget_limit_prompt: Some("budget {{ time_used_seconds }}".to_string()),
+            ..GoalsToml::default()
+        }),
+        ..Default::default()
+    };
+
+    let config = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await?;
+    let goal = test_thread_goal();
+
+    assert_eq!(
+        continuation_prompt_with_templates(&goal, &config.goal_prompt_templates),
+        "continue finish &lt;goal&gt; 8766"
+    );
+    assert_eq!(
+        objective_updated_prompt_with_templates(&goal, &config.goal_prompt_templates),
+        "updated finish &lt;goal&gt;"
+    );
+    assert_eq!(
+        budget_limit_prompt_with_templates(&goal, &config.goal_prompt_templates),
+        "budget 56"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn loads_goal_prompt_overrides_from_relative_files() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let cwd = TempDir::new()?;
+    let prompts_dir = codex_home.path().join("prompts");
+    std::fs::create_dir_all(&prompts_dir)?;
+    std::fs::write(
+        prompts_dir.join("goal-continuation.md"),
+        "  file {{ objective }}  ",
+    )?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[goals]
+continuation_prompt_file = "./prompts/goal-continuation.md"
+"#,
+    )?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(cwd.path().to_path_buf()))
+        .build()
+        .await?;
+
+    assert_eq!(
+        continuation_prompt_with_templates(&test_thread_goal(), &config.goal_prompt_templates),
+        "file finish &lt;goal&gt;"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn inline_goal_prompt_override_takes_precedence_over_file() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let prompt_path = codex_home.path().join("goal-continuation.md");
+    std::fs::write(&prompt_path, "file {{ objective }}")?;
+    let cfg = ConfigToml {
+        goals: Some(GoalsToml {
+            continuation_prompt: Some("inline {{ objective }}".to_string()),
+            continuation_prompt_file: Some(prompt_path.abs()),
+            ..GoalsToml::default()
+        }),
+        ..Default::default()
+    };
+
+    let config = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await?;
+
+    assert_eq!(
+        continuation_prompt_with_templates(&test_thread_goal(), &config.goal_prompt_templates),
+        "inline finish &lt;goal&gt;"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn invalid_goal_prompt_override_fails_config_load() {
+    let codex_home = TempDir::new().expect("tempdir");
+    let cfg = ConfigToml {
+        goals: Some(GoalsToml {
+            continuation_prompt: Some("{{ unknown }}".to_string()),
+            ..GoalsToml::default()
+        }),
+        ..Default::default()
+    };
+
+    let err = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await
+    .expect_err("invalid goal prompt should fail config load");
+
+    assert_eq!(
+        err.to_string(),
+        "goals.continuation_prompt is invalid: goal prompt template contains unknown placeholder `unknown`"
+    );
+}
+
+#[tokio::test]
+async fn oversized_goal_prompt_override_fails_config_load() {
+    let codex_home = TempDir::new().expect("tempdir");
+    let cfg = ConfigToml {
+        goals: Some(GoalsToml {
+            continuation_prompt: Some("x".repeat(MAX_GOAL_PROMPT_OVERRIDE_BYTES + 1)),
+            ..GoalsToml::default()
+        }),
+        ..Default::default()
+    };
+
+    let err = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await
+    .expect_err("oversized goal prompt should fail config load");
+
+    assert_eq!(
+        err.to_string(),
+        "goals.continuation_prompt exceeds the 16384-byte limit"
+    );
+}
+
+fn test_thread_goal() -> ThreadGoal {
+    ThreadGoal {
+        thread_id: ThreadId::new(),
+        objective: "finish <goal>".to_string(),
+        status: ThreadGoalStatus::Active,
+        token_budget: Some(10_000),
+        tokens_used: 1_234,
+        time_used_seconds: 56,
+        created_at: 1,
+        updated_at: 2,
+    }
 }
 
 #[tokio::test]

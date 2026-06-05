@@ -26,6 +26,7 @@ use codex_config::ThreadConfigLoader;
 use codex_config::config_toml::ConfigLockfileToml;
 use codex_config::config_toml::ConfigToml;
 use codex_config::config_toml::DEFAULT_PROJECT_DOC_MAX_BYTES;
+use codex_config::config_toml::GoalsToml;
 use codex_config::config_toml::ProjectConfig;
 use codex_config::config_toml::RealtimeAudioConfig;
 use codex_config::config_toml::RealtimeConfig;
@@ -130,6 +131,9 @@ use crate::config_lock::config_without_lock_controls;
 use crate::config_lock::lock_layer_from_config;
 use crate::config_lock::read_config_lock_from_path;
 use codex_network_proxy::NetworkProxyConfig;
+use codex_prompts::GoalPromptTemplate;
+use codex_prompts::GoalPromptTemplates;
+use codex_prompts::parse_goal_prompt_template;
 use toml::Value as TomlValue;
 use toml_edit::DocumentMut;
 
@@ -161,6 +165,7 @@ pub(crate) use resolved_permission_profile::PermissionProfileState;
 
 const DEFAULT_IGNORE_LARGE_UNTRACKED_DIRS: i64 = 200;
 const DEFAULT_IGNORE_LARGE_UNTRACKED_FILES: i64 = 10 * 1024 * 1024;
+const MAX_GOAL_PROMPT_OVERRIDE_BYTES: usize = 16 * 1024;
 
 /// Compatibility-only config retained so legacy `ghost_snapshot` settings
 /// continue to load even though snapshots are no longer produced.
@@ -679,6 +684,9 @@ pub struct Config {
 
     /// Compact prompt override.
     pub compact_prompt: Option<String>,
+
+    /// Goal runtime prompt overrides.
+    pub goal_prompt_templates: GoalPromptTemplates,
 
     /// Optional external notifier command. When set, Codex will spawn this
     /// program after each completed *turn* (i.e. when the agent finishes
@@ -3260,6 +3268,8 @@ impl Config {
         )
         .await?;
         let compact_prompt = compact_prompt.or(file_compact_prompt);
+        let goal_prompt_templates = Self::resolve_goal_prompt_templates(fs, cfg.goals.as_ref())
+            .await?;
         let zsh_path = default_zsh_path
             .or_else(|| InstallContext::current().bundled_zsh_path())
             .map(AbsolutePathBuf::into_path_buf);
@@ -3437,6 +3447,7 @@ impl Config {
             personality,
             developer_instructions,
             compact_prompt,
+            goal_prompt_templates,
             include_permissions_instructions,
             include_apps_instructions,
             include_collaboration_mode_instructions,
@@ -3632,6 +3643,80 @@ impl Config {
         Ok(config)
         })
         .await
+    }
+
+    async fn resolve_goal_prompt_templates(
+        fs: &dyn ExecutorFileSystem,
+        goals: Option<&GoalsToml>,
+    ) -> std::io::Result<GoalPromptTemplates> {
+        let Some(goals) = goals else {
+            return Ok(GoalPromptTemplates::default());
+        };
+
+        Ok(GoalPromptTemplates {
+            continuation_prompt: Self::resolve_goal_prompt_template(
+                fs,
+                goals.continuation_prompt.as_ref(),
+                goals.continuation_prompt_file.as_ref(),
+                "goals.continuation_prompt",
+                "goals.continuation_prompt_file",
+            )
+            .await?,
+            objective_updated_prompt: Self::resolve_goal_prompt_template(
+                fs,
+                goals.objective_updated_prompt.as_ref(),
+                goals.objective_updated_prompt_file.as_ref(),
+                "goals.objective_updated_prompt",
+                "goals.objective_updated_prompt_file",
+            )
+            .await?,
+            budget_limit_prompt: Self::resolve_goal_prompt_template(
+                fs,
+                goals.budget_limit_prompt.as_ref(),
+                goals.budget_limit_prompt_file.as_ref(),
+                "goals.budget_limit_prompt",
+                "goals.budget_limit_prompt_file",
+            )
+            .await?,
+        })
+    }
+
+    async fn resolve_goal_prompt_template(
+        fs: &dyn ExecutorFileSystem,
+        inline: Option<&String>,
+        file: Option<&AbsolutePathBuf>,
+        inline_context: &str,
+        file_context: &str,
+    ) -> std::io::Result<Option<GoalPromptTemplate>> {
+        if let Some(value) = inline
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
+            return Self::parse_goal_prompt_override(value, inline_context).map(Some);
+        }
+
+        let Some(value) = Self::try_read_non_empty_file(fs, file, file_context).await? else {
+            return Ok(None);
+        };
+        Self::parse_goal_prompt_override(&value, file_context).map(Some)
+    }
+
+    fn parse_goal_prompt_override(
+        value: &str,
+        context: &str,
+    ) -> std::io::Result<GoalPromptTemplate> {
+        if value.len() > MAX_GOAL_PROMPT_OVERRIDE_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("{context} exceeds the {MAX_GOAL_PROMPT_OVERRIDE_BYTES}-byte limit"),
+            ));
+        }
+        parse_goal_prompt_template(value).map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("{context} is invalid: {err}"),
+            )
+        })
     }
 
     /// If `path` is `Some`, attempts to read the file at the given path and

@@ -25,9 +25,10 @@ use codex_otel::GOAL_DURATION_SECONDS_METRIC;
 use codex_otel::GOAL_RESUMED_METRIC;
 use codex_otel::GOAL_TOKEN_COUNT_METRIC;
 use codex_otel::GOAL_USAGE_LIMITED_METRIC;
-use codex_prompts::budget_limit_prompt;
-use codex_prompts::continuation_prompt;
-use codex_prompts::objective_updated_prompt;
+use codex_prompts::GoalPromptTemplates;
+use codex_prompts::budget_limit_prompt_with_templates;
+use codex_prompts::continuation_prompt_with_templates;
+use codex_prompts::objective_updated_prompt_with_templates;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::models::ResponseItem;
@@ -713,15 +714,27 @@ impl Session {
         let status = goal.status;
         match status {
             codex_state::ThreadGoalStatus::Active => {
-                let turn_id = self
-                    .active_turn_context()
-                    .await
+                let active_turn_context = self.active_turn_context().await;
+                let turn_id = active_turn_context
+                    .as_ref()
                     .map(|turn_context| turn_context.sub_id.clone());
                 let current_token_usage = self.total_token_usage().await.unwrap_or_default();
                 self.mark_active_goal_accounting(goal_id, turn_id, current_token_usage)
                     .await;
                 if let Some(goal) = goal_for_steering {
-                    let item = goal_context_input_item(objective_updated_prompt(&goal));
+                    let prompt = if let Some(turn_context) = active_turn_context.as_ref() {
+                        objective_updated_prompt_with_templates(
+                            &goal,
+                            &turn_context.config.goal_prompt_templates,
+                        )
+                    } else {
+                        let config = self.get_config().await;
+                        objective_updated_prompt_with_templates(
+                            &goal,
+                            &config.goal_prompt_templates,
+                        )
+                    };
+                    let item = goal_context_input_item(prompt);
                     if self.inject_if_running(vec![item]).await.is_err() {
                         tracing::debug!(
                             "skipping objective-updated goal steering because no turn is active"
@@ -1109,7 +1122,8 @@ impl Session {
         )
         .await;
         if should_steer_budget_limit {
-            let item = budget_limit_steering_item(&goal);
+            let item =
+                budget_limit_steering_item(&goal, &turn_context.config.goal_prompt_templates);
             if self.inject_if_running(vec![item]).await.is_err() {
                 tracing::debug!("skipping budget-limit goal steering because no turn is active");
             }
@@ -1451,9 +1465,13 @@ impl Session {
         }
         let goal_id = goal.goal_id.clone();
         let goal = protocol_goal_from_state(goal);
+        let config = self.get_config().await;
         Some(GoalContinuationCandidate {
             goal_id,
-            items: vec![goal_context_input_item(continuation_prompt(&goal))],
+            items: vec![goal_context_input_item(continuation_prompt_with_templates(
+                &goal,
+                &config.goal_prompt_templates,
+            ))],
         })
     }
 }
@@ -1551,8 +1569,8 @@ fn should_ignore_goal_for_mode(mode: ModeKind) -> bool {
     mode == ModeKind::Plan
 }
 
-fn budget_limit_steering_item(goal: &ThreadGoal) -> ResponseItem {
-    goal_context_input_item(budget_limit_prompt(goal))
+fn budget_limit_steering_item(goal: &ThreadGoal, templates: &GoalPromptTemplates) -> ResponseItem {
+    goal_context_input_item(budget_limit_prompt_with_templates(goal, templates))
 }
 
 fn goal_context_input_item(prompt: String) -> ResponseItem {

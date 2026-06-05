@@ -228,6 +228,10 @@ pub struct ConfigToml {
     /// Compact prompt used for history compaction.
     pub compact_prompt: Option<String>,
 
+    /// Goal runtime prompt overrides.
+    #[serde(default)]
+    pub goals: Option<GoalsToml>,
+
     /// When set, restricts ChatGPT login to one or more workspace identifiers.
     #[serde(default)]
     pub forced_chatgpt_workspace_id: Option<ForcedChatgptWorkspaceIds>,
@@ -504,6 +508,28 @@ pub struct ConfigLockfileToml {
 
     /// Replayable effective config captured in the lockfile.
     pub config: ConfigToml,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct GoalsToml {
+    /// Prompt template used when Codex automatically continues an active goal.
+    pub continuation_prompt: Option<String>,
+
+    /// File containing the prompt template used when Codex automatically continues an active goal.
+    pub continuation_prompt_file: Option<AbsolutePathBuf>,
+
+    /// Prompt template injected after the active goal objective is edited.
+    pub objective_updated_prompt: Option<String>,
+
+    /// File containing the prompt template injected after the active goal objective is edited.
+    pub objective_updated_prompt_file: Option<AbsolutePathBuf>,
+
+    /// Prompt template injected when an active goal reaches its token budget.
+    pub budget_limit_prompt: Option<String>,
+
+    /// File containing the prompt template injected when an active goal reaches its token budget.
+    pub budget_limit_prompt_file: Option<AbsolutePathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]

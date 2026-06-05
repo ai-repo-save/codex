@@ -118,3 +118,51 @@ fn goal_prompts_escape_objective_delimiters() {
         assert!(!prompt.contains(objective));
     }
 }
+
+#[test]
+fn override_goal_prompt_renders_all_allowed_variables() {
+    let template = parse_goal_prompt_template(
+        concat!(
+            "goal={{ objective }}; ",
+            "used={{ tokens_used }}; ",
+            "budget={{ token_budget }}; ",
+            "remaining={{ remaining_tokens }}; ",
+            "time={{ time_used_seconds }}"
+        ),
+    )
+    .expect("override template should parse");
+    let templates = GoalPromptTemplates {
+        continuation_prompt: Some(template),
+        ..GoalPromptTemplates::default()
+    };
+
+    let prompt = continuation_prompt_with_templates(
+        &ThreadGoal {
+            thread_id: ThreadId::new(),
+            objective: "finish <goal>".to_string(),
+            status: ThreadGoalStatus::Active,
+            token_budget: Some(10_000),
+            tokens_used: 1_234,
+            time_used_seconds: 56,
+            created_at: 1,
+            updated_at: 2,
+        },
+        &templates,
+    );
+
+    assert_eq!(
+        prompt,
+        "goal=finish &lt;goal&gt;; used=1234; budget=10000; remaining=8766; time=56"
+    );
+}
+
+#[test]
+fn override_goal_prompt_rejects_unknown_placeholder() {
+    let err = parse_goal_prompt_template("{{ objective }} {{ forbidden }}")
+        .expect_err("unknown placeholders should fail validation");
+
+    assert_eq!(
+        err.to_string(),
+        "goal prompt template contains unknown placeholder `forbidden`"
+    );
+}
