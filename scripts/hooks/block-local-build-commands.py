@@ -3,8 +3,10 @@
 
 import json
 import re
+import shlex
 import sys
 from dataclasses import dataclass
+from pathlib import PurePath
 from typing import Any
 
 
@@ -28,6 +30,8 @@ BLOCKED_PATH_RE = re.compile(
     r"scripts/install/install_local_standalone\.py"
     r")($|[\s;&|])"
 )
+
+REMOTE_EXECUTABLES = frozenset({"ssh", "scp", "rsync"})
 
 
 @dataclass(frozen=True)
@@ -72,10 +76,32 @@ def first_string_value(mapping: dict[str, Any], keys: tuple[str, ...]) -> str | 
 
 
 def is_blocked_command(command: str) -> bool:
+    if starts_with_remote_executable(command):
+        return False
+
     return (
         BLOCKED_EXECUTABLE_RE.search(command) is not None
         or BLOCKED_PATH_RE.search(command) is not None
     )
+
+
+def starts_with_remote_executable(command: str) -> bool:
+    try:
+        words = shlex.split(command, comments=False, posix=True)
+    except ValueError:
+        return False
+
+    if words[:2] == ["env", "--"]:
+        words = words[2:]
+    while words and words[0] == "env":
+        words = words[1:]
+        while words and "=" in words[0]:
+            words = words[1:]
+
+    if not words:
+        return False
+
+    return PurePath(words[0]).name in REMOTE_EXECUTABLES
 
 
 def block_decision(command: str) -> dict[str, object]:
