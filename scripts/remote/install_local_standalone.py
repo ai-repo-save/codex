@@ -25,6 +25,7 @@ if __package__ in (None, ""):
     from _sync import RemoteWorkflow
     from _sync import git_output
     from _sync import require_command
+    from _sync import remote_build_env_command
     from _sync import run
     from _sync import run_remote_workflow
     from _sync import shell_quote
@@ -35,6 +36,7 @@ else:
     from ._sync import RemoteWorkflow
     from ._sync import git_output
     from ._sync import require_command
+    from ._sync import remote_build_env_command
     from ._sync import run
     from ._sync import run_remote_workflow
     from ._sync import shell_quote
@@ -171,29 +173,6 @@ def remote_build_command(
         "--force"
     )
     return ("bash", "-lc", command)
-
-
-def remote_build_env_command(target: str) -> str:
-    linker_env = cargo_target_linker_env_key(target)
-    return (
-        "if command -v sccache >/dev/null 2>&1; then "
-        'export RUSTC_WRAPPER="$(command -v sccache)"; '
-        'echo "remote build: using RUSTC_WRAPPER=$RUSTC_WRAPPER"; '
-        'else echo "remote build: sccache not found"; fi; '
-        "if command -v clang >/dev/null 2>&1 && command -v mold >/dev/null 2>&1; then "
-        f"export {linker_env}=clang; "
-        'export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=$(command -v mold)"; '
-        'echo "remote build: using clang with mold"; '
-        "elif command -v clang >/dev/null 2>&1 && command -v ld.lld >/dev/null 2>&1; then "
-        f"export {linker_env}=clang; "
-        'export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=lld"; '
-        'echo "remote build: using clang with lld"; '
-        'else echo "remote build: no fast linker configured"; fi'
-    )
-
-
-def cargo_target_linker_env_key(target: str) -> str:
-    return f"CARGO_TARGET_{target.upper().replace('-', '_')}_LINKER"
 
 
 def install_remote_package(

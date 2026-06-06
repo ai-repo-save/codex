@@ -15,6 +15,7 @@ LOGGER = logging.getLogger("remote_build_sync")
 DEFAULT_HOST = "192.168.50.8"
 DEFAULT_BRANCH = "main"
 DEFAULT_REMOTE_PATH = "/root/codex"
+DEFAULT_TARGET = "x86_64-unknown-linux-gnu"
 REMOTE_COMMAND_HEARTBEAT_SECONDS = 60.0
 
 
@@ -122,9 +123,8 @@ def ensure_local_head(repo_root: Path, expected_head: str) -> None:
 def sync_remote_checkout(config: RemoteWorkflow) -> None:
     LOGGER.info("updating remote checkout %s:%s", config.host, config.remote_path)
     run(
-        (
-            "ssh",
-            config.host,
+        ssh_command(
+            config,
             "set -euo pipefail; "
             f"cd {shell_quote(config.remote_path)}; "
             "git fetch origin; "
@@ -139,9 +139,8 @@ def run_remote_command(config: RemoteWorkflow) -> None:
     remote_command = shlex.join(config.command)
     LOGGER.info("running remote command: %s", remote_command)
     run(
-        (
-            "ssh",
-            config.host,
+        ssh_command(
+            config,
             f"set -euo pipefail; cd {shell_quote(config.remote_path)}; {remote_command}",
         ),
         heartbeat_interval_seconds=REMOTE_COMMAND_HEARTBEAT_SECONDS,
@@ -150,9 +149,8 @@ def run_remote_command(config: RemoteWorkflow) -> None:
 
 def remote_status_plan(config: RemoteWorkflow) -> StatusPlan:
     result = run(
-        (
-            "ssh",
-            config.host,
+        ssh_command(
+            config,
             f"cd {shell_quote(config.remote_path)} && git status --porcelain=v1 -z",
         ),
         stdout=subprocess.PIPE,
@@ -256,6 +254,43 @@ def delete_local_path(repo_root: Path, relative_path: str) -> None:
 def git_output(repo_root: Path, *args: str) -> str:
     result = run(("git", *args), cwd=repo_root, stdout=subprocess.PIPE)
     return result.stdout.strip()
+
+
+def remote_codex_rs_just_command(args: Sequence[str]) -> tuple[str, ...]:
+    if not args:
+        raise ValueError("just args must not be empty")
+    return (
+        "bash",
+        "-lc",
+        f"{remote_build_env_command(DEFAULT_TARGET)} && cd codex-rs && just {shlex.join(args)}",
+    )
+
+
+def remote_build_env_command(target: str) -> str:
+    linker_env = cargo_target_linker_env_key(target)
+    return (
+        "if command -v sccache >/dev/null 2>&1; then "
+        'export RUSTC_WRAPPER="$(command -v sccache)"; '
+        'echo "remote build: using RUSTC_WRAPPER=$RUSTC_WRAPPER"; '
+        'else echo "remote build: sccache not found"; fi; '
+        "if command -v clang >/dev/null 2>&1 && command -v mold >/dev/null 2>&1; then "
+        f"export {linker_env}=clang; "
+        'export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=$(command -v mold)"; '
+        'echo "remote build: using clang with mold"; '
+        "elif command -v clang >/dev/null 2>&1 && command -v ld.lld >/dev/null 2>&1; then "
+        f"export {linker_env}=clang; "
+        'export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=lld"; '
+        'echo "remote build: using clang with lld"; '
+        'else echo "remote build: no fast linker configured"; fi'
+    )
+
+
+def cargo_target_linker_env_key(target: str) -> str:
+    return f"CARGO_TARGET_{target.upper().replace('-', '_')}_LINKER"
+
+
+def ssh_command(config: RemoteWorkflow, remote_command: str) -> tuple[str, ...]:
+    return ("ssh", config.host, remote_command)
 
 
 def run(

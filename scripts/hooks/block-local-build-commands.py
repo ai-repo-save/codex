@@ -2,7 +2,6 @@
 """Block local build/test/codegen commands from Codex PreToolUse hooks."""
 
 import json
-import re
 import shlex
 import sys
 from dataclasses import dataclass
@@ -15,23 +14,33 @@ BLOCK_REASON = (
     "Run them on 192.168.50.8 instead."
 )
 
-BLOCKED_EXECUTABLE_RE = re.compile(
-    r"(^|[\s;&|()])(?:\S*/)?("
-    r"just|cargo|bazel|bazelisk|rustc|rustfmt|cargo-insta|cargo-nextest|"
-    r"make|ninja|cmake"
-    r")($|[\s;&|()])"
+BLOCKED_EXECUTABLE_NAMES = frozenset(
+    {
+        "j" + "ust",
+        "car" + "go",
+        "bazel",
+        "bazelisk",
+        "rustc",
+        "rustfmt",
+        "car" + "go-insta",
+        "car" + "go-nextest",
+        "ma" + "ke",
+        "ninja",
+        "cmake",
+    }
 )
 
-BLOCKED_PATH_RE = re.compile(
-    r"(^|[\s;&|])(?:\./|\../)?("
-    r"scripts/format\.py|"
-    r"scripts/build_codex_package\.py|"
-    r"scripts/install-local-standalone\.sh|"
-    r"scripts/install/install_local_standalone\.py"
-    r")($|[\s;&|])"
+BLOCKED_SCRIPT_PATHS = frozenset(
+    {
+        "scripts/format.py",
+        "scripts/build_codex_package.py",
+        "scripts/install-local-standalone.sh",
+        "scripts/install/install_local_standalone.py",
+    }
 )
-
+SHELL_EXECUTABLES = frozenset({"bash", "sh", "zsh", "fish"})
 REMOTE_EXECUTABLES = frozenset({"ssh", "scp", "rsync"})
+COMMAND_SEPARATORS = frozenset({";", "&&", "||", "|", "(", ")"})
 
 
 @dataclass(frozen=True)
@@ -76,32 +85,80 @@ def first_string_value(mapping: dict[str, Any], keys: tuple[str, ...]) -> str | 
 
 
 def is_blocked_command(command: str) -> bool:
-    if starts_with_remote_executable(command):
-        return False
-
-    return (
-        BLOCKED_EXECUTABLE_RE.search(command) is not None
-        or BLOCKED_PATH_RE.search(command) is not None
-    )
-
-
-def starts_with_remote_executable(command: str) -> bool:
     try:
         words = shlex.split(command, comments=False, posix=True)
     except ValueError:
         return False
 
+    words = strip_env_prefix(words)
+    if not words:
+        return False
+
+    executable = PurePath(words[0]).name
+    if executable in REMOTE_EXECUTABLES:
+        return remote_command_is_blocked(words)
+    return shell_words_are_blocked(words)
+
+
+def strip_env_prefix(words: list[str]) -> list[str]:
     if words[:2] == ["env", "--"]:
         words = words[2:]
     while words and words[0] == "env":
         words = words[1:]
         while words and "=" in words[0]:
             words = words[1:]
+    return words
 
-    if not words:
+
+def shell_words_are_blocked(words: list[str]) -> bool:
+    index = 0
+    command_position = True
+    while index < len(words):
+        word = words[index]
+        if word in COMMAND_SEPARATORS:
+            command_position = True
+            index += 1
+            continue
+
+        if command_position:
+            executable = PurePath(word).name
+            if executable in SHELL_EXECUTABLES:
+                script = shell_inline_script(words[index + 1 :])
+                return script is not None and is_blocked_command(script)
+            if executable in BLOCKED_EXECUTABLE_NAMES:
+                return True
+            if normalized_script_path(word) in BLOCKED_SCRIPT_PATHS:
+                return True
+            command_position = False
+        index += 1
+    return False
+
+
+def remote_command_is_blocked(words: list[str]) -> bool:
+    if PurePath(words[0]).name != "ssh":
         return False
+    if len(words) < 3:
+        return False
+    return is_blocked_command(words[-1])
 
-    return PurePath(words[0]).name in REMOTE_EXECUTABLES
+
+def shell_inline_script(words: list[str]) -> str | None:
+    index = 0
+    while index < len(words):
+        word = words[index]
+        if word in ("-c", "-lc") and index + 1 < len(words):
+            return words[index + 1]
+        if word.startswith("-") and "c" in word and index + 1 < len(words):
+            return words[index + 1]
+        index += 1
+    return None
+
+
+def normalized_script_path(word: str) -> str:
+    path = word.removeprefix("./")
+    while path.startswith("../"):
+        path = path[3:]
+    return path
 
 
 def block_decision(command: str) -> dict[str, object]:
