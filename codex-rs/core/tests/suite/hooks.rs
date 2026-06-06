@@ -2089,16 +2089,16 @@ async fn permission_request_hook_allows_shell_command_without_user_approval() ->
 }
 
 #[tokio::test]
-async fn approval_review_route_hook_routes_shell_command_to_auto_review() -> Result<()> {
+async fn approval_review_route_hook_routes_exec_command_to_auto_review() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
-    let call_id = "approval-review-route-shell-command";
-    let marker = std::env::temp_dir().join("approval-review-route-shell-command-marker");
+    let call_id = "approval-review-route-exec-command";
+    let marker = std::env::temp_dir().join("approval-review-route-exec-command-marker");
     let command = format!("printf routed > {}", marker.display());
-    let justification = "route shell command through auto review";
+    let justification = "route exec command through auto review";
     let args = serde_json::json!({
-        "command": command,
+        "cmd": command,
         "sandbox_permissions": "require_escalated",
         "justification": justification,
     });
@@ -2109,7 +2109,7 @@ async fn approval_review_route_hook_routes_shell_command_to_auto_review() -> Res
                 ev_response_created("resp-parent-tool"),
                 core_test_support::responses::ev_function_call(
                     call_id,
-                    "shell_command",
+                    "exec_command",
                     &serde_json::to_string(&args)?,
                 ),
                 ev_completed("resp-parent-tool"),
@@ -2148,15 +2148,20 @@ async fn approval_review_route_hook_routes_shell_command_to_auto_review() -> Res
             }
         })
         .with_config(|config| {
+            config.use_experimental_unified_exec_tool = true;
             config.approvals_reviewer = ApprovalsReviewer::User;
             trust_discovered_hooks(config);
+            config
+                .features
+                .enable(Feature::UnifiedExec)
+                .expect("test config should allow feature update");
         });
     let test = builder.build(&server).await?;
 
     let _ = fs::remove_file(&marker);
 
     test.submit_turn_with_approval_and_permission_profile(
-        "run the shell command after approval route hook review",
+        "run the exec command after approval route hook review",
         AskForApproval::OnRequest,
         PermissionProfile::read_only(),
     )
@@ -2182,10 +2187,10 @@ async fn approval_review_route_hook_routes_shell_command_to_auto_review() -> Res
     let hook_inputs = read_approval_review_route_hook_inputs(test.codex_home_path())?;
     assert_eq!(hook_inputs.len(), 1);
     assert_eq!(hook_inputs[0]["hook_event_name"], "ApprovalReviewRoute");
-    assert_eq!(hook_inputs[0]["tool_name"], "Bash");
+    assert_eq!(hook_inputs[0]["tool_name"], "exec_command");
     assert_eq!(hook_inputs[0]["tool_input"]["command"], command);
     assert_eq!(hook_inputs[0]["tool_input"]["description"], justification);
-    assert_eq!(hook_inputs[0]["approval_kind"], "shell");
+    assert_eq!(hook_inputs[0]["approval_kind"], "exec_command");
     assert_eq!(hook_inputs[0]["approval_policy"], "on_request");
     assert_eq!(hook_inputs[0]["strict_auto_review"], false);
     assert_eq!(hook_inputs[0]["static_auto_review_enabled"], false);
