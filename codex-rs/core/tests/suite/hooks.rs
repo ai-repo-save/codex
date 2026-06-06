@@ -2153,7 +2153,7 @@ async fn approval_review_route_hook_routes_shell_command_to_auto_review() -> Res
     test.submit_turn_with_approval_and_permission_profile(
         "run the shell command after approval route hook review",
         AskForApproval::OnRequest,
-        PermissionProfile::Disabled,
+        PermissionProfile::read_only(),
     )
     .await?;
 
@@ -2179,7 +2179,7 @@ async fn approval_review_route_hook_routes_shell_command_to_auto_review() -> Res
     assert_eq!(hook_inputs[0]["hook_event_name"], "ApprovalReviewRoute");
     assert_eq!(hook_inputs[0]["tool_name"], "Bash");
     assert_eq!(hook_inputs[0]["tool_input"]["command"], command);
-    assert_eq!(hook_inputs[0]["approval_kind"], "exec");
+    assert_eq!(hook_inputs[0]["approval_kind"], "shell");
     assert_eq!(hook_inputs[0]["approval_policy"], "on_request");
     assert_eq!(hook_inputs[0]["strict_auto_review"], false);
     assert_eq!(hook_inputs[0]["static_auto_review_enabled"], false);
