@@ -124,9 +124,8 @@ pub(crate) async fn run(
         parse_completed,
     )
     .await;
-    let decision = resolve_approval_review_route_decision(
-        results.iter().map(|result| result.data.decision),
-    );
+    let decision =
+        resolve_approval_review_route_decision(results.iter().map(|result| result.data.decision));
 
     ApprovalReviewRouteOutcome {
         hook_events: results
