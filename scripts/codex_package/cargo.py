@@ -1,17 +1,19 @@
 """Cargo builds for source-built Codex package artifacts."""
 
+import logging
 import os
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from .targets import REPO_ROOT
 from .targets import PackageVariant
 from .targets import TargetSpec
+from .timing import run_timed
 from .v8 import resolve_codex_v8_cargo_env
 
 
 CODEX_RS_ROOT = REPO_ROOT / "codex-rs"
+LOGGER = logging.getLogger("codex_package.cargo")
 
 
 @dataclass(frozen=True)
@@ -67,10 +69,11 @@ def build_source_binaries(
                 cargo_env = {**os.environ, **codex_v8_env}
 
         print("+", " ".join(cmd))
-        subprocess.run(
+        run_timed(
+            LOGGER,
+            f"cargo build for {spec.target} profile {profile}",
             cmd,
             cwd=CODEX_RS_ROOT,
-            check=True,
             env=cargo_env,
         )
 

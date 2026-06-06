@@ -42,6 +42,7 @@ else:
 from codex_package.layout import validate_package_dir  # noqa: E402
 from codex_package.targets import PACKAGE_VARIANTS  # noqa: E402
 from codex_package.targets import TARGET_SPECS  # noqa: E402
+from codex_package.timing import timed_step  # noqa: E402
 from install.install_local_standalone import DEFAULT_CARGO_PROFILE  # noqa: E402
 from install.install_local_standalone import DEFAULT_VARIANT  # noqa: E402
 from install.install_local_standalone import InstallPaths  # noqa: E402
@@ -108,14 +109,15 @@ def install_local_standalone(config: StandaloneInstallConfig) -> None:
     )
 
     LOGGER.info("remote package directory: %s", remote_package_dir)
-    run_remote_workflow(
-        RemoteWorkflow(
-            host=config.host,
-            branch=config.branch,
-            remote_path=config.remote_path,
-            command=remote_build_command(config, remote_package_dir),
+    with timed_step(LOGGER, "remote package build workflow"):
+        run_remote_workflow(
+            RemoteWorkflow(
+                host=config.host,
+                branch=config.branch,
+                remote_path=config.remote_path,
+                command=remote_build_command(config, remote_package_dir),
+            )
         )
-    )
 
     staging_dir = paths.releases_dir / (
         f".staging.{paths.release_name}.{commit.short_hash}.{os.getpid()}"
@@ -178,24 +180,29 @@ def install_remote_package(
     staging_dir: Path,
     commit: CommitInfo,
 ) -> None:
-    LOGGER.info("copying remote package to local staging directory: %s", staging_dir)
     if staging_dir.exists() or staging_dir.is_symlink():
         raise RuntimeError(f"staging directory already exists: {staging_dir}")
     staging_dir.parent.mkdir(parents=True, exist_ok=True)
-    rsync_remote_package(config.host, remote_package_dir, staging_dir)
+    with timed_step(
+        LOGGER, f"copying remote package to local staging directory {staging_dir}"
+    ):
+        rsync_remote_package(config.host, remote_package_dir, staging_dir)
 
     try:
-        finalize_package_layout(staging_dir)
-        validate_package_dir(
-            staging_dir,
-            PACKAGE_VARIANTS[config.variant],
-            TARGET_SPECS[config.target],
-            include_zsh=True,
-        )
-        activate_release_with_backup(staging_dir, paths.release_dir, commit)
-        update_install_links(paths)
-        verify_install(paths, variant=config.variant)
-        verify_entrypoint_mtime(paths.bin_path.resolve(), commit)
+        with timed_step(LOGGER, f"preparing local staging package {staging_dir}"):
+            finalize_package_layout(staging_dir)
+            validate_package_dir(
+                staging_dir,
+                PACKAGE_VARIANTS[config.variant],
+                TARGET_SPECS[config.target],
+                include_zsh=True,
+            )
+        with timed_step(LOGGER, f"activating standalone release {paths.release_dir}"):
+            activate_release_with_backup(staging_dir, paths.release_dir, commit)
+            update_install_links(paths)
+        with timed_step(LOGGER, "verifying installed standalone package"):
+            verify_install(paths, variant=config.variant)
+            verify_entrypoint_mtime(paths.bin_path.resolve(), commit)
     except Exception:
         if staging_dir.exists():
             failed_staging = move_to_backup(

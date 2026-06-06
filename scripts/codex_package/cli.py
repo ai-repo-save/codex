@@ -1,6 +1,8 @@
 """Command-line interface for building Codex package directories."""
 
 import argparse
+import logging
+import sys
 import tempfile
 from pathlib import Path
 
@@ -15,8 +17,20 @@ from .targets import TARGET_SPECS
 from .targets import PackageInputs
 from .targets import default_target
 from .targets import resolve_input_path
+from .timing import timed_step
 from .zsh import resolve_zsh_bin
 from .version import read_workspace_version
+
+
+LOGGER = logging.getLogger("codex_package.cli")
+
+
+def configure_logging() -> None:
+    logging.basicConfig(
+        format="%(levelname)s %(name)s: %(message)s",
+        level=logging.INFO,
+        stream=sys.stderr,
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -120,6 +134,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    configure_logging()
     args = parse_args()
     spec = TARGET_SPECS[getattr(args, "target", None) or default_target()]
     variant = PACKAGE_VARIANTS[args.variant]
@@ -130,32 +145,33 @@ def main() -> int:
         else Path(tempfile.mkdtemp(prefix="codex-package-")).resolve()
     )
 
-    source_outputs = build_source_binaries(
-        spec,
-        variant,
-        cargo=args.cargo,
-        profile=args.cargo_profile,
-        entrypoint_bin=resolve_optional_input_path(
-            args.entrypoint_bin,
-            "prebuilt entrypoint executable",
-            "--entrypoint-bin",
-        ),
-        bwrap_bin=resolve_optional_input_path(
-            args.bwrap_bin,
-            "prebuilt Linux bwrap executable",
-            "--bwrap-bin",
-        ),
-        codex_command_runner_bin=resolve_optional_input_path(
-            args.codex_command_runner_bin,
-            "prebuilt Windows codex-command-runner.exe executable",
-            "--codex-command-runner-bin",
-        ),
-        codex_windows_sandbox_setup_bin=resolve_optional_input_path(
-            args.codex_windows_sandbox_setup_bin,
-            "prebuilt Windows codex-windows-sandbox-setup.exe executable",
-            "--codex-windows-sandbox-setup-bin",
-        ),
-    )
+    with timed_step(LOGGER, "resolving source-built package artifacts"):
+        source_outputs = build_source_binaries(
+            spec,
+            variant,
+            cargo=args.cargo,
+            profile=args.cargo_profile,
+            entrypoint_bin=resolve_optional_input_path(
+                args.entrypoint_bin,
+                "prebuilt entrypoint executable",
+                "--entrypoint-bin",
+            ),
+            bwrap_bin=resolve_optional_input_path(
+                args.bwrap_bin,
+                "prebuilt Linux bwrap executable",
+                "--bwrap-bin",
+            ),
+            codex_command_runner_bin=resolve_optional_input_path(
+                args.codex_command_runner_bin,
+                "prebuilt Windows codex-command-runner.exe executable",
+                "--codex-command-runner-bin",
+            ),
+            codex_windows_sandbox_setup_bin=resolve_optional_input_path(
+                args.codex_windows_sandbox_setup_bin,
+                "prebuilt Windows codex-windows-sandbox-setup.exe executable",
+                "--codex-windows-sandbox-setup-bin",
+            ),
+        )
     version = read_workspace_version()
     inputs = PackageInputs(
         entrypoint_bin=source_outputs.entrypoint_bin,
@@ -165,15 +181,18 @@ def main() -> int:
         codex_command_runner_bin=source_outputs.codex_command_runner_bin,
         codex_windows_sandbox_setup_bin=source_outputs.codex_windows_sandbox_setup_bin,
     )
-    prepare_package_dir(package_dir, force=args.force)
-    build_package_dir(package_dir, version, variant, spec, inputs)
-    validate_package_dir(
-        package_dir, variant, spec, include_zsh=inputs.zsh_bin is not None
-    )
+    with timed_step(LOGGER, f"building package layout at {package_dir}"):
+        prepare_package_dir(package_dir, force=args.force)
+        build_package_dir(package_dir, version, variant, spec, inputs)
+    with timed_step(LOGGER, f"validating package layout at {package_dir}"):
+        validate_package_dir(
+            package_dir, variant, spec, include_zsh=inputs.zsh_bin is not None
+        )
 
     for archive_output in args.archive_output:
         archive_path = archive_output.resolve()
-        write_archive(package_dir, archive_path, force=args.force)
+        with timed_step(LOGGER, f"writing package archive {archive_path}"):
+            write_archive(package_dir, archive_path, force=args.force)
         print(f"Built Codex package archive at {archive_path}")
 
     print(f"Built Codex package directory at {package_dir}")
