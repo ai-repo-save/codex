@@ -3211,6 +3211,24 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
     ) -> Result<ThreadForkBuildResult, JSONRPCErrorError> {
+        self.build_thread_fork_response_with_history(
+            request_id,
+            params,
+            app_server_client_name,
+            app_server_client_version,
+            None,
+        )
+        .await
+    }
+
+    async fn build_thread_fork_response_with_history(
+        &self,
+        request_id: &ConnectionRequestId,
+        params: ThreadForkParams,
+        app_server_client_name: Option<String>,
+        app_server_client_version: Option<String>,
+        source_history_override: Option<Vec<ResponseItem>>,
+    ) -> Result<ThreadForkBuildResult, JSONRPCErrorError> {
         let ThreadForkParams {
             thread_id,
             path,
@@ -3236,19 +3254,38 @@ impl ThreadRequestProcessor {
                 "`permissions` cannot be combined with `sandbox`",
             ));
         }
+        let include_source_history = source_history_override.is_none();
         let source_thread = self
-            .read_stored_thread_for_resume(&thread_id, path.as_ref(), /*include_history*/ true)
+            .read_stored_thread_for_resume(&thread_id, path.as_ref(), include_source_history)
             .await?;
         let source_thread_id = source_thread.thread_id;
-        let history_items = source_thread
-            .history
-            .as_ref()
-            .map(|history| history.items.clone())
-            .ok_or_else(|| {
-                internal_error(format!(
-                    "thread {source_thread_id} did not include persisted history"
-                ))
-            })?;
+        let history_items = match source_history_override {
+            Some(history) => {
+                let mut items: Vec<RolloutItem> = history
+                    .into_iter()
+                    .map(RolloutItem::ResponseItem)
+                    .collect();
+                items.push(RolloutItem::EventMsg(EventMsg::TurnComplete(
+                    TurnCompleteEvent {
+                        turn_id: "reset-context-compacted-history".to_string(),
+                        last_agent_message: None,
+                        completed_at: None,
+                        duration_ms: None,
+                        time_to_first_token_ms: None,
+                    },
+                )));
+                items
+            }
+            None => source_thread
+                .history
+                .as_ref()
+                .map(|history| history.items.clone())
+                .ok_or_else(|| {
+                    internal_error(format!(
+                        "thread {source_thread_id} did not include persisted history"
+                    ))
+                })?,
+        };
         let history_cwd = Some(source_thread.cwd.clone());
 
         // Persist Windows sandbox mode.
@@ -3508,13 +3545,15 @@ impl ThreadRequestProcessor {
             .flush_rollout()
             .await
             .map_err(|err| internal_error(format!("failed to flush compacted rollout: {err}")))?;
+        let compacted_history = source_thread.current_context_history().await;
 
         let result = self
-            .build_thread_fork_response(
+            .build_thread_fork_response_with_history(
                 &request_id,
                 thread_fork_params_from_reset_context(params),
                 app_server_client_name,
                 app_server_client_version,
+                Some(compacted_history),
             )
             .await?;
         self.migrate_reset_context_goal(source_thread_id, result.thread_id)
