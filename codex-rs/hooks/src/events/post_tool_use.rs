@@ -422,6 +422,7 @@ mod tests {
     use serde_json::json;
 
     use super::PostToolUseHandlerData;
+    use super::apply_updated_tool_outputs;
     use super::command_input_json;
     use super::parse_completed;
     use super::preview;
