@@ -18,7 +18,6 @@ use codex_config::NetworkDomainPermissionToml;
 use codex_config::NetworkDomainPermissionsToml;
 use codex_config::RequirementSource;
 use codex_config::Sourced;
-use codex_config::config_toml::AutoReviewToml;
 use codex_config::config_toml::ConfigToml;
 use codex_config::types::McpServerConfig;
 use codex_exec_server::LOCAL_FS;
@@ -1094,25 +1093,33 @@ async fn routes_approval_to_guardian_requires_guardian_reviewer() {
     config.approvals_reviewer = ApprovalsReviewer::User;
     turn.config = Arc::new(config.clone());
 
-    assert!(!routes_approval_to_guardian(&turn));
+    assert!(!routes_approval_action_to_guardian(
+        &turn,
+        GuardianReviewAction::Shell
+    ));
 
     config.approvals_reviewer = ApprovalsReviewer::AutoReview;
     turn.config = Arc::new(config);
 
-    assert!(routes_approval_to_guardian(&turn));
+    assert!(routes_approval_action_to_guardian(
+        &turn,
+        GuardianReviewAction::Shell
+    ));
 }
 
 #[tokio::test]
 async fn routes_approval_to_guardian_can_use_app_reviewer_override() {
     let (_session, turn) = crate::session::tests::make_session_and_context().await;
 
-    assert!(!routes_approval_to_guardian_with_reviewer(
+    assert!(!routes_approval_action_to_guardian_with_reviewer(
         &turn,
-        ApprovalsReviewer::User
+        ApprovalsReviewer::User,
+        GuardianReviewAction::McpToolCall,
     ));
-    assert!(routes_approval_to_guardian_with_reviewer(
+    assert!(routes_approval_action_to_guardian_with_reviewer(
         &turn,
-        ApprovalsReviewer::AutoReview
+        ApprovalsReviewer::AutoReview,
+        GuardianReviewAction::McpToolCall,
     ));
 }
 
@@ -1132,7 +1139,10 @@ async fn routes_approval_to_guardian_allows_granular_review_policy() {
         }))
         .expect("test setup should allow updating approval policy");
 
-    assert!(routes_approval_to_guardian(&turn));
+    assert!(routes_approval_action_to_guardian(
+        &turn,
+        GuardianReviewAction::Shell
+    ));
 }
 
 #[tokio::test]
@@ -2651,26 +2661,12 @@ async fn guardian_review_session_config_uses_requirements_guardian_policy_config
 
 #[tokio::test]
 async fn guardian_review_session_config_uses_full_auto_review_prompt_override() {
-    let codex_home = tempfile::tempdir().expect("create temp dir");
-    let workspace = tempfile::tempdir().expect("create temp dir");
     let prompt = "Review the exact requested action using the local developer policy.";
-    let parent_config = Config::load_from_base_config_with_overrides(
-        ConfigToml {
-            auto_review: Some(AutoReviewToml {
-                policy: Some("This policy fragment should not appear.".to_string()),
-                prompt: Some(prompt.to_string()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        },
-        ConfigOverrides {
-            cwd: Some(workspace.path().to_path_buf()),
-            ..Default::default()
-        },
-        codex_home.abs(),
-    )
-    .await
-    .expect("load config");
+    let template = parse_auto_review_prompt_template(prompt).expect("test prompt parses");
+    let mut parent_config = test_config().await;
+    parent_config.guardian_policy_config =
+        Some("This policy fragment should not appear.".to_string());
+    parent_config.auto_review.prompt_template = Some(template.clone());
 
     let guardian_config = build_guardian_review_session_config_for_test(
         &parent_config,
@@ -2679,7 +2675,6 @@ async fn guardian_review_session_config_uses_full_auto_review_prompt_override() 
         /*reasoning_effort*/ None,
     )
     .expect("guardian config");
-    let template = parse_auto_review_prompt_template(prompt).expect("test prompt parses");
 
     assert_eq!(
         guardian_config.base_instructions,

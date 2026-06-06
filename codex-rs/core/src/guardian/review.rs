@@ -141,25 +141,6 @@ fn guardian_risk_level_str(level: GuardianRiskLevel) -> &'static str {
     }
 }
 
-/// Whether this turn should route allowed approval prompts through the guardian
-/// reviewer instead of surfacing them to the user. ARC may still block actions
-/// earlier in the flow.
-pub(crate) fn routes_approval_to_guardian(turn: &TurnContext) -> bool {
-    routes_approval_action_to_guardian(turn, GuardianReviewAction::Shell)
-}
-
-/// Whether an approval with its own reviewer selection should be routed through guardian.
-pub(crate) fn routes_approval_to_guardian_with_reviewer(
-    turn: &TurnContext,
-    approvals_reviewer: ApprovalsReviewer,
-) -> bool {
-    routes_approval_action_to_guardian_with_reviewer(
-        turn,
-        approvals_reviewer,
-        GuardianReviewAction::McpToolCall,
-    )
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum GuardianReviewAction {
     Shell,
