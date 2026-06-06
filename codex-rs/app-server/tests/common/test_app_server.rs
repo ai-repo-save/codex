@@ -90,6 +90,7 @@ use codex_app_server_protocol::ThreadRealtimeAppendTextParams;
 use codex_app_server_protocol::ThreadRealtimeListVoicesParams;
 use codex_app_server_protocol::ThreadRealtimeStartParams;
 use codex_app_server_protocol::ThreadRealtimeStopParams;
+use codex_app_server_protocol::ThreadResetContextParams;
 use codex_app_server_protocol::ThreadResumeParams;
 use codex_app_server_protocol::ThreadRollbackParams;
 use codex_app_server_protocol::ThreadSearchParams;
@@ -444,6 +445,15 @@ impl TestAppServer {
     ) -> anyhow::Result<i64> {
         let params = Some(serde_json::to_value(params)?);
         self.send_request("thread/fork", params).await
+    }
+
+    /// Send a `thread/reset-context` JSON-RPC request.
+    pub async fn send_thread_reset_context_request(
+        &mut self,
+        params: ThreadResetContextParams,
+    ) -> anyhow::Result<i64> {
+        let params = Some(serde_json::to_value(params)?);
+        self.send_request("thread/reset-context", params).await
     }
 
     /// Send a `thread/archive` JSON-RPC request.

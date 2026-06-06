@@ -57,6 +57,7 @@ mod thread_memory_mode_set;
 mod thread_metadata_update;
 mod thread_name_websocket;
 mod thread_read;
+mod thread_reset_context;
 mod thread_resume;
 mod thread_rollback;
 mod thread_settings_update;
