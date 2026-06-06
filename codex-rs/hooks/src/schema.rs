@@ -19,8 +19,7 @@ const POST_TOOL_USE_INPUT_FIXTURE: &str = "post-tool-use.command.input.schema.js
 const POST_TOOL_USE_OUTPUT_FIXTURE: &str = "post-tool-use.command.output.schema.json";
 const PERMISSION_REQUEST_INPUT_FIXTURE: &str = "permission-request.command.input.schema.json";
 const PERMISSION_REQUEST_OUTPUT_FIXTURE: &str = "permission-request.command.output.schema.json";
-const APPROVAL_REVIEW_ROUTE_INPUT_FIXTURE: &str =
-    "approval-review-route.command.input.schema.json";
+const APPROVAL_REVIEW_ROUTE_INPUT_FIXTURE: &str = "approval-review-route.command.input.schema.json";
 const APPROVAL_REVIEW_ROUTE_OUTPUT_FIXTURE: &str =
     "approval-review-route.command.output.schema.json";
 const POST_COMPACT_INPUT_FIXTURE: &str = "post-compact.command.input.schema.json";
@@ -911,11 +910,11 @@ fn default_continue() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::NullableString;
     use super::APPROVAL_REVIEW_ROUTE_INPUT_FIXTURE;
     use super::APPROVAL_REVIEW_ROUTE_OUTPUT_FIXTURE;
     use super::ApprovalReviewRouteCommandInput;
     use super::ApprovalReviewRouteCommandOutputWire;
+    use super::NullableString;
     use super::PERMISSION_REQUEST_INPUT_FIXTURE;
     use super::PERMISSION_REQUEST_OUTPUT_FIXTURE;
     use super::POST_COMPACT_INPUT_FIXTURE;

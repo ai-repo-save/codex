@@ -212,8 +212,7 @@ fn parse_completed(
                     status = HookRunStatus::Failed;
                     entries.push(HookOutputEntry {
                         kind: HookOutputEntryKind::Error,
-                        text: "hook returned invalid approval-review-route JSON output"
-                            .to_string(),
+                        text: "hook returned invalid approval-review-route JSON output".to_string(),
                     });
                 }
             }

@@ -220,10 +220,7 @@ fn append_hook_events(existing: &mut HookEventsToml, incoming: HookEventsToml) -
     let mut changed = false;
     changed |= append_vec(&mut existing.pre_tool_use, pre_tool_use);
     changed |= append_vec(&mut existing.permission_request, permission_request);
-    changed |= append_vec(
-        &mut existing.approval_review_route,
-        approval_review_route,
-    );
+    changed |= append_vec(&mut existing.approval_review_route, approval_review_route);
     changed |= append_vec(&mut existing.post_tool_use, post_tool_use);
     changed |= append_vec(&mut existing.pre_compact, pre_compact);
     changed |= append_vec(&mut existing.post_compact, post_compact);

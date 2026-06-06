@@ -49,15 +49,11 @@ pub(crate) fn generated_hook_schemas() -> &'static GeneratedHookSchemas {
         ),
         approval_review_route_command_input: parse_json_schema(
             "approval-review-route.command.input",
-            include_str!(
-                "../../schema/generated/approval-review-route.command.input.schema.json"
-            ),
+            include_str!("../../schema/generated/approval-review-route.command.input.schema.json"),
         ),
         approval_review_route_command_output: parse_json_schema(
             "approval-review-route.command.output",
-            include_str!(
-                "../../schema/generated/approval-review-route.command.output.schema.json"
-            ),
+            include_str!("../../schema/generated/approval-review-route.command.output.schema.json"),
         ),
         post_compact_command_input: parse_json_schema(
             "post-compact.command.input",
@@ -144,8 +140,14 @@ mod tests {
         assert_eq!(schemas.post_tool_use_command_output["type"], "object");
         assert_eq!(schemas.permission_request_command_input["type"], "object");
         assert_eq!(schemas.permission_request_command_output["type"], "object");
-        assert_eq!(schemas.approval_review_route_command_input["type"], "object");
-        assert_eq!(schemas.approval_review_route_command_output["type"], "object");
+        assert_eq!(
+            schemas.approval_review_route_command_input["type"],
+            "object"
+        );
+        assert_eq!(
+            schemas.approval_review_route_command_output["type"],
+            "object"
+        );
         assert_eq!(schemas.post_compact_command_input["type"], "object");
         assert_eq!(schemas.post_compact_command_output["type"], "object");
         assert_eq!(schemas.pre_tool_use_command_input["type"], "object");

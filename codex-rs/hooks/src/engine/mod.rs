@@ -4,12 +4,12 @@ pub(crate) mod dispatcher;
 pub(crate) mod output_parser;
 pub(crate) mod schema_loader;
 
+use crate::events::approval_review_route::ApprovalReviewRouteOutcome;
+use crate::events::approval_review_route::ApprovalReviewRouteRequest;
 use crate::events::compact::PostCompactRequest;
 use crate::events::compact::PreCompactOutcome;
 use crate::events::compact::PreCompactRequest;
 use crate::events::compact::StatelessHookOutcome;
-use crate::events::approval_review_route::ApprovalReviewRouteOutcome;
-use crate::events::approval_review_route::ApprovalReviewRouteRequest;
 use crate::events::permission_request::PermissionRequestOutcome;
 use crate::events::permission_request::PermissionRequestRequest;
 use crate::events::post_tool_use::PostToolUseOutcome;
@@ -67,9 +67,7 @@ impl ConfiguredHandler {
         match self.event_name {
             codex_protocol::protocol::HookEventName::PreToolUse => "pre-tool-use",
             codex_protocol::protocol::HookEventName::PermissionRequest => "permission-request",
-            codex_protocol::protocol::HookEventName::ApprovalReviewRoute => {
-                "approval-review-route"
-            }
+            codex_protocol::protocol::HookEventName::ApprovalReviewRoute => "approval-review-route",
             codex_protocol::protocol::HookEventName::PostToolUse => "post-tool-use",
             codex_protocol::protocol::HookEventName::PreCompact => "pre-compact",
             codex_protocol::protocol::HookEventName::PostCompact => "post-compact",

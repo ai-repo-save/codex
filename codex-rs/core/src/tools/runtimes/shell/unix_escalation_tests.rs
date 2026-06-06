@@ -643,7 +643,10 @@ async fn execve_approval_review_route_hook_routes_to_auto_review() -> anyhow::Re
         .context("parse hook log")?;
     assert_eq!(hook_inputs.len(), 1);
     assert_eq!(hook_inputs[0]["hook_event_name"], "ApprovalReviewRoute");
-    assert_eq!(hook_inputs[0]["tool_input"]["command"], expected_hook_command);
+    assert_eq!(
+        hook_inputs[0]["tool_input"]["command"],
+        expected_hook_command
+    );
     assert_eq!(hook_inputs[0]["approval_kind"], "execve");
     assert_eq!(hook_inputs[0]["approval_policy"], "on_request");
     assert_eq!(hook_inputs[0]["strict_auto_review"], false);

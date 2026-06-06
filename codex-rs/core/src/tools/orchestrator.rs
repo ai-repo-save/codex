@@ -6,10 +6,10 @@ simple sequence for any ToolRuntime: approval → select sandbox → attempt →
 retry with an escalated sandbox strategy on denial (no re‑approval thanks to
 caching).
 */
+use crate::guardian::GuardianReviewAction;
 use crate::guardian::guardian_rejection_message;
 use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
-use crate::guardian::GuardianReviewAction;
 use crate::guardian::routes_approval_action_to_guardian;
 use crate::hook_runtime::ApprovalReviewRouteHookRequest;
 use crate::hook_runtime::run_approval_review_route_hooks;
@@ -32,8 +32,8 @@ use crate::tools::sandboxing::ToolRuntime;
 use crate::tools::sandboxing::default_exec_approval_requirement;
 use crate::tools::sandboxing::sandbox_override_for_first_attempt;
 use crate::tools::sandboxing::unsandboxed_execution_allowed;
-use codex_hooks::PermissionRequestDecision;
 use codex_hooks::ApprovalReviewRouteDecision;
+use codex_hooks::PermissionRequestDecision;
 use codex_otel::ToolDecisionSource;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::SandboxErr;

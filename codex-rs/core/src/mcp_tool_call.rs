@@ -1220,13 +1220,8 @@ async fn maybe_request_mcp_tool_approval(
     )
     .await;
 
-    match run_permission_request_hooks(
-        sess,
-        turn_context,
-        call_id,
-        permission_request_payload,
-    )
-    .await
+    match run_permission_request_hooks(sess, turn_context, call_id, permission_request_payload)
+        .await
     {
         Some(PermissionRequestDecision::Allow) => {
             return Some(McpToolApprovalDecision::Accept);

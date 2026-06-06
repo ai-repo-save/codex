@@ -591,7 +591,10 @@ mod tests {
         .expect("approval review route hook output should parse");
 
         assert_eq!(parsed.invalid_reason, None);
-        assert_eq!(parsed.reviewer, Some(ApprovalReviewRouteReviewer::AutoReview));
+        assert_eq!(
+            parsed.reviewer,
+            Some(ApprovalReviewRouteReviewer::AutoReview)
+        );
     }
 
     #[test]
