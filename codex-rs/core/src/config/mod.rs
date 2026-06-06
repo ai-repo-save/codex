@@ -23,10 +23,10 @@ use codex_config::ResidencyRequirement;
 use codex_config::SandboxModeRequirement;
 use codex_config::Sourced;
 use codex_config::ThreadConfigLoader;
+use codex_config::config_toml::AutoReviewToml;
 use codex_config::config_toml::ConfigLockfileToml;
 use codex_config::config_toml::ConfigToml;
 use codex_config::config_toml::DEFAULT_PROJECT_DOC_MAX_BYTES;
-use codex_config::config_toml::AutoReviewToml;
 use codex_config::config_toml::GoalsToml;
 use codex_config::config_toml::ProjectConfig;
 use codex_config::config_toml::RealtimeAudioConfig;
@@ -134,9 +134,9 @@ use crate::config_lock::read_config_lock_from_path;
 use codex_network_proxy::NetworkProxyConfig;
 use codex_prompts::AutoReviewPromptTemplate;
 use codex_prompts::GoalPromptTemplate;
+pub use codex_prompts::GoalPromptTemplates;
 use codex_prompts::parse_auto_review_prompt_template;
 use codex_prompts::parse_goal_prompt_template;
-pub use codex_prompts::GoalPromptTemplates;
 use toml::Value as TomlValue;
 use toml_edit::DocumentMut;
 
@@ -3792,9 +3792,7 @@ impl Config {
         if value.len() > MAX_AUTO_REVIEW_PROMPT_OVERRIDE_BYTES {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!(
-                    "{context} exceeds the {MAX_AUTO_REVIEW_PROMPT_OVERRIDE_BYTES}-byte limit"
-                ),
+                format!("{context} exceeds the {MAX_AUTO_REVIEW_PROMPT_OVERRIDE_BYTES}-byte limit"),
             ));
         }
         parse_auto_review_prompt_template(value).map_err(|err| {

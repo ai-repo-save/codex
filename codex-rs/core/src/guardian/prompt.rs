@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
+use codex_prompts::AutoReviewPromptTemplate;
+use codex_prompts::render_auto_review_prompt_template;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::GuardianRiskLevel;
 use codex_protocol::protocol::GuardianUserAuthorization;
 use codex_protocol::user_input::UserInput;
-use codex_prompts::AutoReviewPromptTemplate;
-use codex_prompts::render_auto_review_prompt_template;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -699,5 +699,9 @@ pub(crate) fn guardian_policy_prompt_with_config(tenant_policy_config: &str) -> 
 
 pub(crate) fn guardian_policy_prompt_with_template(template: &AutoReviewPromptTemplate) -> String {
     let prompt = render_auto_review_prompt_template(template);
-    format!("{}\n\n{}\n", prompt.trim(), guardian_output_contract_prompt())
+    format!(
+        "{}\n\n{}\n",
+        prompt.trim(),
+        guardian_output_contract_prompt()
+    )
 }

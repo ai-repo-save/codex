@@ -132,8 +132,8 @@ def remote_checkout_sync_command(config: RemoteWorkflow) -> str:
         f"cd {shell_quote(config.remote_path)}; "
         f"for attempt in $(seq 1 {REMOTE_FETCH_ATTEMPTS}); do "
         "if git fetch origin; then break; fi; "
-        f"if [ \"$attempt\" -eq {REMOTE_FETCH_ATTEMPTS} ]; then exit 1; fi; "
-        "echo \"remote sync: git fetch failed; retrying\" >&2; "
+        f'if [ "$attempt" -eq {REMOTE_FETCH_ATTEMPTS} ]; then exit 1; fi; '
+        'echo "remote sync: git fetch failed; retrying" >&2; '
         "sleep $((attempt * 2)); "
         "done; "
         f"git checkout {shell_quote(config.branch)}; "
