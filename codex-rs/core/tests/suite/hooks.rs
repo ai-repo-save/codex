@@ -2096,7 +2096,12 @@ async fn approval_review_route_hook_routes_shell_command_to_auto_review() -> Res
     let call_id = "approval-review-route-shell-command";
     let marker = std::env::temp_dir().join("approval-review-route-shell-command-marker");
     let command = format!("printf routed > {}", marker.display());
-    let args = serde_json::json!({ "command": command });
+    let justification = "route shell command through auto review";
+    let args = serde_json::json!({
+        "command": command,
+        "sandbox_permissions": "require_escalated",
+        "justification": justification,
+    });
     let responses = mount_sse_sequence(
         &server,
         vec![
@@ -2179,6 +2184,7 @@ async fn approval_review_route_hook_routes_shell_command_to_auto_review() -> Res
     assert_eq!(hook_inputs[0]["hook_event_name"], "ApprovalReviewRoute");
     assert_eq!(hook_inputs[0]["tool_name"], "Bash");
     assert_eq!(hook_inputs[0]["tool_input"]["command"], command);
+    assert_eq!(hook_inputs[0]["tool_input"]["description"], justification);
     assert_eq!(hook_inputs[0]["approval_kind"], "shell");
     assert_eq!(hook_inputs[0]["approval_policy"], "on_request");
     assert_eq!(hook_inputs[0]["strict_auto_review"], false);
