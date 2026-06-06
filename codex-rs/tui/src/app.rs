@@ -9,11 +9,11 @@ use crate::app_command::AppCommand;
 use crate::app_event::AppEvent;
 use crate::app_event::ExitMode;
 use crate::app_event::FeedbackCategory;
+use crate::app_event::HistoryCommandSummary;
 use crate::app_event::HistoryLookupResponse;
 use crate::app_event::PermissionProfileSelection;
 use crate::app_event::RateLimitRefreshOrigin;
 use crate::app_event::RealtimeAudioDeviceKind;
-use crate::app_event::ResetContextSummary;
 #[cfg(target_os = "windows")]
 use crate::app_event::WindowsSandboxEnableMode;
 use crate::app_event_sender::AppEventSender;
@@ -472,7 +472,7 @@ struct SessionSummary {
     resume_hint: Option<String>,
 }
 
-impl From<SessionSummary> for ResetContextSummary {
+impl From<SessionSummary> for HistoryCommandSummary {
     fn from(summary: SessionSummary) -> Self {
         Self {
             usage_line: summary.usage_line,

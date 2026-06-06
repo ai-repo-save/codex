@@ -202,8 +202,12 @@ impl ChatWidget {
             SlashCommand::Fork => {
                 self.app_event_tx.send(AppEvent::ForkCurrentSession);
             }
-            SlashCommand::ResetContext => {
-                self.app_event_tx.send(AppEvent::ResetContextCurrentSession);
+            SlashCommand::ClearHistory => {
+                self.app_event_tx.send(AppEvent::ClearHistoryCurrentSession);
+            }
+            SlashCommand::CompactHistory => {
+                self.app_event_tx
+                    .send(AppEvent::CompactHistoryCurrentSession);
             }
             SlashCommand::Init => {
                 let init_target = self.config.cwd.join(DEFAULT_AGENTS_MD_FILENAME);
@@ -985,7 +989,8 @@ impl ChatWidget {
             | SlashCommand::Clear
             | SlashCommand::Resume
             | SlashCommand::Fork
-            | SlashCommand::ResetContext
+            | SlashCommand::ClearHistory
+            | SlashCommand::CompactHistory
             | SlashCommand::Init
             | SlashCommand::Compact
             | SlashCommand::Review

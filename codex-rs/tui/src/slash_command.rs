@@ -33,7 +33,8 @@ pub enum SlashCommand {
     Archive,
     Resume,
     Fork,
-    ResetContext,
+    ClearHistory,
+    CompactHistory,
     Init,
     Compact,
     Plan,
@@ -91,7 +92,8 @@ impl SlashCommand {
             SlashCommand::Archive => "archive this session and exit",
             SlashCommand::Clear => "clear the terminal and start a new chat",
             SlashCommand::Fork => "fork the current chat",
-            SlashCommand::ResetContext => "summarize context and continue in a new chat",
+            SlashCommand::ClearHistory => "clear history and continue in a new chat",
+            SlashCommand::CompactHistory => "summarize history and continue in a new chat",
             SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
             SlashCommand::Copy => "copy last response as markdown",
             SlashCommand::Raw => "toggle raw scrollback mode for copy-friendly terminal selection",
@@ -187,7 +189,8 @@ impl SlashCommand {
             | SlashCommand::Archive
             | SlashCommand::Resume
             | SlashCommand::Fork
-            | SlashCommand::ResetContext
+            | SlashCommand::ClearHistory
+            | SlashCommand::CompactHistory
             | SlashCommand::Init
             | SlashCommand::Compact
             | SlashCommand::Model
@@ -288,6 +291,25 @@ mod tests {
         assert!(SlashCommand::Raw.available_during_task());
         assert!(SlashCommand::Raw.available_in_side_conversation());
         assert!(SlashCommand::Raw.supports_inline_args());
+    }
+
+    #[test]
+    fn history_commands_parse_and_reset_context_is_removed() {
+        assert_eq!(
+            SlashCommand::from_str("clear-history"),
+            Ok(SlashCommand::ClearHistory)
+        );
+        assert_eq!(
+            SlashCommand::from_str("compact-history"),
+            Ok(SlashCommand::CompactHistory)
+        );
+        assert!(SlashCommand::from_str("reset-context").is_err());
+    }
+
+    #[test]
+    fn history_commands_are_disabled_during_task() {
+        assert!(!SlashCommand::ClearHistory.available_during_task());
+        assert!(!SlashCommand::CompactHistory.available_during_task());
     }
 
     #[test]

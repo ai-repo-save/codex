@@ -75,7 +75,7 @@ pub(crate) struct HistoryLookupResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ResetContextSummary {
+pub(crate) struct HistoryCommandSummary {
     pub(crate) usage_line: Option<String>,
     pub(crate) resume_hint: Option<String>,
 }
@@ -221,13 +221,16 @@ pub(crate) enum AppEvent {
     /// Fork the current session into a new thread.
     ForkCurrentSession,
 
-    /// Summarize the current context and continue from the compacted history in a new thread.
-    ResetContextCurrentSession,
+    /// Clear the current chat history and continue in a fresh thread.
+    ClearHistoryCurrentSession,
 
-    /// Result of a background reset-context request.
-    ResetContextCompleted {
+    /// Summarize the current history and continue from the compacted history in a new thread.
+    CompactHistoryCurrentSession,
+
+    /// Result of a background history compaction request.
+    CompactHistoryCompleted {
         source_thread_id: ThreadId,
-        summary: Option<ResetContextSummary>,
+        summary: Option<HistoryCommandSummary>,
         result: Result<AppServerStartedThread, String>,
     },
 

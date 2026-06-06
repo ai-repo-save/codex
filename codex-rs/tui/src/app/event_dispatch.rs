@@ -190,9 +190,32 @@ impl App {
 
                 tui.frame_requester().schedule_frame();
             }
-            AppEvent::ResetContextCurrentSession => {
+            AppEvent::ClearHistoryCurrentSession => {
                 self.session_telemetry.counter(
-                    "codex.thread.reset_context",
+                    "codex.thread.clear_history",
+                    /*inc*/ 1,
+                    &[("source", "slash_command")],
+                );
+                self.chat_widget
+                    .add_plain_history_lines(vec!["/clear-history".magenta().into()]);
+                if self.chat_widget.thread_id().is_some() {
+                    self.start_fresh_session_with_summary_hint(
+                        tui, app_server, /*session_start_source*/ None,
+                        /*initial_user_message*/ None,
+                    )
+                    .await;
+                } else {
+                    self.chat_widget.add_error_message(
+                        "A thread must contain at least one turn before its history can be cleared."
+                            .to_string(),
+                    );
+                }
+
+                tui.frame_requester().schedule_frame();
+            }
+            AppEvent::CompactHistoryCurrentSession => {
+                self.session_telemetry.counter(
+                    "codex.thread.compact_history",
                     /*inc*/ 1,
                     &[("source", "slash_command")],
                 );
@@ -202,13 +225,13 @@ impl App {
                     self.chat_widget.thread_name(),
                     self.chat_widget.rollout_path().as_deref(),
                 )
-                .map(ResetContextSummary::from);
+                .map(HistoryCommandSummary::from);
                 self.chat_widget
-                    .add_plain_history_lines(vec!["/reset-context".magenta().into()]);
+                    .add_plain_history_lines(vec!["/compact-history".magenta().into()]);
                 if let Some(thread_id) = self.chat_widget.thread_id() {
-                    self.refresh_in_memory_config_from_disk_best_effort("resetting context")
+                    self.refresh_in_memory_config_from_disk_best_effort("compacting history")
                         .await;
-                    self.reset_context_thread_in_background(
+                    self.compact_history_thread_in_background(
                         app_server,
                         self.config.clone(),
                         thread_id,
@@ -216,14 +239,14 @@ impl App {
                     );
                 } else {
                     self.chat_widget.add_error_message(
-                        "A thread must contain at least one turn before its context can be reset."
+                        "A thread must contain at least one turn before its history can be compacted."
                             .to_string(),
                     );
                 }
 
                 tui.frame_requester().schedule_frame();
             }
-            AppEvent::ResetContextCompleted {
+            AppEvent::CompactHistoryCompleted {
                 source_thread_id,
                 summary,
                 result,
@@ -233,7 +256,7 @@ impl App {
                         let current_thread_id = self.chat_widget.thread_id();
                         if current_thread_id != Some(source_thread_id) {
                             let mut lines: Vec<Line<'static>> = vec![
-                                "Context reset finished for a thread that is no longer active."
+                                "History compaction finished for a thread that is no longer active."
                                     .into(),
                             ];
                             if let Some(command) = codex_utils_cli::resume_hint(
@@ -280,14 +303,14 @@ impl App {
                             }
                             Err(err) => {
                                 self.chat_widget.add_error_message(format!(
-                                    "Failed to attach to reset app-server thread: {err}"
+                                    "Failed to attach to compacted app-server thread: {err}"
                                 ));
                             }
                         }
                     }
                     Err(err) => {
                         self.chat_widget.add_error_message(format!(
-                            "Failed to reset current context through the app server: {err}"
+                            "Failed to compact current history through the app server: {err}"
                         ));
                     }
                 }

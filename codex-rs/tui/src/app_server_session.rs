@@ -1157,7 +1157,7 @@ pub(crate) async fn start_thread_with_request_handle(
     started_thread_from_start_response(response, &config, thread_params_mode).await
 }
 
-pub(crate) async fn reset_context_thread_with_request_handle(
+pub(crate) async fn compact_history_thread_with_request_handle(
     request_handle: AppServerRequestHandle,
     config: Config,
     thread_id: ThreadId,
@@ -1166,7 +1166,7 @@ pub(crate) async fn reset_context_thread_with_request_handle(
 ) -> Result<AppServerStartedThread> {
     let response: ThreadResetContextResponse = request_handle
         .request_typed(ClientRequest::ThreadResetContext {
-            request_id: RequestId::String(format!("reset-context-{}", Uuid::new_v4())),
+            request_id: RequestId::String(format!("compact-history-{}", Uuid::new_v4())),
             params: thread_reset_context_params_from_config(
                 config.clone(),
                 thread_id,
@@ -1175,7 +1175,7 @@ pub(crate) async fn reset_context_thread_with_request_handle(
             ),
         })
         .await
-        .map_err(|err| bootstrap_request_error("thread/reset-context failed in TUI", err))?;
+        .map_err(|err| bootstrap_request_error("compact-history request failed in TUI", err))?;
     started_thread_from_reset_context_response(response, &config, thread_params_mode).await
 }
 
