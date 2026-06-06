@@ -17,6 +17,7 @@ DEFAULT_BRANCH = "main"
 DEFAULT_REMOTE_PATH = "/root/codex"
 DEFAULT_TARGET = "x86_64-unknown-linux-gnu"
 REMOTE_COMMAND_HEARTBEAT_SECONDS = 60.0
+REMOTE_FETCH_ATTEMPTS = 3
 
 
 @dataclass(frozen=True)
@@ -122,16 +123,22 @@ def ensure_local_head(repo_root: Path, expected_head: str) -> None:
 
 def sync_remote_checkout(config: RemoteWorkflow) -> None:
     LOGGER.info("updating remote checkout %s:%s", config.host, config.remote_path)
-    run(
-        ssh_command(
-            config,
-            "set -euo pipefail; "
-            f"cd {shell_quote(config.remote_path)}; "
-            "git fetch origin; "
-            f"git checkout {shell_quote(config.branch)}; "
-            f"git reset --hard origin/{shell_quote(config.branch)}; "
-            "git clean -fd",
-        )
+    run(ssh_command(config, remote_checkout_sync_command(config)))
+
+
+def remote_checkout_sync_command(config: RemoteWorkflow) -> str:
+    return (
+        "set -euo pipefail; "
+        f"cd {shell_quote(config.remote_path)}; "
+        f"for attempt in $(seq 1 {REMOTE_FETCH_ATTEMPTS}); do "
+        "if git fetch origin; then break; fi; "
+        f"if [ \"$attempt\" -eq {REMOTE_FETCH_ATTEMPTS} ]; then exit 1; fi; "
+        "echo \"remote sync: git fetch failed; retrying\" >&2; "
+        "sleep $((attempt * 2)); "
+        "done; "
+        f"git checkout {shell_quote(config.branch)}; "
+        f"git reset --hard origin/{shell_quote(config.branch)}; "
+        "git clean -fd"
     )
 
 

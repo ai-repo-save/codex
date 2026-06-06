@@ -39,6 +39,22 @@ class RemoteSyncTest(unittest.TestCase):
             ("ssh", "builder", "git status"),
         )
 
+    def test_remote_checkout_sync_command_retries_fetch_before_reset(self) -> None:
+        config = _sync.RemoteWorkflow(
+            host="builder",
+            branch="main",
+            remote_path="/root/codex",
+            command=(),
+        )
+
+        command = _sync.remote_checkout_sync_command(config)
+
+        self.assertIn("for attempt in $(seq 1 3)", command)
+        self.assertIn("if git fetch origin; then break; fi", command)
+        self.assertIn("remote sync: git fetch failed; retrying", command)
+        self.assertIn("git reset --hard origin/'main'", command)
+        self.assertIn("git clean -fd", command)
+
 
 if __name__ == "__main__":
     unittest.main()
