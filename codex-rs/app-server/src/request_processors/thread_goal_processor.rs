@@ -397,7 +397,7 @@ impl ThreadGoalRequestProcessor {
         send_thread_goal_snapshot_notification(&self.outgoing, thread_id, &state_db).await;
     }
 
-    async fn emit_thread_goal_updated_ordered(
+    pub(crate) async fn emit_thread_goal_updated_ordered(
         &self,
         thread_id: ThreadId,
         goal: ThreadGoal,

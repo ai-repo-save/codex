@@ -547,6 +547,61 @@ pub struct ThreadForkParams {
     pub exclude_turns: bool,
 }
 
+#[derive(
+    Serialize, Deserialize, Debug, Default, Clone, PartialEq, JsonSchema, TS, ExperimentalApi,
+)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadResetContextParams {
+    pub thread_id: String,
+
+    /// Configuration overrides for the reset thread, if any.
+    #[ts(optional = nullable)]
+    pub model: Option<String>,
+    #[ts(optional = nullable)]
+    pub model_provider: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "crate::protocol::serde_helpers::deserialize_double_option",
+        serialize_with = "crate::protocol::serde_helpers::serialize_double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional = nullable)]
+    pub service_tier: Option<Option<String>>,
+    #[ts(optional = nullable)]
+    pub cwd: Option<String>,
+    /// Replace the thread's runtime workspace roots. Relative paths are
+    /// resolved against the effective cwd for the thread.
+    #[experimental("thread/reset-context.runtimeWorkspaceRoots")]
+    #[ts(optional = nullable)]
+    pub runtime_workspace_roots: Option<Vec<PathBuf>>,
+    #[experimental(nested)]
+    #[ts(optional = nullable)]
+    pub approval_policy: Option<AskForApproval>,
+    /// Override where approval requests are routed for review on this thread
+    /// and subsequent turns.
+    #[ts(optional = nullable)]
+    pub approvals_reviewer: Option<ApprovalsReviewer>,
+    #[ts(optional = nullable)]
+    pub sandbox: Option<SandboxMode>,
+    /// Named profile id for the reset thread. Cannot be combined with
+    /// `sandbox`.
+    #[experimental("thread/reset-context.permissions")]
+    #[ts(optional = nullable)]
+    pub permissions: Option<String>,
+    #[ts(optional = nullable)]
+    pub config: Option<HashMap<String, serde_json::Value>>,
+    #[ts(optional = nullable)]
+    pub base_instructions: Option<String>,
+    #[ts(optional = nullable)]
+    pub developer_instructions: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ephemeral: bool,
+    /// Optional client-supplied analytics source classification for this reset thread.
+    #[ts(optional = nullable)]
+    pub thread_source: Option<ThreadSource>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS, ExperimentalApi)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
@@ -577,6 +632,57 @@ pub struct ThreadForkResponse {
     #[serde(default)]
     pub active_permission_profile: Option<ActivePermissionProfile>,
     pub reasoning_effort: Option<ReasoningEffort>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS, ExperimentalApi)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadResetContextResponse {
+    pub thread: Thread,
+    pub model: String,
+    pub model_provider: String,
+    pub service_tier: Option<String>,
+    pub cwd: AbsolutePathBuf,
+    /// Thread-scoped runtime workspace roots used to materialize
+    /// `:workspace_roots`.
+    #[experimental("thread/reset-context.runtimeWorkspaceRoots")]
+    #[serde(default)]
+    pub runtime_workspace_roots: Vec<AbsolutePathBuf>,
+    /// Instruction source files currently loaded for this thread.
+    #[serde(default)]
+    pub instruction_sources: Vec<AbsolutePathBuf>,
+    #[experimental(nested)]
+    pub approval_policy: AskForApproval,
+    /// Reviewer currently used for approval requests on this thread.
+    pub approvals_reviewer: ApprovalsReviewer,
+    /// Legacy sandbox policy retained for compatibility. Experimental clients
+    /// should prefer `activePermissionProfile` for profile provenance.
+    pub sandbox: SandboxPolicy,
+    /// Named or implicit built-in profile that produced the active
+    /// permissions, when known.
+    #[experimental("thread/reset-context.activePermissionProfile")]
+    #[serde(default)]
+    pub active_permission_profile: Option<ActivePermissionProfile>,
+    pub reasoning_effort: Option<ReasoningEffort>,
+}
+
+impl From<ThreadForkResponse> for ThreadResetContextResponse {
+    fn from(response: ThreadForkResponse) -> Self {
+        Self {
+            thread: response.thread,
+            model: response.model,
+            model_provider: response.model_provider,
+            service_tier: response.service_tier,
+            cwd: response.cwd,
+            runtime_workspace_roots: response.runtime_workspace_roots,
+            instruction_sources: response.instruction_sources,
+            approval_policy: response.approval_policy,
+            approvals_reviewer: response.approvals_reviewer,
+            sandbox: response.sandbox,
+            active_permission_profile: response.active_permission_profile,
+            reasoning_effort: response.reasoning_effort,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

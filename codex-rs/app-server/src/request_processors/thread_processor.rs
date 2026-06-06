@@ -15,6 +15,15 @@ struct ThreadListFilters {
     use_state_db_only: bool,
 }
 
+struct ThreadForkBuildResult {
+    response: ThreadForkResponse,
+    notification: ThreadStartedNotification,
+    token_usage_thread: Option<Thread>,
+    history_items: Vec<RolloutItem>,
+    forked_thread: Arc<CodexThread>,
+    thread_id: ThreadId,
+}
+
 fn collect_resume_override_mismatches(
     request: &ThreadResumeParams,
     config_snapshot: &ThreadConfigSnapshot,
@@ -144,6 +153,28 @@ fn collect_resume_override_mismatches(
         );
     }
     mismatch_details
+}
+
+fn thread_fork_params_from_reset_context(params: ThreadResetContextParams) -> ThreadForkParams {
+    ThreadForkParams {
+        thread_id: params.thread_id,
+        path: None,
+        model: params.model,
+        model_provider: params.model_provider,
+        service_tier: params.service_tier,
+        cwd: params.cwd,
+        runtime_workspace_roots: params.runtime_workspace_roots,
+        approval_policy: params.approval_policy,
+        approvals_reviewer: params.approvals_reviewer,
+        sandbox: params.sandbox,
+        permissions: params.permissions,
+        config: params.config,
+        base_instructions: params.base_instructions,
+        developer_instructions: params.developer_instructions,
+        ephemeral: params.ephemeral,
+        thread_source: params.thread_source,
+        exclude_turns: false,
+    }
 }
 
 fn merge_persisted_resume_metadata(
@@ -428,6 +459,23 @@ impl ThreadRequestProcessor {
         app_server_client_version: Option<String>,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
         self.thread_fork_inner(
+            request_id,
+            params,
+            app_server_client_name,
+            app_server_client_version,
+        )
+        .await
+        .map(|()| None)
+    }
+
+    pub(crate) async fn thread_reset_context(
+        &self,
+        request_id: ConnectionRequestId,
+        params: ThreadResetContextParams,
+        app_server_client_name: Option<String>,
+        app_server_client_version: Option<String>,
+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        self.thread_reset_context_inner(
             request_id,
             params,
             app_server_client_name,
@@ -3144,6 +3192,25 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
     ) -> Result<(), JSONRPCErrorError> {
+        let result = self
+            .build_thread_fork_response(
+                &request_id,
+                params,
+                app_server_client_name,
+                app_server_client_version,
+            )
+            .await?;
+        self.send_thread_fork_response(request_id, result).await;
+        Ok(())
+    }
+
+    async fn build_thread_fork_response(
+        &self,
+        request_id: &ConnectionRequestId,
+        params: ThreadForkParams,
+        app_server_client_name: Option<String>,
+        app_server_client_version: Option<String>,
+    ) -> Result<ThreadForkBuildResult, JSONRPCErrorError> {
         let ThreadForkParams {
             thread_id,
             path,
@@ -3247,7 +3314,7 @@ impl ThreadRequestProcessor {
                     rollout_path: source_thread.rollout_path.clone(),
                 }),
                 thread_source.map(Into::into),
-                self.request_trace_context(&request_id).await,
+                self.request_trace_context(request_id).await,
             )
             .await
             .map_err(|err| match err {
@@ -3349,9 +3416,32 @@ impl ThreadRequestProcessor {
             reasoning_effort: session_configured.reasoning_effort,
         };
 
-        let notif = thread_started_notification(thread);
-        let connection_id = request_id.connection_id;
+        let notification = thread_started_notification(thread);
         let token_usage_thread = include_turns.then(|| response.thread.clone());
+        Ok(ThreadForkBuildResult {
+            response,
+            notification,
+            token_usage_thread,
+            history_items,
+            forked_thread,
+            thread_id,
+        })
+    }
+
+    async fn send_thread_fork_response(
+        &self,
+        request_id: ConnectionRequestId,
+        result: ThreadForkBuildResult,
+    ) {
+        let ThreadForkBuildResult {
+            response,
+            notification,
+            token_usage_thread,
+            history_items,
+            forked_thread,
+            thread_id,
+        } = result;
+        let connection_id = request_id.connection_id;
         self.outgoing.send_response(request_id, response).await;
         // `excludeTurns` is the cheap fork path, so skip restored usage replay
         // instead of rebuilding history only to attribute a historical update.
@@ -3374,7 +3464,179 @@ impl ThreadRequestProcessor {
         }
 
         self.outgoing
-            .send_server_notification(ServerNotification::ThreadStarted(notif))
+            .send_server_notification(ServerNotification::ThreadStarted(notification))
+            .await;
+    }
+
+    async fn thread_reset_context_inner(
+        &self,
+        request_id: ConnectionRequestId,
+        params: ThreadResetContextParams,
+        app_server_client_name: Option<String>,
+        app_server_client_version: Option<String>,
+    ) -> Result<(), JSONRPCErrorError> {
+        let source_thread_id = ThreadId::from_string(params.thread_id.as_str())
+            .map_err(|err| invalid_request(format!("invalid thread id: {err}")))?;
+        match self
+            .thread_watch_manager
+            .loaded_status_for_thread(params.thread_id.as_str())
+            .await
+        {
+            ThreadStatus::Active { .. } => {
+                return Err(invalid_request(
+                    "cannot reset context while a task is in progress",
+                ));
+            }
+            ThreadStatus::Idle => {}
+            ThreadStatus::NotLoaded | ThreadStatus::SystemError => {
+                return Err(invalid_request(format!(
+                    "thread must be loaded and idle before reset-context: {source_thread_id}"
+                )));
+            }
+        }
+
+        let source_thread = self
+            .thread_manager
+            .get_thread(source_thread_id)
+            .await
+            .map_err(|_| invalid_request(format!("thread not found: {source_thread_id}")))?;
+        source_thread
+            .reset_context_compact(Uuid::new_v4().to_string())
+            .await
+            .map_err(|err| internal_error(format!("failed to compact thread: {err}")))?;
+        source_thread
+            .flush_rollout()
+            .await
+            .map_err(|err| internal_error(format!("failed to flush compacted rollout: {err}")))?;
+
+        let result = self
+            .build_thread_fork_response(
+                &request_id,
+                thread_fork_params_from_reset_context(params),
+                app_server_client_name,
+                app_server_client_version,
+            )
+            .await?;
+        self.migrate_reset_context_goal(source_thread_id, result.thread_id)
+            .await?;
+        self.send_thread_reset_context_response(request_id, result)
+            .await;
+        Ok(())
+    }
+
+    async fn send_thread_reset_context_response(
+        &self,
+        request_id: ConnectionRequestId,
+        result: ThreadForkBuildResult,
+    ) {
+        let ThreadForkBuildResult {
+            response,
+            notification,
+            token_usage_thread,
+            history_items,
+            forked_thread,
+            thread_id,
+        } = result;
+        let connection_id = request_id.connection_id;
+        self.outgoing
+            .send_response(request_id, ThreadResetContextResponse::from(response))
+            .await;
+        if let Some(token_usage_thread) = token_usage_thread {
+            let token_usage_turn_id = latest_token_usage_turn_id_from_rollout_items(
+                &history_items,
+                token_usage_thread.turns.as_slice(),
+            );
+            send_thread_token_usage_update_to_connection(
+                &self.outgoing,
+                connection_id,
+                thread_id,
+                &token_usage_thread,
+                forked_thread.as_ref(),
+                token_usage_turn_id,
+            )
+            .await;
+        }
+
+        self.outgoing
+            .send_server_notification(ServerNotification::ThreadStarted(notification))
+            .await;
+    }
+
+    async fn migrate_reset_context_goal(
+        &self,
+        source_thread_id: ThreadId,
+        reset_thread_id: ThreadId,
+    ) -> Result<(), JSONRPCErrorError> {
+        if !self.config.features.enabled(Feature::Goals) {
+            return Ok(());
+        }
+        let Some(state_db) = self.state_db.as_ref() else {
+            return Ok(());
+        };
+        let Some(source_goal) = state_db
+            .thread_goals()
+            .get_thread_goal(source_thread_id)
+            .await
+            .map_err(|err| internal_error(format!("failed to read source thread goal: {err}")))?
+        else {
+            return Ok(());
+        };
+        if matches!(source_goal.status, codex_state::ThreadGoalStatus::Complete) {
+            return Ok(());
+        }
+
+        let reset_goal = state_db
+            .thread_goals()
+            .replace_thread_goal(
+                reset_thread_id,
+                source_goal.objective.as_str(),
+                codex_state::ThreadGoalStatus::Active,
+                source_goal.token_budget,
+            )
+            .await
+            .map_err(|err| internal_error(format!("failed to copy thread goal: {err}")))?;
+        let paused_source_goal = state_db
+            .thread_goals()
+            .update_thread_goal(
+                source_thread_id,
+                codex_state::GoalUpdate {
+                    objective: None,
+                    status: Some(codex_state::ThreadGoalStatus::Paused),
+                    token_budget: None,
+                    expected_goal_id: Some(source_goal.goal_id),
+                },
+            )
+            .await
+            .map_err(|err| internal_error(format!("failed to pause source thread goal: {err}")))?
+            .ok_or_else(|| {
+                internal_error(format!(
+                    "cannot pause source goal for thread {source_thread_id}: no goal exists"
+                ))
+            })?;
+
+        let source_listener_command_tx = {
+            let thread_state = self.thread_state_manager.thread_state(source_thread_id).await;
+            let thread_state = thread_state.lock().await;
+            thread_state.listener_command_tx()
+        };
+        let reset_listener_command_tx = {
+            let thread_state = self.thread_state_manager.thread_state(reset_thread_id).await;
+            let thread_state = thread_state.lock().await;
+            thread_state.listener_command_tx()
+        };
+        self.thread_goal_processor
+            .emit_thread_goal_updated_ordered(
+                source_thread_id,
+                super::thread_goal_processor::api_thread_goal_from_state(paused_source_goal),
+                source_listener_command_tx,
+            )
+            .await;
+        self.thread_goal_processor
+            .emit_thread_goal_updated_ordered(
+                reset_thread_id,
+                super::thread_goal_processor::api_thread_goal_from_state(reset_goal),
+                reset_listener_command_tx,
+            )
             .await;
         Ok(())
     }

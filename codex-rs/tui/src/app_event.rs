@@ -215,6 +215,9 @@ pub(crate) enum AppEvent {
     /// Fork the current session into a new thread.
     ForkCurrentSession,
 
+    /// Summarize the current context and continue from the compacted history in a new thread.
+    ResetContextCurrentSession,
+
     /// Request to exit the application.
     ///
     /// Use `ShutdownFirst` for user-initiated quits so core cleanup runs and the

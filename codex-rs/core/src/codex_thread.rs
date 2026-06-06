@@ -224,6 +224,19 @@ impl CodexThread {
         self.codex.session.flush_rollout().await
     }
 
+    pub async fn reset_context_compact(&self, sub_id: String) -> CodexResult<()> {
+        let turn_context = self
+            .codex
+            .session
+            .new_default_turn_with_sub_id(sub_id)
+            .await;
+        crate::tasks::compact::run_manual_compact_task(
+            Arc::clone(&self.codex.session),
+            turn_context,
+        )
+        .await
+    }
+
     pub async fn submit_with_trace(
         &self,
         op: Op,

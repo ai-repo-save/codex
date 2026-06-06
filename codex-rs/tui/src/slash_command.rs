@@ -33,6 +33,7 @@ pub enum SlashCommand {
     Archive,
     Resume,
     Fork,
+    ResetContext,
     Init,
     Compact,
     Plan,
@@ -90,6 +91,7 @@ impl SlashCommand {
             SlashCommand::Archive => "archive this session and exit",
             SlashCommand::Clear => "clear the terminal and start a new chat",
             SlashCommand::Fork => "fork the current chat",
+            SlashCommand::ResetContext => "summarize context and continue in a new chat",
             SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
             SlashCommand::Copy => "copy last response as markdown",
             SlashCommand::Raw => "toggle raw scrollback mode for copy-friendly terminal selection",
@@ -185,6 +187,7 @@ impl SlashCommand {
             | SlashCommand::Archive
             | SlashCommand::Resume
             | SlashCommand::Fork
+            | SlashCommand::ResetContext
             | SlashCommand::Init
             | SlashCommand::Compact
             | SlashCommand::Model

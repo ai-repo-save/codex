@@ -460,6 +460,12 @@ client_request_definitions! {
         serialization: thread_or_path(params.thread_id, params.path),
         response: v2::ThreadForkResponse,
     },
+    ThreadResetContext => "thread/reset-context" {
+        params: v2::ThreadResetContextParams,
+        inspect_params: true,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadResetContextResponse,
+    },
     ThreadArchive => "thread/archive" {
         params: v2::ThreadArchiveParams,
         serialization: thread_id(params.thread_id),

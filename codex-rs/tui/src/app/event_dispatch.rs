@@ -190,6 +190,73 @@ impl App {
 
                 tui.frame_requester().schedule_frame();
             }
+            AppEvent::ResetContextCurrentSession => {
+                self.session_telemetry.counter(
+                    "codex.thread.reset_context",
+                    /*inc*/ 1,
+                    &[("source", "slash_command")],
+                );
+                let summary = session_summary(
+                    self.chat_widget.token_usage(),
+                    self.chat_widget.thread_id(),
+                    self.chat_widget.thread_name(),
+                    self.chat_widget.rollout_path().as_deref(),
+                );
+                self.chat_widget
+                    .add_plain_history_lines(vec!["/reset-context".magenta().into()]);
+                if let Some(thread_id) = self.chat_widget.thread_id() {
+                    self.refresh_in_memory_config_from_disk_best_effort("resetting context")
+                        .await;
+                    match app_server
+                        .reset_context_thread(self.config.clone(), thread_id)
+                        .await
+                    {
+                        Ok(reset) => {
+                            self.shutdown_current_thread(app_server).await;
+                            match self
+                                .replace_chat_widget_with_app_server_thread(
+                                    tui, app_server, reset, /*initial_user_message*/ None,
+                                )
+                                .await
+                            {
+                                Ok(()) => {
+                                    if let Some(summary) = summary {
+                                        let mut lines: Vec<Line<'static>> = Vec::new();
+                                        if let Some(usage_line) = summary.usage_line {
+                                            lines.push(usage_line.into());
+                                        }
+                                        if let Some(command) = summary.resume_hint {
+                                            let spans = vec![
+                                                "To continue the previous session, run ".into(),
+                                                command.cyan(),
+                                            ];
+                                            lines.push(spans.into());
+                                        }
+                                        self.chat_widget.add_plain_history_lines(lines);
+                                    }
+                                }
+                                Err(err) => {
+                                    self.chat_widget.add_error_message(format!(
+                                        "Failed to attach to reset app-server thread: {err}"
+                                    ));
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            self.chat_widget.add_error_message(format!(
+                                "Failed to reset current context through the app server: {err}"
+                            ));
+                        }
+                    }
+                } else {
+                    self.chat_widget.add_error_message(
+                        "A thread must contain at least one turn before its context can be reset."
+                            .to_string(),
+                    );
+                }
+
+                tui.frame_requester().schedule_frame();
+            }
             AppEvent::BeginInitialHistoryReplayBuffer => {
                 self.begin_initial_history_replay_buffer();
             }

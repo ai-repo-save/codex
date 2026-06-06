@@ -1026,6 +1026,16 @@ impl MessageProcessor {
                     )
                     .await
             }
+            ClientRequest::ThreadResetContext { params, .. } => {
+                self.thread_processor
+                    .thread_reset_context(
+                        request_id.clone(),
+                        params,
+                        app_server_client_name.clone(),
+                        client_version.clone(),
+                    )
+                    .await
+            }
             ClientRequest::ThreadArchive { params, .. } => {
                 self.thread_processor
                     .thread_archive(request_id.clone(), params)

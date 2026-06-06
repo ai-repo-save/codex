@@ -202,6 +202,9 @@ impl ChatWidget {
             SlashCommand::Fork => {
                 self.app_event_tx.send(AppEvent::ForkCurrentSession);
             }
+            SlashCommand::ResetContext => {
+                self.app_event_tx.send(AppEvent::ResetContextCurrentSession);
+            }
             SlashCommand::Init => {
                 let init_target = self.config.cwd.join(DEFAULT_AGENTS_MD_FILENAME);
                 if init_target.exists() {
@@ -982,6 +985,7 @@ impl ChatWidget {
             | SlashCommand::Clear
             | SlashCommand::Resume
             | SlashCommand::Fork
+            | SlashCommand::ResetContext
             | SlashCommand::Init
             | SlashCommand::Compact
             | SlashCommand::Review
