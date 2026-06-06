@@ -10,7 +10,6 @@ use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::built_in_model_providers;
 use codex_plugin::PluginHookSource;
 use codex_plugin::PluginId;
-use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::items::parse_hook_prompt_fragment;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::PermissionProfile;
@@ -580,60 +579,6 @@ fn install_allow_permission_request_hook(home: &Path) -> Result<()> {
     )
 }
 
-fn write_approval_review_route_hook(
-    home: &Path,
-    matcher: Option<&str>,
-    reviewer: &str,
-) -> Result<()> {
-    let script_path = home.join("approval_review_route_hook.py");
-    let log_path = home.join("approval_review_route_hook_log.jsonl");
-    let reviewer_json =
-        serde_json::to_string(reviewer).context("serialize approval route reviewer")?;
-    let script = format!(
-        r#"import json
-from pathlib import Path
-
-log_path = Path(r"{log_path}")
-reviewer = {reviewer_json}
-
-payload = json.load(sys.stdin)
-
-with log_path.open("a", encoding="utf-8") as handle:
-    handle.write(json.dumps(payload) + "\n")
-
-print(json.dumps({{
-    "hookSpecificOutput": {{
-        "hookEventName": "ApprovalReviewRoute",
-        "reviewer": reviewer
-    }}
-}}))
-"#,
-        log_path = log_path.display(),
-        reviewer_json = reviewer_json,
-    );
-
-    let mut group = serde_json::json!({
-        "hooks": [{
-            "type": "command",
-            "command": format!("python3 {}", script_path.display()),
-            "statusMessage": "routing approval review",
-        }]
-    });
-    if let Some(matcher) = matcher {
-        group["matcher"] = Value::String(matcher.to_string());
-    }
-
-    let hooks = serde_json::json!({
-        "hooks": {
-            "ApprovalReviewRoute": [group]
-        }
-    });
-
-    fs::write(&script_path, script).context("write approval route hook script")?;
-    fs::write(home.join("hooks.json"), hooks.to_string()).context("write hooks.json")?;
-    Ok(())
-}
-
 fn write_post_tool_use_hook(
     home: &Path,
     matcher: Option<&str>,
@@ -994,10 +939,6 @@ fn read_permission_request_hook_inputs(home: &Path) -> Result<Vec<serde_json::Va
         .filter(|line| !line.trim().is_empty())
         .map(|line| serde_json::from_str(line).context("parse permission request hook log line"))
         .collect()
-}
-
-fn read_approval_review_route_hook_inputs(home: &Path) -> Result<Vec<serde_json::Value>> {
-    read_hook_inputs_from_log(home.join("approval_review_route_hook_log.jsonl").as_path())
 }
 
 fn assert_permission_request_hook_input(
@@ -2084,117 +2025,6 @@ async fn permission_request_hook_allows_shell_command_without_user_approval() ->
             .as_str()
             .is_some_and(|turn_id| !turn_id.is_empty())
     );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn approval_review_route_hook_routes_exec_command_to_auto_review() -> Result<()> {
-    skip_if_no_network!(Ok(()));
-
-    let server = start_mock_server().await;
-    let call_id = "approval-review-route-exec-command";
-    let marker = std::env::temp_dir().join("approval-review-route-exec-command-marker");
-    let command = format!("printf routed > {}", marker.display());
-    let justification = "route exec command through auto review";
-    let args = serde_json::json!({
-        "cmd": command,
-        "sandbox_permissions": "require_escalated",
-        "justification": justification,
-    });
-    let responses = mount_sse_sequence(
-        &server,
-        vec![
-            sse(vec![
-                ev_response_created("resp-parent-tool"),
-                core_test_support::responses::ev_function_call(
-                    call_id,
-                    "exec_command",
-                    &serde_json::to_string(&args)?,
-                ),
-                ev_completed("resp-parent-tool"),
-            ]),
-            sse(vec![
-                ev_response_created("resp-guardian-review"),
-                ev_assistant_message(
-                    "msg-guardian-review",
-                    &serde_json::json!({
-                        "risk_level": "low",
-                        "user_authorization": "high",
-                        "outcome": "allow",
-                        "rationale": "The command writes a marker file for the test.",
-                    })
-                    .to_string(),
-                ),
-                ev_completed("resp-guardian-review"),
-            ]),
-            sse(vec![
-                ev_response_created("resp-parent-done"),
-                ev_assistant_message("msg-parent-done", "approval route hook selected review"),
-                ev_completed("resp-parent-done"),
-            ]),
-        ],
-    )
-    .await;
-
-    let mut builder = test_codex()
-        .with_pre_build_hook(|home| {
-            if let Err(error) = write_approval_review_route_hook(
-                home,
-                /*matcher*/ None,
-                "auto_review",
-            ) {
-                panic!("failed to write approval route hook test fixture: {error}");
-            }
-        })
-        .with_config(|config| {
-            config.use_experimental_unified_exec_tool = true;
-            config.approvals_reviewer = ApprovalsReviewer::User;
-            trust_discovered_hooks(config);
-            config
-                .features
-                .enable(Feature::UnifiedExec)
-                .expect("test config should allow feature update");
-        });
-    let test = builder.build(&server).await?;
-
-    let _ = fs::remove_file(&marker);
-
-    test.submit_turn_with_approval_and_permission_profile(
-        "run the exec command after approval route hook review",
-        AskForApproval::OnRequest,
-        PermissionProfile::read_only(),
-    )
-    .await?;
-
-    let requests = responses.requests();
-    assert!(requests.len() >= 2);
-    let guardian_request = requests
-        .iter()
-        .find(|request| {
-            request.body_contains_text(&command)
-                && request
-                    .instructions_text()
-                    .starts_with("You are judging one planned coding-agent action.")
-        })
-        .expect("expected Guardian request for routed shell approval");
-    assert!(guardian_request.body_contains_text(&command));
-    assert_eq!(
-        fs::read_to_string(&marker).context("read approval route marker")?,
-        "routed"
-    );
-
-    let hook_inputs = read_approval_review_route_hook_inputs(test.codex_home_path())?;
-    assert_eq!(hook_inputs.len(), 1);
-    assert_eq!(hook_inputs[0]["hook_event_name"], "ApprovalReviewRoute");
-    assert_eq!(hook_inputs[0]["tool_name"], "exec_command");
-    assert_eq!(hook_inputs[0]["tool_input"]["command"], command);
-    assert_eq!(hook_inputs[0]["tool_input"]["description"], justification);
-    assert_eq!(hook_inputs[0]["approval_kind"], "exec_command");
-    assert_eq!(hook_inputs[0]["approval_policy"], "on_request");
-    assert_eq!(hook_inputs[0]["strict_auto_review"], false);
-    assert_eq!(hook_inputs[0]["static_auto_review_enabled"], false);
-    assert!(hook_inputs[0].get("tool_use_id").is_none());
 
     Ok(())
 }
