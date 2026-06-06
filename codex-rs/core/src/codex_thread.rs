@@ -230,11 +230,7 @@ impl CodexThread {
             .session
             .new_default_turn_with_sub_id(sub_id)
             .await;
-        crate::tasks::compact::run_manual_compact_task(
-            Arc::clone(&self.codex.session),
-            turn_context,
-        )
-        .await
+        crate::tasks::run_manual_compact_task(Arc::clone(&self.codex.session), turn_context).await
     }
 
     pub async fn submit_with_trace(

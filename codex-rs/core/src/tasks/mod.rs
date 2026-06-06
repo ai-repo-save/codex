@@ -54,6 +54,7 @@ use codex_protocol::protocol::WarningEvent;
 use codex_features::Feature;
 use codex_protocol::models::ContentItem;
 pub(crate) use compact::CompactTask;
+pub(crate) use compact::run_manual_compact_task;
 pub(crate) use regular::RegularTask;
 pub(crate) use review::ReviewTask;
 pub(crate) use user_shell::UserShellCommandMode;
