@@ -11,7 +11,13 @@ from typing import Any
 
 BLOCK_REASON = (
     "Local build/test/codegen commands are forbidden in this repository. "
-    "Run them on 192.168.50.8 instead."
+    "Run them through the repository remote wrappers instead."
+)
+REMOTE_BLOCK_REASON = (
+    "Direct remote build/test/codegen commands are forbidden in this repository, "
+    "even when invoked through ssh. Use the repository remote wrappers instead. "
+    "For codex-rs just recipes, run: "
+    "uv run --project scripts python scripts/remote/just.py <recipe> [args...]"
 )
 
 BLOCKED_EXECUTABLE_NAMES = frozenset(
@@ -55,8 +61,8 @@ def main() -> int:
     if request is None:
         return 0
 
-    if is_blocked_command(request.command):
-        print(json.dumps(block_decision(request.command), ensure_ascii=False))
+    if reason := blocked_command_reason(request.command):
+        print(json.dumps(block_decision(request.command, reason), ensure_ascii=False))
     return 0
 
 
@@ -85,19 +91,27 @@ def first_string_value(mapping: dict[str, Any], keys: tuple[str, ...]) -> str | 
 
 
 def is_blocked_command(command: str) -> bool:
+    return blocked_command_reason(command) is not None
+
+
+def blocked_command_reason(command: str) -> str | None:
     try:
         words = shlex.split(command, comments=False, posix=True)
     except ValueError:
-        return False
+        return None
 
     words = strip_env_prefix(words)
     if not words:
-        return False
+        return None
 
     executable = PurePath(words[0]).name
     if executable in REMOTE_EXECUTABLES:
-        return remote_command_is_blocked(words)
-    return shell_words_are_blocked(words)
+        if remote_command_is_blocked(words):
+            return REMOTE_BLOCK_REASON
+        return None
+    if shell_words_are_blocked(words):
+        return BLOCK_REASON
+    return None
 
 
 def strip_env_prefix(words: list[str]) -> list[str]:
@@ -161,12 +175,12 @@ def normalized_script_path(word: str) -> str:
     return path
 
 
-def block_decision(command: str) -> dict[str, object]:
+def block_decision(command: str, reason: str) -> dict[str, object]:
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
-            "permissionDecisionReason": f"{BLOCK_REASON} Blocked command: {command}",
+            "permissionDecisionReason": f"{reason} Blocked command: {command}",
         }
     }
 

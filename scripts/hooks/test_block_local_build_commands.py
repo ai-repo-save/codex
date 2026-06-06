@@ -24,6 +24,10 @@ class BlockLocalBuildCommandsTest(unittest.TestCase):
 
     def test_blocks_local_build_command(self) -> None:
         self.assertTrue(block_local_build_commands.is_blocked_command("just test"))
+        self.assertEqual(
+            block_local_build_commands.blocked_command_reason("just test"),
+            block_local_build_commands.BLOCK_REASON,
+        )
 
     def test_blocks_ad_hoc_remote_just_command(self) -> None:
         self.assertTrue(
@@ -31,6 +35,11 @@ class BlockLocalBuildCommandsTest(unittest.TestCase):
                 "ssh 192.168.50.8 'cd /root/codex/codex-rs && just test'"
             )
         )
+        reason = block_local_build_commands.blocked_command_reason(
+            "ssh 192.168.50.8 'cd /root/codex/codex-rs && just test'"
+        )
+        self.assertEqual(reason, block_local_build_commands.REMOTE_BLOCK_REASON)
+        self.assertIn("scripts/remote/just.py", reason)
 
     def test_allows_remote_diagnostic_command(self) -> None:
         self.assertFalse(
