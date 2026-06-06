@@ -53,6 +53,7 @@ use super::prompt::GuardianTranscriptCursor;
 use super::prompt::build_guardian_prompt_items_with_parent_turn;
 use super::prompt::guardian_policy_prompt;
 use super::prompt::guardian_policy_prompt_with_config;
+use super::prompt::guardian_policy_prompt_with_template;
 
 const GUARDIAN_INTERRUPT_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug)]
@@ -913,9 +914,16 @@ pub(crate) fn build_guardian_review_session_config(
     guardian_config.include_skill_instructions = false;
     guardian_config.base_instructions = Some(
         parent_config
-            .guardian_policy_config
-            .as_deref()
-            .map(guardian_policy_prompt_with_config)
+            .auto_review
+            .prompt_template
+            .as_ref()
+            .map(guardian_policy_prompt_with_template)
+            .or_else(|| {
+                parent_config
+                    .guardian_policy_config
+                    .as_deref()
+                    .map(guardian_policy_prompt_with_config)
+            })
             .unwrap_or_else(guardian_policy_prompt),
     );
     guardian_config.notify = None;

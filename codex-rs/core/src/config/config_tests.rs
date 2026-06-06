@@ -10,6 +10,7 @@ use codex_config::ProfileV2Name;
 use codex_config::RequirementSource;
 use codex_config::config_toml::AgentRoleToml;
 use codex_config::config_toml::AgentsToml;
+use codex_config::config_toml::AutoReviewReviewToml;
 use codex_config::config_toml::AutoReviewToml;
 use codex_config::config_toml::ConfigToml;
 use codex_config::config_toml::ExperimentalRequestUserInput;
@@ -74,6 +75,7 @@ use codex_network_proxy::NetworkMode;
 use codex_prompts::budget_limit_prompt_with_templates;
 use codex_prompts::continuation_prompt_with_templates;
 use codex_prompts::objective_updated_prompt_with_templates;
+use codex_prompts::render_auto_review_prompt_template;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use codex_protocol::config_types::ServiceTier;
@@ -6787,6 +6789,7 @@ async fn load_config_uses_auto_review_guardian_policy_config() -> std::io::Resul
     let cfg = ConfigToml {
         auto_review: Some(AutoReviewToml {
             policy: Some("  Use the user-configured guardian policy.  ".to_string()),
+            ..Default::default()
         }),
         ..Default::default()
     };
@@ -6824,6 +6827,7 @@ async fn requirements_guardian_policy_beats_auto_review() -> std::io::Result<()>
     let cfg = ConfigToml {
         auto_review: Some(AutoReviewToml {
             policy: Some("Use the user-configured guardian policy.".to_string()),
+            ..Default::default()
         }),
         ..Default::default()
     };
@@ -6854,6 +6858,7 @@ async fn load_config_ignores_empty_auto_review_guardian_policy_config() -> std::
     let cfg = ConfigToml {
         auto_review: Some(AutoReviewToml {
             policy: Some("   ".to_string()),
+            ..Default::default()
         }),
         ..Default::default()
     };
@@ -6869,6 +6874,215 @@ async fn load_config_ignores_empty_auto_review_guardian_policy_config() -> std::
     .await?;
 
     assert_eq!(config.guardian_policy_config, None);
+
+    Ok(())
+}
+
+#[test]
+fn config_toml_deserializes_auto_review_prompt_and_review_scope() {
+    let cfg = toml::from_str::<ConfigToml>(
+        r#"
+[auto_review]
+prompt = "review this action"
+
+[auto_review.review]
+shell = true
+apply_patch = true
+network_access = false
+review_when_approval_policy_never = true
+"#,
+    )
+    .expect("TOML deserialization should succeed");
+
+    let auto_review = cfg.auto_review.expect("auto_review config");
+    assert_eq!(auto_review.prompt.as_deref(), Some("review this action"));
+    assert_eq!(
+        auto_review.review,
+        Some(AutoReviewReviewToml {
+            shell: Some(true),
+            apply_patch: Some(true),
+            network_access: Some(false),
+            review_when_approval_policy_never: Some(true),
+            ..Default::default()
+        })
+    );
+}
+
+#[tokio::test]
+async fn loads_auto_review_prompt_override_from_inline_config() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let cfg = ConfigToml {
+        auto_review: Some(AutoReviewToml {
+            prompt: Some("  review exactly this action  ".to_string()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let config = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await?;
+
+    assert_eq!(
+        config
+            .auto_review
+            .prompt_template
+            .as_ref()
+            .map(render_auto_review_prompt_template),
+        Some("review exactly this action".to_string())
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn loads_auto_review_prompt_override_from_relative_file() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let cwd = TempDir::new()?;
+    let prompts_dir = codex_home.path().join("prompts");
+    std::fs::create_dir_all(&prompts_dir)?;
+    std::fs::write(prompts_dir.join("auto-review.md"), "  review from file  ")?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[auto_review]
+prompt_file = "./prompts/auto-review.md"
+"#,
+    )?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(cwd.path().to_path_buf()))
+        .build()
+        .await?;
+
+    assert_eq!(
+        config
+            .auto_review
+            .prompt_template
+            .as_ref()
+            .map(render_auto_review_prompt_template),
+        Some("review from file".to_string())
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn inline_auto_review_prompt_override_takes_precedence_over_file() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let prompt_path = codex_home.path().join("auto-review.md");
+    std::fs::write(&prompt_path, "review from file")?;
+    let cfg = ConfigToml {
+        auto_review: Some(AutoReviewToml {
+            prompt: Some("review inline".to_string()),
+            prompt_file: Some(prompt_path.abs()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let config = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await?;
+
+    assert_eq!(
+        config
+            .auto_review
+            .prompt_template
+            .as_ref()
+            .map(render_auto_review_prompt_template),
+        Some("review inline".to_string())
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn invalid_auto_review_prompt_override_fails_config_load() {
+    let codex_home = TempDir::new().expect("tempdir");
+    let cfg = ConfigToml {
+        auto_review: Some(AutoReviewToml {
+            prompt: Some("{{ action }}".to_string()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let err = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await
+    .expect_err("invalid auto-review prompt should fail config load");
+
+    assert_eq!(
+        err.to_string(),
+        "auto_review.prompt is invalid: auto-review prompt template contains unknown placeholder `action`"
+    );
+}
+
+#[tokio::test]
+async fn oversized_auto_review_prompt_override_fails_config_load() {
+    let codex_home = TempDir::new().expect("tempdir");
+    let cfg = ConfigToml {
+        auto_review: Some(AutoReviewToml {
+            prompt: Some("x".repeat(MAX_AUTO_REVIEW_PROMPT_OVERRIDE_BYTES + 1)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let err = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await
+    .expect_err("oversized auto-review prompt should fail config load");
+
+    assert_eq!(
+        err.to_string(),
+        "auto_review.prompt exceeds the 16384-byte limit"
+    );
+}
+
+#[tokio::test]
+async fn auto_review_review_scope_uses_explicit_list_when_configured() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let cfg = ConfigToml {
+        auto_review: Some(AutoReviewToml {
+            review: Some(AutoReviewReviewToml {
+                shell: Some(true),
+                apply_patch: Some(true),
+                review_when_approval_policy_never: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let config = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await?;
+
+    assert!(config.auto_review.review.shell);
+    assert!(config.auto_review.review.apply_patch);
+    assert!(config.auto_review.review.review_when_approval_policy_never);
+    assert!(!config.auto_review.review.exec_command);
+    assert!(!config.auto_review.review.mcp_tool_call);
+    assert!(!config.auto_review.review.network_access);
+    assert!(!config.auto_review.review.review_skipped_exec);
 
     Ok(())
 }

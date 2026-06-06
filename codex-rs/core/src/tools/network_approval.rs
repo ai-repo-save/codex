@@ -4,7 +4,8 @@ use crate::guardian::guardian_rejection_message;
 use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
 use crate::guardian::review_approval_request;
-use crate::guardian::routes_approval_to_guardian;
+use crate::guardian::routes_approval_action_to_guardian;
+use crate::guardian::GuardianReviewAction;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::network_policy_decision::denied_network_policy_message;
 use crate::session::session::Session;
@@ -496,7 +497,8 @@ impl NetworkApprovalService {
                 }
             }
         }
-        let use_guardian = routes_approval_to_guardian(&turn_context);
+        let use_guardian =
+            routes_approval_action_to_guardian(&turn_context, GuardianReviewAction::NetworkAccess);
         let guardian_review_id = use_guardian.then(new_guardian_review_id);
         let approval_decision = if let Some(review_id) = guardian_review_id.clone() {
             review_approval_request(

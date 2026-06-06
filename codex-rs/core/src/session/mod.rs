@@ -2149,7 +2149,10 @@ impl Session {
 
         let requested_permissions = args.permissions;
 
-        if crate::guardian::routes_approval_to_guardian(turn_context.as_ref()) {
+        if crate::guardian::routes_approval_action_to_guardian(
+            turn_context.as_ref(),
+            crate::guardian::GuardianReviewAction::RequestPermissions,
+        ) {
             let originating_turn_state = {
                 let active = self.active_turn.lock().await;
                 active.as_ref().map(|active| Arc::clone(&active.turn_state))

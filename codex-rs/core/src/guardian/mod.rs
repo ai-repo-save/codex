@@ -38,8 +38,11 @@ pub(crate) use review::record_guardian_denial_for_test;
 pub(crate) use review::review_approval_request;
 #[cfg(test)]
 pub(crate) use review::review_approval_request_with_cancel;
+pub(crate) use review::routes_approval_action_to_guardian;
+pub(crate) use review::routes_approval_action_to_guardian_with_reviewer;
 pub(crate) use review::routes_approval_to_guardian;
 pub(crate) use review::routes_approval_to_guardian_with_reviewer;
+pub(crate) use review::GuardianReviewAction;
 pub(crate) use review::spawn_approval_request_review;
 pub(crate) use review_session::GuardianReviewSessionManager;
 pub(crate) use review_session::prompt_cache_key_override_for_review_session;
@@ -159,6 +162,8 @@ use prompt::guardian_output_schema;
 pub(crate) use prompt::guardian_policy_prompt;
 #[cfg(test)]
 pub(crate) use prompt::guardian_policy_prompt_with_config;
+#[cfg(test)]
+pub(crate) use prompt::guardian_policy_prompt_with_template;
 #[cfg(test)]
 use prompt::guardian_truncate_text;
 #[cfg(test)]

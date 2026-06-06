@@ -9,7 +9,7 @@ caching).
 use crate::guardian::guardian_rejection_message;
 use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
-use crate::guardian::routes_approval_to_guardian;
+use crate::guardian::routes_approval_action_to_guardian;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::network_policy_decision::network_approval_context_from_payload;
 use crate::tools::flat_tool_name;
@@ -142,7 +142,10 @@ impl ToolOrchestrator {
         let otel_tn = flat_tool_name(&tool_ctx.tool_name).into_owned();
         let otel_ci = &tool_ctx.call_id;
         let strict_auto_review = tool_ctx.session.strict_auto_review_enabled_for_turn().await;
-        let use_guardian = routes_approval_to_guardian(turn_ctx) || strict_auto_review;
+        let guardian_review_action = tool.guardian_review_action(req);
+        let use_guardian = guardian_review_action
+            .is_some_and(|action| routes_approval_action_to_guardian(turn_ctx, action))
+            || strict_auto_review;
 
         // 1) Approval
         let mut already_approved = false;
@@ -154,7 +157,9 @@ impl ToolOrchestrator {
         });
         match &requirement {
             ExecApprovalRequirement::Skip { .. } => {
-                if strict_auto_review {
+                if strict_auto_review
+                    || (use_guardian && turn_ctx.config.auto_review.review.review_skipped_exec)
+                {
                     let guardian_review_id = Some(new_guardian_review_id());
                     let approval_ctx = ApprovalCtx {
                         session: &tool_ctx.session,

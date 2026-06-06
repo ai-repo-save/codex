@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::AutoReviewReviewConfig;
 use crate::config::Config;
 use crate::config::ConfigOverrides;
 use crate::config::Constrained;
@@ -17,6 +18,7 @@ use codex_config::NetworkDomainPermissionToml;
 use codex_config::NetworkDomainPermissionsToml;
 use codex_config::RequirementSource;
 use codex_config::Sourced;
+use codex_config::config_toml::AutoReviewToml;
 use codex_config::config_toml::ConfigToml;
 use codex_config::types::McpServerConfig;
 use codex_exec_server::LOCAL_FS;
@@ -48,6 +50,7 @@ use codex_protocol::protocol::GuardianUserAuthorization;
 use codex_protocol::protocol::ReviewDecision;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::TurnCompleteEvent;
+use codex_prompts::parse_auto_review_prompt_template;
 use core_test_support::PathBufExt;
 use core_test_support::TempDirExt;
 use core_test_support::context_snapshot;
@@ -1130,6 +1133,52 @@ async fn routes_approval_to_guardian_allows_granular_review_policy() {
         .expect("test setup should allow updating approval policy");
 
     assert!(routes_approval_to_guardian(&turn));
+}
+
+#[tokio::test]
+async fn routes_approval_to_guardian_honors_explicit_review_scope() {
+    let (_session, mut turn) = crate::session::tests::make_session_and_context().await;
+    let mut config = (*turn.config).clone();
+    config.approvals_reviewer = ApprovalsReviewer::AutoReview;
+    config.auto_review.review = AutoReviewReviewConfig {
+        shell: false,
+        apply_patch: true,
+        ..AutoReviewReviewConfig::default()
+    };
+    turn.config = Arc::new(config);
+
+    assert!(!routes_approval_action_to_guardian(
+        &turn,
+        GuardianReviewAction::Shell
+    ));
+    assert!(routes_approval_action_to_guardian(
+        &turn,
+        GuardianReviewAction::ApplyPatch
+    ));
+}
+
+#[tokio::test]
+async fn routes_approval_to_guardian_requires_explicit_never_policy_review() {
+    let (_session, mut turn) = crate::session::tests::make_session_and_context().await;
+    let mut config = (*turn.config).clone();
+    config.approvals_reviewer = ApprovalsReviewer::AutoReview;
+    turn.config = Arc::new(config.clone());
+    turn.approval_policy
+        .set(AskForApproval::Never)
+        .expect("test setup should allow updating approval policy");
+
+    assert!(!routes_approval_action_to_guardian(
+        &turn,
+        GuardianReviewAction::Shell
+    ));
+
+    config.auto_review.review.review_when_approval_policy_never = true;
+    turn.config = Arc::new(config);
+
+    assert!(routes_approval_action_to_guardian(
+        &turn,
+        GuardianReviewAction::Shell
+    ));
 }
 
 #[test]
@@ -2597,6 +2646,50 @@ async fn guardian_review_session_config_uses_requirements_guardian_policy_config
         Some(guardian_policy_prompt_with_config(
             "Use the workspace-managed guardian policy."
         ))
+    );
+}
+
+#[tokio::test]
+async fn guardian_review_session_config_uses_full_auto_review_prompt_override() {
+    let codex_home = tempfile::tempdir().expect("create temp dir");
+    let workspace = tempfile::tempdir().expect("create temp dir");
+    let prompt = "Review the exact requested action using the local developer policy.";
+    let parent_config = Config::load_from_base_config_with_overrides(
+        ConfigToml {
+            auto_review: Some(AutoReviewToml {
+                policy: Some("This policy fragment should not appear.".to_string()),
+                prompt: Some(prompt.to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        ConfigOverrides {
+            cwd: Some(workspace.path().to_path_buf()),
+            ..Default::default()
+        },
+        codex_home.abs(),
+    )
+    .await
+    .expect("load config");
+
+    let guardian_config = build_guardian_review_session_config_for_test(
+        &parent_config,
+        /*live_network_config*/ None,
+        "active-model",
+        /*reasoning_effort*/ None,
+    )
+    .expect("guardian config");
+    let template = parse_auto_review_prompt_template(prompt).expect("test prompt parses");
+
+    assert_eq!(
+        guardian_config.base_instructions,
+        Some(guardian_policy_prompt_with_template(&template))
+    );
+    assert!(
+        guardian_config
+            .base_instructions
+            .as_deref()
+            .is_some_and(|instructions| instructions.contains("final message must be strict JSON"))
     );
 }
 

@@ -1,5 +1,6 @@
 mod agents;
 mod apply_patch;
+mod auto_review;
 mod compact;
 mod goals;
 mod permissions_instructions;
@@ -9,6 +10,10 @@ mod review_request;
 
 pub use agents::HIERARCHICAL_AGENTS_MESSAGE;
 pub use apply_patch::APPLY_PATCH_TOOL_INSTRUCTIONS;
+pub use auto_review::AutoReviewPromptTemplate;
+pub use auto_review::AutoReviewPromptTemplateError;
+pub use auto_review::parse_auto_review_prompt_template;
+pub use auto_review::render_auto_review_prompt_template;
 pub use compact::SUMMARIZATION_PROMPT;
 pub use compact::SUMMARY_PREFIX;
 pub use goals::GoalPromptTemplate;

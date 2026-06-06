@@ -4,6 +4,8 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::GuardianRiskLevel;
 use codex_protocol::protocol::GuardianUserAuthorization;
 use codex_protocol::user_input::UserInput;
+use codex_prompts::AutoReviewPromptTemplate;
+use codex_prompts::render_auto_review_prompt_template;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -693,4 +695,9 @@ pub(crate) fn guardian_policy_prompt_with_config(tenant_policy_config: &str) -> 
     let template = include_str!("policy_template.md").trim_end();
     let prompt = template.replace("{tenant_policy_config}", tenant_policy_config.trim());
     format!("{prompt}\n\n{}\n", guardian_output_contract_prompt())
+}
+
+pub(crate) fn guardian_policy_prompt_with_template(template: &AutoReviewPromptTemplate) -> String {
+    let prompt = render_auto_review_prompt_template(template);
+    format!("{}\n\n{}\n", prompt.trim(), guardian_output_contract_prompt())
 }

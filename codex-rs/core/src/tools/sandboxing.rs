@@ -6,6 +6,7 @@
 
 use crate::sandboxing::ExecOptions;
 use crate::sandboxing::SandboxPermissions;
+use crate::guardian::GuardianReviewAction;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use crate::state::SessionServices;
@@ -348,6 +349,11 @@ pub(crate) trait Approvable<Req> {
     /// Return hook input for approval-time policy hooks when this runtime wants
     /// hook evaluation to run before guardian or user approval.
     fn permission_request_payload(&self, _req: &Req) -> Option<PermissionRequestPayload> {
+        None
+    }
+
+    /// Return the guardian action category for approval routing.
+    fn guardian_review_action(&self, _req: &Req) -> Option<GuardianReviewAction> {
         None
     }
 

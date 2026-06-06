@@ -565,9 +565,50 @@ pub enum ThreadStoreToml {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
 pub struct AutoReviewToml {
     /// Additional policy instructions inserted into the guardian prompt.
     pub policy: Option<String>,
+
+    /// Full guardian prompt template override.
+    pub prompt: Option<String>,
+
+    /// File containing the full guardian prompt template override.
+    pub prompt_file: Option<AbsolutePathBuf>,
+
+    /// Controls which approval requests are routed to the auto-reviewer.
+    pub review: Option<AutoReviewReviewToml>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct AutoReviewReviewToml {
+    /// Review shell command approval requests.
+    pub shell: Option<bool>,
+
+    /// Review unified exec command approval requests.
+    pub exec_command: Option<bool>,
+
+    /// Review Unix execve approval requests.
+    pub execve: Option<bool>,
+
+    /// Review apply_patch approval requests.
+    pub apply_patch: Option<bool>,
+
+    /// Review MCP tool call approval requests.
+    pub mcp_tool_call: Option<bool>,
+
+    /// Review network access approval requests.
+    pub network_access: Option<bool>,
+
+    /// Review request_permissions approval requests.
+    pub request_permissions: Option<bool>,
+
+    /// Review exec-like tool requests that would otherwise skip approval.
+    pub review_skipped_exec: Option<bool>,
+
+    /// Review matching requests even when approval_policy is never.
+    pub review_when_approval_policy_never: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]

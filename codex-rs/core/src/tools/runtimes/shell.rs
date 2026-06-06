@@ -12,6 +12,7 @@ use crate::command_canonicalization::canonicalize_command_for_approval;
 use crate::exec::ExecCapturePolicy;
 use crate::guardian::GuardianApprovalRequest;
 use crate::guardian::GuardianNetworkAccessTrigger;
+use crate::guardian::GuardianReviewAction;
 use crate::guardian::review_approval_request;
 use crate::sandboxing::ExecOptions;
 use crate::sandboxing::SandboxPermissions;
@@ -195,6 +196,10 @@ impl Approvable<ShellRequest> for ShellRuntime {
             req.hook_command.clone(),
             req.justification.clone(),
         ))
+    }
+
+    fn guardian_review_action(&self, _req: &ShellRequest) -> Option<GuardianReviewAction> {
+        Some(GuardianReviewAction::Shell)
     }
 
     fn sandbox_permissions(&self, req: &ShellRequest) -> SandboxPermissions {

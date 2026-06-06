@@ -13,7 +13,8 @@ use crate::guardian::guardian_rejection_message;
 use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
 use crate::guardian::review_approval_request;
-use crate::guardian::routes_approval_to_guardian_with_reviewer;
+use crate::guardian::routes_approval_action_to_guardian_with_reviewer;
+use crate::guardian::GuardianReviewAction;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::mcp_openai_file::rewrite_mcp_tool_arguments_for_openai_files;
 use crate::mcp_tool_approval_templates::RenderedMcpToolApprovalParam;
@@ -1218,7 +1219,11 @@ async fn maybe_request_mcp_tool_approval(
         .features
         .enabled(Feature::ToolCallMcpElicitation);
 
-    if routes_approval_to_guardian_with_reviewer(turn_context, approvals_reviewer) {
+    if routes_approval_action_to_guardian_with_reviewer(
+        turn_context,
+        approvals_reviewer,
+        GuardianReviewAction::McpToolCall,
+    ) {
         let review_id = new_guardian_review_id();
         let decision = review_approval_request(
             sess,

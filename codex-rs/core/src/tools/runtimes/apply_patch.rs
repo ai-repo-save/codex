@@ -5,6 +5,7 @@
 //! sandboxing enforced by the explicit filesystem sandbox context.
 use crate::exec::is_likely_sandbox_denied;
 use crate::guardian::GuardianApprovalRequest;
+use crate::guardian::GuardianReviewAction;
 use crate::guardian::review_approval_request;
 use crate::session::turn_context::TurnEnvironment;
 use crate::tools::hook_names::HookToolName;
@@ -209,6 +210,10 @@ impl Approvable<ApplyPatchRequest> for ApplyPatchRuntime {
             tool_name: HookToolName::apply_patch(),
             tool_input: serde_json::json!({ "command": req.action.patch }),
         })
+    }
+
+    fn guardian_review_action(&self, _req: &ApplyPatchRequest) -> Option<GuardianReviewAction> {
+        Some(GuardianReviewAction::ApplyPatch)
     }
 }
 
