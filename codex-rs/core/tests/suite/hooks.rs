@@ -2141,7 +2141,7 @@ async fn approval_review_route_hook_routes_shell_command_to_auto_review() -> Res
         .with_pre_build_hook(|home| {
             if let Err(error) = write_approval_review_route_hook(
                 home,
-                Some(PERMISSION_REQUEST_HOOK_MATCHER),
+                /*matcher*/ None,
                 "auto_review",
             ) {
                 panic!("failed to write approval route hook test fixture: {error}");
