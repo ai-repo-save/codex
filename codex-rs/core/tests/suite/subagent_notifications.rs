@@ -60,6 +60,12 @@ const SUBAGENT_STOP_CONTINUATION: &str = "continue only the child";
 const INTERNAL_SUBAGENT_PROMPT: &str = "internal subagent: review";
 
 fn body_contains(req: &wiremock::Request, text: &str) -> bool {
+    request_body_bytes(req)
+        .and_then(|body| String::from_utf8(body).ok())
+        .is_some_and(|body| body.contains(text))
+}
+
+fn request_body_bytes(req: &wiremock::Request) -> Option<Vec<u8>> {
     let is_zstd = req
         .headers
         .get("content-encoding")
@@ -69,14 +75,36 @@ fn body_contains(req: &wiremock::Request, text: &str) -> bool {
                 .split(',')
                 .any(|entry| entry.trim().eq_ignore_ascii_case("zstd"))
         });
-    let bytes = if is_zstd {
+    if is_zstd {
         zstd::stream::decode_all(std::io::Cursor::new(&req.body)).ok()
     } else {
         Some(req.body.clone())
+    }
+}
+
+fn request_message_input_texts_by_role_and_type(
+    req: &wiremock::Request,
+    role: &str,
+    content_type: &str,
+) -> Vec<String> {
+    let Some(body) = request_body_bytes(req) else {
+        return Vec::new();
     };
-    bytes
-        .and_then(|body| String::from_utf8(body).ok())
-        .is_some_and(|body| body.contains(text))
+    let Ok(body) = serde_json::from_slice::<Value>(&body) else {
+        return Vec::new();
+    };
+
+    body.get("input")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|item| item.get("type").and_then(Value::as_str) == Some("message"))
+        .filter(|item| item.get("role").and_then(Value::as_str) == Some(role))
+        .filter_map(|item| item.get("content").and_then(Value::as_array))
+        .flatten()
+        .filter(|span| span.get("type").and_then(Value::as_str) == Some(content_type))
+        .filter_map(|span| span.get("text").and_then(Value::as_str).map(str::to_owned))
+        .collect()
 }
 
 fn has_subagent_notification(req: &ResponsesRequest) -> bool {
@@ -994,7 +1022,10 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
     let child_request_log = mount_sse_once_match(
         &server,
         |req: &wiremock::Request| {
-            body_contains(req, CHILD_PROMPT) && !body_contains(req, SPAWN_CALL_ID)
+            request_message_input_texts_by_role_and_type(req, "user", "input_text")
+                .iter()
+                .any(|text| text == CHILD_PROMPT)
+                && !body_contains(req, SPAWN_CALL_ID)
         },
         sse(vec![
             ev_response_created("resp-child-1"),
