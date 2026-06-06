@@ -23,29 +23,26 @@ else:
     from ._sync import run_remote_workflow
 
 
-USAGE = """usage: scripts/remote/just.py <recipe> [recipe args...]
-
-Runs a codex-rs just recipe on the remote execution host after syncing the
-remote checkout. The command is executed with the remote sccache and fast-linker
-environment used by standalone builds.
-"""
-
-CODEX_TUI_FULL_TEST_ARGS = ("test", "-p", "codex-tui")
-CODEX_TUI_FULL_TEST_MESSAGE = (
-    "`scripts/remote/just.py test -p codex-tui` runs the full TUI crate, "
-    "including environment-sensitive snapshot tests. Use "
-    "`scripts/remote/tui_smoke.py` for routine codex-tui validation; run a "
-    "more specific test filter if you intentionally need snapshot coverage."
+# Do not use `just test -p codex-tui` for routine TUI validation: that command
+# runs the entire TUI crate, including environment-sensitive snapshot tests.
+# This fixed smoke command still compiles the codex-tui test graph and exercises
+# the app-server/TUI RPC path without producing unrelated snapshot churn.
+TUI_SMOKE_JUST_ARGS = (
+    "test",
+    "-p",
+    "codex-tui",
+    "embedded_app_server_supports_thread_start_rpc",
+)
+NO_ARGUMENTS_MESSAGE = (
+    "scripts/remote/tui_smoke.py does not accept arguments; it runs the fixed "
+    "codex-tui smoke validation command."
 )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = tuple(argv if argv is not None else sys.argv[1:])
-    if not args:
-        print(USAGE, file=sys.stderr)
-        return 2
-    if args == CODEX_TUI_FULL_TEST_ARGS:
-        print(CODEX_TUI_FULL_TEST_MESSAGE, file=sys.stderr)
+    if args:
+        print(NO_ARGUMENTS_MESSAGE, file=sys.stderr)
         return 2
 
     return run_remote_workflow(
@@ -53,7 +50,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             host=DEFAULT_HOST,
             branch=DEFAULT_BRANCH,
             remote_path=DEFAULT_REMOTE_PATH,
-            command=remote_codex_rs_just_command(args),
+            command=remote_codex_rs_just_command(TUI_SMOKE_JUST_ARGS),
         )
     )
 
