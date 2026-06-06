@@ -96,11 +96,13 @@ In the codex-rs folder where the rust code lives:
     trivial; prefer new modules/files and keep `chatwidget.rs` focused on orchestration.
 - When running Rust commands through the remote scripts (e.g. `just.py fix` or `just.py test`) be patient with the command and never try to kill them using the PID. Rust lock can make the execution slow, this is expected.
 
-Run `uv run --project scripts python scripts/remote/just.py fmt` automatically after you have finished making code changes anywhere in this repository; do not ask for approval to run it. Additionally, run the tests on the remote execution host through `scripts/remote/just.py`:
+Run `uv run --project scripts python scripts/remote/just.py fmt` automatically after you have finished making code changes anywhere in this repository; do not ask for approval to run it. Additionally, run the tests on the remote execution host through the remote scripts:
 
 1. Do not run `cargo test` directly. Use `uv run --project scripts python scripts/remote/just.py test` so test execution follows the repo defaults.
-2. Run the test for the specific project that was changed. For example, if changes were made in `codex-rs/tui`, run `uv run --project scripts python scripts/remote/just.py test -p codex-tui`.
-3. Once those pass, if any changes were made in common, core, or protocol, run the complete test suite with `uv run --project scripts python scripts/remote/just.py test`. Avoid `--all-features` for routine local runs because it expands the build matrix and can significantly increase `target/` disk usage; use it only when you specifically need full feature coverage.
+2. Run a test filter that matches the behavior changed. For example, for a TUI slash-command change, run a focused `codex-tui` filter such as `uv run --project scripts python scripts/remote/just.py test -p codex-tui chatwidget::tests::slash_commands`.
+3. For TUI compile/RPC smoke only, use `uv run --project scripts python scripts/remote/tui_smoke.py`. This is not a substitute for behavior-specific tests; it only verifies that the remote TUI test graph still builds and one app-server/TUI RPC path runs.
+4. Do not use unfiltered `uv run --project scripts python scripts/remote/just.py test -p codex-tui` as a routine development check. It runs the entire `codex-tui` crate, including environment-sensitive snapshot tests. In source/dev builds, version-rendering snapshots can differ from stored `v0.0.0` fixtures because `CODEX_CLI_VERSION` comes from `CARGO_PKG_VERSION`.
+5. Once focused tests pass, if any changes were made in common, core, or protocol, run the complete test suite with `uv run --project scripts python scripts/remote/just.py test`. Avoid `--all-features` for routine local runs because it expands the build matrix and can significantly increase `target/` disk usage; use it only when you specifically need full feature coverage.
 
 Before finalizing a large change to `codex-rs`, run `uv run --project scripts python scripts/remote/just.py fix -p <project>` to fix any linter issues in the code. Prefer scoping with `-p` to avoid slow workspace‑wide Clippy builds; only run `fix` without `-p` if you changed shared crates. Do not re-run tests after running `fix` or `fmt`.
 
@@ -218,14 +220,16 @@ is easy to review and future diffs stay visual.
 
 When UI or text output changes intentionally, update the snapshots as follows:
 
-- Run tests to generate any updated snapshots:
-  - `uv run --project scripts python scripts/remote/just.py test -p codex-tui`
+- Run the specific snapshot test or narrow snapshot family that covers the changed surface:
+  - `uv run --project scripts python scripts/remote/just.py test -p codex-tui <snapshot-test-filter>`
 - Check what’s pending:
   - `cargo insta pending-snapshots -p codex-tui`
 - Review changes by reading the generated `*.snap.new` files directly in the repo, or preview a specific file:
   - `cargo insta show -p codex-tui path/to/file.snap.new`
 - Only if you intend to accept all new snapshots in this crate, run:
   - `cargo insta accept -p codex-tui`
+
+Do not run the unfiltered `codex-tui` crate solely to discover snapshot updates in a dev/source build. Snapshot updates should be intentional and scoped to the UI surface being changed; unrelated version-sensitive snapshots can fail when the build version differs from stored source-build fixtures.
 
 If you don’t have the tool:
 

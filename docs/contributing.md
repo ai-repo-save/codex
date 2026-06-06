@@ -54,7 +54,7 @@ When a change updates model catalogs or model metadata (`/models` payloads, pres
 
 - Fill in the PR template (or include similar information) - **What? Why? How?**
 - Include a link to a bug report or enhancement request in the issue tracker
-- Run **all** checks locally. Use the root `just` helpers so you stay consistent with the rest of the workspace: `just fmt`, `just fix -p <crate>` for the crate you touched, and the relevant tests (e.g., `just test -p codex-tui` or `just test` if you need a full sweep). CI failures that could have been caught locally slow down the process.
+- Run **all** relevant checks locally. Use the root `just` helpers so you stay consistent with the rest of the workspace: `just fmt`, `just fix -p <crate>` for the crate you touched, and behavior-specific tests (for example, `just test -p codex-tui <test-filter>` for a focused TUI change, or `just test` if you need a full sweep). Avoid unfiltered `just test -p codex-tui` as a routine development check because it runs the whole TUI crate, including snapshot tests whose stored source-build version can differ from the current package version. CI failures that could have been caught locally slow down the process.
 - Make sure your branch is up-to-date with `main` and that you have resolved merge conflicts.
 - Mark the PR as **Ready for review** only when you believe it is in a merge-able state.
 

@@ -39,8 +39,11 @@ cargo run --bin codex -- "explain this codebase to me"
 just fmt
 just fix -p <crate-you-touched>
 
-# Run the relevant tests (project-specific is fastest), for example:
-just test -p codex-tui
+# Run the relevant tests with a filter that matches the behavior you changed.
+# For TUI changes, avoid unfiltered `just test -p codex-tui` during routine
+# development because it runs the whole crate, including snapshot tests whose
+# stored source-build version may differ from the current package version.
+just test -p codex-tui <test-filter>
 # `just test` runs the test suite via nextest:
 just test
 # Avoid `--all-features` for routine local runs because it increases build
