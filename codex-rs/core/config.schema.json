@@ -336,11 +336,74 @@
         }
       ]
     },
+    "AutoReviewReviewToml": {
+      "additionalProperties": false,
+      "properties": {
+        "apply_patch": {
+          "description": "Review apply_patch approval requests.",
+          "type": "boolean"
+        },
+        "exec_command": {
+          "description": "Review unified exec command approval requests.",
+          "type": "boolean"
+        },
+        "execve": {
+          "description": "Review Unix execve approval requests.",
+          "type": "boolean"
+        },
+        "mcp_tool_call": {
+          "description": "Review MCP tool call approval requests.",
+          "type": "boolean"
+        },
+        "network_access": {
+          "description": "Review network access approval requests.",
+          "type": "boolean"
+        },
+        "request_permissions": {
+          "description": "Review request_permissions approval requests.",
+          "type": "boolean"
+        },
+        "review_skipped_exec": {
+          "description": "Review exec-like tool requests that would otherwise skip approval.",
+          "type": "boolean"
+        },
+        "review_when_approval_policy_never": {
+          "description": "Review matching requests even when approval_policy is never.",
+          "type": "boolean"
+        },
+        "shell": {
+          "description": "Review shell command approval requests.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "AutoReviewToml": {
+      "additionalProperties": false,
       "properties": {
         "policy": {
           "description": "Additional policy instructions inserted into the guardian prompt.",
           "type": "string"
+        },
+        "prompt": {
+          "description": "Full guardian prompt template override.",
+          "type": "string"
+        },
+        "prompt_file": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AbsolutePathBuf"
+            }
+          ],
+          "description": "File containing the full guardian prompt template override."
+        },
+        "review": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AutoReviewReviewToml"
+            }
+          ],
+          "description": "Controls which approval requests are routed to the auto-reviewer."
         }
       },
       "type": "object"
