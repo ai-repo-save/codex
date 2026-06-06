@@ -1,1 +1,93 @@
-{}
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "NullableString": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "properties": {
+    "agent_id": {
+      "type": "string"
+    },
+    "agent_type": {
+      "type": "string"
+    },
+    "approval_kind": {
+      "type": "string"
+    },
+    "approval_policy": {
+      "enum": [
+        "never",
+        "on_failure",
+        "on_request",
+        "unless_trusted",
+        "granular"
+      ],
+      "type": "string"
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "hook_event_name": {
+      "const": "ApprovalReviewRoute",
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "permission_mode": {
+      "enum": [
+        "default",
+        "acceptEdits",
+        "plan",
+        "dontAsk",
+        "bypassPermissions"
+      ],
+      "type": "string"
+    },
+    "retry_reason": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "static_auto_review_enabled": {
+      "type": "boolean"
+    },
+    "strict_auto_review": {
+      "type": "boolean"
+    },
+    "tool_input": true,
+    "tool_name": {
+      "type": "string"
+    },
+    "transcript_path": {
+      "$ref": "#/definitions/NullableString"
+    },
+    "turn_id": {
+      "description": "Codex extension: expose the active turn id to internal turn-scoped hooks.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "approval_kind",
+    "approval_policy",
+    "cwd",
+    "hook_event_name",
+    "model",
+    "permission_mode",
+    "session_id",
+    "static_auto_review_enabled",
+    "strict_auto_review",
+    "tool_input",
+    "tool_name",
+    "transcript_path",
+    "turn_id"
+  ],
+  "title": "approval-review-route.command.input",
+  "type": "object"
+}

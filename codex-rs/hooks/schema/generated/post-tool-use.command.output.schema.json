@@ -19,10 +19,10 @@
           "const": "PostToolUse",
           "type": "string"
         },
-        "updatedToolOutput": {
+        "updatedMCPToolOutput": {
           "default": null
         },
-        "updatedMCPToolOutput": {
+        "updatedToolOutput": {
           "default": null
         }
       },
