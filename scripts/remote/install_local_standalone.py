@@ -177,18 +177,18 @@ def remote_build_env_command(target: str) -> str:
     linker_env = cargo_target_linker_env_key(target)
     return (
         "if command -v sccache >/dev/null 2>&1; then "
-        "export RUSTC_WRAPPER=\"$(command -v sccache)\"; "
-        "echo \"remote build: using RUSTC_WRAPPER=$RUSTC_WRAPPER\"; "
-        "else echo \"remote build: sccache not found\"; fi; "
+        'export RUSTC_WRAPPER="$(command -v sccache)"; '
+        'echo "remote build: using RUSTC_WRAPPER=$RUSTC_WRAPPER"; '
+        'else echo "remote build: sccache not found"; fi; '
         "if command -v clang >/dev/null 2>&1 && command -v mold >/dev/null 2>&1; then "
         f"export {linker_env}=clang; "
-        "export RUSTFLAGS=\"${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=$(command -v mold)\"; "
-        "echo \"remote build: using clang with mold\"; "
+        'export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=$(command -v mold)"; '
+        'echo "remote build: using clang with mold"; '
         "elif command -v clang >/dev/null 2>&1 && command -v ld.lld >/dev/null 2>&1; then "
         f"export {linker_env}=clang; "
-        "export RUSTFLAGS=\"${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=lld\"; "
-        "echo \"remote build: using clang with lld\"; "
-        "else echo \"remote build: no fast linker configured\"; fi"
+        'export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=lld"; '
+        'echo "remote build: using clang with lld"; '
+        'else echo "remote build: no fast linker configured"; fi'
     )
 
 
@@ -267,7 +267,9 @@ def prefill_staging_dir(current_link: Path, staging_dir: Path) -> None:
 
     current_release = current_link.resolve()
     if not current_release.is_dir():
-        LOGGER.info("current standalone release is not a directory: %s", current_release)
+        LOGGER.info(
+            "current standalone release is not a directory: %s", current_release
+        )
         return
 
     with timed_step(LOGGER, f"prefilling staging directory from {current_release}"):

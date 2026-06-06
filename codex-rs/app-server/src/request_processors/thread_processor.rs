@@ -3615,12 +3615,18 @@ impl ThreadRequestProcessor {
             })?;
 
         let source_listener_command_tx = {
-            let thread_state = self.thread_state_manager.thread_state(source_thread_id).await;
+            let thread_state = self
+                .thread_state_manager
+                .thread_state(source_thread_id)
+                .await;
             let thread_state = thread_state.lock().await;
             thread_state.listener_command_tx()
         };
         let reset_listener_command_tx = {
-            let thread_state = self.thread_state_manager.thread_state(reset_thread_id).await;
+            let thread_state = self
+                .thread_state_manager
+                .thread_state(reset_thread_id)
+                .await;
             let thread_state = thread_state.lock().await;
             thread_state.listener_command_tx()
         };

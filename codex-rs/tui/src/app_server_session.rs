@@ -491,9 +491,12 @@ impl AppServerSession {
         let fork_parent_title = self
             .fork_parent_title_from_app_server(response.thread.forked_from_id.as_deref())
             .await;
-        let mut started =
-            started_thread_from_reset_context_response(response, &config, self.thread_params_mode())
-                .await?;
+        let mut started = started_thread_from_reset_context_response(
+            response,
+            &config,
+            self.thread_params_mode(),
+        )
+        .await?;
         started.session.fork_parent_title = fork_parent_title;
         Ok(started)
     }
@@ -1624,10 +1627,13 @@ async fn started_thread_from_reset_context_response(
     config: &Config,
     thread_params_mode: ThreadParamsMode,
 ) -> Result<AppServerStartedThread> {
-    let session =
-        thread_session_state_from_thread_reset_context_response(&response, config, thread_params_mode)
-            .await
-            .map_err(color_eyre::eyre::Report::msg)?;
+    let session = thread_session_state_from_thread_reset_context_response(
+        &response,
+        config,
+        thread_params_mode,
+    )
+    .await
+    .map_err(color_eyre::eyre::Report::msg)?;
     Ok(AppServerStartedThread {
         session,
         turns: response.thread.turns,
