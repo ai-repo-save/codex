@@ -1831,6 +1831,7 @@
       "enum": [
         "preToolUse",
         "permissionRequest",
+        "approvalReviewRoute",
         "postToolUse",
         "preCompact",
         "postCompact",
