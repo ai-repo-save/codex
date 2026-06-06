@@ -36,6 +36,7 @@ pub use codex_core::config::AutoReviewConfig;
 pub use codex_core::config::Config;
 pub use codex_core::config::Constrained;
 pub use codex_core::config::GhostSnapshotConfig;
+pub use codex_core::config::GoalPromptTemplates;
 pub use codex_core::config::MultiAgentV2Config;
 pub use codex_core::config::Permissions;
 pub use codex_core::config::TerminalResizeReflowConfig;

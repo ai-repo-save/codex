@@ -26,6 +26,7 @@ use codex_core_api::EventMsg;
 use codex_core_api::ExecServerRuntimePaths;
 use codex_core_api::Features;
 use codex_core_api::GhostSnapshotConfig;
+use codex_core_api::GoalPromptTemplates;
 use codex_core_api::History;
 use codex_core_api::MemoriesConfig;
 use codex_core_api::ModelAvailabilityNuxConfig;
@@ -196,6 +197,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         include_skill_instructions: false,
         include_environment_context: false,
         compact_prompt: None,
+        goal_prompt_templates: GoalPromptTemplates::default(),
         notify: None,
         tui_notifications: TuiNotificationSettings::default(),
         animations: true,

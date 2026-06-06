@@ -132,11 +132,11 @@ use crate::config_lock::config_without_lock_controls;
 use crate::config_lock::lock_layer_from_config;
 use crate::config_lock::read_config_lock_from_path;
 use codex_network_proxy::NetworkProxyConfig;
-use codex_prompts::GoalPromptTemplate;
-use codex_prompts::GoalPromptTemplates;
 use codex_prompts::AutoReviewPromptTemplate;
+use codex_prompts::GoalPromptTemplate;
 use codex_prompts::parse_auto_review_prompt_template;
 use codex_prompts::parse_goal_prompt_template;
+pub use codex_prompts::GoalPromptTemplates;
 use toml::Value as TomlValue;
 use toml_edit::DocumentMut;
 
