@@ -1621,7 +1621,7 @@ async fn multi_agent_v2_list_agents_marks_calling_child_agent_as_self() {
         .await
         .expect("root thread should start");
     session.services.agent_control = manager.agent_control();
-    session.conversation_id = root.thread_id;
+    session.thread_id = root.thread_id;
     let mut config = (*turn.config).clone();
     let _ = config.features.enable(Feature::MultiAgentV2);
     set_turn_config(&mut turn, config);
@@ -1647,7 +1647,7 @@ async fn multi_agent_v2_list_agents_marks_calling_child_agent_as_self() {
     let worker_id = session
         .services
         .agent_control
-        .resolve_agent_reference(session.conversation_id, &turn.session_source, "worker")
+        .resolve_agent_reference(session.thread_id, &turn.session_source, "worker")
         .await
         .expect("worker path should resolve");
     let worker_thread = manager
@@ -1694,7 +1694,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
         .await
         .expect("root thread should start");
     session.services.agent_control = manager.agent_control();
-    session.conversation_id = root.thread_id;
+    session.thread_id = root.thread_id;
     let mut config = (*turn.config).clone();
     let _ = config.features.enable(Feature::MultiAgentV2);
     set_turn_config(&mut turn, config);
@@ -1718,7 +1718,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
     let agent_id = session
         .services
         .agent_control
-        .resolve_agent_reference(session.conversation_id, &turn.session_source, "worker")
+        .resolve_agent_reference(session.thread_id, &turn.session_source, "worker")
         .await
         .expect("worker path should resolve");
     let child_thread = manager
