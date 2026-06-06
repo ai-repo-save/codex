@@ -460,11 +460,12 @@ impl CoreShellActionProvider {
                 )
                 .await
                 {
-                    Some(ApprovalReviewRouteDecision::AutoReview) => {
-                        if guardian_review_id.is_none() {
-                            guardian_review_id = Some(new_guardian_review_id());
-                        }
+                    Some(ApprovalReviewRouteDecision::AutoReview)
+                        if guardian_review_id.is_none() =>
+                    {
+                        guardian_review_id = Some(new_guardian_review_id());
                     }
+                    Some(ApprovalReviewRouteDecision::AutoReview) => {}
                     Some(ApprovalReviewRouteDecision::User) => {
                         guardian_review_id = None;
                     }
