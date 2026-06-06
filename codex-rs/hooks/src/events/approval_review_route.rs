@@ -124,10 +124,9 @@ pub(crate) async fn run(
         parse_completed,
     )
     .await;
-    let decision = results
-        .iter()
-        .filter_map(|result| result.data.decision)
-        .next_back();
+    let decision = resolve_approval_review_route_decision(
+        results.iter().map(|result| result.data.decision),
+    );
 
     ApprovalReviewRouteOutcome {
         hook_events: results
@@ -138,6 +137,12 @@ pub(crate) async fn run(
             .collect(),
         decision,
     }
+}
+
+fn resolve_approval_review_route_decision(
+    decisions: impl IntoIterator<Item = Option<ApprovalReviewRouteDecision>>,
+) -> Option<ApprovalReviewRouteDecision> {
+    decisions.into_iter().flatten().last()
 }
 
 fn build_command_input(request: &ApprovalReviewRouteRequest) -> ApprovalReviewRouteCommandInput {
@@ -159,6 +164,35 @@ fn build_command_input(request: &ApprovalReviewRouteRequest) -> ApprovalReviewRo
         strict_auto_review: request.strict_auto_review,
         static_auto_review_enabled: request.static_auto_review_enabled,
         retry_reason: request.retry_reason.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+
+    use super::ApprovalReviewRouteDecision;
+    use super::resolve_approval_review_route_decision;
+
+    #[test]
+    fn approval_review_route_uses_last_non_continue_reviewer() {
+        let decisions = [
+            Some(ApprovalReviewRouteDecision::AutoReview),
+            None,
+            Some(ApprovalReviewRouteDecision::User),
+        ];
+
+        assert_eq!(
+            resolve_approval_review_route_decision(decisions),
+            Some(ApprovalReviewRouteDecision::User)
+        );
+    }
+
+    #[test]
+    fn approval_review_route_returns_none_when_handlers_continue() {
+        let decisions = [None, None];
+
+        assert_eq!(resolve_approval_review_route_decision(decisions), None);
     }
 }
 
