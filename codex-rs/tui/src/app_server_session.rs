@@ -468,39 +468,6 @@ impl AppServerSession {
         Ok(started)
     }
 
-    pub(crate) async fn reset_context_thread(
-        &mut self,
-        config: Config,
-        thread_id: ThreadId,
-    ) -> Result<AppServerStartedThread> {
-        let request_id = self.next_request_id();
-        let session_config = self.session_config_with_effective_service_tier(&config);
-        let response: ThreadResetContextResponse = self
-            .client
-            .request_typed(ClientRequest::ThreadResetContext {
-                request_id,
-                params: thread_reset_context_params_from_config(
-                    session_config,
-                    thread_id,
-                    self.thread_params_mode(),
-                    self.remote_cwd_override.as_deref(),
-                ),
-            })
-            .await
-            .map_err(|err| bootstrap_request_error("thread/reset-context failed in TUI", err))?;
-        let fork_parent_title = self
-            .fork_parent_title_from_app_server(response.thread.forked_from_id.as_deref())
-            .await;
-        let mut started = started_thread_from_reset_context_response(
-            response,
-            &config,
-            self.thread_params_mode(),
-        )
-        .await?;
-        started.session.fork_parent_title = fork_parent_title;
-        Ok(started)
-    }
-
     pub(crate) fn thread_params_mode(&self) -> ThreadParamsMode {
         self.thread_params_mode
     }
@@ -531,7 +498,7 @@ impl AppServerSession {
         session_config
     }
 
-    async fn fork_parent_title_from_app_server(
+    pub(crate) async fn fork_parent_title_from_app_server(
         &mut self,
         forked_from_id: Option<&str>,
     ) -> Option<String> {
@@ -1188,6 +1155,28 @@ pub(crate) async fn start_thread_with_request_handle(
         .await
         .map_err(|err| bootstrap_request_error("thread/start failed during TUI bootstrap", err))?;
     started_thread_from_start_response(response, &config, thread_params_mode).await
+}
+
+pub(crate) async fn reset_context_thread_with_request_handle(
+    request_handle: AppServerRequestHandle,
+    config: Config,
+    thread_id: ThreadId,
+    thread_params_mode: ThreadParamsMode,
+    remote_cwd_override: Option<PathBuf>,
+) -> Result<AppServerStartedThread> {
+    let response: ThreadResetContextResponse = request_handle
+        .request_typed(ClientRequest::ThreadResetContext {
+            request_id: RequestId::String(format!("reset-context-{}", Uuid::new_v4())),
+            params: thread_reset_context_params_from_config(
+                config.clone(),
+                thread_id,
+                thread_params_mode,
+                remote_cwd_override.as_deref(),
+            ),
+        })
+        .await
+        .map_err(|err| bootstrap_request_error("thread/reset-context failed in TUI", err))?;
+    started_thread_from_reset_context_response(response, &config, thread_params_mode).await
 }
 
 fn thread_realtime_start_params(

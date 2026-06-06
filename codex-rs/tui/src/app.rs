@@ -13,6 +13,7 @@ use crate::app_event::HistoryLookupResponse;
 use crate::app_event::PermissionProfileSelection;
 use crate::app_event::RateLimitRefreshOrigin;
 use crate::app_event::RealtimeAudioDeviceKind;
+use crate::app_event::ResetContextSummary;
 #[cfg(target_os = "windows")]
 use crate::app_event::WindowsSandboxEnableMode;
 use crate::app_event_sender::AppEventSender;
@@ -469,6 +470,15 @@ fn errors_for_cwd(cwd: &Path, response: &SkillsListResponse) -> Vec<SkillErrorIn
 struct SessionSummary {
     usage_line: Option<String>,
     resume_hint: Option<String>,
+}
+
+impl From<SessionSummary> for ResetContextSummary {
+    fn from(summary: SessionSummary) -> Self {
+        Self {
+            usage_line: summary.usage_line,
+            resume_hint: summary.resume_hint,
+        }
+    }
 }
 
 #[derive(Debug, Default)]

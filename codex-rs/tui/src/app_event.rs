@@ -74,6 +74,12 @@ pub(crate) struct HistoryLookupResponse {
     pub(crate) entry: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResetContextSummary {
+    pub(crate) usage_line: Option<String>,
+    pub(crate) resume_hint: Option<String>,
+}
+
 impl RealtimeAudioDeviceKind {
     pub(crate) fn title(self) -> &'static str {
         match self {
@@ -217,6 +223,13 @@ pub(crate) enum AppEvent {
 
     /// Summarize the current context and continue from the compacted history in a new thread.
     ResetContextCurrentSession,
+
+    /// Result of a background reset-context request.
+    ResetContextCompleted {
+        source_thread_id: ThreadId,
+        summary: Option<ResetContextSummary>,
+        result: Result<AppServerStartedThread, String>,
+    },
 
     /// Request to exit the application.
     ///

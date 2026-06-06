@@ -201,58 +201,95 @@ impl App {
                     self.chat_widget.thread_id(),
                     self.chat_widget.thread_name(),
                     self.chat_widget.rollout_path().as_deref(),
-                );
+                )
+                .map(ResetContextSummary::from);
                 self.chat_widget
                     .add_plain_history_lines(vec!["/reset-context".magenta().into()]);
                 if let Some(thread_id) = self.chat_widget.thread_id() {
                     self.refresh_in_memory_config_from_disk_best_effort("resetting context")
                         .await;
-                    match app_server
-                        .reset_context_thread(self.config.clone(), thread_id)
-                        .await
-                    {
-                        Ok(reset) => {
-                            self.shutdown_current_thread(app_server).await;
-                            match self
-                                .replace_chat_widget_with_app_server_thread(
-                                    tui, app_server, reset, /*initial_user_message*/ None,
-                                )
-                                .await
-                            {
-                                Ok(()) => {
-                                    if let Some(summary) = summary {
-                                        let mut lines: Vec<Line<'static>> = Vec::new();
-                                        if let Some(usage_line) = summary.usage_line {
-                                            lines.push(usage_line.into());
-                                        }
-                                        if let Some(command) = summary.resume_hint {
-                                            let spans = vec![
-                                                "To continue the previous session, run ".into(),
-                                                command.cyan(),
-                                            ];
-                                            lines.push(spans.into());
-                                        }
-                                        self.chat_widget.add_plain_history_lines(lines);
-                                    }
-                                }
-                                Err(err) => {
-                                    self.chat_widget.add_error_message(format!(
-                                        "Failed to attach to reset app-server thread: {err}"
-                                    ));
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            self.chat_widget.add_error_message(format!(
-                                "Failed to reset current context through the app server: {err}"
-                            ));
-                        }
-                    }
+                    self.reset_context_thread_in_background(
+                        app_server,
+                        self.config.clone(),
+                        thread_id,
+                        summary,
+                    );
                 } else {
                     self.chat_widget.add_error_message(
                         "A thread must contain at least one turn before its context can be reset."
                             .to_string(),
                     );
+                }
+
+                tui.frame_requester().schedule_frame();
+            }
+            AppEvent::ResetContextCompleted {
+                source_thread_id,
+                summary,
+                result,
+            } => {
+                match result {
+                    Ok(mut reset) => {
+                        let current_thread_id = self.chat_widget.thread_id();
+                        if current_thread_id != Some(source_thread_id) {
+                            let mut lines: Vec<Line<'static>> = vec![
+                                "Context reset finished for a thread that is no longer active."
+                                    .into(),
+                            ];
+                            if let Some(command) = codex_utils_cli::resume_hint(
+                                reset.session.thread_name.as_deref(),
+                                Some(reset.session.thread_id),
+                            ) {
+                                lines.push(vec!["To open it, run ".into(), command.cyan()].into());
+                            }
+                            self.chat_widget.add_plain_history_lines(lines);
+                            tui.frame_requester().schedule_frame();
+                            return Ok(AppRunControl::Continue);
+                        }
+
+                        let forked_from_id = reset
+                            .session
+                            .forked_from_id
+                            .as_ref()
+                            .map(ToString::to_string);
+                        reset.session.fork_parent_title = app_server
+                            .fork_parent_title_from_app_server(forked_from_id.as_deref())
+                            .await;
+                        self.shutdown_current_thread(app_server).await;
+                        match self
+                            .replace_chat_widget_with_app_server_thread(
+                                tui, app_server, reset, /*initial_user_message*/ None,
+                            )
+                            .await
+                        {
+                            Ok(()) => {
+                                if let Some(summary) = summary {
+                                    let mut lines: Vec<Line<'static>> = Vec::new();
+                                    if let Some(usage_line) = summary.usage_line {
+                                        lines.push(usage_line.into());
+                                    }
+                                    if let Some(command) = summary.resume_hint {
+                                        let spans = vec![
+                                            "To continue the previous session, run ".into(),
+                                            command.cyan(),
+                                        ];
+                                        lines.push(spans.into());
+                                    }
+                                    self.chat_widget.add_plain_history_lines(lines);
+                                }
+                            }
+                            Err(err) => {
+                                self.chat_widget.add_error_message(format!(
+                                    "Failed to attach to reset app-server thread: {err}"
+                                ));
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        self.chat_widget.add_error_message(format!(
+                            "Failed to reset current context through the app server: {err}"
+                        ));
+                    }
                 }
 
                 tui.frame_requester().schedule_frame();
