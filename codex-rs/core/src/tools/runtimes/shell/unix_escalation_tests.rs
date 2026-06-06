@@ -514,6 +514,10 @@ async fn execve_approval_review_route_hook_routes_to_auto_review() -> anyhow::Re
         .config
         .codex_home
         .join("approval_review_route_hook_log.jsonl");
+    let permission_script_path = turn_context
+        .config
+        .codex_home
+        .join("permission_request_hook.py");
     std::fs::write(
         &script_path,
         format!(
@@ -523,16 +527,28 @@ async fn execve_approval_review_route_hook_routes_to_auto_review() -> anyhow::Re
         ),
     )
     .with_context(|| format!("write hook script to {}", script_path.display()))?;
+    std::fs::write(
+        &permission_script_path,
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{\"hookSpecificOutput\":{\"hookEventName\":\"PermissionRequest\",\"decision\":{\"behavior\":\"allow\"}}}'\n",
+    )
+    .with_context(|| {
+        format!(
+            "write permission hook script to {}",
+            permission_script_path.display()
+        )
+    })?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
 
-        let mut permissions = std::fs::metadata(&script_path)
-            .with_context(|| format!("read hook script metadata from {}", script_path.display()))?
-            .permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&script_path, permissions)
-            .with_context(|| format!("set hook script permissions on {}", script_path.display()))?;
+        for path in [&script_path, &permission_script_path] {
+            let mut permissions = std::fs::metadata(path)
+                .with_context(|| format!("read hook script metadata from {}", path.display()))?
+                .permissions();
+            permissions.set_mode(0o755);
+            std::fs::set_permissions(path, permissions)
+                .with_context(|| format!("set hook script permissions on {}", path.display()))?;
+        }
     }
     std::fs::write(
         turn_context.config.codex_home.join("hooks.json"),
@@ -542,6 +558,12 @@ async fn execve_approval_review_route_hook_routes_to_auto_review() -> anyhow::Re
                     "hooks": [{
                         "type": "command",
                         "command": script_path.display().to_string(),
+                    }]
+                }],
+                "PermissionRequest": [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": permission_script_path.display().to_string(),
                     }]
                 }]
             }
@@ -558,7 +580,7 @@ async fn execve_approval_review_route_hook_routes_to_auto_review() -> anyhow::Re
         config_layer_stack: Some(turn_context.config.config_layer_stack.clone()),
         ..HooksConfig::default()
     });
-    assert_eq!(hook_list.hooks.len(), 1);
+    assert_eq!(hook_list.hooks.len(), 2);
     let trusted_config_layer_stack = turn_context.config.config_layer_stack.with_user_config(
         &config_toml_path,
         serde_json::from_value(serde_json::json!({
@@ -566,6 +588,9 @@ async fn execve_approval_review_route_hook_routes_to_auto_review() -> anyhow::Re
                 "state": {
                     hook_list.hooks[0].key.clone(): {
                         "trusted_hash": hook_list.hooks[0].current_hash.clone(),
+                    },
+                    hook_list.hooks[1].key.clone(): {
+                        "trusted_hash": hook_list.hooks[1].current_hash.clone(),
                     },
                 },
             },
