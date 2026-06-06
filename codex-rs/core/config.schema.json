@@ -1203,6 +1203,13 @@
     },
     "HooksToml": {
       "properties": {
+        "ApprovalReviewRoute": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/MatcherGroup"
+          },
+          "type": "array"
+        },
         "PermissionRequest": {
           "default": [],
           "items": {
