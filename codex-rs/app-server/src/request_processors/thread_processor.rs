@@ -3261,10 +3261,8 @@ impl ThreadRequestProcessor {
         let source_thread_id = source_thread.thread_id;
         let history_items = match source_history_override {
             Some(history) => {
-                let mut items: Vec<RolloutItem> = history
-                    .into_iter()
-                    .map(RolloutItem::ResponseItem)
-                    .collect();
+                let mut items: Vec<RolloutItem> =
+                    history.into_iter().map(RolloutItem::ResponseItem).collect();
                 items.push(RolloutItem::EventMsg(EventMsg::TurnComplete(
                     TurnCompleteEvent {
                         turn_id: "reset-context-compacted-history".to_string(),

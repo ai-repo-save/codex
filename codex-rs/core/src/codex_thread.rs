@@ -469,11 +469,7 @@ impl CodexThread {
     }
 
     pub async fn current_context_history(&self) -> Vec<ResponseItem> {
-        self.codex
-            .session
-            .clone_history()
-            .await
-            .into_raw_items()
+        self.codex.session.clone_history().await.into_raw_items()
     }
 
     pub async fn read_thread(
