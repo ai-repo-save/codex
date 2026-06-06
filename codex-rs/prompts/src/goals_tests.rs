@@ -121,15 +121,13 @@ fn goal_prompts_escape_objective_delimiters() {
 
 #[test]
 fn override_goal_prompt_renders_all_allowed_variables() {
-    let template = parse_goal_prompt_template(
-        concat!(
-            "goal={{ objective }}; ",
-            "used={{ tokens_used }}; ",
-            "budget={{ token_budget }}; ",
-            "remaining={{ remaining_tokens }}; ",
-            "time={{ time_used_seconds }}"
-        ),
-    )
+    let template = parse_goal_prompt_template(concat!(
+        "goal={{ objective }}; ",
+        "used={{ tokens_used }}; ",
+        "budget={{ token_budget }}; ",
+        "remaining={{ remaining_tokens }}; ",
+        "time={{ time_used_seconds }}"
+    ))
     .expect("override template should parse");
     let templates = GoalPromptTemplates {
         continuation_prompt: Some(template),

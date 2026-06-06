@@ -944,6 +944,48 @@
       },
       "type": "object"
     },
+    "GoalsToml": {
+      "additionalProperties": false,
+      "properties": {
+        "budget_limit_prompt": {
+          "description": "Prompt template injected when an active goal reaches its token budget.",
+          "type": "string"
+        },
+        "budget_limit_prompt_file": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AbsolutePathBuf"
+            }
+          ],
+          "description": "File containing the prompt template injected when an active goal reaches its token budget."
+        },
+        "continuation_prompt": {
+          "description": "Prompt template used when Codex automatically continues an active goal.",
+          "type": "string"
+        },
+        "continuation_prompt_file": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AbsolutePathBuf"
+            }
+          ],
+          "description": "File containing the prompt template used when Codex automatically continues an active goal."
+        },
+        "objective_updated_prompt": {
+          "description": "Prompt template injected after the active goal objective is edited.",
+          "type": "string"
+        },
+        "objective_updated_prompt_file": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AbsolutePathBuf"
+            }
+          ],
+          "description": "File containing the prompt template injected after the active goal objective is edited."
+        }
+      },
+      "type": "object"
+    },
     "GranularApprovalConfig": {
       "properties": {
         "mcp_elicitations": {
@@ -4817,6 +4859,15 @@
       ],
       "default": null,
       "description": "Compatibility-only settings retained so legacy `ghost_snapshot` config still loads."
+    },
+    "goals": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/GoalsToml"
+        }
+      ],
+      "default": null,
+      "description": "Goal runtime prompt overrides."
     },
     "hide_agent_reasoning": {
       "default": false,
