@@ -166,35 +166,6 @@ fn build_command_input(request: &ApprovalReviewRouteRequest) -> ApprovalReviewRo
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use pretty_assertions::assert_eq;
-
-    use super::ApprovalReviewRouteDecision;
-    use super::resolve_approval_review_route_decision;
-
-    #[test]
-    fn approval_review_route_uses_last_non_continue_reviewer() {
-        let decisions = [
-            Some(ApprovalReviewRouteDecision::AutoReview),
-            None,
-            Some(ApprovalReviewRouteDecision::User),
-        ];
-
-        assert_eq!(
-            resolve_approval_review_route_decision(decisions),
-            Some(ApprovalReviewRouteDecision::User)
-        );
-    }
-
-    #[test]
-    fn approval_review_route_returns_none_when_handlers_continue() {
-        let decisions = [None, None];
-
-        assert_eq!(resolve_approval_review_route_decision(decisions), None);
-    }
-}
-
 fn parse_completed(
     handler: &ConfiguredHandler,
     run_result: CommandRunResult,
@@ -273,5 +244,34 @@ fn parse_completed(
         },
         data: ApprovalReviewRouteHandlerData { decision },
         completion_order: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+
+    use super::ApprovalReviewRouteDecision;
+    use super::resolve_approval_review_route_decision;
+
+    #[test]
+    fn approval_review_route_uses_last_non_continue_reviewer() {
+        let decisions = [
+            Some(ApprovalReviewRouteDecision::AutoReview),
+            None,
+            Some(ApprovalReviewRouteDecision::User),
+        ];
+
+        assert_eq!(
+            resolve_approval_review_route_decision(decisions),
+            Some(ApprovalReviewRouteDecision::User)
+        );
+    }
+
+    #[test]
+    fn approval_review_route_returns_none_when_handlers_continue() {
+        let decisions = [None, None];
+
+        assert_eq!(resolve_approval_review_route_decision(decisions), None);
     }
 }
