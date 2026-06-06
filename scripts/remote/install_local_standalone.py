@@ -162,6 +162,7 @@ def remote_build_command(
 ) -> tuple[str, ...]:
     command = (
         f"rm -rf {shell_quote(str(remote_package_dir))} && "
+        f"{remote_build_env_command(config.target)} && "
         "uv run --project scripts python scripts/build_codex_package.py "
         f"--target {shell_quote(config.target)} "
         f"--variant {shell_quote(config.variant)} "
@@ -170,6 +171,29 @@ def remote_build_command(
         "--force"
     )
     return ("bash", "-lc", command)
+
+
+def remote_build_env_command(target: str) -> str:
+    linker_env = cargo_target_linker_env_key(target)
+    return (
+        "if command -v sccache >/dev/null 2>&1; then "
+        "export RUSTC_WRAPPER=\"$(command -v sccache)\"; "
+        "echo \"remote build: using RUSTC_WRAPPER=$RUSTC_WRAPPER\"; "
+        "else echo \"remote build: sccache not found\"; fi; "
+        "if command -v clang >/dev/null 2>&1 && command -v mold >/dev/null 2>&1; then "
+        f"export {linker_env}=clang; "
+        "export RUSTFLAGS=\"${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=mold\"; "
+        "echo \"remote build: using clang with mold\"; "
+        "elif command -v clang >/dev/null 2>&1 && command -v ld.lld >/dev/null 2>&1; then "
+        f"export {linker_env}=clang; "
+        "export RUSTFLAGS=\"${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=lld\"; "
+        "echo \"remote build: using clang with lld\"; "
+        "else echo \"remote build: no fast linker configured\"; fi"
+    )
+
+
+def cargo_target_linker_env_key(target: str) -> str:
+    return f"CARGO_TARGET_{target.upper().replace('-', '_')}_LINKER"
 
 
 def install_remote_package(
@@ -183,6 +207,7 @@ def install_remote_package(
     if staging_dir.exists() or staging_dir.is_symlink():
         raise RuntimeError(f"staging directory already exists: {staging_dir}")
     staging_dir.parent.mkdir(parents=True, exist_ok=True)
+    prefill_staging_dir(paths.current_link, staging_dir)
     with timed_step(
         LOGGER, f"copying remote package to local staging directory {staging_dir}"
     ):
@@ -225,10 +250,33 @@ def rsync_remote_package(
         (
             "rsync",
             "--archive",
+            "--delete",
+            "--compress",
+            "--compress-choice=zstd",
+            "--compress-level=1",
             f"{host}:{remote_package_dir}/",
             f"{staging_dir}/",
         )
     )
+
+
+def prefill_staging_dir(current_link: Path, staging_dir: Path) -> None:
+    if not current_link.is_symlink() and not current_link.exists():
+        LOGGER.info("no current standalone release to prefill staging directory")
+        return
+
+    current_release = current_link.resolve()
+    if not current_release.is_dir():
+        LOGGER.info("current standalone release is not a directory: %s", current_release)
+        return
+
+    with timed_step(LOGGER, f"prefilling staging directory from {current_release}"):
+        shutil.copytree(
+            current_release,
+            staging_dir,
+            copy_function=os.link,
+            symlinks=True,
+        )
 
 
 def activate_release_with_backup(
