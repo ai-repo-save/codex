@@ -424,7 +424,7 @@ impl Session {
 
         let Some(goal) = state_db
             .thread_goals()
-            .get_thread_goal(self.conversation_id)
+            .get_thread_goal(self.thread_id)
             .await?
         else {
             return Ok(false);
@@ -449,7 +449,7 @@ impl Session {
 
         let cleared = state_db
             .thread_goals()
-            .delete_thread_goal(self.conversation_id)
+            .delete_thread_goal(self.thread_id)
             .await?;
 
         if cleared {
@@ -458,7 +458,7 @@ impl Session {
             self.send_event(
                 turn_context,
                 EventMsg::ThreadGoalCleared(ThreadGoalClearedEvent {
-                    thread_id: self.conversation_id,
+                    thread_id: self.thread_id,
                     turn_id: Some(turn_context.sub_id.clone()),
                 }),
             )

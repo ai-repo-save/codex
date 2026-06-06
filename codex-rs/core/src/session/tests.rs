@@ -9667,7 +9667,7 @@ async fn external_objective_change_uses_configured_goal_prompt() -> anyhow::Resu
     let old_goal = state_db
         .thread_goals()
         .replace_thread_goal(
-            sess.conversation_id,
+            sess.thread_id,
             "Keep improving the benchmark",
             codex_state::ThreadGoalStatus::Active,
             /*token_budget*/ Some(10_000),
@@ -9676,7 +9676,7 @@ async fn external_objective_change_uses_configured_goal_prompt() -> anyhow::Resu
     let new_goal = state_db
         .thread_goals()
         .replace_thread_goal(
-            sess.conversation_id,
+            sess.thread_id,
             "Write <summary>",
             codex_state::ThreadGoalStatus::Active,
             /*token_budget*/ Some(10_000),
@@ -10814,7 +10814,7 @@ async fn completed_goal_is_cleared_on_next_user_turn() -> anyhow::Result<()> {
     let EventMsg::ThreadGoalCleared(cleared) = cleared_event.msg else {
         panic!("expected thread goal cleared event");
     };
-    assert_eq!(session.conversation_id, cleared.thread_id);
+    assert_eq!(session.thread_id, cleared.thread_id);
     assert_eq!(Some("sub-clear-goal".to_string()), cleared.turn_id);
 
     assert!(
