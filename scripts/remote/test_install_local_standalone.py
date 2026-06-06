@@ -77,7 +77,7 @@ class RemoteInstallLocalStandaloneTest(unittest.TestCase):
             "export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang",
             shell_command,
         )
-        self.assertIn("-C link-arg=-fuse-ld=mold", shell_command)
+        self.assertIn("-C link-arg=-fuse-ld=$(command -v mold)", shell_command)
         self.assertIn("-C link-arg=-fuse-ld=lld", shell_command)
 
 

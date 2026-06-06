@@ -182,7 +182,7 @@ def remote_build_env_command(target: str) -> str:
         "else echo \"remote build: sccache not found\"; fi; "
         "if command -v clang >/dev/null 2>&1 && command -v mold >/dev/null 2>&1; then "
         f"export {linker_env}=clang; "
-        "export RUSTFLAGS=\"${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=mold\"; "
+        "export RUSTFLAGS=\"${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=$(command -v mold)\"; "
         "echo \"remote build: using clang with mold\"; "
         "elif command -v clang >/dev/null 2>&1 && command -v ld.lld >/dev/null 2>&1; then "
         f"export {linker_env}=clang; "
