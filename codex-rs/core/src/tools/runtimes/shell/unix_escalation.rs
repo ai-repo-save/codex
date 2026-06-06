@@ -10,6 +10,8 @@ use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
 use crate::guardian::review_approval_request;
 use crate::guardian::routes_approval_action_to_guardian;
+use crate::hook_runtime::ApprovalReviewRouteHookRequest;
+use crate::hook_runtime::run_approval_review_route_hooks;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::sandboxing::ExecOptions;
 use crate::sandboxing::ExecRequest;
@@ -31,6 +33,7 @@ use codex_execpolicy::MatchOptions;
 use codex_execpolicy::Policy;
 use codex_execpolicy::RuleMatch;
 use codex_features::Feature;
+use codex_hooks::ApprovalReviewRouteDecision;
 use codex_hooks::PermissionRequestDecision;
 use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::error::CodexErr;
@@ -427,17 +430,48 @@ impl CoreShellActionProvider {
         let call_id = self.call_id.clone();
         let approval_id = Some(Uuid::new_v4().to_string());
         let source = self.tool_name;
-        let guardian_review_id =
+        let mut guardian_review_id =
             routes_approval_action_to_guardian(&turn, GuardianReviewAction::Execve)
                 .then(new_guardian_review_id);
         Ok(stopwatch
             .pause_for(async move {
-                // 1) Run PermissionRequest hooks
+                // 1) Route between Guardian and user approval.
                 let permission_request = PermissionRequestPayload::bash(
                     codex_shell_command::parse_command::shlex_join(&command),
                     /*description*/ None,
                 );
                 let effective_approval_id = approval_id.clone().unwrap_or_else(|| call_id.clone());
+                let strict_auto_review = session.strict_auto_review_enabled_for_turn().await;
+                if strict_auto_review && guardian_review_id.is_none() {
+                    guardian_review_id = Some(new_guardian_review_id());
+                }
+                let static_auto_review_enabled = strict_auto_review || guardian_review_id.is_some();
+                match run_approval_review_route_hooks(
+                    &session,
+                    &turn,
+                    ApprovalReviewRouteHookRequest {
+                        run_id_suffix: effective_approval_id.clone(),
+                        payload: permission_request.clone(),
+                        approval_kind: "execve",
+                        strict_auto_review,
+                        static_auto_review_enabled,
+                        retry_reason: None,
+                    },
+                )
+                .await
+                {
+                    Some(ApprovalReviewRouteDecision::AutoReview) => {
+                        if guardian_review_id.is_none() {
+                            guardian_review_id = Some(new_guardian_review_id());
+                        }
+                    }
+                    Some(ApprovalReviewRouteDecision::User) => {
+                        guardian_review_id = None;
+                    }
+                    None => {}
+                }
+
+                // 2) Run PermissionRequest hooks.
                 match run_permission_request_hooks(
                     &session,
                     &turn,
@@ -463,7 +497,7 @@ impl CoreShellActionProvider {
                     None => {}
                 }
 
-                // 2) Route to Guardian if configured
+                // 3) Route to Guardian if configured.
                 if let Some(review_id) = guardian_review_id.clone() {
                     let decision = review_approval_request(
                         &session,

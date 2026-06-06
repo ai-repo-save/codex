@@ -5,6 +5,8 @@ use tokio::process::Command;
 use crate::engine::ClaudeHooksEngine;
 use crate::engine::CommandShell;
 use crate::engine::HookListEntry;
+use crate::events::approval_review_route::ApprovalReviewRouteOutcome;
+use crate::events::approval_review_route::ApprovalReviewRouteRequest;
 use crate::events::compact::PostCompactRequest;
 use crate::events::compact::PreCompactOutcome;
 use crate::events::compact::PreCompactRequest;
@@ -127,6 +129,13 @@ impl Hooks {
         self.engine.preview_permission_request(request)
     }
 
+    pub fn preview_approval_review_route(
+        &self,
+        request: &ApprovalReviewRouteRequest,
+    ) -> Vec<codex_protocol::protocol::HookRunSummary> {
+        self.engine.preview_approval_review_route(request)
+    }
+
     pub fn preview_post_tool_use(
         &self,
         request: &PostToolUseRequest,
@@ -151,6 +160,13 @@ impl Hooks {
         request: PermissionRequestRequest,
     ) -> PermissionRequestOutcome {
         self.engine.run_permission_request(request).await
+    }
+
+    pub async fn run_approval_review_route(
+        &self,
+        request: ApprovalReviewRouteRequest,
+    ) -> ApprovalReviewRouteOutcome {
+        self.engine.run_approval_review_route(request).await
     }
 
     pub async fn run_post_tool_use(&self, request: PostToolUseRequest) -> PostToolUseOutcome {

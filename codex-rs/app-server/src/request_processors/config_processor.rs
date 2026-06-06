@@ -482,6 +482,7 @@ fn map_hooks_requirements_to_api(hooks: ManagedHooksRequirementsToml) -> Managed
     let HookEventsToml {
         pre_tool_use,
         permission_request,
+        approval_review_route: _,
         post_tool_use,
         pre_compact,
         post_compact,

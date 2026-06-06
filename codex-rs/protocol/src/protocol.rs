@@ -1358,6 +1358,7 @@ pub enum EventMsg {
 pub enum HookEventName {
     PreToolUse,
     PermissionRequest,
+    ApprovalReviewRoute,
     PostToolUse,
     PreCompact,
     PostCompact,

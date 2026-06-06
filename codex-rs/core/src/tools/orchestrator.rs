@@ -9,7 +9,10 @@ caching).
 use crate::guardian::guardian_rejection_message;
 use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
+use crate::guardian::GuardianReviewAction;
 use crate::guardian::routes_approval_action_to_guardian;
+use crate::hook_runtime::ApprovalReviewRouteHookRequest;
+use crate::hook_runtime::run_approval_review_route_hooks;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::network_policy_decision::network_approval_context_from_payload;
 use crate::tools::flat_tool_name;
@@ -30,6 +33,7 @@ use crate::tools::sandboxing::default_exec_approval_requirement;
 use crate::tools::sandboxing::sandbox_override_for_first_attempt;
 use crate::tools::sandboxing::unsandboxed_execution_allowed;
 use codex_hooks::PermissionRequestDecision;
+use codex_hooks::ApprovalReviewRouteDecision;
 use codex_otel::ToolDecisionSource;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::SandboxErr;
@@ -47,6 +51,11 @@ pub(crate) struct ToolOrchestrator {
 pub(crate) struct OrchestratorRunResult<Out> {
     pub output: Out,
     pub deferred_network_approval: Option<DeferredNetworkApproval>,
+}
+
+struct ApprovalRequestOutcome {
+    decision: ReviewDecision,
+    guardian_review_id: Option<String>,
 }
 
 impl ToolOrchestrator {
@@ -157,9 +166,9 @@ impl ToolOrchestrator {
         });
         match &requirement {
             ExecApprovalRequirement::Skip { .. } => {
-                if strict_auto_review
-                    || (use_guardian && turn_ctx.config.auto_review.review.review_skipped_exec)
-                {
+                let static_auto_review_enabled = strict_auto_review
+                    || (use_guardian && turn_ctx.config.auto_review.review.review_skipped_exec);
+                if static_auto_review_enabled {
                     let guardian_review_id = Some(new_guardian_review_id());
                     let approval_ctx = ApprovalCtx {
                         session: &tool_ctx.session,
@@ -176,11 +185,18 @@ impl ToolOrchestrator {
                         approval_ctx,
                         tool_ctx,
                         /*evaluate_permission_request_hooks*/ false,
+                        guardian_review_action,
+                        static_auto_review_enabled,
+                        strict_auto_review,
                         &otel,
                     )
                     .await?;
-                    Self::reject_if_not_approved(tool_ctx, guardian_review_id.as_deref(), decision)
-                        .await?;
+                    Self::reject_if_not_approved(
+                        tool_ctx,
+                        decision.guardian_review_id.as_deref(),
+                        decision.decision,
+                    )
+                    .await?;
                     already_approved = true;
                 } else {
                     otel.tool_decision(
@@ -195,6 +211,7 @@ impl ToolOrchestrator {
                 return Err(ToolError::Rejected(reason.clone()));
             }
             ExecApprovalRequirement::NeedsApproval { reason, .. } => {
+                let static_auto_review_enabled = use_guardian;
                 let guardian_review_id = use_guardian.then(new_guardian_review_id);
                 let approval_ctx = ApprovalCtx {
                     session: &tool_ctx.session,
@@ -211,12 +228,19 @@ impl ToolOrchestrator {
                     approval_ctx,
                     tool_ctx,
                     /*evaluate_permission_request_hooks*/ !strict_auto_review,
+                    guardian_review_action,
+                    static_auto_review_enabled,
+                    strict_auto_review,
                     &otel,
                 )
                 .await?;
 
-                Self::reject_if_not_approved(tool_ctx, guardian_review_id.as_deref(), decision)
-                    .await?;
+                Self::reject_if_not_approved(
+                    tool_ctx,
+                    decision.guardian_review_id.as_deref(),
+                    decision.decision,
+                )
+                .await?;
                 already_approved = true;
             }
         }
@@ -363,12 +387,19 @@ impl ToolOrchestrator {
                         approval_ctx,
                         tool_ctx,
                         /*evaluate_permission_request_hooks*/ !strict_auto_review,
+                        guardian_review_action,
+                        use_guardian,
+                        strict_auto_review,
                         &otel,
                     )
                     .await?;
 
-                    Self::reject_if_not_approved(tool_ctx, guardian_review_id.as_deref(), decision)
-                        .await?;
+                    Self::reject_if_not_approved(
+                        tool_ctx,
+                        decision.guardian_review_id.as_deref(),
+                        decision.decision,
+                    )
+                    .await?;
                 }
 
                 let retry_sandbox = if unsandboxed_allowed {
@@ -424,14 +455,45 @@ impl ToolOrchestrator {
         tool: &mut T,
         req: &Rq,
         permission_request_run_id: &str,
-        approval_ctx: ApprovalCtx<'_>,
+        mut approval_ctx: ApprovalCtx<'_>,
         tool_ctx: &ToolCtx,
         evaluate_permission_request_hooks: bool,
+        guardian_review_action: Option<GuardianReviewAction>,
+        static_auto_review_enabled: bool,
+        strict_auto_review: bool,
         otel: &codex_otel::SessionTelemetry,
-    ) -> Result<ReviewDecision, ToolError>
+    ) -> Result<ApprovalRequestOutcome, ToolError>
     where
         T: ToolRuntime<Rq, Out>,
     {
+        if let Some(action) = guardian_review_action
+            && let Some(permission_request) = tool.permission_request_payload(req)
+            && let Some(route) = run_approval_review_route_hooks(
+                approval_ctx.session,
+                approval_ctx.turn,
+                ApprovalReviewRouteHookRequest {
+                    run_id_suffix: permission_request_run_id.to_string(),
+                    payload: permission_request,
+                    approval_kind: approval_kind_for_action(action),
+                    strict_auto_review,
+                    static_auto_review_enabled,
+                    retry_reason: approval_ctx.retry_reason.clone(),
+                },
+            )
+            .await
+        {
+            match route {
+                ApprovalReviewRouteDecision::AutoReview => {
+                    if approval_ctx.guardian_review_id.is_none() {
+                        approval_ctx.guardian_review_id = Some(new_guardian_review_id());
+                    }
+                }
+                ApprovalReviewRouteDecision::User => {
+                    approval_ctx.guardian_review_id = None;
+                }
+            }
+        }
+
         if evaluate_permission_request_hooks
             && let Some(permission_request) = tool.permission_request_payload(req)
         {
@@ -452,7 +514,10 @@ impl ToolOrchestrator {
                         &decision,
                         ToolDecisionSource::Config,
                     );
-                    return Ok(decision);
+                    return Ok(ApprovalRequestOutcome {
+                        decision,
+                        guardian_review_id: approval_ctx.guardian_review_id.clone(),
+                    });
                 }
                 Some(PermissionRequestDecision::Deny { message }) => {
                     let decision = ReviewDecision::Denied;
@@ -468,7 +533,8 @@ impl ToolOrchestrator {
             }
         }
 
-        let otel_source = if approval_ctx.guardian_review_id.is_some() {
+        let actual_guardian_review_id = approval_ctx.guardian_review_id.clone();
+        let otel_source = if actual_guardian_review_id.is_some() {
             ToolDecisionSource::AutomatedReviewer
         } else {
             ToolDecisionSource::User
@@ -481,7 +547,10 @@ impl ToolOrchestrator {
             &decision,
             otel_source,
         );
-        Ok(decision)
+        Ok(ApprovalRequestOutcome {
+            decision,
+            guardian_review_id: actual_guardian_review_id,
+        })
     }
 
     async fn reject_if_not_approved(
@@ -511,6 +580,18 @@ impl ToolOrchestrator {
                 }
             },
         }
+    }
+}
+
+fn approval_kind_for_action(action: GuardianReviewAction) -> &'static str {
+    match action {
+        GuardianReviewAction::Shell => "shell",
+        GuardianReviewAction::ExecCommand => "exec_command",
+        GuardianReviewAction::Execve => "execve",
+        GuardianReviewAction::ApplyPatch => "apply_patch",
+        GuardianReviewAction::McpToolCall => "mcp_tool_call",
+        GuardianReviewAction::NetworkAccess => "network_access",
+        GuardianReviewAction::RequestPermissions => "request_permissions",
     }
 }
 

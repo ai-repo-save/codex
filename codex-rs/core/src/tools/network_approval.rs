@@ -6,12 +6,15 @@ use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
 use crate::guardian::review_approval_request;
 use crate::guardian::routes_approval_action_to_guardian;
+use crate::hook_runtime::ApprovalReviewRouteHookRequest;
+use crate::hook_runtime::run_approval_review_route_hooks;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::network_policy_decision::denied_network_policy_message;
 use crate::session::session::Session;
 use crate::tools::sandboxing::PermissionRequestPayload;
 use crate::tools::sandboxing::ToolError;
 use codex_hooks::PermissionRequestDecision;
+use codex_hooks::ApprovalReviewRouteDecision;
 use codex_network_proxy::BlockedRequest;
 use codex_network_proxy::BlockedRequestObserver;
 use codex_network_proxy::NetworkDecision;
@@ -465,11 +468,32 @@ impl NetworkApprovalService {
         let command = owner_call
             .as_ref()
             .map_or_else(|| prompt_command.join(" "), |call| call.command.clone());
+        let permission_request_payload =
+            PermissionRequestPayload::bash(command, Some(format!("network-access {target}")));
+        let strict_auto_review = session.strict_auto_review_enabled_for_turn().await;
+        let static_auto_review_enabled = strict_auto_review
+            || routes_approval_action_to_guardian(
+                &turn_context,
+                GuardianReviewAction::NetworkAccess,
+            );
+        let route = run_approval_review_route_hooks(
+            &session,
+            &turn_context,
+            ApprovalReviewRouteHookRequest {
+                run_id_suffix: guardian_approval_id.clone(),
+                payload: permission_request_payload.clone(),
+                approval_kind: "network_access",
+                strict_auto_review,
+                static_auto_review_enabled,
+                retry_reason: Some(policy_denial_message.clone()),
+            },
+        )
+        .await;
         if let Some(permission_request_decision) = run_permission_request_hooks(
             &session,
             &turn_context,
             &guardian_approval_id,
-            PermissionRequestPayload::bash(command, Some(format!("network-access {target}"))),
+            permission_request_payload,
         )
         .await
         {
@@ -497,8 +521,11 @@ impl NetworkApprovalService {
                 }
             }
         }
-        let use_guardian =
-            routes_approval_action_to_guardian(&turn_context, GuardianReviewAction::NetworkAccess);
+        let use_guardian = match route {
+            Some(ApprovalReviewRouteDecision::AutoReview) => true,
+            Some(ApprovalReviewRouteDecision::User) => false,
+            None => static_auto_review_enabled,
+        };
         let guardian_review_id = use_guardian.then(new_guardian_review_id);
         let approval_decision = if let Some(review_id) = guardian_review_id.clone() {
             review_approval_request(

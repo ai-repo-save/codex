@@ -501,6 +501,157 @@ async fn execve_permission_request_hook_short_circuits_prompt() -> anyhow::Resul
     Ok(())
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn execve_approval_review_route_hook_routes_to_auto_review() -> anyhow::Result<()> {
+    let (session, mut turn_context) = make_session_and_context().await;
+    std::fs::create_dir_all(&turn_context.config.codex_home)
+        .context("recreate codex home for hook fixtures")?;
+    let script_path = turn_context
+        .config
+        .codex_home
+        .join("approval_review_route_hook.py");
+    let log_path = turn_context
+        .config
+        .codex_home
+        .join("approval_review_route_hook_log.jsonl");
+    std::fs::write(
+        &script_path,
+        format!(
+            "#!/bin/sh\ncat > {log_path}\nprintf '%s\\n' '{response}'\n",
+            log_path = shlex::try_quote(log_path.to_string_lossy().as_ref())?,
+            response = "{\"hookSpecificOutput\":{\"hookEventName\":\"ApprovalReviewRoute\",\"reviewer\":\"auto_review\"}}",
+        ),
+    )
+    .with_context(|| format!("write hook script to {}", script_path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut permissions = std::fs::metadata(&script_path)
+            .with_context(|| format!("read hook script metadata from {}", script_path.display()))?
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&script_path, permissions)
+            .with_context(|| format!("set hook script permissions on {}", script_path.display()))?;
+    }
+    std::fs::write(
+        turn_context.config.codex_home.join("hooks.json"),
+        serde_json::json!({
+            "hooks": {
+                "ApprovalReviewRoute": [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": script_path.display().to_string(),
+                    }]
+                }]
+            }
+        })
+        .to_string(),
+    )
+    .context("write hooks.json")?;
+    let config_toml_path = turn_context
+        .config
+        .codex_home
+        .join(codex_config::CONFIG_TOML_FILE);
+    let hook_list = codex_hooks::list_hooks(HooksConfig {
+        feature_enabled: true,
+        config_layer_stack: Some(turn_context.config.config_layer_stack.clone()),
+        ..HooksConfig::default()
+    });
+    assert_eq!(hook_list.hooks.len(), 1);
+    let trusted_config_layer_stack = turn_context.config.config_layer_stack.with_user_config(
+        &config_toml_path,
+        serde_json::from_value(serde_json::json!({
+            "hooks": {
+                "state": {
+                    hook_list.hooks[0].key.clone(): {
+                        "trusted_hash": hook_list.hooks[0].current_hash.clone(),
+                    },
+                },
+            },
+        }))
+        .context("build trusted hook state")?,
+    );
+
+    let mut hook_shell_argv = session
+        .user_shell()
+        .derive_exec_args("", /*use_login_shell*/ false);
+    let hook_shell_program = hook_shell_argv.remove(0);
+    let _ = hook_shell_argv.pop();
+    session
+        .services
+        .hooks
+        .store(Arc::new(Hooks::new(HooksConfig {
+            feature_enabled: true,
+            config_layer_stack: Some(trusted_config_layer_stack),
+            shell_program: Some(hook_shell_program),
+            shell_args: hook_shell_argv,
+            ..HooksConfig::default()
+        })));
+
+    turn_context.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
+    turn_context.permission_profile = PermissionProfile::from_runtime_permissions(
+        &read_only_file_system_sandbox_policy(),
+        NetworkSandboxPolicy::Restricted,
+    );
+    let workdir = AbsolutePathBuf::try_from(std::env::current_dir()?)?;
+    let target = std::env::temp_dir().join("execve-approval-route.txt");
+    let target_str = target.display().to_string();
+    let command = vec!["touch".to_string(), target_str.clone()];
+    let expected_hook_command =
+        codex_shell_command::parse_command::shlex_join(&["/usr/bin/touch".to_string(), target_str]);
+    let provider = CoreShellActionProvider {
+        policy: std::sync::Arc::new(RwLock::new(codex_execpolicy::Policy::empty())),
+        session: std::sync::Arc::new(session),
+        turn: std::sync::Arc::new(turn_context),
+        call_id: "execve-approval-route-call".to_string(),
+        tool_name: GuardianCommandSource::Shell,
+        approval_policy: AskForApproval::OnRequest,
+        permission_profile: PermissionProfile::read_only(),
+        file_system_sandbox_policy: read_only_file_system_sandbox_policy(),
+        sandbox_policy_cwd: workdir.clone(),
+        sandbox_permissions: SandboxPermissions::RequireEscalated,
+        approval_sandbox_permissions: SandboxPermissions::RequireEscalated,
+        prompt_permissions: None,
+        stopwatch: codex_shell_escalation::Stopwatch::new(Duration::from_secs(1)),
+    };
+
+    let action = tokio::time::timeout(
+        Duration::from_secs(5),
+        codex_shell_escalation::EscalationPolicy::determine_action(
+            &provider,
+            &AbsolutePathBuf::from_absolute_path("/usr/bin/touch")
+                .context("build touch absolute path")?,
+            &command,
+            &workdir,
+        ),
+    )
+    .await
+    .context("timed out waiting for execve approval route hook decision")??;
+    assert!(matches!(
+        action,
+        codex_shell_escalation::EscalationDecision::Escalate(
+            codex_shell_escalation::EscalationExecution::Unsandboxed
+        )
+    ));
+
+    let hook_inputs: Vec<Value> = std::fs::read_to_string(&log_path)
+        .with_context(|| format!("read hook log at {}", log_path.display()))?
+        .lines()
+        .map(serde_json::from_str)
+        .collect::<serde_json::Result<_>>()
+        .context("parse hook log")?;
+    assert_eq!(hook_inputs.len(), 1);
+    assert_eq!(hook_inputs[0]["hook_event_name"], "ApprovalReviewRoute");
+    assert_eq!(hook_inputs[0]["tool_input"]["command"], expected_hook_command);
+    assert_eq!(hook_inputs[0]["approval_kind"], "execve");
+    assert_eq!(hook_inputs[0]["approval_policy"], "on_request");
+    assert_eq!(hook_inputs[0]["strict_auto_review"], false);
+    assert_eq!(hook_inputs[0]["static_auto_review_enabled"], false);
+
+    Ok(())
+}
+
 #[test]
 fn evaluate_intercepted_exec_policy_uses_wrapper_command_when_shell_wrapper_parsing_disabled() {
     let policy_src = r#"prefix_rule(pattern = ["npm", "publish"], decision = "prompt")"#;

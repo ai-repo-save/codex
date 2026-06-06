@@ -1,4 +1,5 @@
 pub(crate) mod common;
+pub mod approval_review_route;
 pub mod compact;
 pub mod permission_request;
 pub mod post_tool_use;

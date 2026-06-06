@@ -34,6 +34,19 @@ pub(crate) struct PermissionRequestOutput {
     pub invalid_reason: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ApprovalReviewRouteReviewer {
+    AutoReview,
+    User,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ApprovalReviewRouteOutput {
+    pub universal: UniversalOutput,
+    pub reviewer: Option<ApprovalReviewRouteReviewer>,
+    pub invalid_reason: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct PostToolUseOutput {
     pub universal: UniversalOutput,
@@ -75,6 +88,8 @@ pub(crate) struct StatelessHookOutput {
     pub invalid_reason: Option<String>,
 }
 
+use crate::schema::ApprovalReviewRouteCommandOutputWire;
+use crate::schema::ApprovalReviewRouteReviewerWire;
 use crate::schema::BlockDecisionWire;
 use crate::schema::HookUniversalOutputWire;
 use crate::schema::PermissionRequestBehaviorWire;
@@ -202,6 +217,34 @@ pub(crate) fn parse_permission_request(stdout: &str) -> Option<PermissionRequest
     Some(PermissionRequestOutput {
         universal,
         decision,
+        invalid_reason,
+    })
+}
+
+pub(crate) fn parse_approval_review_route(stdout: &str) -> Option<ApprovalReviewRouteOutput> {
+    let wire: ApprovalReviewRouteCommandOutputWire = parse_json(stdout)?;
+    let universal = UniversalOutput::from(wire.universal);
+    let hook_specific_output = wire.hook_specific_output.as_ref();
+    let invalid_reason = unsupported_approval_review_route_universal(&universal).or_else(|| {
+        hook_specific_output
+            .is_none()
+            .then(|| "ApprovalReviewRoute hook output must include hookSpecificOutput".to_string())
+    });
+    let reviewer = if invalid_reason.is_none() {
+        hook_specific_output.and_then(|output| match output.reviewer {
+            ApprovalReviewRouteReviewerWire::AutoReview => {
+                Some(ApprovalReviewRouteReviewer::AutoReview)
+            }
+            ApprovalReviewRouteReviewerWire::User => Some(ApprovalReviewRouteReviewer::User),
+            ApprovalReviewRouteReviewerWire::Continue => None,
+        })
+    } else {
+        None
+    };
+
+    Some(ApprovalReviewRouteOutput {
+        universal,
+        reviewer,
         invalid_reason,
     })
 }
@@ -392,6 +435,18 @@ fn unsupported_permission_request_universal(universal: &UniversalOutput) -> Opti
     }
 }
 
+fn unsupported_approval_review_route_universal(universal: &UniversalOutput) -> Option<String> {
+    if !universal.continue_processing {
+        Some("ApprovalReviewRoute hook returned unsupported continue:false".to_string())
+    } else if universal.stop_reason.is_some() {
+        Some("ApprovalReviewRoute hook returned unsupported stopReason".to_string())
+    } else if universal.suppress_output {
+        Some("ApprovalReviewRoute hook returned unsupported suppressOutput".to_string())
+    } else {
+        None
+    }
+}
+
 fn unsupported_post_tool_use_universal(universal: &UniversalOutput) -> Option<String> {
     if universal.suppress_output {
         Some("PostToolUse hook returned unsupported suppressOutput".to_string())
@@ -517,7 +572,57 @@ mod tests {
     use pretty_assertions::assert_eq;
     use serde_json::json;
 
+    use super::ApprovalReviewRouteReviewer;
+    use super::parse_approval_review_route;
     use super::parse_permission_request;
+
+    #[test]
+    fn approval_review_route_selects_auto_review_reviewer() {
+        let parsed = parse_approval_review_route(
+            &json!({
+                "continue": true,
+                "hookSpecificOutput": {
+                    "hookEventName": "ApprovalReviewRoute",
+                    "reviewer": "auto_review"
+                }
+            })
+            .to_string(),
+        )
+        .expect("approval review route hook output should parse");
+
+        assert_eq!(parsed.invalid_reason, None);
+        assert_eq!(parsed.reviewer, Some(ApprovalReviewRouteReviewer::AutoReview));
+    }
+
+    #[test]
+    fn approval_review_route_continue_leaves_reviewer_unchanged() {
+        let parsed = parse_approval_review_route(
+            &json!({
+                "continue": true,
+                "hookSpecificOutput": {
+                    "hookEventName": "ApprovalReviewRoute",
+                    "reviewer": "continue"
+                }
+            })
+            .to_string(),
+        )
+        .expect("approval review route hook output should parse");
+
+        assert_eq!(parsed.invalid_reason, None);
+        assert_eq!(parsed.reviewer, None);
+    }
+
+    #[test]
+    fn approval_review_route_requires_hook_specific_output() {
+        let parsed = parse_approval_review_route(&json!({ "continue": true }).to_string())
+            .expect("approval review route hook output should parse");
+
+        assert_eq!(
+            parsed.invalid_reason,
+            Some("ApprovalReviewRoute hook output must include hookSpecificOutput".to_string())
+        );
+        assert_eq!(parsed.reviewer, None);
+    }
 
     #[test]
     fn permission_request_rejects_reserved_updated_input_field() {

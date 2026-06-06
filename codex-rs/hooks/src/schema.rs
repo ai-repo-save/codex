@@ -19,6 +19,10 @@ const POST_TOOL_USE_INPUT_FIXTURE: &str = "post-tool-use.command.input.schema.js
 const POST_TOOL_USE_OUTPUT_FIXTURE: &str = "post-tool-use.command.output.schema.json";
 const PERMISSION_REQUEST_INPUT_FIXTURE: &str = "permission-request.command.input.schema.json";
 const PERMISSION_REQUEST_OUTPUT_FIXTURE: &str = "permission-request.command.output.schema.json";
+const APPROVAL_REVIEW_ROUTE_INPUT_FIXTURE: &str =
+    "approval-review-route.command.input.schema.json";
+const APPROVAL_REVIEW_ROUTE_OUTPUT_FIXTURE: &str =
+    "approval-review-route.command.output.schema.json";
 const POST_COMPACT_INPUT_FIXTURE: &str = "post-compact.command.input.schema.json";
 const POST_COMPACT_OUTPUT_FIXTURE: &str = "post-compact.command.output.schema.json";
 const PRE_TOOL_USE_INPUT_FIXTURE: &str = "pre-tool-use.command.input.schema.json";
@@ -101,6 +105,8 @@ pub(crate) enum HookEventNameWire {
     PreToolUse,
     #[serde(rename = "PermissionRequest")]
     PermissionRequest,
+    #[serde(rename = "ApprovalReviewRoute")]
+    ApprovalReviewRoute,
     #[serde(rename = "PostToolUse")]
     PostToolUse,
     #[serde(rename = "PreCompact")]
@@ -163,6 +169,17 @@ pub(crate) struct PermissionRequestCommandOutputWire {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "approval-review-route.command.output")]
+pub(crate) struct ApprovalReviewRouteCommandOutputWire {
+    #[serde(flatten)]
+    pub universal: HookUniversalOutputWire,
+    #[serde(default)]
+    pub hook_specific_output: Option<ApprovalReviewRouteHookSpecificOutputWire>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 #[schemars(rename = "pre-compact.command.output")]
 pub(crate) struct PreCompactCommandOutputWire {
     #[serde(flatten)]
@@ -186,6 +203,25 @@ pub(crate) struct PermissionRequestHookSpecificOutputWire {
     pub hook_event_name: HookEventNameWire,
     #[serde(default)]
     pub decision: Option<PermissionRequestDecisionWire>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ApprovalReviewRouteHookSpecificOutputWire {
+    #[schemars(schema_with = "approval_review_route_hook_event_name_schema")]
+    pub hook_event_name: HookEventNameWire,
+    pub reviewer: ApprovalReviewRouteReviewerWire,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub(crate) enum ApprovalReviewRouteReviewerWire {
+    #[serde(rename = "auto_review")]
+    AutoReview,
+    #[serde(rename = "user")]
+    User,
+    #[serde(rename = "continue")]
+    Continue,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -312,6 +348,35 @@ pub(crate) struct PermissionRequestCommandInput {
     pub permission_mode: String,
     pub tool_name: String,
     pub tool_input: Value,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(rename = "approval-review-route.command.input")]
+pub(crate) struct ApprovalReviewRouteCommandInput {
+    pub session_id: String,
+    /// Codex extension: expose the active turn id to internal turn-scoped hooks.
+    pub turn_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_type: Option<String>,
+    pub transcript_path: NullableString,
+    pub cwd: String,
+    #[schemars(schema_with = "approval_review_route_hook_event_name_schema")]
+    pub hook_event_name: String,
+    pub model: String,
+    #[schemars(schema_with = "permission_mode_schema")]
+    pub permission_mode: String,
+    pub tool_name: String,
+    pub tool_input: Value,
+    pub approval_kind: String,
+    #[schemars(schema_with = "approval_policy_schema")]
+    pub approval_policy: String,
+    pub strict_auto_review: bool,
+    pub static_auto_review_enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -619,6 +684,14 @@ pub fn write_schema_fixtures(schema_root: &Path) -> anyhow::Result<()> {
         schema_json::<PermissionRequestCommandOutputWire>()?,
     )?;
     write_schema(
+        &generated_dir.join(APPROVAL_REVIEW_ROUTE_INPUT_FIXTURE),
+        schema_json::<ApprovalReviewRouteCommandInput>()?,
+    )?;
+    write_schema(
+        &generated_dir.join(APPROVAL_REVIEW_ROUTE_OUTPUT_FIXTURE),
+        schema_json::<ApprovalReviewRouteCommandOutputWire>()?,
+    )?;
+    write_schema(
         &generated_dir.join(POST_COMPACT_INPUT_FIXTURE),
         schema_json::<PostCompactCommandInput>()?,
     )?;
@@ -761,6 +834,10 @@ fn permission_request_hook_event_name_schema(_gen: &mut SchemaGenerator) -> Sche
     string_const_schema("PermissionRequest")
 }
 
+fn approval_review_route_hook_event_name_schema(_gen: &mut SchemaGenerator) -> Schema {
+    string_const_schema("ApprovalReviewRoute")
+}
+
 fn user_prompt_submit_hook_event_name_schema(_gen: &mut SchemaGenerator) -> Schema {
     string_const_schema("UserPromptSubmit")
 }
@@ -784,6 +861,16 @@ fn permission_mode_schema(_gen: &mut SchemaGenerator) -> Schema {
         "plan",
         "dontAsk",
         "bypassPermissions",
+    ])
+}
+
+fn approval_policy_schema(_gen: &mut SchemaGenerator) -> Schema {
+    string_enum_schema(&[
+        "never",
+        "on_failure",
+        "on_request",
+        "unless_trusted",
+        "granular",
     ])
 }
 
@@ -825,6 +912,10 @@ fn default_continue() -> bool {
 #[cfg(test)]
 mod tests {
     use super::NullableString;
+    use super::APPROVAL_REVIEW_ROUTE_INPUT_FIXTURE;
+    use super::APPROVAL_REVIEW_ROUTE_OUTPUT_FIXTURE;
+    use super::ApprovalReviewRouteCommandInput;
+    use super::ApprovalReviewRouteCommandOutputWire;
     use super::PERMISSION_REQUEST_INPUT_FIXTURE;
     use super::PERMISSION_REQUEST_OUTPUT_FIXTURE;
     use super::POST_COMPACT_INPUT_FIXTURE;
@@ -883,6 +974,12 @@ mod tests {
             }
             PERMISSION_REQUEST_OUTPUT_FIXTURE => {
                 include_str!("../schema/generated/permission-request.command.output.schema.json")
+            }
+            APPROVAL_REVIEW_ROUTE_INPUT_FIXTURE => {
+                include_str!("../schema/generated/approval-review-route.command.input.schema.json")
+            }
+            APPROVAL_REVIEW_ROUTE_OUTPUT_FIXTURE => {
+                include_str!("../schema/generated/approval-review-route.command.output.schema.json")
             }
             POST_COMPACT_INPUT_FIXTURE => {
                 include_str!("../schema/generated/post-compact.command.input.schema.json")
@@ -965,6 +1062,8 @@ mod tests {
             POST_TOOL_USE_OUTPUT_FIXTURE,
             PERMISSION_REQUEST_INPUT_FIXTURE,
             PERMISSION_REQUEST_OUTPUT_FIXTURE,
+            APPROVAL_REVIEW_ROUTE_INPUT_FIXTURE,
+            APPROVAL_REVIEW_ROUTE_OUTPUT_FIXTURE,
             POST_COMPACT_INPUT_FIXTURE,
             POST_COMPACT_OUTPUT_FIXTURE,
             PRE_COMPACT_INPUT_FIXTURE,
@@ -995,6 +1094,10 @@ mod tests {
         assert_output_hook_event_name_const::<PermissionRequestCommandOutputWire>(
             "PermissionRequestHookSpecificOutputWire",
             "PermissionRequest",
+        );
+        assert_output_hook_event_name_const::<ApprovalReviewRouteCommandOutputWire>(
+            "ApprovalReviewRouteHookSpecificOutputWire",
+            "ApprovalReviewRoute",
         );
         assert_output_hook_event_name_const::<PostToolUseCommandOutputWire>(
             "PostToolUseHookSpecificOutputWire",
@@ -1044,6 +1147,11 @@ mod tests {
                 .expect("serialize permission request input schema"),
         )
         .expect("parse permission request input schema");
+        let approval_review_route: Value = serde_json::from_slice(
+            &schema_json::<ApprovalReviewRouteCommandInput>()
+                .expect("serialize approval review route input schema"),
+        )
+        .expect("parse approval review route input schema");
         let user_prompt_submit: Value = serde_json::from_slice(
             &schema_json::<UserPromptSubmitCommandInput>()
                 .expect("serialize user prompt submit input schema"),
@@ -1067,6 +1175,7 @@ mod tests {
         for schema in [
             &pre_tool_use,
             &permission_request,
+            &approval_review_route,
             &post_tool_use,
             &pre_compact,
             &post_compact,
@@ -1091,6 +1200,8 @@ mod tests {
             schema_json::<PreToolUseCommandInput>().expect("serialize pre tool use input schema"),
             schema_json::<PermissionRequestCommandInput>()
                 .expect("serialize permission request input schema"),
+            schema_json::<ApprovalReviewRouteCommandInput>()
+                .expect("serialize approval review route input schema"),
             schema_json::<PostToolUseCommandInput>().expect("serialize post tool use input schema"),
             schema_json::<PreCompactCommandInput>().expect("serialize pre compact input schema"),
             schema_json::<PostCompactCommandInput>().expect("serialize post compact input schema"),

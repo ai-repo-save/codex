@@ -2147,12 +2147,41 @@ impl Session {
             | AskForApproval::Granular(_) => {}
         }
 
+        let request_reason = args.reason;
         let requested_permissions = args.permissions;
+        let permission_request_payload = crate::tools::sandboxing::PermissionRequestPayload {
+            tool_name: crate::tools::hook_names::HookToolName::new("request_permissions"),
+            tool_input: serde_json::json!({
+                "reason": request_reason.clone(),
+                "permissions": requested_permissions.clone(),
+            }),
+        };
+        let strict_auto_review = self.strict_auto_review_enabled_for_turn().await;
+        let static_auto_review_enabled = strict_auto_review
+            || crate::guardian::routes_approval_action_to_guardian(
+                turn_context.as_ref(),
+                crate::guardian::GuardianReviewAction::RequestPermissions,
+            );
+        let route = crate::hook_runtime::run_approval_review_route_hooks(
+            self,
+            turn_context,
+            crate::hook_runtime::ApprovalReviewRouteHookRequest {
+                run_id_suffix: call_id.clone(),
+                payload: permission_request_payload,
+                approval_kind: "request_permissions",
+                strict_auto_review,
+                static_auto_review_enabled,
+                retry_reason: None,
+            },
+        )
+        .await;
+        let use_guardian = match route {
+            Some(codex_hooks::ApprovalReviewRouteDecision::AutoReview) => true,
+            Some(codex_hooks::ApprovalReviewRouteDecision::User) => false,
+            None => static_auto_review_enabled,
+        };
 
-        if crate::guardian::routes_approval_action_to_guardian(
-            turn_context.as_ref(),
-            crate::guardian::GuardianReviewAction::RequestPermissions,
-        ) {
+        if use_guardian {
             let originating_turn_state = {
                 let active = self.active_turn.lock().await;
                 active.as_ref().map(|active| Arc::clone(&active.turn_state))
@@ -2163,7 +2192,7 @@ impl Session {
             let request = crate::guardian::GuardianApprovalRequest::RequestPermissions {
                 id: call_id,
                 turn_id: turn_context.sub_id.clone(),
-                reason: args.reason,
+                reason: request_reason.clone(),
                 permissions: requested_permissions.clone(),
             };
             let review_rx = crate::guardian::spawn_approval_request_review(
@@ -2256,7 +2285,7 @@ impl Session {
             turn_id: turn_context.sub_id.clone(),
             environment_id: Some(environment.environment_id.clone()),
             started_at_ms: now_unix_timestamp_ms(),
-            reason: args.reason,
+            reason: request_reason,
             permissions: requested_permissions,
             cwd: Some(environment.cwd),
         });

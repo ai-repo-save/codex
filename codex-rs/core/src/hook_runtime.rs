@@ -5,6 +5,9 @@ use std::time::Duration;
 use codex_analytics::CompactionTrigger;
 use codex_analytics::HookRunFact;
 use codex_analytics::build_track_events_context;
+use codex_hooks::ApprovalReviewRouteDecision;
+use codex_hooks::ApprovalReviewRouteOutcome;
+use codex_hooks::ApprovalReviewRouteRequest;
 use codex_hooks::PermissionRequestDecision;
 use codex_hooks::PermissionRequestOutcome;
 use codex_hooks::PermissionRequestRequest;
@@ -54,6 +57,15 @@ pub(crate) struct HookRuntimeOutcome {
 pub(crate) enum PreToolUseHookResult {
     Continue { updated_input: Option<Value> },
     Blocked(String),
+}
+
+pub(crate) struct ApprovalReviewRouteHookRequest {
+    pub(crate) run_id_suffix: String,
+    pub(crate) payload: PermissionRequestPayload,
+    pub(crate) approval_kind: &'static str,
+    pub(crate) strict_auto_review: bool,
+    pub(crate) static_auto_review_enabled: bool,
+    pub(crate) retry_reason: Option<String>,
 }
 
 struct ContextInjectingHookOutcome {
@@ -250,6 +262,65 @@ pub(crate) async fn run_permission_request_hooks(
     emit_hook_completed_events(sess, turn_context, hook_events).await;
 
     decision
+}
+
+// ApprovalReviewRoute hooks share the approval-time hook lifecycle, but only
+// select whether this approval should be reviewed by the auto-reviewer or the
+// user. They do not allow or deny the underlying request.
+pub(crate) async fn run_approval_review_route_hooks(
+    sess: &Arc<Session>,
+    turn_context: &Arc<TurnContext>,
+    request: ApprovalReviewRouteHookRequest,
+) -> Option<ApprovalReviewRouteDecision> {
+    let ApprovalReviewRouteHookRequest {
+        run_id_suffix,
+        payload,
+        approval_kind,
+        strict_auto_review,
+        static_auto_review_enabled,
+        retry_reason,
+    } = request;
+    let request = ApprovalReviewRouteRequest {
+        session_id: sess.session_id().into(),
+        turn_id: turn_context.sub_id.clone(),
+        subagent: thread_spawn_subagent_hook_context(sess, turn_context),
+        #[allow(deprecated)]
+        cwd: turn_context.cwd.to_path_buf(),
+        transcript_path: sess.hook_transcript_path().await,
+        model: turn_context.model_info.slug.clone(),
+        permission_mode: hook_permission_mode(turn_context),
+        tool_name: payload.tool_name.name().to_string(),
+        matcher_aliases: payload.tool_name.matcher_aliases().to_vec(),
+        run_id_suffix,
+        tool_input: payload.tool_input,
+        approval_kind: approval_kind.to_string(),
+        approval_policy: approval_policy_for_hook(turn_context.approval_policy.value()),
+        strict_auto_review,
+        static_auto_review_enabled,
+        retry_reason,
+    };
+    let hooks = sess.hooks();
+    let preview_runs = hooks.preview_approval_review_route(&request);
+    emit_hook_started_events(sess, turn_context, preview_runs).await;
+
+    let ApprovalReviewRouteOutcome {
+        hook_events,
+        decision,
+    } = hooks.run_approval_review_route(request).await;
+    emit_hook_completed_events(sess, turn_context, hook_events).await;
+
+    decision
+}
+
+fn approval_policy_for_hook(approval_policy: AskForApproval) -> String {
+    match approval_policy {
+        AskForApproval::Never => "never",
+        AskForApproval::OnFailure => "on_failure",
+        AskForApproval::OnRequest => "on_request",
+        AskForApproval::UnlessTrusted => "unless_trusted",
+        AskForApproval::Granular(_) => "granular",
+    }
+    .to_string()
 }
 
 /// Runs matching `PostToolUse` hooks after a tool has produced a successful output.
@@ -689,6 +760,7 @@ fn hook_run_metric_tags(run: &HookRunSummary) -> [(&'static str, &'static str); 
     let hook_name = match run.event_name {
         HookEventName::PreToolUse => "PreToolUse",
         HookEventName::PermissionRequest => "PermissionRequest",
+        HookEventName::ApprovalReviewRoute => "ApprovalReviewRoute",
         HookEventName::PostToolUse => "PostToolUse",
         HookEventName::PreCompact => "PreCompact",
         HookEventName::PostCompact => "PostCompact",

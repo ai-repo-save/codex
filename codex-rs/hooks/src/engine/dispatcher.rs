@@ -47,6 +47,7 @@ pub(crate) fn select_handlers_for_matcher_inputs(
         .filter(|handler| match event_name {
             HookEventName::PreToolUse
             | HookEventName::PermissionRequest
+            | HookEventName::ApprovalReviewRoute
             | HookEventName::PostToolUse
             | HookEventName::SessionStart
             | HookEventName::SubagentStart
@@ -144,6 +145,7 @@ fn scope_for_event(event_name: HookEventName) -> HookScope {
         HookEventName::SessionStart | HookEventName::SubagentStart => HookScope::Thread,
         HookEventName::PreToolUse
         | HookEventName::PermissionRequest
+        | HookEventName::ApprovalReviewRoute
         | HookEventName::PostToolUse
         | HookEventName::PreCompact
         | HookEventName::PostCompact

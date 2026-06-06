@@ -15,6 +15,8 @@ use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
 use crate::guardian::review_approval_request;
 use crate::guardian::routes_approval_action_to_guardian_with_reviewer;
+use crate::hook_runtime::ApprovalReviewRouteHookRequest;
+use crate::hook_runtime::run_approval_review_route_hooks;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::mcp_openai_file::rewrite_mcp_tool_arguments_for_openai_files;
 use crate::mcp_tool_approval_templates::RenderedMcpToolApprovalParam;
@@ -35,6 +37,7 @@ use codex_app_server_protocol::McpServerElicitationRequestParams;
 use codex_config::types::AppToolApproval;
 use codex_config::types::ApprovalsReviewer;
 use codex_features::Feature;
+use codex_hooks::ApprovalReviewRouteDecision;
 use codex_hooks::PermissionRequestDecision;
 use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_mcp::MCP_TOOL_CODEX_APPS_META_KEY;
@@ -1189,17 +1192,39 @@ async fn maybe_request_mcp_tool_approval(
         return Some(McpToolApprovalDecision::Accept);
     }
 
+    let permission_request_payload = PermissionRequestPayload {
+        tool_name: hook_tool_name.clone(),
+        tool_input: invocation
+            .arguments
+            .clone()
+            .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new())),
+    };
+    let strict_auto_review = sess.strict_auto_review_enabled_for_turn().await;
+    let static_auto_review_enabled = strict_auto_review
+        || routes_approval_action_to_guardian_with_reviewer(
+            turn_context,
+            approvals_reviewer,
+            GuardianReviewAction::McpToolCall,
+        );
+    let route = run_approval_review_route_hooks(
+        sess,
+        turn_context,
+        ApprovalReviewRouteHookRequest {
+            run_id_suffix: call_id.to_string(),
+            payload: permission_request_payload.clone(),
+            approval_kind: "mcp_tool_call",
+            strict_auto_review,
+            static_auto_review_enabled,
+            retry_reason: None,
+        },
+    )
+    .await;
+
     match run_permission_request_hooks(
         sess,
         turn_context,
         call_id,
-        PermissionRequestPayload {
-            tool_name: hook_tool_name.clone(),
-            tool_input: invocation
-                .arguments
-                .clone()
-                .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new())),
-        },
+        permission_request_payload,
     )
     .await
     {
@@ -1219,11 +1244,12 @@ async fn maybe_request_mcp_tool_approval(
         .features
         .enabled(Feature::ToolCallMcpElicitation);
 
-    if routes_approval_action_to_guardian_with_reviewer(
-        turn_context,
-        approvals_reviewer,
-        GuardianReviewAction::McpToolCall,
-    ) {
+    let use_guardian = match route {
+        Some(ApprovalReviewRouteDecision::AutoReview) => true,
+        Some(ApprovalReviewRouteDecision::User) => false,
+        None => static_auto_review_enabled,
+    };
+    if use_guardian {
         let review_id = new_guardian_review_id();
         let decision = review_approval_request(
             sess,
