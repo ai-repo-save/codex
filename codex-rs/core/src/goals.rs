@@ -405,7 +405,7 @@ impl Session {
         let state_db = self.require_state_db_for_thread_goals().await?;
         state_db
             .thread_goals()
-            .get_thread_goal(self.conversation_id)
+            .get_thread_goal(self.thread_id)
             .await
             .map(|goal| goal.map(protocol_goal_from_state))
     }
@@ -502,14 +502,14 @@ impl Session {
         let goal = if let Some(objective) = objective.as_deref() {
             let existing_goal = state_db
                 .thread_goals()
-                .get_thread_goal(self.conversation_id)
+                .get_thread_goal(self.thread_id)
                 .await?;
             previous_status = existing_goal.as_ref().map(|goal| goal.status);
             if let Some(existing_goal) = existing_goal.as_ref() {
                 state_db
                     .thread_goals()
                     .update_thread_goal(
-                        self.conversation_id,
+                        self.thread_id,
                         codex_state::GoalUpdate {
                             objective: Some(objective.to_string()),
                             status: status.map(state_goal_status_from_protocol),
@@ -521,7 +521,7 @@ impl Session {
                     .ok_or_else(|| {
                         anyhow::anyhow!(
                             "cannot update goal for thread {}: no goal exists",
-                            self.conversation_id
+                            self.thread_id
                         )
                     })?
             } else {
@@ -529,7 +529,7 @@ impl Session {
                 state_db
                     .thread_goals()
                     .replace_thread_goal(
-                        self.conversation_id,
+                        self.thread_id,
                         objective,
                         status
                             .map(state_goal_status_from_protocol)
@@ -541,7 +541,7 @@ impl Session {
         } else {
             let existing_goal = state_db
                 .thread_goals()
-                .get_thread_goal(self.conversation_id)
+                .get_thread_goal(self.thread_id)
                 .await?;
             previous_status = existing_goal.as_ref().map(|goal| goal.status);
             let expected_goal_id = existing_goal.map(|goal| goal.goal_id);
@@ -549,7 +549,7 @@ impl Session {
             state_db
                 .thread_goals()
                 .update_thread_goal(
-                    self.conversation_id,
+                    self.thread_id,
                     codex_state::GoalUpdate {
                         objective: None,
                         status,
@@ -561,7 +561,7 @@ impl Session {
                 .ok_or_else(|| {
                     anyhow::anyhow!(
                         "cannot update goal for thread {}: no goal exists",
-                        self.conversation_id
+                        self.thread_id
                     )
                 })?
         };
@@ -569,7 +569,7 @@ impl Session {
         if objective.is_some() {
             set_thread_preview_from_goal_objective(
                 &state_db,
-                self.conversation_id,
+                self.thread_id,
                 goal.objective.as_str(),
             )
             .await;
@@ -606,7 +606,7 @@ impl Session {
         self.send_event(
             turn_context,
             EventMsg::ThreadGoalUpdated(ThreadGoalUpdatedEvent {
-                thread_id: self.conversation_id,
+                thread_id: self.thread_id,
                 turn_id: Some(turn_context.sub_id.clone()),
                 goal: goal.clone(),
             }),
@@ -642,7 +642,7 @@ impl Session {
         let goal = state_db
             .thread_goals()
             .insert_thread_goal(
-                self.conversation_id,
+                self.thread_id,
                 objective,
                 codex_state::ThreadGoalStatus::Active,
                 token_budget,
@@ -651,16 +651,12 @@ impl Session {
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "cannot create a new goal because thread {} already has a goal",
-                    self.conversation_id
+                    self.thread_id
                 )
             })?;
 
-        set_thread_preview_from_goal_objective(
-            &state_db,
-            self.conversation_id,
-            goal.objective.as_str(),
-        )
-        .await;
+        set_thread_preview_from_goal_objective(&state_db, self.thread_id, goal.objective.as_str())
+            .await;
         let goal_id = goal.goal_id.clone();
         self.emit_goal_created_metric();
         let goal = protocol_goal_from_state(goal);
@@ -677,7 +673,7 @@ impl Session {
         self.send_event(
             turn_context,
             EventMsg::ThreadGoalUpdated(ThreadGoalUpdatedEvent {
-                thread_id: self.conversation_id,
+                thread_id: self.thread_id,
                 turn_id: Some(turn_context.sub_id.clone()),
                 goal: goal.clone(),
             }),
@@ -871,7 +867,7 @@ impl Session {
     ) -> anyhow::Result<Option<codex_state::ThreadGoalStatus>> {
         let goal = state_db
             .thread_goals()
-            .get_thread_goal(self.conversation_id)
+            .get_thread_goal(self.thread_id)
             .await?;
         Ok(goal.and_then(|goal| {
             expected_goal_id
@@ -915,7 +911,7 @@ impl Session {
         };
         match state_db
             .thread_goals()
-            .get_thread_goal(self.conversation_id)
+            .get_thread_goal(self.thread_id)
             .await
         {
             Ok(Some(goal))
@@ -1053,7 +1049,7 @@ impl Session {
         let outcome = state_db
             .thread_goals()
             .account_thread_goal_usage(
-                self.conversation_id,
+                self.thread_id,
                 time_delta_seconds,
                 token_delta,
                 codex_state::GoalAccountingMode::ActiveOnly,
@@ -1115,7 +1111,7 @@ impl Session {
         self.send_event(
             turn_context,
             EventMsg::ThreadGoalUpdated(ThreadGoalUpdatedEvent {
-                thread_id: self.conversation_id,
+                thread_id: self.thread_id,
                 turn_id: Some(turn_context.sub_id.clone()),
                 goal: goal.clone(),
             }),
@@ -1179,7 +1175,7 @@ impl Session {
         match state_db
             .thread_goals()
             .account_thread_goal_usage(
-                self.conversation_id,
+                self.thread_id,
                 time_delta_seconds,
                 /*token_delta*/ 0,
                 mode,
@@ -1247,7 +1243,7 @@ impl Session {
             .await?;
         let Some(goal) = state_db
             .thread_goals()
-            .usage_limit_active_thread_goal(self.conversation_id)
+            .usage_limit_active_thread_goal(self.thread_id)
             .await?
         else {
             return Ok(());
@@ -1259,7 +1255,7 @@ impl Session {
         self.send_event(
             turn_context,
             EventMsg::ThreadGoalUpdated(ThreadGoalUpdatedEvent {
-                thread_id: self.conversation_id,
+                thread_id: self.thread_id,
                 turn_id: Some(turn_context.sub_id.clone()),
                 goal,
             }),
@@ -1290,7 +1286,7 @@ impl Session {
         };
         let Some(goal) = state_db
             .thread_goals()
-            .get_thread_goal(self.conversation_id)
+            .get_thread_goal(self.thread_id)
             .await?
         else {
             self.clear_stopped_thread_goal_runtime_state().await;
@@ -1342,7 +1338,7 @@ impl Session {
         let goal_is_current = match self.state_db_for_thread_goals().await {
             Ok(Some(state_db)) => match state_db
                 .thread_goals()
-                .get_thread_goal(self.conversation_id)
+                .get_thread_goal(self.thread_id)
                 .await
             {
                 Ok(Some(goal))
@@ -1440,7 +1436,7 @@ impl Session {
         };
         let goal = match state_db
             .thread_goals()
-            .get_thread_goal(self.conversation_id)
+            .get_thread_goal(self.thread_id)
             .await
         {
             Ok(Some(goal)) => goal,
@@ -1507,7 +1503,7 @@ impl Session {
         };
 
         let thread_metadata_present = state_db
-            .get_thread(self.conversation_id)
+            .get_thread(self.thread_id)
             .await
             .context("failed to read thread metadata before reconciling thread goals")?
             .is_some();
@@ -1530,7 +1526,7 @@ impl Session {
             )
             .await;
             let thread_metadata_present = state_db
-                .get_thread(self.conversation_id)
+                .get_thread(self.thread_id)
                 .await
                 .context("failed to read thread metadata after reconciling thread goals")?
                 .is_some();
