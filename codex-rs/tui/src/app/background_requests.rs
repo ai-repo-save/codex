@@ -17,6 +17,8 @@ use codex_app_server_protocol::MarketplaceUpgradeParams;
 use codex_app_server_protocol::MarketplaceUpgradeResponse;
 
 use codex_app_server_protocol::RequestId;
+use tokio::task::JoinHandle;
+use uuid::Uuid;
 
 use crate::hooks_rpc::fetch_hooks_list;
 use crate::hooks_rpc::write_hook_trust;
@@ -114,10 +116,11 @@ impl App {
     pub(super) fn compact_history_thread_in_background(
         &mut self,
         app_server: &AppServerSession,
+        operation_id: Uuid,
         config: Config,
         thread_id: ThreadId,
         summary: Option<HistoryCommandSummary>,
-    ) {
+    ) -> JoinHandle<()> {
         let request_handle = app_server.request_handle();
         let thread_params_mode = app_server.thread_params_mode();
         let remote_cwd_override = app_server.remote_cwd_override().map(Path::to_path_buf);
@@ -133,11 +136,12 @@ impl App {
             .await
             .map_err(|err| format!("{err:#}"));
             app_event_tx.send(AppEvent::CompactHistoryCompleted {
+                operation_id,
                 source_thread_id: thread_id,
                 summary,
                 result,
             });
-        });
+        })
     }
 
     pub(super) fn fetch_connectors_list(

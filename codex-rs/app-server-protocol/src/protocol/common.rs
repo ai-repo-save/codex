@@ -767,7 +767,7 @@ client_request_definitions! {
     },
     TurnInterrupt => "turn/interrupt" {
         params: v2::TurnInterruptParams,
-        serialization: thread_id(params.thread_id),
+        serialization: None,
         response: v2::TurnInterruptResponse,
     },
     #[experimental("thread/realtime/start")]
@@ -1938,6 +1938,15 @@ mod tests {
             params: v2::ThreadStartParams::default(),
         };
         assert_eq!(thread_start.serialization_scope(), None);
+
+        let turn_interrupt = ClientRequest::TurnInterrupt {
+            request_id: request_id(),
+            params: v2::TurnInterruptParams {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+            },
+        };
+        assert_eq!(turn_interrupt.serialization_scope(), None);
 
         let command_exec = ClientRequest::OneOffCommandExec {
             request_id: request_id(),

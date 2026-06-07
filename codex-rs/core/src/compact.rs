@@ -23,6 +23,7 @@ use codex_analytics::CompactionStatus;
 use codex_analytics::CompactionStrategy;
 use codex_analytics::CompactionTrigger;
 use codex_analytics::now_unix_seconds;
+use codex_async_utils::OrCancelExt;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::items::ContextCompactionItem;
@@ -40,6 +41,7 @@ use codex_utils_output_truncation::TruncationPolicy;
 use codex_utils_output_truncation::approx_token_count;
 use codex_utils_output_truncation::truncate_text;
 use futures::prelude::*;
+use tokio_util::sync::CancellationToken;
 use tracing::error;
 
 use codex_model_provider_info::ModelProviderInfo;
@@ -73,6 +75,7 @@ pub(crate) async fn run_inline_auto_compact_task(
     initial_context_injection: InitialContextInjection,
     reason: CompactionReason,
     phase: CompactionPhase,
+    cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
     let prompt = turn_context.compact_prompt().to_string();
     let input = vec![UserInput::Text {
@@ -89,6 +92,7 @@ pub(crate) async fn run_inline_auto_compact_task(
         CompactionTrigger::Auto,
         reason,
         phase,
+        cancellation_token,
     )
     .await?;
     Ok(())
@@ -98,6 +102,7 @@ pub(crate) async fn run_compact_task(
     sess: Arc<Session>,
     turn_context: Arc<TurnContext>,
     input: Vec<UserInput>,
+    cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
     let start_event = EventMsg::TurnStarted(TurnStartedEvent {
         turn_id: turn_context.sub_id.clone(),
@@ -115,6 +120,7 @@ pub(crate) async fn run_compact_task(
         CompactionTrigger::Manual,
         CompactionReason::UserRequested,
         CompactionPhase::StandaloneTurn,
+        cancellation_token,
     )
     .await?;
     Ok(())
@@ -128,6 +134,7 @@ async fn run_compact_task_inner(
     trigger: CompactionTrigger,
     reason: CompactionReason,
     phase: CompactionPhase,
+    cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
     let compaction_metadata =
         CompactionTurnMetadata::new(trigger, reason, CompactionImplementation::Responses, phase);
@@ -157,6 +164,7 @@ async fn run_compact_task_inner(
         input,
         initial_context_injection,
         compaction_metadata,
+        cancellation_token,
     )
     .await;
     let status = compaction_status_from_result(&result);
@@ -178,6 +186,7 @@ async fn run_compact_task_inner_impl(
     input: Vec<UserInput>,
     initial_context_injection: InitialContextInjection,
     compaction_metadata: CompactionTurnMetadata,
+    cancellation_token: &CancellationToken,
 ) -> CodexResult<String> {
     let compaction_item = TurnItem::ContextCompaction(ContextCompactionItem::new());
     sess.emit_turn_item_started(&turn_context, &compaction_item)
@@ -219,6 +228,7 @@ async fn run_compact_task_inner_impl(
             &mut client_session,
             turn_metadata_header.as_deref(),
             &prompt,
+            cancellation_token,
         )
         .await;
 
@@ -255,7 +265,10 @@ async fn run_compact_task_inner_impl(
                         e,
                     )
                     .await;
-                    tokio::time::sleep(delay).await;
+                    tokio::time::sleep(delay)
+                        .or_cancel(cancellation_token)
+                        .await
+                        .map_err(|_| CodexErr::TurnAborted)?;
                     continue;
                 } else {
                     sess.track_turn_codex_error(turn_context.as_ref(), &e);
@@ -267,6 +280,7 @@ async fn run_compact_task_inner_impl(
         }
     }
 
+    abort_if_cancelled(cancellation_token)?;
     let history_snapshot = sess.clone_history().await;
     let history_items = history_snapshot.raw_items();
     let summary_suffix = get_last_assistant_message_from_turn(history_items).unwrap_or_default();
@@ -291,6 +305,7 @@ async fn run_compact_task_inner_impl(
         message: summary_text.clone(),
         replacement_history: Some(new_history.clone()),
     };
+    abort_if_cancelled(cancellation_token)?;
     sess.replace_compacted_history(new_history, reference_context_item, compacted_item)
         .await;
     sess.recompute_token_usage(&turn_context).await;
@@ -302,6 +317,14 @@ async fn run_compact_task_inner_impl(
     });
     sess.send_event(&turn_context, warning).await;
     Ok(summary_suffix)
+}
+
+pub(crate) fn abort_if_cancelled(cancellation_token: &CancellationToken) -> CodexResult<()> {
+    if cancellation_token.is_cancelled() {
+        Err(CodexErr::TurnAborted)
+    } else {
+        Ok(())
+    }
 }
 
 pub(crate) struct CompactionAnalyticsAttempt {
@@ -545,6 +568,7 @@ async fn drain_to_completed(
     client_session: &mut ModelClientSession,
     turn_metadata_header: Option<&str>,
     prompt: &Prompt,
+    cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
     let mut stream = client_session
         .stream(
@@ -559,9 +583,15 @@ async fn drain_to_completed(
             // are left untraced until the reducer has a first-class local compaction lifecycle.
             &InferenceTraceContext::disabled(),
         )
-        .await?;
+        .or_cancel(cancellation_token)
+        .await
+        .map_err(|_| CodexErr::TurnAborted)??;
     loop {
-        let maybe_event = stream.next().await;
+        let maybe_event = stream
+            .next()
+            .or_cancel(cancellation_token)
+            .await
+            .map_err(|_| CodexErr::TurnAborted)?;
         let Some(event) = maybe_event else {
             return Err(CodexErr::Stream(
                 "stream closed before response.completed".into(),

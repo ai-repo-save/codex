@@ -31,6 +31,7 @@ use codex_protocol::ThreadId;
 use codex_protocol::openai_models::ModelPreset;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_approval_presets::ApprovalPreset;
+use uuid::Uuid;
 
 use crate::app_command::AppCommand;
 use crate::app_server_session::AppServerStartedThread;
@@ -229,6 +230,7 @@ pub(crate) enum AppEvent {
 
     /// Result of a background history compaction request.
     CompactHistoryCompleted {
+        operation_id: Uuid,
         source_thread_id: ThreadId,
         summary: Option<HistoryCommandSummary>,
         result: Result<AppServerStartedThread, String>,

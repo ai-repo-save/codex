@@ -22,9 +22,16 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
+use tokio_util::sync::CancellationToken;
 use tracing::error;
 
 type PendingInterruptQueue = Vec<ConnectionRequestId>;
+
+pub(crate) struct ResetContextCompaction {
+    pub(crate) request_id: ConnectionRequestId,
+    pub(crate) turn_id: String,
+    pub(crate) cancellation_token: CancellationToken,
+}
 
 pub(crate) struct PendingThreadResumeRequest {
     pub(crate) request_id: ConnectionRequestId,
@@ -79,6 +86,7 @@ pub(crate) struct ThreadState {
     pub(crate) cancel_tx: Option<oneshot::Sender<()>>,
     pub(crate) experimental_raw_events: bool,
     pub(crate) listener_generation: u64,
+    pub(crate) reset_context_compaction: Option<ResetContextCompaction>,
     last_thread_settings: Option<ThreadSettings>,
     listener_command_tx: Option<mpsc::UnboundedSender<ThreadListenerCommand>>,
     current_turn_history: ThreadHistoryBuilder,
@@ -92,6 +100,44 @@ impl ThreadState {
             .as_ref()
             .and_then(Weak::upgrade)
             .is_some_and(|existing| Arc::ptr_eq(&existing, conversation))
+    }
+
+    pub(crate) fn begin_reset_context_compaction(
+        &mut self,
+        request_id: ConnectionRequestId,
+        turn_id: String,
+        cancellation_token: CancellationToken,
+    ) -> bool {
+        if self.reset_context_compaction.is_some() {
+            return false;
+        }
+        self.reset_context_compaction = Some(ResetContextCompaction {
+            request_id,
+            turn_id,
+            cancellation_token,
+        });
+        true
+    }
+
+    pub(crate) fn finish_reset_context_compaction(&mut self, request_id: &ConnectionRequestId) {
+        if self
+            .reset_context_compaction
+            .as_ref()
+            .is_some_and(|compaction| &compaction.request_id == request_id)
+        {
+            self.reset_context_compaction = None;
+        }
+    }
+
+    pub(crate) fn cancel_reset_context_compaction(&mut self, turn_id: Option<&str>) -> bool {
+        let Some(compaction) = self.reset_context_compaction.as_ref() else {
+            return false;
+        };
+        if turn_id.is_none_or(|turn_id| turn_id == compaction.turn_id) {
+            compaction.cancellation_token.cancel();
+            return true;
+        }
+        false
     }
 
     pub(crate) fn set_listener(
@@ -199,6 +245,14 @@ mod tests {
     use codex_protocol::config_types::ModeKind;
     use codex_protocol::config_types::Settings;
     use pretty_assertions::assert_eq;
+    use tokio_util::sync::CancellationToken;
+
+    fn request_id(id: i64) -> ConnectionRequestId {
+        ConnectionRequestId {
+            connection_id: ConnectionId(1),
+            request_id: RequestId::Integer(id),
+        }
+    }
 
     #[test]
     fn note_thread_settings_reports_only_effective_changes() {
@@ -214,6 +268,46 @@ mod tests {
         ];
 
         assert_eq!(results, vec![true, false, true, false]);
+    }
+
+    #[test]
+    fn reset_context_compaction_lifecycle_cancels_and_finishes_matching_request() {
+        let mut state = ThreadState::default();
+        let token = CancellationToken::new();
+        assert!(state.begin_reset_context_compaction(
+            request_id(1),
+            "turn-1".to_string(),
+            token.clone(),
+        ));
+
+        assert!(!state.begin_reset_context_compaction(
+            request_id(2),
+            "turn-2".to_string(),
+            CancellationToken::new(),
+        ));
+        assert!(!state.cancel_reset_context_compaction(Some("other-turn")));
+        assert!(!token.is_cancelled());
+        assert!(state.cancel_reset_context_compaction(Some("turn-1")));
+        assert!(token.is_cancelled());
+
+        state.finish_reset_context_compaction(&request_id(2));
+        assert!(state.reset_context_compaction.is_some());
+        state.finish_reset_context_compaction(&request_id(1));
+        assert!(state.reset_context_compaction.is_none());
+    }
+
+    #[test]
+    fn reset_context_compaction_startup_cancel_matches_any_turn() {
+        let mut state = ThreadState::default();
+        let token = CancellationToken::new();
+        assert!(state.begin_reset_context_compaction(
+            request_id(1),
+            "turn-1".to_string(),
+            token.clone(),
+        ));
+
+        assert!(state.cancel_reset_context_compaction(/*turn_id*/ None));
+        assert!(token.is_cancelled());
     }
 
     fn thread_settings(model: &str) -> ThreadSettings {

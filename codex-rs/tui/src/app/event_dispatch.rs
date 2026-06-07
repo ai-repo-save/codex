@@ -214,6 +214,12 @@ impl App {
                 tui.frame_requester().schedule_frame();
             }
             AppEvent::CompactHistoryCurrentSession => {
+                if self.compact_history_in_flight.is_some() {
+                    self.chat_widget
+                        .add_error_message("History compaction is already running.".to_string());
+                    tui.frame_requester().schedule_frame();
+                    return Ok(AppRunControl::Continue);
+                }
                 self.session_telemetry.counter(
                     "codex.thread.compact_history",
                     /*inc*/ 1,
@@ -231,12 +237,20 @@ impl App {
                 if let Some(thread_id) = self.chat_widget.thread_id() {
                     self.refresh_in_memory_config_from_disk_best_effort("compacting history")
                         .await;
-                    self.compact_history_thread_in_background(
+                    let operation_id = Uuid::new_v4();
+                    self.chat_widget.begin_history_compaction_status();
+                    let task = self.compact_history_thread_in_background(
                         app_server,
+                        operation_id,
                         self.config.clone(),
                         thread_id,
                         summary,
                     );
+                    self.compact_history_in_flight = Some(CompactHistoryInFlight {
+                        operation_id,
+                        source_thread_id: thread_id,
+                        task,
+                    });
                 } else {
                     self.chat_widget.add_error_message(
                         "A thread must contain at least one turn before its history can be compacted."
@@ -247,10 +261,20 @@ impl App {
                 tui.frame_requester().schedule_frame();
             }
             AppEvent::CompactHistoryCompleted {
+                operation_id,
                 source_thread_id,
                 summary,
                 result,
             } => {
+                if self
+                    .compact_history_in_flight
+                    .as_ref()
+                    .is_none_or(|in_flight| in_flight.operation_id != operation_id)
+                {
+                    return Ok(AppRunControl::Continue);
+                }
+                self.compact_history_in_flight = None;
+                self.chat_widget.finish_history_compaction_status();
                 match result {
                     Ok(mut reset) => {
                         let current_thread_id = self.chat_widget.thread_id();
@@ -451,6 +475,24 @@ impl App {
                 return Ok(AppRunControl::Exit(ExitReason::Fatal(message)));
             }
             AppEvent::CodexOp(op) => {
+                if matches!(op, AppCommand::Interrupt { .. })
+                    && let Some(in_flight) = self.compact_history_in_flight.take()
+                {
+                    in_flight.task.abort();
+                    self.chat_widget.finish_history_compaction_status();
+                    self.chat_widget.add_info_message(
+                        "History compaction canceled.".to_string(),
+                        /*hint*/ None,
+                    );
+                    if let Err(err) = app_server.startup_interrupt(in_flight.source_thread_id).await
+                    {
+                        self.chat_widget.add_error_message(format!(
+                            "Failed to cancel history compaction on the app server: {err}"
+                        ));
+                    }
+                    tui.frame_requester().schedule_frame();
+                    return Ok(AppRunControl::Continue);
+                }
                 self.chat_widget.prepare_local_op_submission(&op);
                 self.submit_active_thread_op(app_server, op).await?;
             }

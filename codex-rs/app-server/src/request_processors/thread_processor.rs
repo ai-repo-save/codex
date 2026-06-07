@@ -1,7 +1,9 @@
 use super::*;
 use crate::error_code::method_not_found;
+use crate::error_code::request_cancelled;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
+use tokio_util::sync::CancellationToken;
 
 const THREAD_LIST_DEFAULT_LIMIT: usize = 25;
 const THREAD_LIST_MAX_LIMIT: usize = 100;
@@ -347,6 +349,26 @@ fn validate_dynamic_tools(tools: &[ApiDynamicToolSpec]) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn reset_context_not_cancelled(
+    cancellation_token: &CancellationToken,
+) -> Result<(), JSONRPCErrorError> {
+    if cancellation_token.is_cancelled() {
+        Err(request_cancelled("reset-context cancelled"))
+    } else {
+        Ok(())
+    }
+}
+
+fn reset_context_compact_error(err: codex_protocol::error::CodexErr) -> JSONRPCErrorError {
+    match err {
+        codex_protocol::error::CodexErr::Interrupted
+        | codex_protocol::error::CodexErr::TurnAborted => {
+            request_cancelled("reset-context cancelled")
+        }
+        err => internal_error(format!("failed to compact thread: {err}")),
+    }
 }
 
 #[derive(Clone)]
@@ -3535,30 +3557,60 @@ impl ThreadRequestProcessor {
             .get_thread(source_thread_id)
             .await
             .map_err(|_| invalid_request(format!("thread not found: {source_thread_id}")))?;
-        source_thread
-            .reset_context_compact(Uuid::new_v4().to_string())
-            .await
-            .map_err(|err| internal_error(format!("failed to compact thread: {err}")))?;
-        source_thread
-            .flush_rollout()
-            .await
-            .map_err(|err| internal_error(format!("failed to flush compacted rollout: {err}")))?;
-        let compacted_history = source_thread.current_context_history().await;
-
-        let result = self
-            .build_thread_fork_response_with_history(
-                &request_id,
-                thread_fork_params_from_reset_context(params),
-                app_server_client_name,
-                app_server_client_version,
-                Some(compacted_history),
-            )
-            .await?;
-        self.migrate_reset_context_goal(source_thread_id, result.thread_id)
-            .await?;
-        self.send_thread_reset_context_response(request_id, result)
+        let reset_turn_id = Uuid::new_v4().to_string();
+        let cancellation_token = CancellationToken::new();
+        let thread_state = self
+            .thread_state_manager
+            .thread_state(source_thread_id)
             .await;
-        Ok(())
+        {
+            let mut state = thread_state.lock().await;
+            if !state.begin_reset_context_compaction(
+                request_id.clone(),
+                reset_turn_id.clone(),
+                cancellation_token.clone(),
+            ) {
+                return Err(invalid_request("reset-context is already in progress"));
+            }
+        }
+
+        let result = async {
+            source_thread
+                .reset_context_compact(reset_turn_id, cancellation_token.clone())
+                .await
+                .map_err(reset_context_compact_error)?;
+            reset_context_not_cancelled(&cancellation_token)?;
+            source_thread.flush_rollout().await.map_err(|err| {
+                internal_error(format!("failed to flush compacted rollout: {err}"))
+            })?;
+            reset_context_not_cancelled(&cancellation_token)?;
+            let compacted_history = source_thread.current_context_history().await;
+            reset_context_not_cancelled(&cancellation_token)?;
+
+            let result = self
+                .build_thread_fork_response_with_history(
+                    &request_id,
+                    thread_fork_params_from_reset_context(params),
+                    app_server_client_name,
+                    app_server_client_version,
+                    Some(compacted_history),
+                )
+                .await?;
+            reset_context_not_cancelled(&cancellation_token)?;
+            self.migrate_reset_context_goal(source_thread_id, result.thread_id)
+                .await?;
+            reset_context_not_cancelled(&cancellation_token)?;
+            self.send_thread_reset_context_response(request_id.clone(), result)
+                .await;
+            Ok(())
+        }
+        .await;
+
+        thread_state
+            .lock()
+            .await
+            .finish_reset_context_compaction(&request_id);
+        result
     }
 
     async fn send_thread_reset_context_response(

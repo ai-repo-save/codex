@@ -487,6 +487,12 @@ struct InitialHistoryReplayBuffer {
     render_from_transcript_tail: bool,
 }
 
+struct CompactHistoryInFlight {
+    operation_id: Uuid,
+    source_thread_id: ThreadId,
+    task: JoinHandle<()>,
+}
+
 pub(crate) struct App {
     model_catalog: Arc<ModelCatalog>,
     pub(crate) session_telemetry: SessionTelemetry,
@@ -561,6 +567,7 @@ pub(crate) struct App {
     pending_primary_events: VecDeque<ThreadBufferedEvent>,
     pending_app_server_requests: PendingAppServerRequests,
     pending_startup_thread_start: bool,
+    compact_history_in_flight: Option<CompactHistoryInFlight>,
     // Serialize plugin enablement writes per plugin so stale completions cannot
     // overwrite a newer toggle, even if the plugin is toggled from different
     // cwd contexts.
@@ -1041,6 +1048,7 @@ See the Codex keymap documentation for supported actions and examples."
             pending_primary_events: VecDeque::new(),
             pending_app_server_requests: PendingAppServerRequests::default(),
             pending_startup_thread_start,
+            compact_history_in_flight: None,
             pending_plugin_enabled_writes: HashMap::new(),
             pending_hook_enabled_writes: HashMap::new(),
         };

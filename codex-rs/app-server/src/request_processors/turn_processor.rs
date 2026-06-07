@@ -1211,11 +1211,22 @@ impl TurnRequestProcessor {
         let is_startup_interrupt = turn_id.is_empty();
 
         let (thread_uuid, thread) = self.load_thread(&thread_id).await?;
+        let thread_state = self.thread_state_manager.thread_state(thread_uuid).await;
+        {
+            let mut thread_state = thread_state.lock().await;
+            let reset_context_cancelled = if is_startup_interrupt {
+                thread_state.cancel_reset_context_compaction(/*turn_id*/ None)
+            } else {
+                thread_state.cancel_reset_context_compaction(Some(&turn_id))
+            };
+            if reset_context_cancelled {
+                return Ok(Some(TurnInterruptResponse {}));
+            }
+        }
 
         // Record turn interrupts so we can reply when TurnAborted arrives. Startup
         // interrupts do not have a turn and are acknowledged after submission.
         if !is_startup_interrupt {
-            let thread_state = self.thread_state_manager.thread_state(thread_uuid).await;
             let is_running = matches!(thread.agent_status().await, AgentStatus::Running);
             {
                 let mut thread_state = thread_state.lock().await;

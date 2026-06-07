@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::Prompt;
 use crate::client::CompactConversationRequestSettings;
+use crate::compact::abort_if_cancelled;
 use crate::compact::CompactionAnalyticsAttempt;
 use crate::compact::InitialContextInjection;
 use crate::compact::compaction_status_from_result;
@@ -23,6 +24,7 @@ use codex_analytics::CompactionPhase;
 use codex_analytics::CompactionReason;
 use codex_analytics::CompactionTrigger;
 use codex_app_server_protocol::AuthMode;
+use codex_async_utils::OrCancelExt;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::items::ContextCompactionItem;
@@ -44,6 +46,7 @@ pub(crate) async fn run_inline_remote_auto_compact_task(
     initial_context_injection: InitialContextInjection,
     reason: CompactionReason,
     phase: CompactionPhase,
+    cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
     run_remote_compact_task_inner(
         &sess,
@@ -52,6 +55,7 @@ pub(crate) async fn run_inline_remote_auto_compact_task(
         CompactionTrigger::Auto,
         reason,
         phase,
+        cancellation_token,
     )
     .await?;
     Ok(())
@@ -60,6 +64,7 @@ pub(crate) async fn run_inline_remote_auto_compact_task(
 pub(crate) async fn run_remote_compact_task(
     sess: Arc<Session>,
     turn_context: Arc<TurnContext>,
+    cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
     let start_event = EventMsg::TurnStarted(TurnStartedEvent {
         turn_id: turn_context.sub_id.clone(),
@@ -77,6 +82,7 @@ pub(crate) async fn run_remote_compact_task(
         CompactionTrigger::Manual,
         CompactionReason::UserRequested,
         CompactionPhase::StandaloneTurn,
+        cancellation_token,
     )
     .await?;
     Ok(())
@@ -89,6 +95,7 @@ async fn run_remote_compact_task_inner(
     trigger: CompactionTrigger,
     reason: CompactionReason,
     phase: CompactionPhase,
+    cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
     let compaction_metadata = CompactionTurnMetadata::new(
         trigger,
@@ -125,6 +132,7 @@ async fn run_remote_compact_task_inner(
         turn_context,
         initial_context_injection,
         compaction_metadata,
+        cancellation_token,
     )
     .await;
     let status = compaction_status_from_result(&result);
@@ -153,6 +161,7 @@ async fn run_remote_compact_task_inner_impl(
     turn_context: &Arc<TurnContext>,
     initial_context_injection: InitialContextInjection,
     compaction_metadata: CompactionTurnMetadata,
+    cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
     let context_compaction_item = ContextCompactionItem::new();
     // Use the UI compaction item ID as the trace compaction ID so protocol lifecycle events,
@@ -185,12 +194,7 @@ async fn run_remote_compact_task_inner_impl(
     // whose prompt will repeat current developer/context prefix items.
     let trace_input_history = history.raw_items().to_vec();
     let prompt_input = history.for_prompt(&turn_context.model_info.input_modalities);
-    let tool_router = built_tools(
-        sess.as_ref(),
-        turn_context.as_ref(),
-        &CancellationToken::new(),
-    )
-    .await?;
+    let tool_router = built_tools(sess.as_ref(), turn_context.as_ref(), cancellation_token).await?;
     let prompt = Prompt {
         input: prompt_input,
         tools: tool_router.model_visible_specs(),
@@ -235,7 +239,10 @@ async fn run_remote_compact_task_inner_impl(
             );
             Err(err)
         })
-        .await?;
+        .or_cancel(cancellation_token)
+        .await
+        .map_err(|_| CodexErr::TurnAborted)??;
+    abort_if_cancelled(cancellation_token)?;
     new_history = process_compacted_history(
         sess.as_ref(),
         turn_context.as_ref(),
@@ -252,6 +259,7 @@ async fn run_remote_compact_task_inner_impl(
         message: String::new(),
         replacement_history: Some(new_history.clone()),
     };
+    abort_if_cancelled(cancellation_token)?;
     // Install is the semantic boundary where the compact endpoint's output becomes live
     // thread history. Keep it distinct from the later inference request so the reducer can
     // still represent repeated developer/context prefix items exactly as the model saw them.
