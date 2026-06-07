@@ -13,7 +13,9 @@ import _sync  # noqa: E402
 
 
 class RemoteSyncTest(unittest.TestCase):
-    def test_remote_codex_rs_test_command_uses_nextest_without_bench_smoke(self) -> None:
+    def test_remote_codex_rs_test_command_uses_nextest_without_bench_smoke(
+        self,
+    ) -> None:
         command = _sync.remote_codex_rs_just_command(("test", "-p", "codex-app-server"))
 
         self.assertEqual(command[0:2], ("bash", "-lc"))
