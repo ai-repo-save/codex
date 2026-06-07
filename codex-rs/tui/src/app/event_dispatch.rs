@@ -484,7 +484,9 @@ impl App {
                         "History compaction canceled.".to_string(),
                         /*hint*/ None,
                     );
-                    if let Err(err) = app_server.startup_interrupt(in_flight.source_thread_id).await
+                    if let Err(err) = app_server
+                        .startup_interrupt(in_flight.source_thread_id)
+                        .await
                     {
                         self.chat_widget.add_error_message(format!(
                             "Failed to cancel history compaction on the app server: {err}"

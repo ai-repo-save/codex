@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use crate::Prompt;
 use crate::client::CompactConversationRequestSettings;
-use crate::compact::abort_if_cancelled;
 use crate::compact::CompactionAnalyticsAttempt;
 use crate::compact::InitialContextInjection;
+use crate::compact::abort_if_cancelled;
 use crate::compact::compaction_status_from_result;
 use crate::compact::insert_initial_context_before_last_real_user_or_summary;
 use crate::context_manager::ContextManager;
