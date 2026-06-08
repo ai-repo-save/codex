@@ -118,6 +118,7 @@ mod clipboard_copy;
 mod clipboard_paste;
 mod collaboration_modes;
 mod color;
+mod compact_inspect;
 mod config_update;
 pub(crate) mod custom_terminal;
 mod pets;

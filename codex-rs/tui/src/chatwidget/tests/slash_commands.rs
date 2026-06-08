@@ -1,5 +1,9 @@
 use super::*;
 use crate::bottom_pane::slash_commands::ServiceTierCommand;
+use codex_protocol::models::ContentItem;
+use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::CompactedItem;
+use codex_protocol::protocol::RolloutItem;
 use pretty_assertions::assert_eq;
 use serial_test::serial;
 
@@ -2116,6 +2120,105 @@ async fn slash_rollout_handles_missing_path() {
         rendered.contains("not available"),
         "expected missing rollout path message: {rendered}"
     );
+}
+
+#[tokio::test]
+async fn slash_compact_inspect_writes_latest_compaction_report() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let rollout_path = temp_dir.path().join("rollout.jsonl");
+    let thread_id = ThreadId::new();
+    chat.thread_id = Some(thread_id);
+    chat.current_rollout_path = Some(rollout_path.clone());
+    std::fs::write(
+        &rollout_path,
+        [
+            compact_inspect_rollout_line(RolloutItem::Compacted(CompactedItem {
+                message: "old summary".to_string(),
+                replacement_history: Some(vec![compact_inspect_message("user", "old")]),
+            })),
+            compact_inspect_rollout_line(RolloutItem::Compacted(CompactedItem {
+                message: "latest summary".to_string(),
+                replacement_history: Some(vec![
+                    compact_inspect_message("user", "latest user"),
+                    compact_inspect_message("assistant", "latest assistant"),
+                ]),
+            })),
+        ]
+        .join("\n"),
+    )
+    .expect("write rollout");
+
+    chat.dispatch_command(SlashCommand::CompactInspect);
+
+    let cells = drain_insert_history(&mut rx);
+    assert_eq!(cells.len(), 1, "expected compact inspect output");
+    let rendered = lines_to_single_string(&cells[0]);
+    assert!(rendered.contains(crate::compact_inspect::COMPACT_INSPECT_RESULT_KIND));
+    assert!(rendered.contains(crate::compact_inspect::COMPACT_INSPECT_REMOTE_NOTE));
+    assert!(rendered.contains("Replacement history items: 2"));
+    assert!(rendered.contains("latest summary"));
+
+    let report_path = PathBuf::from(format!(
+        "{}/{}-latest.json",
+        crate::compact_inspect::COMPACT_INSPECT_OUTPUT_DIR,
+        thread_id
+    ));
+    let report = std::fs::read_to_string(report_path).expect("read compact inspect report");
+    let parsed = serde_json::from_str::<serde_json::Value>(&report).expect("report json");
+    assert_eq!(parsed["lineNumber"], 2);
+    assert_eq!(parsed["message"], "latest summary");
+    assert_eq!(parsed["replacementHistoryItemCount"], 2);
+}
+
+#[tokio::test]
+async fn slash_compact_inspect_reports_missing_rollout_path() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    chat.dispatch_command(SlashCommand::CompactInspect);
+
+    let cells = drain_insert_history(&mut rx);
+    assert_eq!(cells.len(), 1, "expected missing rollout path message");
+    let rendered = lines_to_single_string(&cells[0]);
+    assert!(rendered.contains(crate::compact_inspect::COMPACT_INSPECT_MISSING_ROLLOUT));
+}
+
+#[tokio::test]
+async fn slash_compact_inspect_reports_missing_compaction_record() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let rollout_path = temp_dir.path().join("rollout.jsonl");
+    chat.current_rollout_path = Some(rollout_path.clone());
+    std::fs::write(
+        &rollout_path,
+        compact_inspect_rollout_line(RolloutItem::ResponseItem(compact_inspect_message(
+            "user",
+            "ordinary user message",
+        ))),
+    )
+    .expect("write rollout");
+
+    chat.dispatch_command(SlashCommand::CompactInspect);
+
+    let cells = drain_insert_history(&mut rx);
+    assert_eq!(cells.len(), 1, "expected no compaction message");
+    let rendered = lines_to_single_string(&cells[0]);
+    assert!(rendered.contains(crate::compact_inspect::COMPACT_INSPECT_NO_COMPACTION));
+}
+
+fn compact_inspect_message(role: &str, text: &str) -> ResponseItem {
+    ResponseItem::Message {
+        id: None,
+        role: role.to_string(),
+        content: vec![ContentItem::InputText {
+            text: text.to_string(),
+        }],
+        phase: None,
+    }
+}
+
+fn compact_inspect_rollout_line(item: RolloutItem) -> String {
+    serde_json::to_string(&item).expect("rollout item json")
 }
 
 #[tokio::test]

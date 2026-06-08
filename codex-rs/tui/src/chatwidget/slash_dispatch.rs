@@ -469,6 +469,37 @@ impl ChatWidget {
                     );
                 }
             }
+            SlashCommand::CompactInspect => {
+                let Some(path) = self.rollout_path() else {
+                    self.add_info_message(
+                        crate::compact_inspect::COMPACT_INSPECT_MISSING_ROLLOUT.to_string(),
+                        /*hint*/ None,
+                    );
+                    return;
+                };
+                match crate::compact_inspect::read_latest_compaction(&path)
+                    .and_then(|compaction| {
+                        crate::compact_inspect::write_latest_compaction_report(
+                            &compaction,
+                            self.thread_id,
+                        )
+                        .map(|output_path| {
+                            crate::compact_inspect::render_compaction_summary(
+                                &compaction,
+                                &output_path,
+                            )
+                        })
+                    }) {
+                    Ok(message) => self.add_info_message(message, /*hint*/ None),
+                    Err(crate::compact_inspect::CompactInspectError::NoCompaction) => {
+                        self.add_info_message(
+                            crate::compact_inspect::COMPACT_INSPECT_NO_COMPACTION.to_string(),
+                            /*hint*/ None,
+                        );
+                    }
+                    Err(err) => self.add_error_message(err.to_string()),
+                }
+            }
             SlashCommand::TestApproval => {
                 use std::collections::HashMap;
 
@@ -973,6 +1004,7 @@ impl ChatWidget {
             | SlashCommand::Apps
             | SlashCommand::Plugins
             | SlashCommand::Rollout
+            | SlashCommand::CompactInspect
             | SlashCommand::Copy
             | SlashCommand::Raw
             | SlashCommand::Vim
