@@ -676,18 +676,7 @@ async fn lookup_session_target_by_name_with_app_server(
     let mut cursor = None;
     loop {
         let response = app_server
-            .thread_list(ThreadListParams {
-                cursor: cursor.clone(),
-                limit: Some(100),
-                sort_key: Some(AppServerThreadSortKey::UpdatedAt),
-                sort_direction: None,
-                model_providers: None,
-                source_kinds: Some(vec![ThreadSourceKind::Cli, ThreadSourceKind::VsCode]),
-                archived: Some(false),
-                cwd: None,
-                use_state_db_only: false,
-                search_term: Some(name.to_string()),
-            })
+            .thread_list(session_name_lookup_params(cursor.clone(), name))
             .await?;
         if let Some(thread) = response
             .data
@@ -700,6 +689,21 @@ async fn lookup_session_target_by_name_with_app_server(
             return Ok(None);
         }
         cursor = response.next_cursor;
+    }
+}
+
+fn session_name_lookup_params(cursor: Option<String>, name: &str) -> ThreadListParams {
+    ThreadListParams {
+        cursor,
+        limit: Some(100),
+        sort_key: Some(AppServerThreadSortKey::UpdatedAt),
+        sort_direction: None,
+        model_providers: None,
+        source_kinds: Some(vec![ThreadSourceKind::Cli, ThreadSourceKind::VsCode]),
+        archived: Some(false),
+        cwd: None,
+        use_state_db_only: true,
+        search_term: Some(name.to_string()),
     }
 }
 
@@ -777,7 +781,7 @@ fn latest_session_lookup_params(
         source_kinds: Some(resume_source_kinds(include_non_interactive)),
         archived: Some(false),
         cwd: cwd_filter.map(|cwd| ThreadListCwdFilter::One(cwd.to_string_lossy().to_string())),
-        use_state_db_only: false,
+        use_state_db_only: true,
         search_term: None,
     }
 }
@@ -2335,6 +2339,7 @@ mod tests {
             params.cwd,
             Some(ThreadListCwdFilter::One(cwd.to_string_lossy().to_string()))
         );
+        assert!(params.use_state_db_only);
         Ok(())
     }
 
@@ -2362,6 +2367,7 @@ mod tests {
             params.cwd,
             Some(ThreadListCwdFilter::One(cwd.to_string_lossy().to_string()))
         );
+        assert!(params.use_state_db_only);
         Ok(())
     }
 
@@ -2378,6 +2384,7 @@ mod tests {
 
         assert_eq!(params.model_providers, None);
         assert_eq!(params.cwd, None);
+        assert!(params.use_state_db_only);
         Ok(())
     }
 
@@ -2401,6 +2408,7 @@ mod tests {
                 ThreadSourceKind::AppServer,
             ])
         );
+        assert!(params.use_state_db_only);
         Ok(())
     }
 
@@ -2423,7 +2431,26 @@ mod tests {
             params.cwd,
             Some(ThreadListCwdFilter::One(String::from("repo/on/server")))
         );
+        assert!(params.use_state_db_only);
         Ok(())
+    }
+
+    #[test]
+    fn session_name_lookup_params_use_state_db_only() {
+        let params = session_name_lookup_params(Some(String::from("cursor-1")), "saved-session");
+
+        assert_eq!(params.cursor, Some(String::from("cursor-1")));
+        assert_eq!(params.limit, Some(100));
+        assert_eq!(params.sort_key, Some(AppServerThreadSortKey::UpdatedAt));
+        assert_eq!(params.model_providers, None);
+        assert_eq!(
+            params.source_kinds,
+            Some(vec![ThreadSourceKind::Cli, ThreadSourceKind::VsCode])
+        );
+        assert_eq!(params.archived, Some(false));
+        assert_eq!(params.cwd, None);
+        assert!(params.use_state_db_only);
+        assert_eq!(params.search_term, Some(String::from("saved-session")));
     }
 
     #[tokio::test]

@@ -1823,7 +1823,7 @@ fn thread_list_params(
         source_kinds: Some(crate::resume_source_kinds(include_non_interactive)),
         archived: Some(false),
         cwd: cwd_filter.map(|cwd| ThreadListCwdFilter::One(cwd.to_string_lossy().into_owned())),
-        use_state_db_only: false,
+        use_state_db_only: true,
         search_term: None,
     }
 }
@@ -3318,6 +3318,7 @@ mod tests {
             params.cwd,
             Some(ThreadListCwdFilter::One(String::from("/tmp/project")))
         );
+        assert!(params.use_state_db_only);
     }
 
     #[test]
@@ -3549,6 +3550,7 @@ mod tests {
             params.cwd,
             Some(ThreadListCwdFilter::One(String::from("repo/on/server")))
         );
+        assert!(params.use_state_db_only);
     }
 
     #[test]
@@ -3565,6 +3567,7 @@ mod tests {
         assert_eq!(params.model_providers, None);
         let source_kinds = crate::resume_source_kinds(/*include_non_interactive*/ true);
         assert_eq!(params.source_kinds, Some(source_kinds));
+        assert!(params.use_state_db_only);
     }
 
     #[test]
