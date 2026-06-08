@@ -1757,7 +1757,6 @@ async fn slash_clear_history_is_disabled_while_task_running() {
     assert!(rx.try_recv().is_err(), "expected no follow-up events");
 }
 
-
 #[tokio::test]
 async fn slash_archive_is_disabled_while_task_running() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
