@@ -1685,15 +1685,6 @@ async fn slash_clear_history_requests_history_clear_when_idle() {
 }
 
 #[tokio::test]
-async fn slash_compact_history_requests_history_compaction_when_idle() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-
-    chat.dispatch_command(SlashCommand::CompactHistory);
-
-    assert_matches!(rx.try_recv(), Ok(AppEvent::CompactHistoryCurrentSession));
-}
-
-#[tokio::test]
 async fn slash_clear_after_ctrl_c_keeps_stashed_draft_recallable() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let thread_id = ThreadId::new();
@@ -1766,26 +1757,6 @@ async fn slash_clear_history_is_disabled_while_task_running() {
     assert!(rx.try_recv().is_err(), "expected no follow-up events");
 }
 
-#[tokio::test]
-async fn slash_compact_history_is_disabled_while_task_running() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.bottom_pane.set_task_running(/*running*/ true);
-
-    chat.dispatch_command(SlashCommand::CompactHistory);
-
-    let event = rx.try_recv().expect("expected disabled command error");
-    match event {
-        AppEvent::InsertHistoryCell(cell) => {
-            let rendered = lines_to_single_string(&cell.display_lines(/*width*/ 80));
-            assert!(
-                rendered.contains("'/compact-history' is disabled while a task is in progress."),
-                "expected /compact-history task-running error, got {rendered:?}"
-            );
-        }
-        other => panic!("expected InsertHistoryCell error, got {other:?}"),
-    }
-    assert!(rx.try_recv().is_err(), "expected no follow-up events");
-}
 
 #[tokio::test]
 async fn slash_archive_is_disabled_while_task_running() {

@@ -205,10 +205,6 @@ impl ChatWidget {
             SlashCommand::ClearHistory => {
                 self.app_event_tx.send(AppEvent::ClearHistoryCurrentSession);
             }
-            SlashCommand::CompactHistory => {
-                self.app_event_tx
-                    .send(AppEvent::CompactHistoryCurrentSession);
-            }
             SlashCommand::Init => {
                 let init_target = self.config.cwd.join(DEFAULT_AGENTS_MD_FILENAME);
                 if init_target.exists() {
@@ -990,7 +986,6 @@ impl ChatWidget {
             | SlashCommand::Resume
             | SlashCommand::Fork
             | SlashCommand::ClearHistory
-            | SlashCommand::CompactHistory
             | SlashCommand::Init
             | SlashCommand::Compact
             | SlashCommand::Review

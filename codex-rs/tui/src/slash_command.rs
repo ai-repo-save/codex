@@ -34,7 +34,6 @@ pub enum SlashCommand {
     Resume,
     Fork,
     ClearHistory,
-    CompactHistory,
     Init,
     Compact,
     Plan,
@@ -93,7 +92,6 @@ impl SlashCommand {
             SlashCommand::Clear => "clear the terminal and start a new chat",
             SlashCommand::Fork => "fork the current chat",
             SlashCommand::ClearHistory => "clear history and continue in a new chat",
-            SlashCommand::CompactHistory => "summarize history and continue in a new chat",
             SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
             SlashCommand::Copy => "copy last response as markdown",
             SlashCommand::Raw => "toggle raw scrollback mode for copy-friendly terminal selection",
@@ -190,7 +188,6 @@ impl SlashCommand {
             | SlashCommand::Resume
             | SlashCommand::Fork
             | SlashCommand::ClearHistory
-            | SlashCommand::CompactHistory
             | SlashCommand::Init
             | SlashCommand::Compact
             | SlashCommand::Model
@@ -294,22 +291,17 @@ mod tests {
     }
 
     #[test]
-    fn history_commands_parse_and_reset_context_is_removed() {
+    fn clear_history_command_parses_and_reset_context_is_removed() {
         assert_eq!(
             SlashCommand::from_str("clear-history"),
             Ok(SlashCommand::ClearHistory)
-        );
-        assert_eq!(
-            SlashCommand::from_str("compact-history"),
-            Ok(SlashCommand::CompactHistory)
         );
         assert!(SlashCommand::from_str("reset-context").is_err());
     }
 
     #[test]
-    fn history_commands_are_disabled_during_task() {
+    fn clear_history_command_is_disabled_during_task() {
         assert!(!SlashCommand::ClearHistory.available_during_task());
-        assert!(!SlashCommand::CompactHistory.available_during_task());
     }
 
     #[test]

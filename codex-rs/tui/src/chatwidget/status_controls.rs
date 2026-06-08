@@ -7,17 +7,6 @@
 use super::*;
 
 impl ChatWidget {
-    pub(crate) fn begin_history_compaction_status(&mut self) {
-        self.history_compaction_running = true;
-        self.update_task_running_state();
-        self.set_status_header("Compacting history".to_string());
-    }
-
-    pub(crate) fn finish_history_compaction_status(&mut self) {
-        self.history_compaction_running = false;
-        self.update_task_running_state();
-    }
-
     /// Update the status indicator header and details.
     ///
     /// Passing `None` clears any existing details.
