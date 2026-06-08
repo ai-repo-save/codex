@@ -477,19 +477,15 @@ impl ChatWidget {
                     );
                     return;
                 };
-                match crate::compact_inspect::read_latest_compaction(&path)
-                    .and_then(|compaction| {
-                        crate::compact_inspect::write_latest_compaction_report(
-                            &compaction,
-                            self.thread_id,
-                        )
-                        .map(|output_path| {
-                            crate::compact_inspect::render_compaction_summary(
-                                &compaction,
-                                &output_path,
-                            )
-                        })
-                    }) {
+                match crate::compact_inspect::read_latest_compaction(&path).and_then(|compaction| {
+                    crate::compact_inspect::write_latest_compaction_report(
+                        &compaction,
+                        self.thread_id,
+                    )
+                    .map(|output_path| {
+                        crate::compact_inspect::render_compaction_summary(&compaction, &output_path)
+                    })
+                }) {
                     Ok(message) => self.add_info_message(message, /*hint*/ None),
                     Err(crate::compact_inspect::CompactInspectError::NoCompaction) => {
                         self.add_info_message(

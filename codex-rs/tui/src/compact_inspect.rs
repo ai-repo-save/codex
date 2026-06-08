@@ -3,14 +3,13 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
+use codex_protocol::ThreadId;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::CompactedItem;
 use codex_protocol::protocol::RolloutItem;
-use codex_protocol::ThreadId;
 use serde::Serialize;
 
-pub(crate) const COMPACT_INSPECT_MISSING_ROLLOUT: &str =
-    "Rollout path is not available yet.";
+pub(crate) const COMPACT_INSPECT_MISSING_ROLLOUT: &str = "Rollout path is not available yet.";
 pub(crate) const COMPACT_INSPECT_NO_COMPACTION: &str =
     "No compaction records found in the current rollout.";
 pub(crate) const COMPACT_INSPECT_OUTPUT_DIR: &str = "/tmp/codex-compact-inspect";
@@ -110,7 +109,9 @@ pub(crate) fn render_compaction_summary(
         .replacement_history
         .as_ref()
         .map(|items| preview_json(items))
-        .unwrap_or_else(|| "replacement_history is not present in this compaction record.".to_string());
+        .unwrap_or_else(|| {
+            "replacement_history is not present in this compaction record.".to_string()
+        });
     format!(
         "Latest compaction result\n\
          Kind: {COMPACT_INSPECT_RESULT_KIND}\n\
@@ -145,9 +146,8 @@ fn compact_inspect_json(compaction: &LatestCompaction) -> CompactInspectJson<'_>
 }
 
 fn preview_json(items: &[ResponseItem]) -> String {
-    let json = serde_json::to_string_pretty(items).unwrap_or_else(|err| {
-        format!("Failed to serialize replacement history preview: {err}")
-    });
+    let json = serde_json::to_string_pretty(items)
+        .unwrap_or_else(|err| format!("Failed to serialize replacement history preview: {err}"));
     truncate_chars(&json, PREVIEW_CHAR_LIMIT)
 }
 

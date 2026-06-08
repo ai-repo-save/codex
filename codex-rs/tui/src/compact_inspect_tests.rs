@@ -18,7 +18,10 @@ fn read_latest_compaction_selects_last_valid_compaction_record() {
         &rollout_path,
         [
             "not json".to_string(),
-            rollout_line(RolloutItem::ResponseItem(message("user", "ordinary user message"))),
+            rollout_line(RolloutItem::ResponseItem(message(
+                "user",
+                "ordinary user message",
+            ))),
             rollout_line(RolloutItem::Compacted(compacted(
                 "first summary",
                 Some(vec![message("user", "first retained message")]),
@@ -57,7 +60,10 @@ fn read_latest_compaction_reports_no_compaction_record() {
     let rollout_path = temp_dir.path().join("rollout.jsonl");
     fs::write(
         &rollout_path,
-        rollout_line(RolloutItem::ResponseItem(message("user", "ordinary user message"))),
+        rollout_line(RolloutItem::ResponseItem(message(
+            "user",
+            "ordinary user message",
+        ))),
     )
     .expect("write rollout");
 
