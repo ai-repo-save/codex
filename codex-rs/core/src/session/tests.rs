@@ -74,6 +74,7 @@ use crate::tools::ToolRouter;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolPayload;
 use crate::tools::handlers::CreateGoalHandler;
+use crate::tools::handlers::EditGoalHandler;
 use crate::tools::handlers::ExecCommandHandler;
 use crate::tools::handlers::RequestPermissionsHandler;
 use crate::tools::handlers::ShellCommandHandler;
@@ -10717,6 +10718,242 @@ async fn update_goal_tool_marks_goal_complete() {
         .expect("read thread goal")
         .expect("goal should still exist");
     assert_eq!(goal.status, ThreadGoalStatus::Complete);
+}
+
+#[tokio::test]
+async fn edit_goal_tool_edits_paused_goal_without_resuming() {
+    let (session, turn_context, _rx, _codex_home) = make_goal_session_and_context_with_rx().await;
+    create_goal_for_clear_test(&session, &turn_context)
+        .await
+        .expect("create goal");
+    session
+        .set_thread_goal(
+            turn_context.as_ref(),
+            SetGoalRequest {
+                objective: None,
+                status: Some(ThreadGoalStatus::Paused),
+                token_budget: None,
+            },
+        )
+        .await
+        .expect("pause goal");
+
+    EditGoalHandler
+        .handle(goal_tool_invocation(
+            Arc::clone(&session),
+            Arc::clone(&turn_context),
+            "edit-goal",
+            "edit_goal",
+            serde_json::json!({
+                "objective": "Keep the corrected watcher alive",
+                "resume": false,
+            }),
+        ))
+        .await
+        .expect("edit_goal should edit a paused goal");
+
+    let goal = session
+        .get_thread_goal()
+        .await
+        .expect("read thread goal")
+        .expect("goal should still exist");
+    assert_eq!(goal.objective, "Keep the corrected watcher alive");
+    assert_eq!(goal.status, ThreadGoalStatus::Paused);
+    assert_eq!(goal.token_budget, Some(123));
+}
+
+#[tokio::test]
+async fn edit_goal_tool_edits_and_resumes_paused_goal() {
+    let (session, turn_context, _rx, _codex_home) = make_goal_session_and_context_with_rx().await;
+    create_goal_for_clear_test(&session, &turn_context)
+        .await
+        .expect("create goal");
+    session
+        .set_thread_goal(
+            turn_context.as_ref(),
+            SetGoalRequest {
+                objective: None,
+                status: Some(ThreadGoalStatus::Paused),
+                token_budget: None,
+            },
+        )
+        .await
+        .expect("pause goal");
+
+    EditGoalHandler
+        .handle(goal_tool_invocation(
+            Arc::clone(&session),
+            Arc::clone(&turn_context),
+            "edit-and-resume-goal",
+            "edit_goal",
+            serde_json::json!({
+                "objective": "Keep the corrected watcher alive",
+                "resume": true,
+            }),
+        ))
+        .await
+        .expect("edit_goal should edit and resume a paused goal");
+
+    let goal = session
+        .get_thread_goal()
+        .await
+        .expect("read thread goal")
+        .expect("goal should still exist");
+    assert_eq!(goal.objective, "Keep the corrected watcher alive");
+    assert_eq!(goal.status, ThreadGoalStatus::Active);
+    assert_eq!(goal.token_budget, Some(123));
+}
+
+#[tokio::test]
+async fn edit_goal_tool_rejects_non_paused_goals() {
+    for status in [
+        ThreadGoalStatus::Active,
+        ThreadGoalStatus::Blocked,
+        ThreadGoalStatus::UsageLimited,
+        ThreadGoalStatus::BudgetLimited,
+        ThreadGoalStatus::Complete,
+    ] {
+        let (session, turn_context, _rx, _codex_home) =
+            make_goal_session_and_context_with_rx().await;
+        create_goal_for_clear_test(&session, &turn_context)
+            .await
+            .expect("create goal");
+        if status != ThreadGoalStatus::Active {
+            session
+                .set_thread_goal(
+                    turn_context.as_ref(),
+                    SetGoalRequest {
+                        objective: None,
+                        status: Some(status),
+                        token_budget: None,
+                    },
+                )
+                .await
+                .expect("set stopped goal status");
+        }
+
+        let response = EditGoalHandler
+            .handle(goal_tool_invocation(
+                Arc::clone(&session),
+                Arc::clone(&turn_context),
+                "edit-non-paused-goal",
+                "edit_goal",
+                serde_json::json!({
+                    "objective": "Agent should not rewrite this goal",
+                    "resume": false,
+                }),
+            ))
+            .await;
+
+        assert!(
+            matches!(response, Err(FunctionCallError::RespondToModel(_))),
+            "edit_goal should reject {status:?} goals"
+        );
+        let goal = session
+            .get_thread_goal()
+            .await
+            .expect("read thread goal")
+            .expect("goal should still exist");
+        assert_eq!(goal.objective, "Keep the watcher alive");
+        assert_eq!(goal.status, status);
+        assert_eq!(goal.token_budget, Some(123));
+    }
+}
+
+#[tokio::test]
+async fn edit_goal_tool_rejects_missing_goal() {
+    let (session, turn_context, _rx, _codex_home) = make_goal_session_and_context_with_rx().await;
+
+    let response = EditGoalHandler
+        .handle(goal_tool_invocation(
+            Arc::clone(&session),
+            Arc::clone(&turn_context),
+            "edit-missing-goal",
+            "edit_goal",
+            serde_json::json!({
+                "objective": "Create by accident",
+                "resume": false,
+            }),
+        ))
+        .await;
+
+    assert!(matches!(
+        response,
+        Err(FunctionCallError::RespondToModel(_))
+    ));
+    assert!(
+        session
+            .get_thread_goal()
+            .await
+            .expect("read thread goal")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn edit_goal_tool_rejects_oversized_objective_without_changing_goal() {
+    let (session, turn_context, _rx, _codex_home) = make_goal_session_and_context_with_rx().await;
+    create_goal_for_clear_test(&session, &turn_context)
+        .await
+        .expect("create goal");
+    session
+        .set_thread_goal(
+            turn_context.as_ref(),
+            SetGoalRequest {
+                objective: None,
+                status: Some(ThreadGoalStatus::Paused),
+                token_budget: None,
+            },
+        )
+        .await
+        .expect("pause goal");
+
+    let response = EditGoalHandler
+        .handle(goal_tool_invocation(
+            Arc::clone(&session),
+            Arc::clone(&turn_context),
+            "edit-oversized-goal",
+            "edit_goal",
+            serde_json::json!({
+                "objective": "x".repeat(codex_protocol::protocol::MAX_THREAD_GOAL_OBJECTIVE_CHARS + 1),
+                "resume": true,
+            }),
+        ))
+        .await;
+
+    assert!(matches!(
+        response,
+        Err(FunctionCallError::RespondToModel(_))
+    ));
+    let goal = session
+        .get_thread_goal()
+        .await
+        .expect("read thread goal")
+        .expect("goal should still exist");
+    assert_eq!(goal.objective, "Keep the watcher alive");
+    assert_eq!(goal.status, ThreadGoalStatus::Paused);
+    assert_eq!(goal.token_budget, Some(123));
+}
+
+fn goal_tool_invocation(
+    session: Arc<Session>,
+    turn: Arc<TurnContext>,
+    call_id: &str,
+    tool_name: &str,
+    arguments: serde_json::Value,
+) -> ToolInvocation {
+    ToolInvocation {
+        session,
+        turn,
+        cancellation_token: CancellationToken::new(),
+        tracker: Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new())),
+        call_id: call_id.to_string(),
+        tool_name: codex_tools::ToolName::plain(tool_name),
+        source: ToolCallSource::Direct,
+        payload: ToolPayload::Function {
+            arguments: arguments.to_string(),
+        },
+    }
 }
 
 async fn create_goal_for_clear_test(

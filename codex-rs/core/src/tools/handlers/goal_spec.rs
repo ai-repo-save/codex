@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 
 pub const GET_GOAL_TOOL_NAME: &str = "get_goal";
 pub const CREATE_GOAL_TOOL_NAME: &str = "create_goal";
+pub const EDIT_GOAL_TOOL_NAME: &str = "edit_goal";
 pub const UPDATE_GOAL_TOOL_NAME: &str = "update_goal";
 
 pub fn create_get_goal_tool() -> ToolSpec {
@@ -47,13 +48,51 @@ pub fn create_create_goal_tool() -> ToolSpec {
         name: CREATE_GOAL_TOOL_NAME.to_string(),
         description: format!(
             r#"Create a goal only when explicitly requested by the user or system/developer instructions; do not infer goals from ordinary tasks.
-Set token_budget only when an explicit token budget is requested. Fails if a goal exists; use {UPDATE_GOAL_TOOL_NAME} only for status."#
+Set token_budget only when an explicit token budget is requested. Fails if a goal exists; use edit_goal only to revise a paused goal objective, and use {UPDATE_GOAL_TOOL_NAME} only for complete or blocked status."#
         ),
         strict: false,
         defer_loading: None,
         parameters: JsonSchema::object(
             properties,
             /*required*/ Some(vec!["objective".to_string()]),
+            Some(false.into()),
+        ),
+        output_schema: None,
+    })
+}
+
+pub fn create_edit_goal_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "objective".to_string(),
+            JsonSchema::string(Some(
+                "Required. The complete replacement objective for the current paused goal."
+                    .to_string(),
+            )),
+        ),
+        (
+            "resume".to_string(),
+            JsonSchema::boolean(Some(
+                "Required. Set to true only when the user explicitly asked to resume or continue after editing; false keeps the revised goal paused."
+                    .to_string(),
+            )),
+        ),
+    ]);
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: EDIT_GOAL_TOOL_NAME.to_string(),
+        description: r#"Edit the objective of the existing goal only while it is paused.
+Use this tool only when the user explicitly asks to correct or revise the current goal.
+This tool fails unless the current goal status is paused; do not use it while actively executing a goal.
+The objective is a full replacement, not a patch or incremental instruction.
+Set resume to true only when the user explicitly asks to continue or resume after the edit. Set resume to false to keep the corrected goal paused.
+This tool cannot create a goal, clear a goal, change token budgets, or mark a goal complete or blocked."#
+            .to_string(),
+        strict: false,
+        defer_loading: None,
+        parameters: JsonSchema::object(
+            properties,
+            /*required*/ Some(vec!["objective".to_string(), "resume".to_string()]),
             Some(false.into()),
         ),
         output_schema: None,
@@ -99,6 +138,26 @@ When marking a budgeted goal achieved with status `complete`, report the final t
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edit_goal_tool_requires_objective_and_resume() {
+        let ToolSpec::Function(tool) = create_edit_goal_tool() else {
+            panic!("edit_goal should be a function tool");
+        };
+
+        assert_eq!(
+            tool.parameters.required,
+            Some(vec!["objective".to_string(), "resume".to_string()])
+        );
+        let properties = tool
+            .parameters
+            .properties
+            .as_ref()
+            .expect("edit_goal should expose properties");
+        assert!(properties.contains_key("objective"));
+        assert!(properties.contains_key("resume"));
+        assert_eq!(properties.len(), 2);
+    }
 
     #[test]
     fn update_goal_tool_exposes_complete_and_blocked_statuses() {

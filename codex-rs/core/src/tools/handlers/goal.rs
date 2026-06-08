@@ -1,8 +1,9 @@
 //! Built-in model tool handlers for persisted thread goals.
 //!
 //! The public tool contract intentionally splits goal creation from stopped
-//! status updates: `create_goal` starts an active objective, while
-//! `update_goal` can only mark the existing goal complete or blocked.
+//! status updates: `create_goal` starts an active objective, `edit_goal` can
+//! revise a paused objective, and `update_goal` can only mark the existing goal
+//! complete or blocked.
 
 use crate::function_tool::FunctionCallError;
 use crate::tools::context::FunctionToolOutput;
@@ -13,10 +14,12 @@ use serde::Serialize;
 use std::fmt::Write as _;
 
 mod create_goal;
+mod edit_goal;
 mod get_goal;
 mod update_goal;
 
 pub use create_goal::CreateGoalHandler;
+pub use edit_goal::EditGoalHandler;
 pub use get_goal::GetGoalHandler;
 pub use update_goal::UpdateGoalHandler;
 
@@ -25,6 +28,13 @@ pub use update_goal::UpdateGoalHandler;
 struct CreateGoalArgs {
     objective: String,
     token_budget: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct EditGoalArgs {
+    objective: String,
+    resume: bool,
 }
 
 #[derive(Debug, Deserialize)]

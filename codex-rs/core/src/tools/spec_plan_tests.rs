@@ -683,21 +683,21 @@ async fn host_context_gates_goal_and_agent_job_tools() {
         turn.goal_tools_supported = true;
     })
     .await;
-    feature_disabled.assert_visible_lacks(&["get_goal", "create_goal", "update_goal"]);
+    feature_disabled.assert_visible_lacks(&["get_goal", "create_goal", "edit_goal", "update_goal"]);
 
     let host_disabled = probe(|turn| {
         set_feature(turn, Feature::Goals, /*enabled*/ true);
         turn.goal_tools_supported = false;
     })
     .await;
-    host_disabled.assert_visible_lacks(&["get_goal", "create_goal", "update_goal"]);
+    host_disabled.assert_visible_lacks(&["get_goal", "create_goal", "edit_goal", "update_goal"]);
 
     let enabled = probe(|turn| {
         set_feature(turn, Feature::Goals, /*enabled*/ true);
         turn.goal_tools_supported = true;
     })
     .await;
-    enabled.assert_visible_contains(&["get_goal", "create_goal", "update_goal"]);
+    enabled.assert_visible_contains(&["get_goal", "create_goal", "edit_goal", "update_goal"]);
 
     let review_thread = probe(|turn| {
         set_feature(turn, Feature::Goals, /*enabled*/ true);
@@ -705,7 +705,7 @@ async fn host_context_gates_goal_and_agent_job_tools() {
         turn.session_source = SessionSource::SubAgent(SubAgentSource::Review);
     })
     .await;
-    review_thread.assert_visible_lacks(&["get_goal", "create_goal", "update_goal"]);
+    review_thread.assert_visible_lacks(&["get_goal", "create_goal", "edit_goal", "update_goal"]);
 
     let normal_agent_job = probe(|turn| {
         set_feature(turn, Feature::SpawnCsv, /*enabled*/ true);
