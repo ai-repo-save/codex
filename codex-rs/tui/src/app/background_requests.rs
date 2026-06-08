@@ -17,7 +17,6 @@ use codex_app_server_protocol::MarketplaceUpgradeParams;
 use codex_app_server_protocol::MarketplaceUpgradeResponse;
 
 use codex_app_server_protocol::RequestId;
-use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::hooks_rpc::fetch_hooks_list;

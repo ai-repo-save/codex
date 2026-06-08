@@ -9,7 +9,6 @@ use crate::app_command::AppCommand;
 use crate::app_event::AppEvent;
 use crate::app_event::ExitMode;
 use crate::app_event::FeedbackCategory;
-use crate::app_event::HistoryCommandSummary;
 use crate::app_event::HistoryLookupResponse;
 use crate::app_event::PermissionProfileSelection;
 use crate::app_event::RateLimitRefreshOrigin;
@@ -469,15 +468,6 @@ fn errors_for_cwd(cwd: &Path, response: &SkillsListResponse) -> Vec<SkillErrorIn
 struct SessionSummary {
     usage_line: Option<String>,
     resume_hint: Option<String>,
-}
-
-impl From<SessionSummary> for HistoryCommandSummary {
-    fn from(summary: SessionSummary) -> Self {
-        Self {
-            usage_line: summary.usage_line,
-            resume_hint: summary.resume_hint,
-        }
-    }
 }
 
 #[derive(Debug, Default)]

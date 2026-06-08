@@ -74,12 +74,6 @@ pub(crate) struct HistoryLookupResponse {
     pub(crate) entry: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct HistoryCommandSummary {
-    pub(crate) usage_line: Option<String>,
-    pub(crate) resume_hint: Option<String>,
-}
-
 impl RealtimeAudioDeviceKind {
     pub(crate) fn title(self) -> &'static str {
         match self {
