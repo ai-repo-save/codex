@@ -13,6 +13,7 @@ use crate::context_manager::estimate_response_item_model_visible_bytes;
 use crate::context_manager::is_codex_generated_item;
 use crate::hook_runtime::PostCompactHookOutcome;
 use crate::hook_runtime::PreCompactHookOutcome;
+use crate::hook_runtime::build_mid_turn_post_compact_continuation_supplement;
 use crate::hook_runtime::run_post_compact_hooks;
 use crate::hook_runtime::run_pre_compact_hooks;
 use crate::session::session::Session;
@@ -127,6 +128,11 @@ async fn run_remote_compact_task_inner(
             return Err(CodexErr::TurnAborted);
         }
     }
+    let mid_turn_continuation_supplement = if matches!(phase, CompactionPhase::MidTurn) {
+        build_mid_turn_post_compact_continuation_supplement(sess).await
+    } else {
+        None
+    };
     let result = run_remote_compact_task_inner_impl(
         sess,
         turn_context,
@@ -138,7 +144,14 @@ async fn run_remote_compact_task_inner(
     let status = compaction_status_from_result(&result);
     let error = result.as_ref().err().map(ToString::to_string);
     if result.is_ok() {
-        let post_compact_outcome = run_post_compact_hooks(sess, turn_context, trigger).await;
+        let post_compact_outcome = run_post_compact_hooks(
+            sess,
+            turn_context,
+            trigger,
+            phase,
+            mid_turn_continuation_supplement,
+        )
+        .await;
         if let PostCompactHookOutcome::Stopped = post_compact_outcome {
             attempt.track(sess.as_ref(), status, error).await;
             return Err(CodexErr::TurnAborted);
