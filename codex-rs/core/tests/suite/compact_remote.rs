@@ -1229,13 +1229,7 @@ async fn remote_compact_runs_automatically() -> Result<()> {
     let initial_request = mount_sse_once(
         harness.server(),
         sse(vec![
-            responses::ev_assistant_message("progress-1", "MIDTURN_PROGRESS_ONE"),
-            responses::ev_assistant_message("progress-2", "MIDTURN_PROGRESS_TWO"),
-            responses::ev_assistant_message("progress-3", "MIDTURN_PROGRESS_THREE"),
-            responses::ev_shell_command_call(
-                "m1",
-                "echo VERY_LARGE_COMMAND_SHOULD_NOT_APPEAR_IN_CONTINUATION",
-            ),
+            responses::ev_shell_command_call("m1", "echo 'hi'"),
             responses::ev_completed_with_tokens("resp-1", /*total_tokens*/ 100000000), // over token limit
         ]),
     )
@@ -1347,14 +1341,6 @@ async fn remote_compact_runs_automatically() -> Result<()> {
     );
     let follow_up_body = follow_up_request.body_json().to_string();
     assert!(follow_up_body.contains("REMOTE_COMPACTED_SUMMARY"));
-    assert!(follow_up_body.contains("你之前执行到这里"));
-    assert!(follow_up_body.contains("MIDTURN_PROGRESS_ONE"));
-    assert!(follow_up_body.contains("MIDTURN_PROGRESS_TWO"));
-    assert!(follow_up_body.contains("MIDTURN_PROGRESS_THREE"));
-    assert!(
-        !follow_up_body.contains("VERY_LARGE_COMMAND_SHOULD_NOT_APPEAR_IN_CONTINUATION"),
-        "mid-turn continuation supplement should not copy tool call arguments"
-    );
 
     Ok(())
 }

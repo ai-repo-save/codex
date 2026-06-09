@@ -2,7 +2,6 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
-use codex_analytics::CompactionPhase;
 use codex_analytics::CompactionTrigger;
 use codex_analytics::HookRunFact;
 use codex_analytics::build_track_events_context;
@@ -48,7 +47,6 @@ use tracing::warn;
 use crate::context::ContextualUserFragment;
 use crate::context::HookAdditionalContext;
 use crate::event_mapping::parse_turn_item;
-use crate::post_compact_continuation::build_mid_turn_continuation_supplement;
 use crate::session::TurnInput;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
@@ -485,8 +483,6 @@ pub(crate) async fn run_post_compact_hooks(
     sess: &Arc<Session>,
     turn_context: &Arc<TurnContext>,
     trigger: CompactionTrigger,
-    phase: CompactionPhase,
-    mid_turn_continuation_supplement: Option<String>,
 ) -> PostCompactHookOutcome {
     let request = codex_hooks::PostCompactRequest {
         session_id: sess.session_id().into(),
@@ -511,29 +507,11 @@ pub(crate) async fn run_post_compact_hooks(
     if outcome.should_stop {
         PostCompactHookOutcome::Stopped
     } else {
-        let mut supplement = outcome.supplement;
-        if matches!(phase, CompactionPhase::MidTurn)
-            && let Some(continuation_supplement) = mid_turn_continuation_supplement
-        {
-            supplement = Some(match supplement {
-                Some(hook_supplement) => {
-                    format!("{hook_supplement}\n\n{continuation_supplement}")
-                }
-                None => continuation_supplement,
-            });
-        }
-        if let Some(supplement) = supplement {
+        if let Some(supplement) = outcome.supplement {
             record_post_compact_supplement(sess, turn_context, supplement).await;
         }
         PostCompactHookOutcome::Continue
     }
-}
-
-pub(crate) async fn build_mid_turn_post_compact_continuation_supplement(
-    sess: &Session,
-) -> Option<String> {
-    let history = sess.clone_history().await;
-    build_mid_turn_continuation_supplement(history.raw_items())
 }
 
 async fn record_post_compact_supplement(

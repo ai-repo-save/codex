@@ -852,10 +852,6 @@ async fn post_compact_hook_can_append_supplement_from_persisted_compaction() {
         requests[2].body_contains_text(POST_COMPACT_SUPPLEMENT_TEXT),
         "follow-up request after PostCompact hook should include supplement"
     );
-    assert!(
-        !requests[2].body_contains_text("你之前执行到这里"),
-        "standalone PostCompact hook supplement should not include mid-turn continuation"
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
