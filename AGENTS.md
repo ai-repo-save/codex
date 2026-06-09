@@ -94,7 +94,12 @@ In the codex-rs folder where the rust code lives:
     the new implementation so the invariants stay close to the code that owns them.
   - Avoid adding new standalone methods to `codex-rs/tui/src/chatwidget.rs` unless the change is
     trivial; prefer new modules/files and keep `chatwidget.rs` focused on orchestration.
-- When running Rust commands through the remote scripts (e.g. `just.py fix` or `just.py test`) be patient with the command and never try to kill them using the PID. Rust lock can make the execution slow, this is expected.
+- When running Rust commands through the remote scripts (e.g. `just.py fix` or `just.py test`),
+  prefer graceful cancellation first and avoid killing a healthy command just because Rust compile
+  or lock contention is slow. PID/process-group cleanup is appropriate when the command was started
+  by mistake, exceeds the intended validation scope, has already been interrupted by the user, is
+  blocking newer work, or has left stale remote processes. After cleanup, check for residual
+  `cargo`/`rustc`/`nextest` processes and `.git/index.lock` before starting another remote workflow.
 
 Run `uv run --project scripts python scripts/remote/just.py fmt` automatically after you have finished making code changes anywhere in this repository; do not ask for approval to run it. Additionally, run the tests on the remote execution host through the remote scripts:
 
@@ -102,7 +107,7 @@ Run `uv run --project scripts python scripts/remote/just.py fmt` automatically a
 2. Run a test filter that matches the behavior changed. For example, for a TUI slash-command change, run a focused `codex-tui` filter such as `uv run --project scripts python scripts/remote/just.py test -p codex-tui chatwidget::tests::slash_commands`.
 3. For TUI compile/RPC smoke only, use `uv run --project scripts python scripts/remote/tui_smoke.py`. This is not a substitute for behavior-specific tests; it only verifies that the remote TUI test graph still builds and one app-server/TUI RPC path runs.
 4. Do not use unfiltered `uv run --project scripts python scripts/remote/just.py test -p codex-tui` as a routine development check. It runs the entire `codex-tui` crate, including environment-sensitive snapshot tests. In source/dev builds, version-rendering snapshots can differ from stored `v0.0.0` fixtures because `CODEX_CLI_VERSION` comes from `CARGO_PKG_VERSION`.
-5. Once focused tests pass, if any changes were made in common, core, or protocol, run the complete test suite with `uv run --project scripts python scripts/remote/just.py test`. Avoid `--all-features` for routine local runs because it expands the build matrix and can significantly increase `target/` disk usage; use it only when you specifically need full feature coverage.
+5. Once focused tests pass, run the complete test suite with `uv run --project scripts python scripts/remote/just.py test` only when the change is broad enough that focused coverage does not bound the risk, when a shared common/core/protocol change affects many independent call paths, or when the user/PR explicitly requires full validation. Do not use full-workspace tests as routine finalization for a narrow behavior change that already has focused coverage. Avoid `--all-features` for routine local runs because it expands the build matrix and can significantly increase `target/` disk usage; use it only when you specifically need full feature coverage.
 
 Before finalizing a large change to `codex-rs`, run `uv run --project scripts python scripts/remote/just.py fix -p <project>` for changed crates where the scoped Clippy fix is expected to finish quickly. Prefer scoping with `-p` to avoid slow workspace-wide Clippy builds; only run `fix` without `-p` if you changed shared crates. Do not run `uv run --project scripts python scripts/remote/just.py fix -p codex-core` as a routine finalization step: it expands to `cargo clippy --fix --tests --allow-dirty -p codex-core`, often spends many minutes in a single `clippy-driver` process, and has poor signal-to-cost for ordinary `codex-core` changes. For `codex-core`, rely on focused remote tests, formatting, schema/codegen checks when relevant, and CI for full Clippy coverage unless the user explicitly asks to run the slow fix. Do not re-run tests after running `fix` or `fmt`.
 
