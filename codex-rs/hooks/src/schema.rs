@@ -192,6 +192,18 @@ pub(crate) struct PreCompactCommandOutputWire {
 pub(crate) struct PostCompactCommandOutputWire {
     #[serde(flatten)]
     pub universal: HookUniversalOutputWire,
+    #[serde(default)]
+    pub hook_specific_output: Option<PostCompactHookSpecificOutputWire>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PostCompactHookSpecificOutputWire {
+    #[schemars(schema_with = "post_compact_hook_event_name_schema")]
+    pub hook_event_name: HookEventNameWire,
+    #[serde(default)]
+    pub supplement: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -928,6 +940,7 @@ mod tests {
     use super::PermissionRequestCommandInput;
     use super::PermissionRequestCommandOutputWire;
     use super::PostCompactCommandInput;
+    use super::PostCompactCommandOutputWire;
     use super::PostToolUseCommandInput;
     use super::PostToolUseCommandOutputWire;
     use super::PreCompactCommandInput;
@@ -1105,6 +1118,10 @@ mod tests {
         assert_output_hook_event_name_const::<PreToolUseCommandOutputWire>(
             "PreToolUseHookSpecificOutputWire",
             "PreToolUse",
+        );
+        assert_output_hook_event_name_const::<PostCompactCommandOutputWire>(
+            "PostCompactHookSpecificOutputWire",
+            "PostCompact",
         );
         assert_output_hook_event_name_const::<SessionStartCommandOutputWire>(
             "SessionStartHookSpecificOutputWire",

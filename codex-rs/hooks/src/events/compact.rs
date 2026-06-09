@@ -46,6 +46,7 @@ pub struct StatelessHookOutcome {
     pub hook_events: Vec<HookCompletedEvent>,
     pub should_stop: bool,
     pub stop_reason: Option<String>,
+    pub supplement: Option<String>,
 }
 
 #[derive(Debug)]
@@ -166,6 +167,7 @@ pub(crate) async fn run_post(
             hook_events: Vec::new(),
             should_stop: false,
             stop_reason: None,
+            supplement: None,
         };
     }
 
@@ -180,6 +182,7 @@ pub(crate) async fn run_post(
                 ),
                 should_stop: false,
                 stop_reason: None,
+                supplement: None,
             };
         }
     };
@@ -197,10 +200,19 @@ pub(crate) async fn run_post(
     let stop_reason = results
         .iter()
         .find_map(|result| result.data.stop_reason.clone());
+    let supplement = results
+        .iter()
+        .filter_map(|result| result.data.supplement.as_deref())
+        .map(str::trim)
+        .filter(|supplement| !supplement.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let supplement = (!supplement.is_empty()).then_some(supplement);
     StatelessHookOutcome {
         hook_events: results.into_iter().map(|result| result.completed).collect(),
         should_stop,
         stop_reason,
+        supplement,
     }
 }
 
@@ -223,6 +235,7 @@ fn post_command_input_json(request: &PostCompactRequest) -> Result<String, serde
 struct CompactHandlerData {
     should_stop: bool,
     stop_reason: Option<String>,
+    supplement: Option<String>,
 }
 
 fn parse_pre_completed(
@@ -307,6 +320,7 @@ fn parse_pre_completed(
         data: CompactHandlerData {
             should_stop,
             stop_reason,
+            supplement: None,
         },
         completion_order: 0,
     }
@@ -337,6 +351,7 @@ fn parse_completed(
     let mut status = HookRunStatus::Completed;
     let mut should_stop = false;
     let mut stop_reason = None;
+    let mut supplement = None;
 
     match run_result.error.as_deref() {
         Some(error) => {
@@ -351,6 +366,7 @@ fn parse_completed(
                 let trimmed_stdout = run_result.stdout.trim();
                 if trimmed_stdout.is_empty() {
                 } else if let Some(parsed) = parse_output(&run_result.stdout) {
+                    supplement = parsed.supplement.clone();
                     if let Some(system_message) = parsed.universal.system_message {
                         entries.push(HookOutputEntry {
                             kind: HookOutputEntryKind::Warning,
@@ -410,6 +426,9 @@ fn parse_completed(
         data: CompactHandlerData {
             should_stop,
             stop_reason,
+            supplement: matches!(status, HookRunStatus::Completed)
+                .then_some(supplement)
+                .flatten(),
         },
         completion_order: 0,
     }
@@ -540,6 +559,25 @@ mod tests {
                 kind: HookOutputEntryKind::Stop,
                 text: "pause after compact".to_string(),
             }]
+        );
+    }
+
+    #[test]
+    fn post_compact_reads_supplement_from_hook_specific_output() {
+        let parsed = parse_post_completed(
+            &handler(HookEventName::PostCompact),
+            run_result(
+                Some(0),
+                r#"{"hookSpecificOutput":{"hookEventName":"PostCompact","supplement":"continue from the compacted state"}}"#,
+                "",
+            ),
+            Some("turn-1".to_string()),
+        );
+
+        assert_eq!(parsed.completed.run.status, HookRunStatus::Completed);
+        assert_eq!(
+            parsed.data.supplement,
+            Some("continue from the compacted state".to_string())
         );
     }
 

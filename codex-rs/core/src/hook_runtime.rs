@@ -26,6 +26,7 @@ use codex_otel::HOOK_RUN_DURATION_METRIC;
 use codex_otel::HOOK_RUN_METRIC;
 use codex_protocol::items::TurnItem;
 use codex_protocol::items::UserMessageItem;
+use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
@@ -38,7 +39,10 @@ use codex_protocol::protocol::HookStartedEvent;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use codex_thread_store::ReadThreadParams;
+use codex_utils_output_truncation::TruncationPolicy;
+use codex_utils_output_truncation::truncate_text;
 use serde_json::Value;
+use tracing::warn;
 
 use crate::context::ContextualUserFragment;
 use crate::context::HookAdditionalContext;
@@ -48,6 +52,8 @@ use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use crate::tools::hook_names::HookToolName;
 use crate::tools::sandboxing::PermissionRequestPayload;
+
+const POST_COMPACT_SUPPLEMENT_MAX_BYTES: usize = 16 * 1024;
 
 pub(crate) struct HookRuntimeOutcome {
     pub should_stop: bool,
@@ -489,6 +495,11 @@ pub(crate) async fn run_post_compact_hooks(
         trigger: compaction_trigger_label(trigger).to_string(),
     };
     let preview_runs = sess.hooks().preview_post_compact(&request);
+    if !preview_runs.is_empty()
+        && let Err(err) = sess.flush_rollout().await
+    {
+        warn!("failed to flush rollout before PostCompact hooks: {err}");
+    }
     emit_hook_started_events(sess, turn_context, preview_runs).await;
 
     let outcome = sess.hooks().run_post_compact(request).await;
@@ -496,8 +507,35 @@ pub(crate) async fn run_post_compact_hooks(
     if outcome.should_stop {
         PostCompactHookOutcome::Stopped
     } else {
+        if let Some(supplement) = outcome.supplement {
+            record_post_compact_supplement(sess, turn_context, supplement).await;
+        }
         PostCompactHookOutcome::Continue
     }
+}
+
+async fn record_post_compact_supplement(
+    sess: &Session,
+    turn_context: &TurnContext,
+    supplement: String,
+) {
+    let supplement = supplement.trim();
+    if supplement.is_empty() {
+        return;
+    }
+
+    let supplement = truncate_text(
+        supplement,
+        TruncationPolicy::Bytes(POST_COMPACT_SUPPLEMENT_MAX_BYTES),
+    );
+    let response_item = ResponseItem::Message {
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputText { text: supplement }],
+        phase: None,
+    };
+    sess.record_conversation_items(turn_context, std::slice::from_ref(&response_item))
+        .await;
 }
 
 pub(crate) async fn run_legacy_after_agent_hook(

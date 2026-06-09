@@ -86,6 +86,7 @@ pub(crate) struct PreCompactOutput {
 pub(crate) struct StatelessHookOutput {
     pub universal: UniversalOutput,
     pub invalid_reason: Option<String>,
+    pub supplement: Option<String>,
 }
 
 use crate::schema::ApprovalReviewRouteCommandOutputWire;
@@ -302,9 +303,13 @@ pub(crate) fn parse_pre_compact(stdout: &str) -> Option<PreCompactOutput> {
 pub(crate) fn parse_post_compact(stdout: &str) -> Option<StatelessHookOutput> {
     let wire: PostCompactCommandOutputWire = parse_json(stdout)?;
     let universal = UniversalOutput::from(wire.universal);
+    let supplement = wire
+        .hook_specific_output
+        .and_then(|output| output.supplement);
     Some(StatelessHookOutput {
         universal,
         invalid_reason: None,
+        supplement,
     })
 }
 

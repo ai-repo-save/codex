@@ -75,6 +75,8 @@ const DUMMY_CALL_ID: &str = "call-multi-auto";
 const FUNCTION_CALL_LIMIT_MSG: &str = "function call limit push";
 const POST_AUTO_USER_MSG: &str = "post auto follow-up";
 const PRETURN_CONTEXT_DIFF_CWD: &str = "/tmp/PRETURN_CONTEXT_DIFF_CWD";
+const POST_COMPACT_SUPPLEMENT_TEXT: &str =
+    "<COMPACTION_SUPPLEMENT>continue from persisted compacted history</COMPACTION_SUPPLEMENT>";
 
 pub(super) const COMPACT_WARNING_MESSAGE: &str = "Heads up: Long threads and multiple compactions can cause the model to be less accurate. Start a new thread when possible to keep threads small and targeted.";
 
@@ -253,6 +255,54 @@ with Path(r"{manual_post_log_path}").open("a", encoding="utf-8") as handle:
     fs::write(&auto_script_path, auto_script).expect("write auto pre compact hook script");
     fs::write(&manual_post_script_path, manual_post_script)
         .expect("write manual post compact hook script");
+    fs::write(home.join("hooks.json"), hooks.to_string()).expect("write hooks.json");
+}
+
+fn write_post_compact_supplement_hook(home: &Path) {
+    let script_path = home.join("post_compact_supplement.py");
+    let log_path = home.join("post_compact_supplement_log.jsonl");
+    let script = format!(
+        r#"import json
+from pathlib import Path
+import sys
+
+payload = json.load(sys.stdin)
+transcript_path = payload.get("transcript_path")
+transcript_text = Path(transcript_path).read_text(encoding="utf-8") if transcript_path else ""
+saw_compaction = '"type":"compacted"' in transcript_text
+saw_replacement_history = '"replacement_history"' in transcript_text
+with Path(r"{log_path}").open("a", encoding="utf-8") as handle:
+    handle.write(json.dumps({{
+        "input": payload,
+        "saw_compaction": saw_compaction,
+        "saw_replacement_history": saw_replacement_history,
+    }}) + "\n")
+
+if saw_compaction and saw_replacement_history:
+    print(json.dumps({{
+        "hookSpecificOutput": {{
+            "hookEventName": "PostCompact",
+            "supplement": {supplement_json},
+        }}
+    }}))
+"#,
+        log_path = log_path.display(),
+        supplement_json =
+            serde_json::to_string(POST_COMPACT_SUPPLEMENT_TEXT).expect("serialize supplement text"),
+    );
+    let hooks = json!({
+        "hooks": {
+            "PostCompact": [{
+                "matcher": "manual",
+                "hooks": [{
+                    "type": "command",
+                    "command": python_hook_command(&script_path),
+                }]
+            }]
+        }
+    });
+
+    fs::write(&script_path, script).expect("write post compact supplement hook script");
     fs::write(home.join("hooks.json"), hooks.to_string()).expect("write hooks.json");
 }
 
@@ -717,6 +767,91 @@ async fn compact_hooks_respect_matchers_and_post_runs_after_compaction() {
     assert!(input.get("reason").is_none());
     assert!(input.get("phase").is_none());
     assert!(input.get("implementation").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn post_compact_hook_can_append_supplement_from_persisted_compaction() {
+    skip_if_no_network!();
+
+    let server = start_mock_server().await;
+    let first_turn = sse(vec![
+        ev_assistant_message("m0", FIRST_REPLY),
+        ev_completed_with_tokens("r0", /*total_tokens*/ 80),
+    ]);
+    let compact_turn = sse(vec![
+        ev_assistant_message("m1", SUMMARY_TEXT),
+        ev_completed_with_tokens("r1", /*total_tokens*/ 100),
+    ]);
+    let followup_turn = sse(vec![
+        ev_assistant_message("m2", FINAL_REPLY),
+        ev_completed_with_tokens("r2", /*total_tokens*/ 120),
+    ]);
+    let request_log =
+        mount_sse_sequence(&server, vec![first_turn, compact_turn, followup_turn]).await;
+
+    let model_provider = non_openai_model_provider(&server);
+    let mut builder = test_codex()
+        .with_pre_build_hook(write_post_compact_supplement_hook)
+        .with_config(move |config| {
+            config.model_provider = model_provider;
+            trust_discovered_hooks(config);
+            set_test_compact_prompt(config);
+        });
+    let test = builder.build(&server).await.expect("create conversation");
+    let codex = test.codex.clone();
+
+    codex
+        .submit(Op::UserInput {
+            environments: None,
+            items: vec![UserInput::Text {
+                text: "hello before supplement compact".to_string(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await
+        .expect("submit first user turn");
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    codex.submit(Op::Compact).await.expect("trigger compact");
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::Warning(_))).await;
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    let hook_logs = read_hook_inputs(
+        &test
+            .codex_home_path()
+            .join("post_compact_supplement_log.jsonl"),
+    );
+    assert_eq!(hook_logs.len(), 1);
+    assert_eq!(hook_logs[0]["input"]["hook_event_name"], "PostCompact");
+    assert_eq!(hook_logs[0]["saw_compaction"], true);
+    assert_eq!(hook_logs[0]["saw_replacement_history"], true);
+
+    codex
+        .submit(Op::UserInput {
+            environments: None,
+            items: vec![UserInput::Text {
+                text: "after supplement compact".to_string(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await
+        .expect("submit followup user turn");
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    let requests = request_log.requests();
+    assert_eq!(requests.len(), 3);
+    assert!(
+        requests[2].body_contains_text(POST_COMPACT_SUPPLEMENT_TEXT),
+        "follow-up request after PostCompact hook should include supplement"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
