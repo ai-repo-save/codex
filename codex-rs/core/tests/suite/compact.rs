@@ -827,6 +827,7 @@ async fn post_compact_hook_can_append_supplement_from_persisted_compaction() {
     );
     assert_eq!(hook_logs.len(), 1);
     assert_eq!(hook_logs[0]["input"]["hook_event_name"], "PostCompact");
+    assert_eq!(hook_logs[0]["input"]["phase"], "standalone_turn");
     assert_eq!(hook_logs[0]["saw_compaction"], true);
     assert_eq!(hook_logs[0]["saw_replacement_history"], true);
 

@@ -454,6 +454,8 @@ pub(crate) struct PostCompactCommandInput {
     pub model: String,
     #[schemars(schema_with = "compaction_trigger_schema")]
     pub trigger: String,
+    #[schemars(schema_with = "compaction_phase_schema")]
+    pub phase: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -891,6 +893,10 @@ fn session_start_source_schema(_gen: &mut SchemaGenerator) -> Schema {
 
 fn compaction_trigger_schema(_gen: &mut SchemaGenerator) -> Schema {
     string_enum_schema(&["manual", "auto"])
+}
+
+fn compaction_phase_schema(_gen: &mut SchemaGenerator) -> Schema {
+    string_enum_schema(&["standalone_turn", "pre_turn", "mid_turn"])
 }
 
 fn string_const_schema(value: &str) -> Schema {

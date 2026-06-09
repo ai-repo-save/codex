@@ -26,6 +26,14 @@
     "model": {
       "type": "string"
     },
+    "phase": {
+      "enum": [
+        "standalone_turn",
+        "pre_turn",
+        "mid_turn"
+      ],
+      "type": "string"
+    },
     "session_id": {
       "type": "string"
     },
@@ -48,6 +56,7 @@
     "cwd",
     "hook_event_name",
     "model",
+    "phase",
     "session_id",
     "transcript_path",
     "trigger",

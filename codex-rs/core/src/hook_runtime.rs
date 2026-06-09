@@ -2,6 +2,7 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
+use codex_analytics::CompactionPhase;
 use codex_analytics::CompactionTrigger;
 use codex_analytics::HookRunFact;
 use codex_analytics::build_track_events_context;
@@ -483,6 +484,7 @@ pub(crate) async fn run_post_compact_hooks(
     sess: &Arc<Session>,
     turn_context: &Arc<TurnContext>,
     trigger: CompactionTrigger,
+    phase: CompactionPhase,
 ) -> PostCompactHookOutcome {
     let request = codex_hooks::PostCompactRequest {
         session_id: sess.session_id().into(),
@@ -493,6 +495,7 @@ pub(crate) async fn run_post_compact_hooks(
         transcript_path: sess.hook_transcript_path().await,
         model: turn_context.model_info.slug.clone(),
         trigger: compaction_trigger_label(trigger).to_string(),
+        phase: compaction_phase_label(phase).to_string(),
     };
     let preview_runs = sess.hooks().preview_post_compact(&request);
     if !preview_runs.is_empty()
@@ -872,6 +875,14 @@ fn compaction_trigger_label(value: CompactionTrigger) -> &'static str {
     match value {
         CompactionTrigger::Manual => "manual",
         CompactionTrigger::Auto => "auto",
+    }
+}
+
+fn compaction_phase_label(value: CompactionPhase) -> &'static str {
+    match value {
+        CompactionPhase::StandaloneTurn => "standalone_turn",
+        CompactionPhase::PreTurn => "pre_turn",
+        CompactionPhase::MidTurn => "mid_turn",
     }
 }
 
