@@ -256,12 +256,6 @@ pub(super) async fn user_input_or_turn_inner(
                 Some(sess.mcp_elicitation_reviewer()),
             )
             .await;
-            if let Err(err) = sess
-                .clear_completed_thread_goal_before_user_turn(current_context.as_ref())
-                .await
-            {
-                tracing::warn!("failed to clear completed thread goal before user turn: {err}");
-            }
             let accepted_items = items.clone();
             let additional_context_input = {
                 let mut state = sess.state.lock().await;

@@ -664,3 +664,15 @@ fn build_denial_reason_from_output(_output: &ExecToolCallOutput) -> String {
     // output so we can evolve heuristics later without touching call sites.
     "command failed; retry without sandbox?".to_string()
 }
+
+fn approval_kind_for_action(action: GuardianReviewAction) -> &'static str {
+    match action {
+        GuardianReviewAction::Shell => "shell",
+        GuardianReviewAction::ExecCommand => "exec_command",
+        GuardianReviewAction::Execve => "execve",
+        GuardianReviewAction::ApplyPatch => "apply_patch",
+        GuardianReviewAction::McpToolCall => "mcp_tool_call",
+        GuardianReviewAction::NetworkAccess => "network_access",
+        GuardianReviewAction::RequestPermissions => "request_permissions",
+    }
+}

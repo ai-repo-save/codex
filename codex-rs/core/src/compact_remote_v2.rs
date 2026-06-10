@@ -37,6 +37,7 @@ use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::TokenUsage;
 use codex_protocol::protocol::TruncationPolicy;
 use codex_protocol::protocol::TurnStartedEvent;
+use codex_async_utils::OrCancelExt;
 use codex_rollout_trace::CompactionCheckpointTracePayload;
 use codex_rollout_trace::InferenceTraceContext;
 use codex_utils_output_truncation::approx_token_count;
@@ -153,6 +154,7 @@ async fn run_remote_compact_task_inner(
         initial_context_injection,
         compaction_metadata,
         &mut analytics_details,
+        cancellation_token,
     )
     .await;
     let status = compaction_status_from_result(&result);
@@ -187,6 +189,7 @@ async fn run_remote_compact_task_inner_impl(
     initial_context_injection: InitialContextInjection,
     compaction_metadata: CompactionTurnMetadata,
     analytics_details: &mut CompactionAnalyticsDetails,
+    cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
     let context_compaction_item = ContextCompactionItem::new();
     let compaction_trace = sess.services.rollout_thread_trace.compaction_trace_context(
@@ -327,6 +330,7 @@ async fn run_remote_compaction_request_v2(
     client_session: &mut ModelClientSession,
     prompt: &Prompt,
     turn_metadata_header: Option<&str>,
+    cancellation_token: &CancellationToken,
 ) -> CodexResult<RemoteCompactionV2Output> {
     let max_retries = turn_context
         .provider
@@ -350,7 +354,7 @@ async fn run_remote_compaction_request_v2(
             .await
             .map_err(|_| CodexErr::TurnAborted)?
         {
-            Ok(stream) => collect_compaction_output(stream, cancellation_token).await,
+            Ok(stream) => collect_compaction_output(stream).await,
             Err(err) => Err(err),
         };
 

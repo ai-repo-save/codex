@@ -139,6 +139,7 @@ async fn run_remote_compact_task_inner(
         initial_context_injection,
         compaction_metadata,
         &mut analytics_details,
+        cancellation_token,
     )
     .await;
     let status = compaction_status_from_result(&result);
@@ -172,6 +173,7 @@ async fn run_remote_compact_task_inner_impl(
     initial_context_injection: InitialContextInjection,
     compaction_metadata: CompactionTurnMetadata,
     analytics_details: &mut CompactionAnalyticsDetails,
+    cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
     let context_compaction_item = ContextCompactionItem::new();
     // Use the UI compaction item ID as the trace compaction ID so protocol lifecycle events,
