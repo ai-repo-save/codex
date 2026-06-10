@@ -759,11 +759,11 @@ async fn compact_hooks_respect_matchers_and_post_runs_after_compaction() {
     let input = &hook_inputs[0];
     assert_eq!(input["hook_event_name"], "PostCompact");
     assert_eq!(input["trigger"], "manual");
+    assert_eq!(input["phase"], "standalone_turn");
     assert!(input.get("compact_summary").is_none());
     assert!(input.get("status").is_none());
     assert!(input.get("error").is_none());
     assert!(input.get("reason").is_none());
-    assert!(input.get("phase").is_none());
     assert!(input.get("implementation").is_none());
 }
 
