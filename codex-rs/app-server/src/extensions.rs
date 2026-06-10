@@ -3,6 +3,7 @@ use std::sync::Weak;
 
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ThreadGoal;
+use codex_app_server_protocol::ThreadGoalClearedNotification;
 use codex_app_server_protocol::ThreadGoalUpdatedNotification;
 use codex_core::NewThread;
 use codex_core::StartThreadOptions;
@@ -105,12 +106,15 @@ impl ExtensionEventSink for AppServerExtensionEventSink {
                 });
             }
             EventMsg::ThreadGoalCleared(thread_goal_cleared_event) => {
-                self.outgoing
-                    .try_send_server_notification(ServerNotification::ThreadGoalCleared(
-                        ThreadGoalClearedNotification {
-                            thread_id: thread_goal_cleared_event.thread_id.to_string(),
-                        },
-                    ));
+                let outgoing = Arc::clone(&self.outgoing);
+                let thread_id = thread_goal_cleared_event.thread_id.to_string();
+                tokio::spawn(async move {
+                    outgoing
+                        .send_server_notification(ServerNotification::ThreadGoalCleared(
+                            ThreadGoalClearedNotification { thread_id },
+                        ))
+                        .await;
+                });
             }
             msg => {
                 tracing::debug!(event_id = %event.id, ?msg, "dropping unsupported extension event");
@@ -141,8 +145,11 @@ pub(crate) fn guardian_agent_spawner(
 mod tests {
     use std::time::Duration;
 
+    use crate::outgoing_message::OutgoingEnvelope;
+    use crate::outgoing_message::OutgoingMessage;
     use codex_analytics::AnalyticsEventsClient;
     use codex_protocol::protocol::ThreadGoal as CoreThreadGoal;
+    use codex_protocol::protocol::ThreadGoalClearedEvent;
     use codex_protocol::protocol::ThreadGoalStatus;
     use codex_protocol::protocol::ThreadGoalUpdatedEvent;
     use pretty_assertions::assert_eq;
@@ -225,7 +232,8 @@ mod tests {
             outgoing_tx,
             AnalyticsEventsClient::disabled(),
         ));
-        let sink = app_server_extension_event_sink(outgoing);
+        let thread_state_manager = ThreadStateManager::new();
+        let sink = app_server_extension_event_sink(outgoing, thread_state_manager);
         let thread_id = ThreadId::default();
 
         sink.emit(Event {

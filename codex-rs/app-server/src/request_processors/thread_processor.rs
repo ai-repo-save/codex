@@ -148,23 +148,57 @@ fn collect_resume_override_mismatches(
 }
 
 fn thread_fork_params_from_reset_context(params: ThreadResetContextParams) -> ThreadForkParams {
+    let ThreadResetContextParams {
+        thread_id,
+        model,
+        model_provider,
+        service_tier,
+        cwd,
+        runtime_workspace_roots,
+        approval_policy,
+        approvals_reviewer,
+        sandbox,
+        permissions,
+        config,
+        base_instructions,
+        developer_instructions,
+        ephemeral,
+        thread_source,
+        ..
+    } = params;
+    let runtime_workspace_roots = runtime_workspace_roots.map(|roots| {
+        resolve_runtime_workspace_roots(
+            roots
+                .into_iter()
+                .map(|root| {
+                    AbsolutePathBuf::resolve_path_against_base(
+                        root,
+                        &std::env::current_dir()
+                            .expect("current working directory should be available")
+                            .as_path(),
+                    )
+                })
+                .collect(),
+        )
+    });
+
     ThreadForkParams {
-        thread_id: params.thread_id,
+        thread_id,
         path: None,
-        model: params.model,
-        model_provider: params.model_provider,
-        service_tier: params.service_tier,
-        cwd: params.cwd,
-        runtime_workspace_roots: params.runtime_workspace_roots,
-        approval_policy: params.approval_policy,
-        approvals_reviewer: params.approvals_reviewer,
-        sandbox: params.sandbox,
-        permissions: params.permissions,
-        config: params.config,
-        base_instructions: params.base_instructions,
-        developer_instructions: params.developer_instructions,
-        ephemeral: params.ephemeral,
-        thread_source: params.thread_source,
+        model,
+        model_provider,
+        service_tier,
+        cwd,
+        runtime_workspace_roots,
+        approval_policy,
+        approvals_reviewer,
+        sandbox,
+        permissions,
+        config,
+        base_instructions,
+        developer_instructions,
+        ephemeral,
+        thread_source,
         exclude_turns: false,
     }
 }
