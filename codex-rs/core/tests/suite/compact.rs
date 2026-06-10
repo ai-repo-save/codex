@@ -800,7 +800,6 @@ async fn post_compact_hook_can_append_supplement_from_persisted_compaction() {
 
     codex
         .submit(Op::UserInput {
-            environments: None,
             items: vec![UserInput::Text {
                 text: "hello before supplement compact".to_string(),
                 text_elements: Vec::new(),
@@ -831,7 +830,6 @@ async fn post_compact_hook_can_append_supplement_from_persisted_compaction() {
 
     codex
         .submit(Op::UserInput {
-            environments: None,
             items: vec![UserInput::Text {
                 text: "after supplement compact".to_string(),
                 text_elements: Vec::new(),
