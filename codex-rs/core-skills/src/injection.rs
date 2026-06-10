@@ -28,47 +28,30 @@ pub struct SkillInjection {
     pub contents: String,
 }
 
-pub fn strip_skill_frontmatter(contents: &str) -> &str {
-    let Some(rest) = contents.strip_prefix("---") else {
-        return contents;
-    };
-    let rest = rest
-        .strip_prefix("\r\n")
-        .or_else(|| rest.strip_prefix('\n'))
-        .unwrap_or(rest);
-
-    for delimiter in ["\n---\r\n", "\n---\n", "\r\n---\r\n", "\r\n---\n"] {
-        if let Some((_frontmatter, body)) = rest.split_once(delimiter) {
-            return body.trim_start_matches(['\r', '\n']);
-        }
-    }
-
-    contents
+/// Host skill prompts that have already been injected by an extension for this
+/// turn.
+///
+/// Core uses this to keep the legacy skill-injection path from sending the same
+/// host `SKILL.md` body again while the skills extension is being wired in.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InjectedHostSkillPrompts {
+    paths: HashSet<String>,
 }
 
-pub async fn load_skill_injection(
-    skill: &SkillMetadata,
-    loaded_skills: Option<&SkillLoadOutcome>,
-) -> Result<SkillInjection, String> {
-    let fs = loaded_skills
-        .and_then(|outcome| outcome.file_system_for_skill(skill))
-        .unwrap_or_else(|| Arc::clone(&LOCAL_FS));
-    let contents = fs
-        .read_file_text(&skill.path_to_skills_md, /*sandbox*/ None)
-        .await
-        .map_err(|err| {
-            format!(
-                "Failed to load skill {name} at {path}: {err:#}",
-                name = skill.name,
-                path = skill.path_to_skills_md.display()
-            )
-        })?;
+impl InjectedHostSkillPrompts {
+    pub fn insert_path(&mut self, path: impl Into<String>) {
+        let path = path.into();
+        self.paths.insert(normalize_host_skill_path(&path));
+        self.paths.insert(path);
+    }
 
-    Ok(SkillInjection {
-        name: skill.name.clone(),
-        path: skill.path_to_skills_md.to_string_lossy().into_owned(),
-        contents: strip_skill_frontmatter(&contents).to_string(),
-    })
+    pub fn is_empty(&self) -> bool {
+        self.paths.is_empty()
+    }
+
+    pub fn contains_path(&self, path: &str) -> bool {
+        self.paths.contains(path) || self.paths.contains(&normalize_host_skill_path(path))
+    }
 }
 
 pub async fn build_skill_injections(
@@ -111,6 +94,10 @@ pub async fn build_skill_injections(
     analytics_client.track_skill_invocations(tracking, invocations);
 
     result
+}
+
+fn normalize_host_skill_path(path: &str) -> String {
+    normalize_skill_path(path).replace('\\', "/")
 }
 
 fn emit_skill_injected_metric(
