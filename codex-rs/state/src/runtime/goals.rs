@@ -710,7 +710,7 @@ mod tests {
 
         let completed = runtime
             .thread_goals()
-            .update_thread_goal_status(thread_id, crate::ThreadGoalStatus::Complete)
+            .update_active_thread_goal_status(thread_id, crate::ThreadGoalStatus::Complete)
             .await
             .expect("goal update should succeed")
             .expect("goal should exist");
