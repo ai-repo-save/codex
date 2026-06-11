@@ -460,6 +460,13 @@ async fn get_context_usage_tool_is_available_by_default() {
 }
 
 #[tokio::test]
+async fn request_context_compaction_tool_is_available_by_default() {
+    let plan = probe(|_| {}).await;
+    plan.assert_visible_contains(&["request_context_compaction"]);
+    plan.assert_registered_contains(&["request_context_compaction"]);
+}
+
+#[tokio::test]
 async fn request_user_input_tool_respects_experimental_config_gate() {
     let enabled = probe(|_| {}).await;
     enabled.assert_visible_contains(&["request_user_input"]);

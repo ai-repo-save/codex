@@ -42,6 +42,7 @@ use crate::session::TurnInput;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use crate::stream_events_utils::HandleOutputCtx;
+use crate::stream_events_utils::InFlightToolOutput;
 use crate::stream_events_utils::TurnItemContributorPolicy;
 use crate::stream_events_utils::finalize_non_tool_response_item;
 use crate::stream_events_utils::handle_non_tool_response_item;
@@ -85,7 +86,6 @@ use codex_protocol::items::build_hook_prompt_message;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::MessagePhase;
-use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AgentMessageContentDeltaEvent;
 use codex_protocol::protocol::AgentReasoningSectionBreakEvent;
@@ -1732,13 +1732,31 @@ async fn handle_assistant_item_done_in_plan_mode(
 }
 
 async fn drain_in_flight(
-    in_flight: &mut FuturesOrdered<BoxFuture<'static, CodexResult<ResponseInputItem>>>,
+    in_flight: &mut FuturesOrdered<BoxFuture<'static, CodexResult<InFlightToolOutput>>>,
     sess: Arc<Session>,
     turn_context: Arc<TurnContext>,
+    client_session: &mut ModelClientSession,
+    cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
     while let Some(res) = in_flight.next().await {
         match res {
-            Ok(response_input) => {
+            Ok(output) => {
+                let response_input = match output {
+                    InFlightToolOutput::Response(response_input) => response_input,
+                    InFlightToolOutput::RequestContextCompaction(response_input) => {
+                        run_auto_compact(
+                            &sess,
+                            &turn_context,
+                            client_session,
+                            InitialContextInjection::BeforeLastUserMessage,
+                            CompactionReason::UserRequested,
+                            CompactionPhase::MidTurn,
+                            cancellation_token,
+                        )
+                        .await?;
+                        response_input
+                    }
+                };
                 let response_item = response_input.into();
                 sess.record_conversation_items(&turn_context, std::slice::from_ref(&response_item))
                     .await;
@@ -1770,7 +1788,7 @@ async fn try_run_sampling_request(
     sess: Arc<Session>,
     turn_context: Arc<TurnContext>,
     turn_store: Arc<codex_extension_api::ExtensionData>,
-    client_session: &mut ModelClientSession,
+    mut client_session: &mut ModelClientSession,
     turn_metadata_header: Option<&str>,
     turn_diff_tracker: SharedTurnDiffTracker,
     prompt: &Prompt,
@@ -1804,7 +1822,7 @@ async fn try_run_sampling_request(
         .instrument(trace_span!("stream_request"))
         .or_cancel(&cancellation_token)
         .await??;
-    let mut in_flight: FuturesOrdered<BoxFuture<'static, CodexResult<ResponseInputItem>>> =
+    let mut in_flight: FuturesOrdered<BoxFuture<'static, CodexResult<InFlightToolOutput>>> =
         FuturesOrdered::new();
     let mut needs_follow_up = false;
     let mut last_agent_message: Option<String> = None;
@@ -2218,7 +2236,14 @@ async fn try_run_sampling_request(
     } else {
         Some(turn_context.turn_timing_state.begin_tool_blocking())
     };
-    drain_in_flight(&mut in_flight, sess.clone(), turn_context.clone()).await?;
+    drain_in_flight(
+        &mut in_flight,
+        sess.clone(),
+        turn_context.clone(),
+        &mut client_session,
+        &cancellation_token,
+    )
+    .await?;
     drop(tool_blocking_timing_guard);
 
     if should_emit_token_count {

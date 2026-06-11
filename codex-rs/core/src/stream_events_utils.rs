@@ -16,6 +16,7 @@ use crate::function_tool::FunctionCallError;
 use crate::parse_turn_item;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
+use crate::tools::handlers::request_context_compaction_spec::REQUEST_CONTEXT_COMPACTION_TOOL_NAME;
 use crate::tools::parallel::ToolCallRuntime;
 use crate::tools::router::ToolRouter;
 use codex_memories_read::citations::parse_memory_citation;
@@ -304,7 +305,12 @@ async fn record_stage1_output_usage_for_memory_citation(
 /// queuing any tool execution futures. This records items immediately so
 /// history and rollout stay in sync even if the turn is later cancelled.
 pub(crate) type InFlightFuture<'f> =
-    Pin<Box<dyn Future<Output = Result<ResponseInputItem>> + Send + 'f>>;
+    Pin<Box<dyn Future<Output = Result<InFlightToolOutput>> + Send + 'f>>;
+
+pub(crate) enum InFlightToolOutput {
+    Response(ResponseInputItem),
+    RequestContextCompaction(ResponseInputItem),
+}
 
 #[derive(Default)]
 pub(crate) struct OutputItemResult {
@@ -433,11 +439,19 @@ pub(crate) async fn handle_output_item_done(
                 .await;
 
             let cancellation_token = ctx.cancellation_token.child_token();
-            let tool_future: InFlightFuture<'static> = Box::pin(
-                ctx.tool_runtime
-                    .clone()
-                    .handle_tool_call(call, cancellation_token),
-            );
+            let requests_context_compaction = call.tool_name.namespace.is_none()
+                && call.tool_name.name == REQUEST_CONTEXT_COMPACTION_TOOL_NAME;
+            let tool_runtime = ctx.tool_runtime.clone();
+            let tool_future: InFlightFuture<'static> = Box::pin(async move {
+                let response = tool_runtime
+                    .handle_tool_call(call, cancellation_token)
+                    .await?;
+                if requests_context_compaction && response_input_succeeded(&response) {
+                    Ok(InFlightToolOutput::RequestContextCompaction(response))
+                } else {
+                    Ok(InFlightToolOutput::Response(response))
+                }
+            });
 
             output.needs_follow_up = true;
             output.tool_future = Some(tool_future);
@@ -512,6 +526,15 @@ pub(crate) async fn handle_output_item_done(
     }
 
     Ok(output)
+}
+
+fn response_input_succeeded(response: &ResponseInputItem) -> bool {
+    match response {
+        ResponseInputItem::FunctionCallOutput { output, .. }
+        | ResponseInputItem::CustomToolCallOutput { output, .. } => output.success.unwrap_or(true),
+        ResponseInputItem::ToolSearchOutput { .. } => true,
+        _ => false,
+    }
 }
 
 pub(crate) async fn handle_non_tool_response_item(
