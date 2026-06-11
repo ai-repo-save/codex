@@ -28,7 +28,7 @@ const AUTO_COMPACT_LIMIT: i64 = 1_000;
 const COMPACT_PROMPT: &str = "Summarize the conversation.";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn thread_reset_context_compacts_and_returns_new_thread() -> Result<()> {
+async fn thread_reset_context_forks_with_context_without_compaction() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = responses::start_mock_server().await;
@@ -36,16 +36,12 @@ async fn thread_reset_context_compacts_and_returns_new_thread() -> Result<()> {
         responses::ev_assistant_message("m1", "ORIGINAL_RESPONSE"),
         responses::ev_completed_with_tokens("r1", /*total_tokens*/ 100),
     ]);
-    let compact_sse = responses::sse(vec![
-        responses::ev_assistant_message("m2", "RESET_CONTEXT_SUMMARY"),
+    let follow_up_sse = responses::sse(vec![
+        responses::ev_assistant_message("m2", "FOLLOW_UP_RESPONSE"),
         responses::ev_completed_with_tokens("r2", /*total_tokens*/ 200),
     ]);
-    let follow_up_sse = responses::sse(vec![
-        responses::ev_assistant_message("m3", "FOLLOW_UP_RESPONSE"),
-        responses::ev_completed_with_tokens("r3", /*total_tokens*/ 300),
-    ]);
     let response_log =
-        responses::mount_sse_sequence(&server, vec![turn_sse, compact_sse, follow_up_sse]).await;
+        responses::mount_sse_sequence(&server, vec![turn_sse, follow_up_sse]).await;
 
     let codex_home = TempDir::new()?;
     write_mock_responses_config_toml(
@@ -95,10 +91,9 @@ async fn thread_reset_context_compacts_and_returns_new_thread() -> Result<()> {
     send_turn_and_wait(&mut mcp, &thread.id).await?;
 
     let requests = response_log.requests();
-    assert_eq!(requests.len(), 3);
-    assert!(requests[1].body_contains_text(COMPACT_PROMPT));
-    assert!(requests[2].body_contains_text("RESET_CONTEXT_SUMMARY"));
-    assert!(!requests[2].body_contains_text("ORIGINAL_RESPONSE"));
+    assert_eq!(requests.len(), 2);
+    assert!(!requests[0].body_contains_text(COMPACT_PROMPT));
+    assert!(requests[1].body_contains_text("ORIGINAL_RESPONSE"));
 
     Ok(())
 }

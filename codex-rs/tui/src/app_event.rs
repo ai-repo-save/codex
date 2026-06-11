@@ -215,7 +215,7 @@ pub(crate) enum AppEvent {
     /// Fork the current session into a new thread.
     ForkCurrentSession,
 
-    /// Clear the current chat history and continue in a fresh thread.
+    /// Clear the persisted rollout and continue in a forked thread with the same context.
     ClearHistoryCurrentSession,
 
     /// Request to exit the application.

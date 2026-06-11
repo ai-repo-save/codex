@@ -84,6 +84,8 @@ use codex_app_server_protocol::ThreadRealtimeStartResponse;
 use codex_app_server_protocol::ThreadRealtimeStartTransport;
 use codex_app_server_protocol::ThreadRealtimeStopParams;
 use codex_app_server_protocol::ThreadRealtimeStopResponse;
+use codex_app_server_protocol::ThreadResetContextParams;
+use codex_app_server_protocol::ThreadResetContextResponse;
 use codex_app_server_protocol::ThreadResumeParams;
 use codex_app_server_protocol::ThreadResumeResponse;
 use codex_app_server_protocol::ThreadRollbackParams;
@@ -468,6 +470,39 @@ impl AppServerSession {
             .await;
         let mut started =
             started_thread_from_fork_response(response, &config, self.thread_params_mode()).await?;
+        started.session.fork_parent_title = fork_parent_title;
+        Ok(started)
+    }
+
+    pub(crate) async fn clear_history_thread(
+        &mut self,
+        config: Config,
+        thread_id: ThreadId,
+    ) -> Result<AppServerStartedThread> {
+        let request_id = self.next_request_id();
+        let session_config = self.session_config_with_effective_service_tier(&config);
+        let response: ThreadResetContextResponse = self
+            .client
+            .request_typed(ClientRequest::ThreadResetContext {
+                request_id,
+                params: thread_clear_history_params_from_config(
+                    session_config,
+                    thread_id,
+                    self.thread_params_mode(),
+                    self.remote_cwd_override.as_deref(),
+                ),
+            })
+            .await
+            .map_err(|err| bootstrap_request_error("thread/reset-context failed in TUI", err))?;
+        let fork_parent_title = self
+            .fork_parent_title_from_app_server(response.thread.forked_from_id.as_deref())
+            .await;
+        let mut started = started_thread_from_clear_history_response(
+            response,
+            &config,
+            self.thread_params_mode(),
+        )
+        .await?;
         started.session.fork_parent_title = fork_parent_title;
         Ok(started)
     }
@@ -1553,6 +1588,56 @@ async fn started_thread_from_fork_response(
     })
 }
 
+fn thread_clear_history_params_from_config(
+    config: Config,
+    thread_id: ThreadId,
+    thread_params_mode: ThreadParamsMode,
+    remote_cwd_override: Option<&std::path::Path>,
+) -> ThreadResetContextParams {
+    let params =
+        thread_fork_params_from_config(config, thread_id, thread_params_mode, remote_cwd_override);
+    ThreadResetContextParams {
+        thread_id: params.thread_id,
+        model: params.model,
+        model_provider: params.model_provider,
+        service_tier: params.service_tier,
+        cwd: params.cwd,
+        runtime_workspace_roots: params.runtime_workspace_roots.map(|roots| {
+            roots
+                .into_iter()
+                .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf)
+                .collect()
+        }),
+        approval_policy: params.approval_policy,
+        approvals_reviewer: params.approvals_reviewer,
+        sandbox: params.sandbox,
+        permissions: params.permissions,
+        config: params.config,
+        base_instructions: params.base_instructions,
+        developer_instructions: params.developer_instructions,
+        ephemeral: params.ephemeral,
+        thread_source: params.thread_source,
+    }
+}
+
+async fn started_thread_from_clear_history_response(
+    response: ThreadResetContextResponse,
+    config: &Config,
+    thread_params_mode: ThreadParamsMode,
+) -> Result<AppServerStartedThread> {
+    let session = thread_session_state_from_thread_clear_history_response(
+        &response,
+        config,
+        thread_params_mode,
+    )
+    .await
+    .map_err(color_eyre::eyre::Report::msg)?;
+    Ok(AppServerStartedThread {
+        session,
+        turns: response.thread.turns,
+    })
+}
+
 async fn thread_session_state_from_thread_start_response(
     response: &ThreadStartResponse,
     config: &Config,
@@ -1628,6 +1713,38 @@ async fn thread_session_state_from_thread_resume_response(
 
 async fn thread_session_state_from_thread_fork_response(
     response: &ThreadForkResponse,
+    config: &Config,
+    thread_params_mode: ThreadParamsMode,
+) -> Result<ThreadSessionState, String> {
+    let permission_profile = display_permission_profile_from_thread_response(
+        &response.sandbox,
+        response.cwd.as_path(),
+        config,
+        thread_params_mode,
+    );
+    thread_session_state_from_thread_response(
+        &response.thread.id,
+        response.thread.forked_from_id.clone(),
+        response.thread.name.clone(),
+        response.thread.path.clone(),
+        response.model.clone(),
+        response.model_provider.clone(),
+        response.service_tier.clone(),
+        response.approval_policy,
+        response.approvals_reviewer.to_core(),
+        permission_profile,
+        response.active_permission_profile.clone().map(Into::into),
+        response.cwd.clone(),
+        response.runtime_workspace_roots.clone(),
+        response.instruction_sources.clone(),
+        response.reasoning_effort.clone(),
+        config,
+    )
+    .await
+}
+
+async fn thread_session_state_from_thread_clear_history_response(
+    response: &ThreadResetContextResponse,
     config: &Config,
     thread_params_mode: ThreadParamsMode,
 ) -> Result<ThreadSessionState, String> {

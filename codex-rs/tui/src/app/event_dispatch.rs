@@ -197,14 +197,58 @@ impl App {
                     /*inc*/ 1,
                     &[("source", "slash_command")],
                 );
+                let summary = session_summary(
+                    self.chat_widget.token_usage(),
+                    self.chat_widget.thread_id(),
+                    self.chat_widget.thread_name(),
+                    self.chat_widget.rollout_path().as_deref(),
+                );
                 self.chat_widget
                     .add_plain_history_lines(vec!["/clear-history".magenta().into()]);
-                if self.chat_widget.thread_id().is_some() {
-                    self.start_fresh_session_with_summary_hint(
-                        tui, app_server, /*session_start_source*/ None,
-                        /*initial_user_message*/ None,
-                    )
-                    .await;
+                if let Some(thread_id) = self.chat_widget.thread_id() {
+                    self.refresh_in_memory_config_from_disk_best_effort("clearing history")
+                        .await;
+                    match app_server
+                        .clear_history_thread(self.config.clone(), thread_id)
+                        .await
+                    {
+                        Ok(cleared) => {
+                            self.shutdown_current_thread(app_server).await;
+                            match self
+                                .replace_chat_widget_with_app_server_thread(
+                                    tui, app_server, cleared, /*initial_user_message*/ None,
+                                )
+                                .await
+                            {
+                                Ok(()) => {
+                                    if let Some(summary) = summary {
+                                        let mut lines: Vec<Line<'static>> = Vec::new();
+                                        if let Some(usage_line) = summary.usage_line {
+                                            lines.push(usage_line.into());
+                                        }
+                                        if let Some(command) = summary.resume_hint {
+                                            let spans = vec![
+                                                "To continue the previous session, run ".into(),
+                                                command.cyan(),
+                                            ];
+                                            lines.push(spans.into());
+                                        }
+                                        self.chat_widget.add_plain_history_lines(lines);
+                                    }
+                                }
+                                Err(err) => {
+                                    self.chat_widget.add_error_message(format!(
+                                        "Failed to attach to cleared app-server thread: {err}"
+                                    ));
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            self.chat_widget.add_error_message(format!(
+                                "Failed to clear current history through the app server: {err}"
+                            ));
+                        }
+                    }
                 } else {
                     self.chat_widget.add_error_message(
                         "A thread must contain at least one turn before its history can be cleared."
