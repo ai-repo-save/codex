@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shlex
 import shutil
 import subprocess
@@ -16,7 +17,14 @@ DEFAULT_HOST = "192.168.50.8"
 DEFAULT_BRANCH = "main"
 DEFAULT_REMOTE_PATH = "/root/codex"
 DEFAULT_TARGET = "x86_64-unknown-linux-gnu"
-REMOTE_COMMAND_HEARTBEAT_SECONDS = 60.0
+DEFAULT_REMOTE_COMMAND_HEARTBEAT_SECONDS = 60.0
+REMOTE_COMMAND_HEARTBEAT_SECONDS = float(
+    os.environ.get(
+        "CODEX_REMOTE_COMMAND_HEARTBEAT_SECONDS",
+        str(DEFAULT_REMOTE_COMMAND_HEARTBEAT_SECONDS),
+    )
+)
+MAX_HEARTBEAT_STATUS_CHARS = 6000
 REMOTE_FETCH_ATTEMPTS = 3
 
 
@@ -144,13 +152,53 @@ def remote_checkout_sync_command(config: RemoteWorkflow) -> str:
 
 def run_remote_command(config: RemoteWorkflow) -> None:
     remote_command = shlex.join(config.command)
+    remote_pid_file = (
+        f"/tmp/codex-remote-command-{os.getpid()}-{int(time.time() * 1000)}.pid"
+    )
+    wrapped_remote_command = (
+        f"printf '%s\\n' $$ > {shell_quote(remote_pid_file)}; "
+        f"trap 'rm -f {shell_quote(remote_pid_file)}' EXIT; "
+        f"set -euo pipefail; cd {shell_quote(config.remote_path)}; {remote_command}"
+    )
     LOGGER.info("running remote command: %s", remote_command)
     run(
-        ssh_command(
-            config,
-            f"set -euo pipefail; cd {shell_quote(config.remote_path)}; {remote_command}",
-        ),
+        ssh_command(config, wrapped_remote_command),
         heartbeat_interval_seconds=REMOTE_COMMAND_HEARTBEAT_SECONDS,
+        heartbeat_status_command=ssh_command(
+            config,
+            remote_process_status_command(remote_pid_file),
+        ),
+    )
+
+
+def remote_process_status_command(pid_file: str) -> str:
+    return (
+        "set -euo pipefail; "
+        f"pid_file={shell_quote(pid_file)}; "
+        'if [ ! -s "$pid_file" ]; then '
+        'echo "remote status: command pid file is missing"; '
+        "exit 0; "
+        "fi; "
+        'root_pid="$(cat "$pid_file")"; '
+        'if ! kill -0 "$root_pid" 2>/dev/null; then '
+        'echo "remote status: command pid $root_pid is not running"; '
+        "exit 0; "
+        "fi; "
+        'pids="$root_pid"; '
+        'frontier="$root_pid"; '
+        'while [ -n "$frontier" ]; do '
+        'next=""; '
+        "for pid in $frontier; do "
+        'children="$(pgrep -P "$pid" 2>/dev/null || true)"; '
+        'next="$next $children"; '
+        "done; "
+        'frontier="$(echo "$next" | xargs 2>/dev/null || true)"; '
+        'if [ -n "$frontier" ]; then pids="$pids $frontier"; fi; '
+        "done; "
+        'pid_csv="$(echo "$pids" | tr " " "," | sed "s/,,*/,/g; s/^,//; s/,$//")"; '
+        'echo "remote status: active process tree rooted at $root_pid"; '
+        'ps -o pid,ppid,stat,etime,pcpu,pmem,comm,args -p "$pid_csv" --sort=-pcpu '
+        "| head -n 12"
     )
 
 
@@ -318,6 +366,7 @@ def run(
     stdout: int | None = None,
     text: bool = True,
     heartbeat_interval_seconds: float | None = None,
+    heartbeat_status_command: Sequence[str] | None = None,
 ) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]:
     LOGGER.debug("running: %s", shlex.join(command))
     if stdout is not None or heartbeat_interval_seconds is None:
@@ -340,8 +389,35 @@ def run(
                 now - started_at,
                 shlex.join(command),
             )
+            if heartbeat_status_command is not None:
+                log_heartbeat_status(heartbeat_status_command, cwd)
             next_heartbeat_at = now + heartbeat_interval_seconds
         time.sleep(min(1.0, heartbeat_interval_seconds))
+
+
+def log_heartbeat_status(command: Sequence[str], cwd: Path | None) -> None:
+    result = subprocess.run(
+        command,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    output = result.stdout.strip()
+    if result.returncode != 0:
+        LOGGER.info(
+            "heartbeat status command failed with exit code %s: %s",
+            result.returncode,
+            shlex.join(command),
+        )
+    if output:
+        LOGGER.info("%s", truncate_text(output, MAX_HEARTBEAT_STATUS_CHARS))
+
+
+def truncate_text(value: str, max_chars: int) -> str:
+    if len(value) <= max_chars:
+        return value
+    return f"{value[:max_chars]}... [truncated {len(value) - max_chars} chars]"
 
 
 def shell_quote(value: str) -> str:
