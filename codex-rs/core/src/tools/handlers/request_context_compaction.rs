@@ -16,7 +16,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 
-pub(crate) const MAX_CONTEXT_COMPACTION_NOTE_BYTES: usize = 4096;
+pub(crate) const MAX_CONTEXT_COMPACTION_NOTE_BYTES: usize = 16_384;
 
 pub struct RequestContextCompactionHandler;
 

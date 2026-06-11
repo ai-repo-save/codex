@@ -93,6 +93,6 @@ async fn request_context_compaction_rejects_oversized_note() {
 
     assert_eq!(
         err.to_string(),
-        "`note` is 4097 bytes, but the maximum is 4096 bytes"
+        "`note` is 16385 bytes, but the maximum is 16384 bytes"
     );
 }
