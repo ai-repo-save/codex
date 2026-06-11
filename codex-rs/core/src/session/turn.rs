@@ -54,6 +54,7 @@ use crate::stream_events_utils::record_completed_response_item_with_finalized_fa
 use crate::tasks::emit_compact_metric;
 use crate::tools::ToolRouter;
 use crate::tools::context::SharedTurnDiffTracker;
+use crate::tools::handlers::request_context_compaction_spec::REQUEST_CONTEXT_COMPACTION_TOOL_NAME;
 use crate::tools::parallel::ToolCallRuntime;
 use crate::tools::registry::ToolArgumentDiffConsumer;
 use crate::tools::router::ToolRouterParams;
@@ -86,6 +87,7 @@ use codex_protocol::items::build_hook_prompt_message;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::MessagePhase;
+use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AgentMessageContentDeltaEvent;
 use codex_protocol::protocol::AgentReasoningSectionBreakEvent;
@@ -285,6 +287,7 @@ pub(crate) async fn run_turn(
                         InitialContextInjection::BeforeLastUserMessage,
                         CompactionReason::ContextLimit,
                         CompactionPhase::MidTurn,
+                        Vec::new(),
                         &cancellation_token,
                     )
                     .await
@@ -782,6 +785,7 @@ async fn run_pre_sampling_compact(
             InitialContextInjection::DoNotInject,
             CompactionReason::ContextLimit,
             CompactionPhase::PreTurn,
+            Vec::new(),
             cancellation_token,
         )
         .await?;
@@ -840,6 +844,7 @@ async fn maybe_run_previous_model_inline_compact(
             InitialContextInjection::DoNotInject,
             CompactionReason::ModelDownshift,
             CompactionPhase::PreTurn,
+            Vec::new(),
             cancellation_token,
         )
         .await?;
@@ -854,6 +859,7 @@ async fn run_auto_compact(
     initial_context_injection: InitialContextInjection,
     reason: CompactionReason,
     phase: CompactionPhase,
+    retained_response_items: Vec<ResponseItem>,
     cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
     if should_use_remote_compact_task(turn_context.provider.info()) {
@@ -868,6 +874,7 @@ async fn run_auto_compact(
                 Arc::clone(turn_context),
                 client_session,
                 initial_context_injection,
+                retained_response_items,
                 reason,
                 phase,
                 cancellation_token,
@@ -884,6 +891,7 @@ async fn run_auto_compact(
             Arc::clone(sess),
             Arc::clone(turn_context),
             initial_context_injection,
+            retained_response_items,
             reason,
             phase,
             cancellation_token,
@@ -899,6 +907,7 @@ async fn run_auto_compact(
             Arc::clone(sess),
             Arc::clone(turn_context),
             initial_context_injection,
+            retained_response_items,
             reason,
             phase,
             cancellation_token,
@@ -1731,6 +1740,37 @@ async fn handle_assistant_item_done_in_plan_mode(
     false
 }
 
+async fn retained_response_items_for_request_context_compaction(
+    sess: &Session,
+    response_input: &ResponseInputItem,
+) -> CodexResult<Vec<ResponseItem>> {
+    let ResponseInputItem::FunctionCallOutput { call_id, .. } = response_input else {
+        return Err(CodexErr::Fatal(format!(
+            "{REQUEST_CONTEXT_COMPACTION_TOOL_NAME} returned a non-function-call output"
+        )));
+    };
+    let history = sess.clone_history().await;
+    let Some(function_call) = history.raw_items().iter().rev().find(|item| {
+        matches!(
+            item,
+            ResponseItem::FunctionCall {
+                call_id: existing_call_id,
+                name,
+                namespace,
+                ..
+            } if existing_call_id == call_id
+                && name == REQUEST_CONTEXT_COMPACTION_TOOL_NAME
+                && namespace.is_none()
+        )
+    }) else {
+        return Err(CodexErr::Fatal(format!(
+            "missing {REQUEST_CONTEXT_COMPACTION_TOOL_NAME} function call for call id: {call_id}"
+        )));
+    };
+
+    Ok(vec![function_call.clone()])
+}
+
 async fn drain_in_flight(
     in_flight: &mut FuturesOrdered<BoxFuture<'static, CodexResult<InFlightToolOutput>>>,
     sess: Arc<Session>,
@@ -1744,6 +1784,12 @@ async fn drain_in_flight(
                 let response_input = match output {
                     InFlightToolOutput::Response(response_input) => response_input,
                     InFlightToolOutput::RequestContextCompaction(response_input) => {
+                        let retained_response_items =
+                            retained_response_items_for_request_context_compaction(
+                                sess.as_ref(),
+                                &response_input,
+                            )
+                            .await?;
                         run_auto_compact(
                             &sess,
                             &turn_context,
@@ -1751,6 +1797,7 @@ async fn drain_in_flight(
                             InitialContextInjection::BeforeLastUserMessage,
                             CompactionReason::UserRequested,
                             CompactionPhase::MidTurn,
+                            retained_response_items,
                             cancellation_token,
                         )
                         .await?;

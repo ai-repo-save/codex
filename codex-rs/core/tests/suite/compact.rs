@@ -77,6 +77,9 @@ const DUMMY_FUNCTION_NAME: &str = "test_tool";
 const DUMMY_CALL_ID: &str = "call-multi-auto";
 const FUNCTION_CALL_LIMIT_MSG: &str = "function call limit push";
 const POST_AUTO_USER_MSG: &str = "post auto follow-up";
+const REQUEST_CONTEXT_COMPACTION_CALL_ID: &str = "call-request-context-compaction";
+const REQUEST_CONTEXT_COMPACTION_NOTE: &str = "preserve the active compaction tool call";
+const REQUEST_CONTEXT_COMPACTION_TOOL_NAME: &str = "request_context_compaction";
 const PRETURN_CONTEXT_DIFF_CWD: &str = "/tmp/PRETURN_CONTEXT_DIFF_CWD";
 const POST_COMPACT_SUPPLEMENT_TEXT: &str =
     "<COMPACTION_SUPPLEMENT>continue from persisted compacted history</COMPACTION_SUPPLEMENT>";
@@ -3134,6 +3137,90 @@ async fn auto_compact_allows_multiple_attempts_when_interleaved_with_other_turn_
     assert!(
         body_contains_text(&request_bodies[4], SUMMARIZATION_PROMPT),
         "second auto compact request should include the summarization prompt"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn request_context_compaction_preserves_matching_call_for_continuation() {
+    skip_if_no_network!();
+
+    let server = start_mock_server().await;
+
+    let request_context_compaction_args =
+        json!({ "note": REQUEST_CONTEXT_COMPACTION_NOTE }).to_string();
+    let request_context_compaction_turn = sse(vec![
+        ev_function_call(
+            REQUEST_CONTEXT_COMPACTION_CALL_ID,
+            REQUEST_CONTEXT_COMPACTION_TOOL_NAME,
+            &request_context_compaction_args,
+        ),
+        ev_completed("request-context-compaction-response"),
+    ]);
+    let compact_turn = sse(vec![
+        ev_assistant_message("request-context-compaction-summary", AUTO_SUMMARY_TEXT),
+        ev_completed("request-context-compaction-compact-response"),
+    ]);
+    let continuation_turn = sse(vec![
+        ev_assistant_message("request-context-compaction-final", FINAL_REPLY),
+        ev_completed("request-context-compaction-final-response"),
+    ]);
+
+    let request_log = mount_sse_sequence(
+        &server,
+        vec![request_context_compaction_turn, compact_turn, continuation_turn],
+    )
+    .await;
+
+    let model_provider = non_openai_model_provider(&server);
+    let mut builder = test_codex().with_config(move |config| {
+        config.model_provider = model_provider;
+        set_test_compact_prompt(config);
+    });
+    let codex = builder.build(&server).await.unwrap().codex;
+
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "compact the active context".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await
+        .unwrap();
+
+    wait_for_event(&codex, |msg| matches!(msg, EventMsg::TurnComplete(_))).await;
+
+    let requests = request_log.requests();
+    assert_eq!(
+        requests.len(),
+        3,
+        "expected the initial turn, local compaction, and continuation requests"
+    );
+    assert!(
+        requests[1].body_contains_text(SUMMARIZATION_PROMPT),
+        "second request should be the local compaction request"
+    );
+    assert!(
+        requests[2].has_function_call(REQUEST_CONTEXT_COMPACTION_CALL_ID),
+        "continuation request should keep the request_context_compaction call that matches the tool output"
+    );
+    let output_text = requests[2]
+        .function_call_output_text(REQUEST_CONTEXT_COMPACTION_CALL_ID)
+        .expect("continuation request should include the compaction tool output");
+    let output: Value =
+        serde_json::from_str(&output_text).expect("compaction tool output should be JSON");
+    assert_eq!(
+        output,
+        json!({
+            "compacted": true,
+            "mode": "mid_turn",
+            "note": REQUEST_CONTEXT_COMPACTION_NOTE,
+            "note_bytes": REQUEST_CONTEXT_COMPACTION_NOTE.len(),
+        })
     );
 }
 

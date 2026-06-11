@@ -58,6 +58,7 @@ pub(crate) async fn run_inline_remote_auto_compact_task(
     turn_context: Arc<TurnContext>,
     client_session: &mut ModelClientSession,
     initial_context_injection: InitialContextInjection,
+    retained_response_items: Vec<ResponseItem>,
     reason: CompactionReason,
     phase: CompactionPhase,
     cancellation_token: &CancellationToken,
@@ -67,6 +68,7 @@ pub(crate) async fn run_inline_remote_auto_compact_task(
         &turn_context,
         Some(client_session),
         initial_context_injection,
+        retained_response_items,
         CompactionTrigger::Auto,
         reason,
         phase,
@@ -94,6 +96,7 @@ pub(crate) async fn run_remote_compact_task(
         &turn_context,
         /*client_session*/ None,
         InitialContextInjection::DoNotInject,
+        Vec::new(),
         CompactionTrigger::Manual,
         CompactionReason::UserRequested,
         CompactionPhase::StandaloneTurn,
@@ -107,6 +110,7 @@ async fn run_remote_compact_task_inner(
     turn_context: &Arc<TurnContext>,
     client_session: Option<&mut ModelClientSession>,
     initial_context_injection: InitialContextInjection,
+    retained_response_items: Vec<ResponseItem>,
     trigger: CompactionTrigger,
     reason: CompactionReason,
     phase: CompactionPhase,
@@ -152,6 +156,7 @@ async fn run_remote_compact_task_inner(
         turn_context,
         client_session,
         initial_context_injection,
+        retained_response_items,
         compaction_metadata,
         &mut analytics_details,
         cancellation_token,
@@ -187,6 +192,7 @@ async fn run_remote_compact_task_inner_impl(
     turn_context: &Arc<TurnContext>,
     client_session: Option<&mut ModelClientSession>,
     initial_context_injection: InitialContextInjection,
+    retained_response_items: Vec<ResponseItem>,
     compaction_metadata: CompactionTurnMetadata,
     analytics_details: &mut CompactionAnalyticsDetails,
     cancellation_token: &CancellationToken,
@@ -296,6 +302,7 @@ async fn run_remote_compact_task_inner_impl(
         initial_context_injection,
     )
     .await;
+    new_history.extend(retained_response_items);
 
     let reference_context_item = match initial_context_injection {
         InitialContextInjection::DoNotInject => None,

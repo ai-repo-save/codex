@@ -73,6 +73,7 @@ pub(crate) async fn run_inline_auto_compact_task(
     sess: Arc<Session>,
     turn_context: Arc<TurnContext>,
     initial_context_injection: InitialContextInjection,
+    retained_response_items: Vec<ResponseItem>,
     reason: CompactionReason,
     phase: CompactionPhase,
     cancellation_token: &CancellationToken,
@@ -89,6 +90,7 @@ pub(crate) async fn run_inline_auto_compact_task(
         turn_context,
         input,
         initial_context_injection,
+        retained_response_items,
         CompactionTrigger::Auto,
         reason,
         phase,
@@ -117,6 +119,7 @@ pub(crate) async fn run_compact_task(
         turn_context,
         input,
         InitialContextInjection::DoNotInject,
+        Vec::new(),
         CompactionTrigger::Manual,
         CompactionReason::UserRequested,
         CompactionPhase::StandaloneTurn,
@@ -131,6 +134,7 @@ async fn run_compact_task_inner(
     turn_context: Arc<TurnContext>,
     input: Vec<UserInput>,
     initial_context_injection: InitialContextInjection,
+    retained_response_items: Vec<ResponseItem>,
     trigger: CompactionTrigger,
     reason: CompactionReason,
     phase: CompactionPhase,
@@ -168,6 +172,7 @@ async fn run_compact_task_inner(
         Arc::clone(&turn_context),
         input,
         initial_context_injection,
+        retained_response_items,
         compaction_metadata,
         cancellation_token,
     )
@@ -205,6 +210,7 @@ async fn run_compact_task_inner_impl(
     turn_context: Arc<TurnContext>,
     input: Vec<UserInput>,
     initial_context_injection: InitialContextInjection,
+    retained_response_items: Vec<ResponseItem>,
     compaction_metadata: CompactionTurnMetadata,
     cancellation_token: &CancellationToken,
 ) -> CodexResult<String> {
@@ -317,6 +323,7 @@ async fn run_compact_task_inner_impl(
         new_history =
             insert_initial_context_before_last_real_user_or_summary(new_history, initial_context);
     }
+    new_history.extend(retained_response_items);
     let reference_context_item = match initial_context_injection {
         InitialContextInjection::DoNotInject => None,
         InitialContextInjection::BeforeLastUserMessage => Some(turn_context.to_turn_context_item()),
