@@ -141,7 +141,16 @@ INSERT INTO thread_goals (
     created_at_ms,
     updated_at_ms
 ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)
-ON CONFLICT(thread_id) DO NOTHING
+ON CONFLICT(thread_id) DO UPDATE SET
+    goal_id = excluded.goal_id,
+    objective = excluded.objective,
+    status = excluded.status,
+    token_budget = excluded.token_budget,
+    tokens_used = 0,
+    time_used_seconds = 0,
+    created_at_ms = excluded.created_at_ms,
+    updated_at_ms = excluded.updated_at_ms
+WHERE thread_goals.status = 'complete'
 RETURNING
     thread_id,
     goal_id,
@@ -661,7 +670,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn insert_thread_goal_does_not_replace_existing_goal() {
+    async fn insert_thread_goal_replaces_completed_goal() {
         let runtime = test_runtime().await;
         let thread_id = test_thread_id();
         upsert_test_thread(&runtime, thread_id).await;
@@ -698,6 +707,33 @@ mod tests {
                 .await
                 .unwrap()
         );
+
+        let completed = runtime
+            .thread_goals()
+            .update_thread_goal_status(thread_id, crate::ThreadGoalStatus::Complete)
+            .await
+            .expect("goal update should succeed")
+            .expect("goal should exist");
+
+        assert_eq!(crate::ThreadGoalStatus::Complete, completed.status);
+
+        let replaced = runtime
+            .thread_goals()
+            .insert_thread_goal(
+                thread_id,
+                "replace the benchmark",
+                crate::ThreadGoalStatus::Active,
+                /*token_budget*/ Some(200_000),
+            )
+            .await
+            .expect("completed goal replacement should not fail")
+            .expect("completed goal should be replaced");
+
+        assert_eq!("replace the benchmark", replaced.objective);
+        assert_eq!(crate::ThreadGoalStatus::Active, replaced.status);
+        assert_eq!(Some(200_000), replaced.token_budget);
+        assert_eq!(0, replaced.tokens_used);
+        assert_eq!(0, replaced.time_used_seconds);
     }
 
     #[tokio::test]
