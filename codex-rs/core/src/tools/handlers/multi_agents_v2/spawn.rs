@@ -7,7 +7,6 @@ use crate::agent::role::apply_role_to_config;
 use crate::tools::handlers::multi_agents_spec::SpawnAgentToolOptions;
 use crate::tools::handlers::multi_agents_spec::create_spawn_agent_tool_v2;
 use crate::turn_timing::now_unix_timestamp_ms;
-use codex_protocol::protocol::Op;
 use codex_tools::ToolSpec;
 
 #[derive(Default)]

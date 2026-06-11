@@ -946,7 +946,6 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
             }],
             phase: None,
         },
-        assistant_message("parent final answer", Some(MessagePhase::FinalAnswer)),
         ResponseItem::Message {
             id: None,
             role: "developer".to_string(),
@@ -955,6 +954,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
             }],
             phase: None,
         },
+        assistant_message("parent final answer", Some(MessagePhase::FinalAnswer)),
         ResponseItem::Message {
             id: None,
             role: "developer".to_string(),
