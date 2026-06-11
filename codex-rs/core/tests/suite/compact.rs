@@ -3167,7 +3167,11 @@ async fn request_context_compaction_preserves_matching_call_for_continuation() {
 
     let request_log = mount_sse_sequence(
         &server,
-        vec![request_context_compaction_turn, compact_turn, continuation_turn],
+        vec![
+            request_context_compaction_turn,
+            compact_turn,
+            continuation_turn,
+        ],
     )
     .await;
 
