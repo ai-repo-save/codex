@@ -7,6 +7,7 @@ use crate::config::AgentRoleConfig;
 use crate::config::Config;
 use crate::config::ConfigBuilder;
 use crate::context::ContextualUserFragment;
+use crate::context::SubagentIdentity;
 use crate::context::SubagentNotification;
 use crate::init_state_db;
 use assert_matches::assert_matches;
@@ -819,6 +820,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
     let harness = AgentControlHarness::new().await;
     let mut parent_config = harness.config.clone();
     let _ = parent_config.features.enable(Feature::MultiAgentV2);
+    parent_config.developer_instructions = Some("You are /root.".to_string());
     parent_config.multi_agent_v2.root_agent_usage_hint_text =
         Some("Parent root guidance.".to_string());
     parent_config.multi_agent_v2.subagent_usage_hint_text =
@@ -829,6 +831,8 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         Some("Child root guidance.".to_string());
     child_config.multi_agent_v2.subagent_usage_hint_text =
         Some("Child subagent guidance.".to_string());
+    let child_agent_path = AgentPath::try_from("/root/worker").expect("agent path");
+    let child_identity = SubagentIdentity::new(child_agent_path.clone(), AgentPath::root());
     let new_thread = harness
         .manager
         .start_thread(parent_config.clone())
@@ -858,7 +862,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
                     id: None,
                     role: "developer".to_string(),
                     content: vec![ContentItem::InputText {
-                        text: "Parent root guidance.".to_string(),
+                        text: "You are /root.".to_string(),
                     }],
                     phase: None,
                 },
@@ -912,7 +916,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
             Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
                 parent_thread_id,
                 depth: 1,
-                agent_path: None,
+                agent_path: Some(child_agent_path),
                 agent_nickname: None,
                 agent_role: None,
             })),
@@ -947,7 +951,23 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
             id: None,
             role: "developer".to_string(),
             content: vec![ContentItem::InputText {
+                text: "You are /root.".to_string(),
+            }],
+            phase: None,
+        },
+        ResponseItem::Message {
+            id: None,
+            role: "developer".to_string(),
+            content: vec![ContentItem::InputText {
                 text: "Child subagent guidance.".to_string(),
+            }],
+            phase: None,
+        },
+        ResponseItem::Message {
+            id: None,
+            role: "developer".to_string(),
+            content: vec![ContentItem::InputText {
+                text: child_identity.render(),
             }],
             phase: None,
         },
@@ -955,7 +975,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
     assert_eq!(
         history.raw_items(),
         &expected_history,
-        "full-history forked child history should replace parent usage hints with the child subagent hint while filtering non-final assistant/tool chatter"
+        "full-history forked child history should preserve parent developer prefix and append child identity after the child subagent hint"
     );
     assert_eq!(
         serde_json::to_value(child_thread.codex.session.reference_context_item().await)

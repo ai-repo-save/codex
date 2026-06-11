@@ -1,5 +1,7 @@
 use super::residency::is_v2_resident_session_source;
 use super::*;
+use crate::context::ContextualUserFragment;
+use crate::context::SubagentIdentity;
 
 const AGENT_NAMES: &str = include_str!("../agent_names.txt");
 
@@ -501,6 +503,16 @@ impl AgentControl {
                 ])
         {
             forked_rollout_items.push(RolloutItem::ResponseItem(subagent_usage_hint_message));
+        }
+        if preserve_reference_context_item
+            && multi_agent_version == MultiAgentVersion::V2
+            && let Some(subagent_identity) = SubagentIdentity::from_session_source(&session_source)
+            && let Some(subagent_identity_message) =
+                crate::context_manager::updates::build_developer_update_item(vec![
+                    subagent_identity.render(),
+                ])
+        {
+            forked_rollout_items.push(RolloutItem::ResponseItem(subagent_identity_message));
         }
 
         state

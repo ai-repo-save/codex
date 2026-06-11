@@ -7,7 +7,6 @@ use crate::agent::role::apply_role_to_config;
 use crate::tools::handlers::multi_agents_spec::SpawnAgentToolOptions;
 use crate::tools::handlers::multi_agents_spec::create_spawn_agent_tool_v2;
 use crate::turn_timing::now_unix_timestamp_ms;
-use codex_protocol::AgentPath;
 use codex_protocol::protocol::Op;
 use codex_tools::ToolSpec;
 
@@ -59,7 +58,6 @@ async fn handle_spawn_agent(
         .map(str::trim)
         .filter(|role| !role.is_empty());
 
-    let message = args.message.clone();
     let initial_operation = parse_collab_input(Some(args.message), /*items*/ None)?;
     let prompt = String::new();
 
@@ -122,26 +120,7 @@ async fn handle_spawn_agent(
     let result = Box::pin(
         session.services.agent_control.spawn_agent_with_metadata(
             config,
-            match (spawn_source.get_agent_path(), initial_operation) {
-                (Some(recipient), Op::UserInput { items, .. })
-                    if items
-                        .iter()
-                        .all(|item| matches!(item, UserInput::Text { .. })) =>
-                {
-                    let author = turn
-                        .session_source
-                        .get_agent_path()
-                        .unwrap_or_else(AgentPath::root);
-                    let communication = communication_from_tool_message(
-                        author,
-                        recipient,
-                        message,
-                        turn.config.multi_agent_v2.encrypt_messages,
-                    );
-                    Op::InterAgentCommunication { communication }
-                }
-                (_, initial_operation) => initial_operation,
-            },
+            initial_operation,
             Some(spawn_source),
             SpawnAgentOptions {
                 fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),

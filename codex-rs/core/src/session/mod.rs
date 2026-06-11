@@ -28,6 +28,7 @@ use crate::context::ContextualUserFragment;
 use crate::context::NetworkRuleSaved;
 use crate::context::PermissionsInstructions;
 use crate::context::PersonalitySpecInstructions;
+use crate::context::SubagentIdentity;
 use crate::default_skill_metadata_budget;
 use crate::environment_selection::ResolvedTurnEnvironments;
 use crate::exec_policy::ExecPolicyManager;
@@ -2988,6 +2989,15 @@ impl Session {
                 ])
         {
             items.push(usage_hint_message);
+        }
+        if turn_context.multi_agent_version == MultiAgentVersion::V2
+            && let Some(subagent_identity) = SubagentIdentity::from_session_source(&session_source)
+            && let Some(subagent_identity_message) =
+                crate::context_manager::updates::build_developer_update_item(vec![
+                    subagent_identity.render(),
+                ])
+        {
+            items.push(subagent_identity_message);
         }
         if let Some(contextual_user_message) =
             crate::context_manager::updates::build_contextual_user_message(contextual_user_sections)

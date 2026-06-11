@@ -3,6 +3,8 @@ use crate::LoadedAgentsMd;
 use crate::ThreadManager;
 use crate::config::AgentRoleConfig;
 use crate::config::DEFAULT_AGENT_MAX_DEPTH;
+use crate::context::ContextualUserFragment;
+use crate::context::SubagentIdentity;
 use crate::function_tool::FunctionCallError;
 use crate::init_state_db;
 use crate::session::tests::make_session_and_context;
@@ -1167,6 +1169,8 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
         .features
         .enable(Feature::MultiAgentV2)
         .expect("test config should allow feature update");
+    config.developer_instructions = Some("You are /root.".to_string());
+    config.multi_agent_v2.subagent_usage_hint_text = Some("Subagent guidance.".to_string());
     set_turn_config(&mut turn, config);
 
     let session = Arc::new(session);
@@ -1205,17 +1209,49 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
         child_snapshot.session_source.get_agent_path().as_deref(),
         Some("/root/test_process")
     );
+    let child_thread = manager
+        .get_thread(child_thread_id)
+        .await
+        .expect("child thread should exist");
+    let child_turn_context = child_thread.codex.session.new_default_turn().await;
+    let initial_context = child_thread
+        .codex
+        .session
+        .build_initial_context(child_turn_context.as_ref())
+        .await;
+    let expected_identity = SubagentIdentity::new(
+        AgentPath::try_from("/root/test_process").expect("agent path"),
+        AgentPath::root(),
+    )
+    .render();
+    let developer_messages = initial_context
+        .iter()
+        .filter_map(|item| match item {
+            ResponseItem::Message { role, content, .. } if role == "developer" => Some(
+                content
+                    .iter()
+                    .filter_map(|content_item| match content_item {
+                        ContentItem::InputText { text } => Some(text.as_str()),
+                        ContentItem::OutputText { .. } | ContentItem::InputImage { .. } => None,
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        developer_messages.last(),
+        Some(&vec![expected_identity.as_str()])
+    );
     assert!(manager.captured_ops().iter().any(|(id, op)| {
         *id == child_thread_id
             && matches!(
                 op,
-                Op::InterAgentCommunication { communication }
-                    if communication.author == AgentPath::root()
-                        && communication.recipient.as_str() == "/root/test_process"
-                        && communication.other_recipients.is_empty()
-                        && communication.content == "spawn-message"
-                        && communication.encrypted_content.is_none()
-                        && communication.trigger_turn
+                Op::UserInput { items, .. }
+                    if matches!(
+                        items.as_slice(),
+                        [UserInput::Text { text, .. }] if text == "spawn-message"
+                    )
             )
     }));
 
