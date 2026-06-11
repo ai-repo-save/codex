@@ -40,8 +40,7 @@ async fn thread_reset_context_forks_with_context_without_compaction() -> Result<
         responses::ev_assistant_message("m2", "FOLLOW_UP_RESPONSE"),
         responses::ev_completed_with_tokens("r2", /*total_tokens*/ 200),
     ]);
-    let response_log =
-        responses::mount_sse_sequence(&server, vec![turn_sse, follow_up_sse]).await;
+    let response_log = responses::mount_sse_sequence(&server, vec![turn_sse, follow_up_sse]).await;
 
     let codex_home = TempDir::new()?;
     write_mock_responses_config_toml(

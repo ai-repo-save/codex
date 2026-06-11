@@ -1697,6 +1697,9 @@
         "enabled": {
           "type": "boolean"
         },
+        "encrypt_messages": {
+          "type": "boolean"
+        },
         "hide_spawn_agent_metadata": {
           "type": "boolean"
         },

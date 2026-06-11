@@ -2,10 +2,22 @@ use super::message_tool::MessageDeliveryMode;
 use super::message_tool::SendMessageArgs;
 use super::message_tool::handle_message_string_tool;
 use super::*;
+use crate::tools::handlers::multi_agents_spec::MessageToolOptions;
 use crate::tools::handlers::multi_agents_spec::create_send_message_tool;
 use codex_tools::ToolSpec;
 
-pub(crate) struct Handler;
+#[derive(Default)]
+pub(crate) struct Handler {
+    options: MessageToolOptions,
+}
+
+impl Handler {
+    pub(crate) fn new(encrypt_messages: bool) -> Self {
+        Self {
+            options: MessageToolOptions { encrypt_messages },
+        }
+    }
+}
 
 #[async_trait::async_trait]
 impl ToolExecutor<ToolInvocation> for Handler {
@@ -14,7 +26,7 @@ impl ToolExecutor<ToolInvocation> for Handler {
     }
 
     fn spec(&self) -> ToolSpec {
-        create_send_message_tool()
+        create_send_message_tool(self.options)
     }
 
     async fn handle(

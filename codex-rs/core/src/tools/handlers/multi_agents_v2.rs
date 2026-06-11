@@ -50,12 +50,23 @@ pub(super) fn communication_from_tool_message(
     author: AgentPath,
     recipient: AgentPath,
     message: String,
+    encrypt_messages: bool,
 ) -> InterAgentCommunication {
-    InterAgentCommunication::new_encrypted(
-        author,
-        recipient,
-        Vec::new(),
-        message,
-        /*trigger_turn*/ true,
-    )
+    if encrypt_messages {
+        InterAgentCommunication::new_encrypted(
+            author,
+            recipient,
+            Vec::new(),
+            message,
+            /*trigger_turn*/ true,
+        )
+    } else {
+        InterAgentCommunication::new(
+            author,
+            recipient,
+            Vec::new(),
+            message,
+            /*trigger_turn*/ true,
+        )
+    }
 }

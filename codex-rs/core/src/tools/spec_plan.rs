@@ -735,17 +735,24 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mu
                         max_concurrent_threads_per_session: max_concurrent_threads_per_session(
                             turn_context,
                         ),
+                        encrypt_messages: turn_context.config.multi_agent_v2.encrypt_messages,
                     }),
                     tool_namespace,
                 ),
                 exposure,
             ));
             planned_tools.add_arc(override_tool_exposure(
-                multi_agent_v2_handler(SendMessageHandlerV2, tool_namespace),
+                multi_agent_v2_handler(
+                    SendMessageHandlerV2::new(turn_context.config.multi_agent_v2.encrypt_messages),
+                    tool_namespace,
+                ),
                 exposure,
             ));
             planned_tools.add_arc(override_tool_exposure(
-                multi_agent_v2_handler(FollowupTaskHandlerV2, tool_namespace),
+                multi_agent_v2_handler(
+                    FollowupTaskHandlerV2::new(turn_context.config.multi_agent_v2.encrypt_messages),
+                    tool_namespace,
+                ),
                 exposure,
             ));
             planned_tools.add_arc(override_tool_exposure(
@@ -786,6 +793,7 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mu
                     max_concurrent_threads_per_session: max_concurrent_threads_per_session(
                         turn_context,
                     ),
+                    encrypt_messages: false,
                 }),
                 exposure,
             );

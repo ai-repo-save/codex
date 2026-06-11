@@ -48,6 +48,7 @@ fn spawn_agent_tool_v2_requires_task_name_and_lists_visible_models() {
         include_usage_hint: true,
         usage_hint_text: None,
         max_concurrent_threads_per_session: Some(4),
+        encrypt_messages: false,
     });
 
     let ToolSpec::Function(ResponsesApiTool {
@@ -85,7 +86,7 @@ fn spawn_agent_tool_v2_requires_task_name_and_lists_visible_models() {
         properties
             .get("message")
             .and_then(|schema| schema.encrypted),
-        Some(true)
+        None
     );
     assert!(properties.contains_key("fork_turns"));
     assert!(!properties.contains_key("items"));
@@ -125,6 +126,7 @@ fn spawn_agent_tool_v1_keeps_legacy_fork_context_field() {
         include_usage_hint: true,
         usage_hint_text: None,
         max_concurrent_threads_per_session: None,
+        encrypt_messages: false,
     });
 
     let ToolSpec::Namespace(namespace) = tool else {
@@ -183,6 +185,7 @@ fn spawn_agent_tool_caps_visible_model_summaries() {
         include_usage_hint: true,
         usage_hint_text: None,
         max_concurrent_threads_per_session: Some(4),
+        encrypt_messages: false,
     });
 
     let ToolSpec::Function(ResponsesApiTool { description, .. }) = tool else {
@@ -228,6 +231,7 @@ fn spawn_agent_tool_hides_service_tier_with_spawn_metadata() {
         include_usage_hint: true,
         usage_hint_text: None,
         max_concurrent_threads_per_session: Some(4),
+        encrypt_messages: false,
     });
 
     let ToolSpec::Function(ResponsesApiTool {
@@ -257,7 +261,7 @@ fn send_message_tool_requires_message_and_has_no_output_schema() {
         parameters,
         output_schema,
         ..
-    }) = create_send_message_tool()
+    }) = create_send_message_tool(MessageToolOptions::default())
     else {
         panic!("send_message should be a function tool");
     };
@@ -275,7 +279,7 @@ fn send_message_tool_requires_message_and_has_no_output_schema() {
         properties
             .get("message")
             .and_then(|schema| schema.encrypted),
-        Some(true)
+        None
     );
     assert!(!properties.contains_key("interrupt"));
     assert!(!properties.contains_key("items"));
@@ -300,7 +304,7 @@ fn followup_task_tool_requires_message_and_has_no_output_schema() {
         parameters,
         output_schema,
         ..
-    }) = create_followup_task_tool()
+    }) = create_followup_task_tool(MessageToolOptions::default())
     else {
         panic!("followup_task should be a function tool");
     };
@@ -323,7 +327,7 @@ fn followup_task_tool_requires_message_and_has_no_output_schema() {
         properties
             .get("message")
             .and_then(|schema| schema.encrypted),
-        Some(true)
+        None
     );
     assert!(!properties.contains_key("items"));
     assert_eq!(

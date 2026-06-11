@@ -113,7 +113,12 @@ pub(crate) async fn handle_message_string_tool(
         .session_source
         .get_agent_path()
         .unwrap_or_else(AgentPath::root);
-    let communication = communication_from_tool_message(author, receiver_agent_path, message);
+    let communication = communication_from_tool_message(
+        author,
+        receiver_agent_path,
+        message,
+        turn.config.multi_agent_v2.encrypt_messages,
+    );
     let result = session
         .services
         .agent_control

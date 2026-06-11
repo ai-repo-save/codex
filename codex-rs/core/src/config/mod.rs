@@ -1129,6 +1129,7 @@ pub struct MultiAgentV2Config {
     pub tool_namespace: Option<String>,
     pub hide_spawn_agent_metadata: bool,
     pub non_code_mode_only: bool,
+    pub encrypt_messages: bool,
 }
 
 impl Default for MultiAgentV2Config {
@@ -1150,6 +1151,7 @@ impl Default for MultiAgentV2Config {
             tool_namespace: None,
             hide_spawn_agent_metadata: true,
             non_code_mode_only: true,
+            encrypt_messages: false,
         }
     }
 }
@@ -2429,6 +2431,9 @@ fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config
     let non_code_mode_only = base
         .and_then(|config| config.non_code_mode_only)
         .unwrap_or(default.non_code_mode_only);
+    let encrypt_messages = base
+        .and_then(|config| config.encrypt_messages)
+        .unwrap_or(default.encrypt_messages);
 
     MultiAgentV2Config {
         max_concurrent_threads_per_session,
@@ -2442,6 +2447,7 @@ fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config
         tool_namespace,
         hide_spawn_agent_metadata,
         non_code_mode_only,
+        encrypt_messages,
     }
 }
 

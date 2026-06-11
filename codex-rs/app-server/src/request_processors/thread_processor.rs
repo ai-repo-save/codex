@@ -3282,10 +3282,7 @@ impl ThreadRequestProcessor {
             .as_deref()
             .and_then(codex_core::util::normalize_thread_name);
         let history_items = match source_history_override {
-            Some(history) => history
-                .into_iter()
-                .map(RolloutItem::ResponseItem)
-                .collect(),
+            Some(history) => history.into_iter().map(RolloutItem::ResponseItem).collect(),
             None => source_thread
                 .history
                 .as_ref()
