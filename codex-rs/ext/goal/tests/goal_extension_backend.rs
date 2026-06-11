@@ -124,7 +124,7 @@ async fn goal_tools_hidden_for_review_subagents() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn installed_goal_tools_only_replace_complete_goal() -> anyhow::Result<()> {
+async fn installed_goal_tools_reject_duplicate_goal_creation() -> anyhow::Result<()> {
     let runtime = test_runtime().await?;
     let thread_id = test_thread_id()?;
     seed_thread_metadata(runtime.as_ref(), thread_id).await?;
@@ -152,10 +152,29 @@ async fn installed_goal_tools_only_replace_complete_goal() -> anyhow::Result<()>
     assert_eq!(
         err,
         FunctionCallError::RespondToModel(
-            "cannot create a new goal because this thread has an unfinished goal; complete the existing goal first"
+            "cannot create a new goal because this thread already has a goal; use update_goal only when the existing goal is complete"
                 .to_string()
         )
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn completed_goal_is_cleared_on_next_user_turn() -> anyhow::Result<()> {
+    let runtime = test_runtime().await?;
+    let thread_id = test_thread_id()?;
+    seed_thread_metadata(runtime.as_ref(), thread_id).await?;
+    let harness = GoalExtensionHarness::new(runtime.clone(), thread_id).await?;
+    let tools = harness.tools();
+
+    let create_tool = tool_by_name(&tools, "create_goal");
+    create_tool
+        .handle(tool_call(
+            "create_goal",
+            "call-create-goal",
+            json!({ "objective": "first goal" }),
+        ))
+        .await?;
 
     let update_tool = tool_by_name(&tools, "update_goal");
     update_tool
@@ -165,10 +184,26 @@ async fn installed_goal_tools_only_replace_complete_goal() -> anyhow::Result<()>
             json!({ "status": "complete" }),
         ))
         .await?;
+    harness.sink.clear();
+
+    harness.start_turn("turn-after-complete", &TokenUsage::default()).await;
+
+    assert!(
+        runtime.thread_goals().get_thread_goal(thread_id).await?.is_none(),
+        "completed goal should be deleted before the next user turn starts"
+    );
+    assert_eq!(
+        vec![CapturedGoalClearEvent {
+            event_id: "turn-after-complete:completed-goal-clear".to_string(),
+            turn_id: Some("turn-after-complete".to_string()),
+            thread_id: thread_id.to_string(),
+        }],
+        harness.sink.goal_cleared_events()
+    );
 
     let invocation = tool_call(
         "create_goal",
-        "call-create-goal-3",
+        "call-create-goal-2",
         json!({ "objective": "replacement goal" }),
     );
     let output = create_tool.handle(invocation.clone()).await?;
@@ -696,7 +731,7 @@ async fn usage_limit_plan_turn_does_not_stop_goal() -> anyhow::Result<()> {
         .await?;
 
     harness
-        .start_turn_with_mode("turn-plan", ModeKind::Plan, &TokenUsage::default())
+        .start_user_turn_with_mode("turn-plan", ModeKind::Plan, &TokenUsage::default())
         .await;
     harness.sink.clear();
     harness
@@ -1202,11 +1237,27 @@ impl GoalExtensionHarness {
     }
 
     async fn start_turn(&self, turn_id: &str, usage: &TokenUsage) {
-        self.start_turn_with_mode(turn_id, ModeKind::Default, usage)
+        self.start_user_turn_with_mode(turn_id, ModeKind::Default, usage)
             .await;
     }
 
-    async fn start_turn_with_mode(&self, turn_id: &str, mode: ModeKind, usage: &TokenUsage) {
+    async fn start_user_turn_with_mode(&self, turn_id: &str, mode: ModeKind, usage: &TokenUsage) {
+        self.start_turn_with_mode(
+            turn_id,
+            mode,
+            usage,
+            /*user_initiated*/ true,
+        )
+        .await;
+    }
+
+    async fn start_turn_with_mode(
+        &self,
+        turn_id: &str,
+        mode: ModeKind,
+        usage: &TokenUsage,
+        user_initiated: bool,
+    ) {
         let turn_store = ExtensionData::new(turn_id);
         let mut collaboration_mode = default_collaboration_mode();
         collaboration_mode.mode = mode;
@@ -1214,6 +1265,7 @@ impl GoalExtensionHarness {
             contributor
                 .on_turn_start(TurnStartInput {
                     turn_id,
+                    user_initiated,
                     collaboration_mode: &collaboration_mode,
                     token_usage_at_turn_start: usage,
                     session_store: &self.session_store,
@@ -1389,6 +1441,20 @@ impl RecordingEventSink {
             .collect()
     }
 
+    fn goal_cleared_events(&self) -> Vec<CapturedGoalClearEvent> {
+        self.events()
+            .iter()
+            .filter_map(|event| match &event.msg {
+                EventMsg::ThreadGoalCleared(cleared) => Some(CapturedGoalClearEvent {
+                    event_id: event.id.clone(),
+                    turn_id: cleared.turn_id.clone(),
+                    thread_id: cleared.thread_id.to_string(),
+                }),
+                _ => None,
+            })
+            .collect()
+    }
+
     fn clear(&self) {
         self.events().clear();
     }
@@ -1410,6 +1476,13 @@ struct CapturedGoalEvent {
     turn_id: Option<String>,
     status: ThreadGoalStatus,
     tokens_used: i64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct CapturedGoalClearEvent {
+    event_id: String,
+    turn_id: Option<String>,
+    thread_id: String,
 }
 
 fn default_collaboration_mode() -> CollaborationMode {

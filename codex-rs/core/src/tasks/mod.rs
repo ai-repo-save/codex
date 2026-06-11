@@ -323,6 +323,9 @@ impl Session {
         let task: Arc<dyn AnySessionTask> = Arc::new(task);
         let task_kind = task.kind();
         let span_name = task.span_name();
+        let user_initiated = input
+            .iter()
+            .any(|item| matches!(item, TurnInput::UserInput { .. }));
         let started_at = Instant::now();
         let turn_started_at_unix_ms = turn_context
             .turn_timing_state
@@ -353,8 +356,12 @@ impl Session {
         self.input_queue
             .extend_pending_input_for_turn_state(turn_state.as_ref(), pending_items)
             .await;
-        self.emit_turn_start_lifecycle(turn_context.as_ref(), &token_usage_at_turn_start)
-            .await;
+        self.emit_turn_start_lifecycle(
+            turn_context.as_ref(),
+            &token_usage_at_turn_start,
+            user_initiated,
+        )
+        .await;
 
         let turn_extension_data = Arc::clone(&turn_context.extension_data);
         let mut active = self.active_turn.lock().await;

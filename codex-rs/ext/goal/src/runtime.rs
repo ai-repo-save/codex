@@ -336,6 +336,46 @@ impl GoalRuntimeHandle {
         Ok(())
     }
 
+    pub(crate) async fn clear_completed_goal_before_user_turn(
+        &self,
+        turn_id: &str,
+    ) -> Result<bool, String> {
+        if !self.is_enabled() {
+            return Ok(false);
+        }
+
+        let Some(goal) = self
+            .inner
+            .state_dbs
+            .thread_goals()
+            .get_thread_goal(self.thread_id())
+            .await
+            .map_err(|err| err.to_string())?
+        else {
+            return Ok(false);
+        };
+        if goal.status != codex_state::ThreadGoalStatus::Complete {
+            return Ok(false);
+        }
+
+        let cleared = self
+            .inner
+            .state_dbs
+            .thread_goals()
+            .delete_thread_goal(self.thread_id())
+            .await
+            .map_err(|err| err.to_string())?;
+        if cleared {
+            self.inner.accounting_state.clear_active_goal();
+            self.inner.event_emitter.thread_goal_cleared(
+                format!("{turn_id}:completed-goal-clear"),
+                Some(turn_id.to_string()),
+                self.thread_id(),
+            );
+        }
+        Ok(cleared)
+    }
+
     pub(crate) async fn continue_if_idle(&self) -> Result<(), String> {
         if !self.tools_visible() {
             self.inner.accounting_state.clear_active_goal();

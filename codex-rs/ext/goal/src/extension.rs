@@ -200,6 +200,24 @@ where
             input.collaboration_mode.mode,
             input.token_usage_at_turn_start,
         );
+        if input.user_initiated {
+            match runtime
+                .clear_completed_goal_before_user_turn(input.turn_id)
+                .await
+            {
+                Ok(true) => {
+                    accounting.clear_current_turn_goal();
+                    return;
+                }
+                Ok(false) => {}
+                Err(err) => {
+                    tracing::warn!(
+                        "failed to clear completed goal before user turn for {}: {err}",
+                        runtime.thread_id()
+                    );
+                }
+            }
+        }
         if matches!(
             input.collaboration_mode.mode,
             codex_protocol::config_types::ModeKind::Plan

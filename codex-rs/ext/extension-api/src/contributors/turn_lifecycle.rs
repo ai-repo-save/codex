@@ -9,6 +9,8 @@ use crate::ExtensionData;
 pub struct TurnStartInput<'a> {
     /// Stable host-owned turn identifier.
     pub turn_id: &'a str,
+    /// Whether this turn was started by user-submitted input rather than extension or system work.
+    pub user_initiated: bool,
     /// Effective collaboration mode for this turn.
     pub collaboration_mode: &'a CollaborationMode,
     /// Total token usage snapshot captured when the turn started.
