@@ -186,10 +186,16 @@ async fn completed_goal_is_cleared_on_next_user_turn() -> anyhow::Result<()> {
         .await?;
     harness.sink.clear();
 
-    harness.start_turn("turn-after-complete", &TokenUsage::default()).await;
+    harness
+        .start_turn("turn-after-complete", &TokenUsage::default())
+        .await;
 
     assert!(
-        runtime.thread_goals().get_thread_goal(thread_id).await?.is_none(),
+        runtime
+            .thread_goals()
+            .get_thread_goal(thread_id)
+            .await?
+            .is_none(),
         "completed goal should be deleted before the next user turn starts"
     );
     assert_eq!(
@@ -1242,13 +1248,8 @@ impl GoalExtensionHarness {
     }
 
     async fn start_user_turn_with_mode(&self, turn_id: &str, mode: ModeKind, usage: &TokenUsage) {
-        self.start_turn_with_mode(
-            turn_id,
-            mode,
-            usage,
-            /*user_initiated*/ true,
-        )
-        .await;
+        self.start_turn_with_mode(turn_id, mode, usage, /*user_initiated*/ true)
+            .await;
     }
 
     async fn start_turn_with_mode(
