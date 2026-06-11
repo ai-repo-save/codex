@@ -117,19 +117,17 @@ async fn handle_spawn_agent(
         role_name,
         Some(args.task_name.clone()),
     )?;
-    let result = Box::pin(
-        session.services.agent_control.spawn_agent_with_metadata(
-            config,
-            initial_operation,
-            Some(spawn_source),
-            SpawnAgentOptions {
-                fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
-                fork_mode,
-                parent_thread_id: Some(session.thread_id),
-                environments: Some(turn.environments.to_selections()),
-            },
-        ),
-    )
+    let result = Box::pin(session.services.agent_control.spawn_agent_with_metadata(
+        config,
+        initial_operation,
+        Some(spawn_source),
+        SpawnAgentOptions {
+            fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
+            fork_mode,
+            parent_thread_id: Some(session.thread_id),
+            environments: Some(turn.environments.to_selections()),
+        },
+    ))
     .await
     .map_err(collab_spawn_error);
     let (new_thread_id, new_agent_metadata, status) = match &result {
