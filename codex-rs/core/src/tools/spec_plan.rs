@@ -6,6 +6,7 @@ use crate::tools::context::ToolInvocation;
 use crate::tools::handlers::ApplyPatchHandler;
 use crate::tools::handlers::CodeModeExecuteHandler;
 use crate::tools::handlers::CodeModeWaitHandler;
+use crate::tools::handlers::ContextUsageHandler;
 use crate::tools::handlers::DynamicToolHandler;
 use crate::tools::handlers::ExecCommandHandler;
 use crate::tools::handlers::ExecCommandHandlerOptions;
@@ -645,6 +646,7 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
     let features = turn_context.features.get();
     let environment_mode = turn_context.tool_environment_mode();
 
+    planned_tools.add(ContextUsageHandler);
     planned_tools.add(PlanHandler);
 
     if turn_context.config.experimental_request_user_input_enabled {

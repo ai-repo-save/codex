@@ -18,6 +18,7 @@ use core_test_support::responses::ResponsesRequest;
 use core_test_support::responses::ev_apply_patch_custom_tool_call;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
+use core_test_support::responses::ev_completed_with_tokens;
 use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_response_created;
 use core_test_support::responses::sse;
@@ -233,6 +234,125 @@ async fn update_plan_tool_emits_plan_update_event() -> anyhow::Result<()> {
     let req = second_mock.single_request();
     let (output_text, _success_flag) = call_output(&req, call_id);
     assert_eq!(output_text, "Plan updated");
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_context_usage_tool_returns_usage_snapshot() -> anyhow::Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+
+    let mut builder = test_codex();
+    let TestCodex {
+        codex,
+        cwd,
+        session_configured,
+        ..
+    } = builder.build(&server).await?;
+
+    let seed_response = sse(vec![
+        ev_response_created("resp-1"),
+        ev_assistant_message("msg-1", "seeded"),
+        ev_completed_with_tokens("resp-1", 34_000),
+    ]);
+    responses::mount_sse_once(&server, seed_response).await;
+
+    let call_id = "context-usage-tool-call";
+    let tool_response = sse(vec![
+        ev_response_created("resp-2"),
+        ev_function_call(call_id, "get_context_usage", "{}"),
+        ev_completed_with_tokens("resp-2", 34_000),
+    ]);
+    responses::mount_sse_once(&server, tool_response).await;
+
+    let final_response = sse(vec![
+        ev_assistant_message("msg-2", "context usage acknowledged"),
+        ev_completed("resp-3"),
+    ]);
+    let final_mock = responses::mount_sse_once(&server, final_response).await;
+
+    let session_model = session_configured.model.clone();
+    let cwd_path = cwd.abs();
+    let (sandbox_policy, permission_profile) =
+        turn_permission_fields(PermissionProfile::Disabled, cwd_path.as_path());
+    let thread_settings = codex_protocol::protocol::ThreadSettingsOverrides {
+        environments: Some(local_selections(cwd_path.clone())),
+        approval_policy: Some(AskForApproval::Never),
+        sandbox_policy: Some(sandbox_policy.clone()),
+        permission_profile: permission_profile.clone(),
+        collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
+            mode: codex_protocol::config_types::ModeKind::Default,
+            settings: codex_protocol::config_types::Settings {
+                model: session_model.clone(),
+                reasoning_effort: None,
+                developer_instructions: None,
+            },
+        }),
+        ..Default::default()
+    };
+
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "seed token usage".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings,
+        })
+        .await?;
+
+    wait_for_event(&codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+
+    let thread_settings = codex_protocol::protocol::ThreadSettingsOverrides {
+        environments: Some(local_selections(cwd_path)),
+        approval_policy: Some(AskForApproval::Never),
+        sandbox_policy: Some(sandbox_policy),
+        permission_profile,
+        collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
+            mode: codex_protocol::config_types::ModeKind::Default,
+            settings: codex_protocol::config_types::Settings {
+                model: session_model,
+                reasoning_effort: None,
+                developer_instructions: None,
+            },
+        }),
+        ..Default::default()
+    };
+
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "check context usage".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings,
+        })
+        .await?;
+
+    wait_for_event(&codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+
+    let req = final_mock.single_request();
+    let (output_text, _success_flag) = call_output(&req, call_id);
+    let output_json: Value = serde_json::from_str(&output_text)?;
+    assert_eq!(
+        output_json,
+        json!({
+            "usage_known": true,
+            "model_context_window": 258400,
+            "used_tokens": 34000,
+            "remaining_tokens": 224400,
+            "remaining_percent": 91,
+            "source": "token_usage_info",
+        })
+    );
 
     Ok(())
 }
