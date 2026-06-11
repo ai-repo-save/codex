@@ -5,6 +5,7 @@ use crate::config::ConfigBuilder;
 use crate::config::ConfigOverrides;
 use crate::config::test_config;
 use crate::context::ContextualUserFragment;
+use crate::context::SubagentIdentity;
 use crate::context::TurnAborted;
 use crate::function_tool::FunctionCallError;
 use crate::shell::default_user_shell;
@@ -7499,11 +7500,23 @@ async fn build_initial_context_adds_multi_agent_v2_subagent_usage_hint_as_develo
     let initial_context = session.build_initial_context(turn_context.as_ref()).await;
 
     let developer_messages = developer_message_texts(&initial_context);
+    let expected_identity = SubagentIdentity::new(
+        AgentPath::try_from("/root/worker").expect("agent path should parse"),
+        AgentPath::root(),
+    )
+    .render();
     assert!(
         developer_messages
             .iter()
             .any(|message| message.as_slice() == ["Subagent guidance."]),
         "expected standalone subagent usage hint developer message, got {developer_messages:?}"
+    );
+    assert!(
+        developer_messages
+            .windows(2)
+            .any(|messages| messages[0].as_slice() == ["Subagent guidance."]
+                && messages[1].as_slice() == [expected_identity.as_str()]),
+        "expected subagent identity developer message after subagent usage hint, got {developer_messages:?}"
     );
     assert!(
         !developer_messages
