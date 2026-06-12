@@ -817,6 +817,23 @@
       },
       "type": "object"
     },
+    "ContextReminderConfigToml": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "remaining_percent": {
+          "default": 15,
+          "format": "int64",
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "DebugConfigLockToml": {
       "additionalProperties": false,
       "properties": {
@@ -4568,6 +4585,15 @@
     "compact_prompt": {
       "description": "Compact prompt used for history compaction.",
       "type": "string"
+    },
+    "context_reminder": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/ContextReminderConfigToml"
+        }
+      ],
+      "default": null,
+      "description": "Reminder shown to root agents as the usable context window runs low."
     },
     "debug": {
       "allOf": [
