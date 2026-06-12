@@ -2414,7 +2414,9 @@ fn resolve_context_reminder_config(config_toml: &ConfigToml) -> ContextReminderC
     let base = config_toml.context_reminder.as_ref();
 
     ContextReminderConfig {
-        enabled: base.and_then(|config| config.enabled).unwrap_or(default.enabled),
+        enabled: base
+            .and_then(|config| config.enabled)
+            .unwrap_or(default.enabled),
         remaining_percent: base
             .and_then(|config| config.remaining_percent)
             .unwrap_or(default.remaining_percent),

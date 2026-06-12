@@ -10310,7 +10310,10 @@ remaining_percent = 20
 async fn context_reminder_rejects_invalid_remaining_percent() -> std::io::Result<()> {
     for (value, message) in [
         (-1, "context_reminder.remaining_percent must be at least 0"),
-        (101, "context_reminder.remaining_percent must be at most 100"),
+        (
+            101,
+            "context_reminder.remaining_percent must be at most 100",
+        ),
     ] {
         let codex_home = TempDir::new()?;
         std::fs::write(
