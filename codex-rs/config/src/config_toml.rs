@@ -11,6 +11,7 @@ use crate::types::AnalyticsConfigToml;
 use crate::types::ApprovalsReviewer;
 use crate::types::AppsConfigToml;
 use crate::types::AuthCredentialsStoreMode;
+use crate::types::ContextReminderConfigToml;
 use crate::types::FeedbackConfigToml;
 use crate::types::History;
 use crate::types::MarketplaceConfig;
@@ -227,6 +228,10 @@ pub struct ConfigToml {
 
     /// Compact prompt used for history compaction.
     pub compact_prompt: Option<String>,
+
+    /// Reminder shown to root agents as the usable context window runs low.
+    #[serde(default)]
+    pub context_reminder: Option<ContextReminderConfigToml>,
 
     /// Goal runtime prompt overrides.
     #[serde(default)]

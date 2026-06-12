@@ -10284,6 +10284,57 @@ encrypt_messages = true
 }
 
 #[tokio::test]
+async fn context_reminder_config_from_table() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[context_reminder]
+enabled = false
+remaining_percent = 20
+"#,
+    )?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+
+    assert!(!config.context_reminder.enabled);
+    assert_eq!(config.context_reminder.remaining_percent, 20);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn context_reminder_rejects_invalid_remaining_percent() -> std::io::Result<()> {
+    for (value, message) in [
+        (-1, "context_reminder.remaining_percent must be at least 0"),
+        (101, "context_reminder.remaining_percent must be at most 100"),
+    ] {
+        let codex_home = TempDir::new()?;
+        std::fs::write(
+            codex_home.path().join(CONFIG_TOML_FILE),
+            format!(
+                r#"[context_reminder]
+remaining_percent = {value}
+"#
+            ),
+        )?;
+
+        let err = ConfigBuilder::without_managed_config_for_tests()
+            .codex_home(codex_home.path().to_path_buf())
+            .fallback_cwd(Some(codex_home.path().to_path_buf()))
+            .build()
+            .await
+            .expect_err("invalid context reminder remaining percent should fail");
+        assert_eq!(err.to_string(), message);
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn multi_agent_v2_default_session_thread_cap_counts_root() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::write(

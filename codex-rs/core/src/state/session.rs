@@ -40,6 +40,7 @@ pub(crate) struct SessionState {
     pub(crate) pending_session_start_sources: VecDeque<codex_hooks::SessionStartSource>,
     granted_permissions_by_environment_id: HashMap<String, AdditionalPermissionProfile>,
     next_turn_is_first: bool,
+    context_reminder_below_threshold: bool,
 }
 
 impl SessionState {
@@ -60,6 +61,7 @@ impl SessionState {
             pending_session_start_sources: VecDeque::new(),
             granted_permissions_by_environment_id: HashMap::new(),
             next_turn_is_first: true,
+            context_reminder_below_threshold: false,
         }
     }
 
@@ -163,6 +165,17 @@ impl SessionState {
         &self,
     ) -> (Option<TokenUsageInfo>, Option<RateLimitSnapshot>) {
         (self.token_info(), self.latest_rate_limits.clone())
+    }
+
+    pub(crate) fn record_context_reminder_threshold_status(
+        &mut self,
+        remaining_percent: i64,
+        threshold: i64,
+    ) -> bool {
+        let below_threshold = remaining_percent <= threshold;
+        let crossed_below_threshold = below_threshold && !self.context_reminder_below_threshold;
+        self.context_reminder_below_threshold = below_threshold;
+        crossed_below_threshold
     }
 
     pub(crate) fn set_token_usage_full(&mut self, context_window: i64) {

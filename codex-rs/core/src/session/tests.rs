@@ -5,6 +5,7 @@ use crate::config::ConfigBuilder;
 use crate::config::ConfigOverrides;
 use crate::config::test_config;
 use crate::context::ContextualUserFragment;
+use crate::context::RootContextReminder;
 use crate::context::SubagentIdentity;
 use crate::context::TurnAborted;
 use crate::function_tool::FunctionCallError;
@@ -2018,6 +2019,147 @@ async fn record_token_usage_info_notifies_extension_contributors() {
         .drain(..)
         .collect::<Vec<_>>();
     assert_eq!(expected, actual);
+}
+
+fn context_reminder_test_usage(total_tokens: i64) -> TokenUsage {
+    TokenUsage {
+        input_tokens: total_tokens,
+        cached_input_tokens: 0,
+        output_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens,
+    }
+}
+
+fn configure_context_reminder_test_window(turn_context: &mut TurnContext) {
+    turn_context.model_info.context_window = Some(100_000);
+    turn_context.model_info.effective_context_window_percent = 100;
+}
+
+async fn root_context_reminder_texts(session: &Session, turn_context: &TurnContext) -> Vec<String> {
+    let prompt_items = session
+        .clone_history()
+        .await
+        .for_prompt(&turn_context.model_info.input_modalities);
+    developer_input_texts(&prompt_items)
+        .into_iter()
+        .filter(|text| text.contains(RootContextReminder::type_markers().0))
+        .map(str::to_string)
+        .collect()
+}
+
+#[tokio::test]
+async fn record_token_usage_info_adds_root_context_reminder_when_threshold_crosses() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    configure_context_reminder_test_window(&mut turn_context);
+
+    session
+        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(85_920)))
+        .await;
+    assert_eq!(
+        Vec::<String>::new(),
+        root_context_reminder_texts(&session, &turn_context).await
+    );
+
+    session
+        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
+        .await;
+
+    assert_eq!(
+        vec![RootContextReminder::new(15).render()],
+        root_context_reminder_texts(&session, &turn_context).await
+    );
+}
+
+#[tokio::test]
+async fn record_token_usage_info_does_not_repeat_root_context_reminder_while_low() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    configure_context_reminder_test_window(&mut turn_context);
+
+    session
+        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
+        .await;
+    session
+        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(87_680)))
+        .await;
+
+    assert_eq!(
+        vec![RootContextReminder::new(15).render()],
+        root_context_reminder_texts(&session, &turn_context).await
+    );
+}
+
+#[tokio::test]
+async fn record_token_usage_info_repeats_root_context_reminder_after_recovery() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    configure_context_reminder_test_window(&mut turn_context);
+
+    session
+        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
+        .await;
+    session
+        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(85_000)))
+        .await;
+    session
+        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
+        .await;
+
+    assert_eq!(
+        vec![
+            RootContextReminder::new(15).render(),
+            RootContextReminder::new(15).render(),
+        ],
+        root_context_reminder_texts(&session, &turn_context).await
+    );
+}
+
+#[tokio::test]
+async fn record_token_usage_info_omits_root_context_reminder_for_subagents_and_disabled_config() {
+    let (subagent_session, mut subagent_turn_context) = make_session_and_context().await;
+    configure_context_reminder_test_window(&mut subagent_turn_context);
+    let subagent_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+        parent_thread_id: ThreadId::new(),
+        depth: 1,
+        agent_path: Some(AgentPath::try_from("/root/worker").expect("agent path should parse")),
+        agent_nickname: Some("worker".to_string()),
+        agent_role: None,
+    });
+    subagent_session
+        .state
+        .lock()
+        .await
+        .session_configuration
+        .session_source = subagent_source.clone();
+    subagent_turn_context.session_source = subagent_source;
+
+    subagent_session
+        .record_token_usage_info(
+            &subagent_turn_context,
+            Some(&context_reminder_test_usage(86_800)),
+        )
+        .await;
+    assert_eq!(
+        Vec::<String>::new(),
+        root_context_reminder_texts(&subagent_session, &subagent_turn_context).await
+    );
+
+    let (disabled_session, mut disabled_turn_context) = make_session_and_context().await;
+    configure_context_reminder_test_window(&mut disabled_turn_context);
+    let disabled_codex_home = tempfile::tempdir().expect("create temp dir");
+    let mut disabled_config = build_test_config(disabled_codex_home.path()).await;
+    disabled_config.context_reminder.enabled = false;
+    disabled_turn_context.config = Arc::new(disabled_config);
+
+    disabled_session
+        .record_token_usage_info(
+            &disabled_turn_context,
+            Some(&context_reminder_test_usage(86_800)),
+        )
+        .await;
+    assert_eq!(
+        Vec::<String>::new(),
+        root_context_reminder_texts(&disabled_session, &disabled_turn_context).await
+    );
 }
 
 #[tokio::test]

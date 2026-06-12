@@ -50,6 +50,7 @@ pub const DEFAULT_MEMORIES_MIN_ROLLOUT_IDLE_HOURS: i64 = 6;
 pub const DEFAULT_MEMORIES_MIN_RATE_LIMIT_REMAINING_PERCENT: i64 = 25;
 pub const DEFAULT_MEMORIES_MAX_RAW_MEMORIES_FOR_CONSOLIDATION: usize = 256;
 pub const DEFAULT_MEMORIES_MAX_UNUSED_DAYS: i64 = 30;
+pub const DEFAULT_CONTEXT_REMINDER_REMAINING_PERCENT: i64 = 15;
 const MIN_MEMORIES_MAX_RAW_MEMORIES_FOR_CONSOLIDATION: usize = 1;
 const MAX_MEMORIES_MAX_RAW_MEMORIES_FOR_CONSOLIDATION: usize = 4096;
 const MIN_MEMORIES_MAX_ROLLOUTS_PER_STARTUP: usize = 1;
@@ -57,6 +58,24 @@ const MAX_MEMORIES_MAX_ROLLOUTS_PER_STARTUP: usize = 128;
 
 const fn default_enabled() -> bool {
     true
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema)]
+#[serde(default)]
+#[schemars(deny_unknown_fields)]
+pub struct ContextReminderConfigToml {
+    pub enabled: Option<bool>,
+    #[schemars(range(min = 0, max = 100))]
+    pub remaining_percent: Option<i64>,
+}
+
+impl Default for ContextReminderConfigToml {
+    fn default() -> Self {
+        Self {
+            enabled: Some(true),
+            remaining_percent: Some(DEFAULT_CONTEXT_REMINDER_REMAINING_PERCENT),
+        }
+    }
 }
 
 /// Preferred layout for the resume/fork session picker.

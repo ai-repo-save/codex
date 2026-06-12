@@ -29,6 +29,7 @@ use crate::context::NetworkRuleSaved;
 use crate::context::PermissionsInstructions;
 use crate::context::PersonalitySpecInstructions;
 use crate::context::SubagentIdentity;
+use crate::context::RootContextReminder;
 use crate::default_skill_metadata_budget;
 use crate::environment_selection::ResolvedTurnEnvironments;
 use crate::exec_policy::ExecPolicyManager;
@@ -894,6 +895,24 @@ async fn thread_title_from_thread_store(
 
     let title = thread.name.as_deref()?.trim();
     (!title.is_empty() && thread.preview.trim() != title).then(|| title.to_string())
+}
+
+fn root_context_reminder_remaining_percent(
+    turn_context: &TurnContext,
+    token_info: &TokenUsageInfo,
+) -> Option<i64> {
+    if !turn_context.config.context_reminder.enabled
+        || turn_context.session_source.is_non_root_agent()
+    {
+        return None;
+    }
+
+    let context_window = turn_context.model_context_window()?;
+    Some(
+        token_info
+            .last_token_usage
+            .percent_of_context_window_remaining(context_window),
+    )
 }
 
 impl Session {
@@ -3098,7 +3117,7 @@ impl Session {
         token_usage: Option<&TokenUsage>,
     ) {
         if let Some(token_usage) = token_usage {
-            let token_info = {
+            let (token_info, context_reminder_remaining_percent) = {
                 let mut state = self.state.lock().await;
                 state
                     .update_token_info_from_usage(token_usage, turn_context.model_context_window());
@@ -3108,8 +3127,24 @@ impl Session {
                 ) {
                     state.ensure_auto_compact_window_server_prefill_from_usage(token_usage);
                 }
-                state.token_info()
+                let token_info = state.token_info();
+                let context_reminder_remaining_percent = token_info
+                    .as_ref()
+                    .and_then(|token_info| {
+                        root_context_reminder_remaining_percent(turn_context, token_info)
+                    })
+                    .filter(|remaining_percent| {
+                        state.record_context_reminder_threshold_status(
+                            *remaining_percent,
+                            turn_context.config.context_reminder.remaining_percent,
+                        )
+                    });
+                (token_info, context_reminder_remaining_percent)
             };
+            if let Some(remaining_percent) = context_reminder_remaining_percent {
+                self.record_root_context_reminder(turn_context, remaining_percent)
+                    .await;
+            }
             if let Some(token_info) = token_info.as_ref() {
                 for contributor in self.services.extensions.token_usage_contributors() {
                     contributor
@@ -3123,6 +3158,22 @@ impl Session {
                 }
             }
         }
+    }
+
+    async fn record_root_context_reminder(
+        &self,
+        turn_context: &TurnContext,
+        remaining_percent: i64,
+    ) {
+        let Some(reminder_message) =
+            crate::context_manager::updates::build_developer_update_item(vec![
+                RootContextReminder::new(remaining_percent).render(),
+            ])
+        else {
+            return;
+        };
+        self.record_conversation_items(turn_context, std::slice::from_ref(&reminder_message))
+            .await;
     }
 
     pub(crate) async fn recompute_token_usage(&self, turn_context: &TurnContext) {

@@ -40,6 +40,7 @@ use codex_config::permissions_toml::PermissionsToml;
 use codex_config::sandbox_mode_requirement_for_permission_profile;
 use codex_config::types::ApprovalsReviewer;
 use codex_config::types::AuthCredentialsStoreMode;
+use codex_config::types::DEFAULT_CONTEXT_REMINDER_REMAINING_PERCENT;
 use codex_config::types::History;
 use codex_config::types::McpServerConfig;
 use codex_config::types::McpServerDisabledReason;
@@ -749,6 +750,9 @@ pub struct Config {
     /// Compact prompt override.
     pub compact_prompt: Option<String>,
 
+    /// Reminder shown to root agents as the usable context window runs low.
+    pub context_reminder: ContextReminderConfig,
+
     /// Goal runtime prompt overrides.
     pub goal_prompt_templates: GoalPromptTemplates,
 
@@ -1114,6 +1118,21 @@ pub struct Config {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct CodeModeConfig {
     pub excluded_tool_namespaces: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct ContextReminderConfig {
+    pub enabled: bool,
+    pub remaining_percent: i64,
+}
+
+impl Default for ContextReminderConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            remaining_percent: DEFAULT_CONTEXT_REMINDER_REMAINING_PERCENT,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -2390,6 +2409,18 @@ fn resolve_code_mode_config(config_toml: &ConfigToml) -> CodeModeConfig {
     }
 }
 
+fn resolve_context_reminder_config(config_toml: &ConfigToml) -> ContextReminderConfig {
+    let default = ContextReminderConfig::default();
+    let base = config_toml.context_reminder.as_ref();
+
+    ContextReminderConfig {
+        enabled: base.and_then(|config| config.enabled).unwrap_or(default.enabled),
+        remaining_percent: base
+            .and_then(|config| config.remaining_percent)
+            .unwrap_or(default.remaining_percent),
+    }
+}
+
 fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config {
     let base = multi_agent_v2_toml_config(config_toml.features.as_ref());
     let default = MultiAgentV2Config::default();
@@ -2618,6 +2649,23 @@ fn validate_multi_agent_v2_tool_namespace(namespace: Option<&str>) -> std::io::R
         ));
     }
 
+    Ok(())
+}
+
+fn validate_context_reminder_remaining_percent(value: i64) -> std::io::Result<()> {
+    const LABEL: &str = "context_reminder.remaining_percent";
+    if value < 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{LABEL} must be at least 0"),
+        ));
+    }
+    if value > 100 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{LABEL} must be at most 100"),
+        ));
+    }
     Ok(())
 }
 
@@ -3119,6 +3167,7 @@ impl Config {
         let experimental_request_user_input_enabled =
             resolve_experimental_request_user_input_enabled(&cfg);
         let code_mode = resolve_code_mode_config(&cfg);
+        let context_reminder = resolve_context_reminder_config(&cfg);
         let multi_agent_v2 = resolve_multi_agent_v2_config(&cfg);
         let apps_mcp_path_override = if features.enabled(Feature::AppsMcpPathOverride) {
             let base = apps_mcp_path_override_toml_config(cfg.features.as_ref());
@@ -3200,6 +3249,7 @@ impl Config {
             ));
         }
         validate_multi_agent_v2_tool_namespace(multi_agent_v2.tool_namespace.as_deref())?;
+        validate_context_reminder_remaining_percent(context_reminder.remaining_percent)?;
         let agent_max_threads = cfg.agents.as_ref().and_then(|agents| agents.max_threads);
         if agent_max_threads == Some(0) {
             return Err(std::io::Error::new(
@@ -3667,6 +3717,7 @@ impl Config {
             web_search_config,
             experimental_request_user_input_enabled,
             code_mode,
+            context_reminder,
             use_experimental_unified_exec_tool,
             background_terminal_max_timeout,
             ghost_snapshot,
