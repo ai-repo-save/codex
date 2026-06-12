@@ -28,8 +28,8 @@ pub const SKILLS_HOW_TO_USE_WITH_ABSOLUTE_PATHS: &str = r###"- Discovery: The li
 - Trigger rules: If the user names a skill (with `$SkillName` or plain text) OR the task clearly matches a skill's description shown above, you must use that skill for that turn. Multiple mentions mean use them all. Do not carry skills across turns unless re-mentioned.
 - Missing/blocked: If a named skill isn't in the list or the path can't be read, say so briefly and continue with the best fallback.
 - How to use a skill (progressive disclosure):
-  1) After deciding to use a skill, the main agent must open and read its `SKILL.md` completely before taking task actions. If a read is truncated or paginated, continue until EOF.
-  2) When `SKILL.md` references relative paths (e.g., `scripts/foo.py`), resolve them relative to the skill directory listed above first, and only consider other paths if needed.
+  1) After deciding to use a skill, you must call the `use_skill` tool with its listed name before taking task actions. Do not read `SKILL.md` directly unless `use_skill` is unavailable or fails. If you fall back to a direct read and the read is truncated or paginated, continue until EOF.
+  2) When the loaded `SKILL.md` references relative paths (e.g., `scripts/foo.py`), resolve them relative to the skill directory from the tool result or listed path first, and only consider other paths if needed.
   3) If `SKILL.md` points to extra folders such as `references/`, use its routing instructions to identify the files required for the task. The main agent must read each required instruction or reference file itself before acting on it. Do not delegate reading, summarizing, or interpreting skill instructions to a subagent. Subagents may still perform task work when the selected skill allows it.
   4) If `scripts/` exist, prefer running or patching them instead of retyping large code blocks.
   5) If `assets/` or templates exist, reuse them instead of recreating from scratch.
@@ -45,8 +45,8 @@ pub const SKILLS_HOW_TO_USE_WITH_ALIASES: &str = r###"- Discovery: The list abov
 - Trigger rules: If the user names a skill (with `$SkillName` or plain text) OR the task clearly matches a skill's description shown above, you must use that skill for that turn. Multiple mentions mean use them all. Do not carry skills across turns unless re-mentioned.
 - Missing/blocked: If a named skill isn't in the list or the path can't be read, say so briefly and continue with the best fallback.
 - How to use a skill (progressive disclosure):
-  1) After deciding to use a skill, the main agent must expand the listed short `path` with the matching alias from `### Skill roots`, then open and read its `SKILL.md` completely before taking task actions. If a read is truncated or paginated, continue until EOF.
-  2) When `SKILL.md` references relative paths (e.g., `scripts/foo.py`), resolve them relative to the directory containing that expanded `SKILL.md` first, and only consider other paths if needed.
+  1) After deciding to use a skill, you must call the `use_skill` tool with its listed name before taking task actions. Do not read `SKILL.md` directly unless `use_skill` is unavailable or fails. If you fall back to a direct read, expand the listed short `path` with the matching alias from `### Skill roots`; if the read is truncated or paginated, continue until EOF.
+  2) When the loaded `SKILL.md` references relative paths (e.g., `scripts/foo.py`), resolve them relative to the directory containing the skill file first, and only consider other paths if needed.
   3) If `SKILL.md` points to extra folders such as `references/`, use its routing instructions to identify the files required for the task. The main agent must read each required instruction or reference file itself before acting on it. Do not delegate reading, summarizing, or interpreting skill instructions to a subagent. Subagents may still perform task work when the selected skill allows it.
   4) If `scripts/` exist, prefer running or patching them instead of retyping large code blocks.
   5) If `assets/` or templates exist, reuse them instead of recreating from scratch.
@@ -983,12 +983,15 @@ mod tests {
     }
 
     #[test]
-    fn skill_usage_instructions_require_complete_main_agent_reads() {
+    fn skill_usage_instructions_require_use_skill_tool() {
         for instructions in [
             SKILLS_HOW_TO_USE_WITH_ABSOLUTE_PATHS,
             SKILLS_HOW_TO_USE_WITH_ALIASES,
         ] {
-            assert!(instructions.contains("read its `SKILL.md` completely"));
+            assert!(instructions.contains("call the `use_skill` tool with its listed name"));
+            assert!(instructions.contains(
+                "Do not read `SKILL.md` directly unless `use_skill` is unavailable or fails"
+            ));
             assert!(instructions.contains("continue until EOF"));
             assert!(instructions.contains(
                 "The main agent must read each required instruction or reference file itself"
