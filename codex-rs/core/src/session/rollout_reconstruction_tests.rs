@@ -6,6 +6,8 @@ use codex_protocol::ThreadId;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::CompactedItem;
+use codex_protocol::protocol::ContextAnchorSavedEvent;
+use codex_protocol::protocol::ContextRewoundToAnchorEvent;
 use codex_protocol::protocol::InitialHistory;
 use codex_protocol::protocol::InterAgentCommunication;
 use codex_protocol::protocol::ResumedHistory;
@@ -34,6 +36,20 @@ fn assistant_message(text: &str) -> ResponseItem {
     }
 }
 
+fn history_contains_text(history: &[ResponseItem], needle: &str) -> bool {
+    history.iter().any(|item| match item {
+        ResponseItem::Message { content, .. } => {
+            content.iter().any(|content_item| match content_item {
+                ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+                    text.contains(needle)
+                }
+                _ => false,
+            })
+        }
+        _ => false,
+    })
+}
+
 fn inter_agent_assistant_message(text: &str) -> ResponseItem {
     let communication = InterAgentCommunication::new(
         AgentPath::root(),
@@ -50,6 +66,98 @@ fn inter_agent_assistant_message(text: &str) -> ResponseItem {
         }],
         phase: None,
     }
+}
+
+#[tokio::test]
+async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
+    let (session, turn_context) = make_session_and_context().await;
+    let anchor_user = user_message("anchor user");
+    let anchor_assistant = assistant_message("anchor assistant");
+    let future_user = user_message("discarded future user");
+    let future_assistant = assistant_message("discarded future assistant");
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(anchor_user.clone()),
+        RolloutItem::ResponseItem(anchor_assistant.clone()),
+        RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
+            anchor_id: "anchor-1".to_string(),
+            label: Some("before future".to_string()),
+            history_boundary: 2,
+            created_at: 1,
+        })),
+        RolloutItem::ResponseItem(future_user),
+        RolloutItem::ResponseItem(future_assistant),
+        RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(
+            ContextRewoundToAnchorEvent {
+                anchor_id: "anchor-1".to_string(),
+                dropped_turns: 1,
+                note: "carry this back".to_string(),
+            },
+        )),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+
+    assert_eq!(
+        reconstructed.history.len(),
+        3,
+        "anchor history plus carry-forward fragment should survive"
+    );
+    assert_eq!(reconstructed.history[0], anchor_user);
+    assert_eq!(reconstructed.history[1], anchor_assistant);
+    assert!(history_contains_text(
+        &reconstructed.history,
+        "carry this back"
+    ));
+    assert!(!history_contains_text(
+        &reconstructed.history,
+        "discarded future"
+    ));
+}
+
+#[tokio::test]
+async fn reconstruct_history_context_rewind_can_cross_reconstructable_compaction() {
+    let (session, turn_context) = make_session_and_context().await;
+    let anchor_user = user_message("pre-compaction anchor user");
+    let anchor_assistant = assistant_message("pre-compaction anchor assistant");
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(anchor_user.clone()),
+        RolloutItem::ResponseItem(anchor_assistant.clone()),
+        RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
+            anchor_id: "anchor-before-compact".to_string(),
+            label: None,
+            history_boundary: 2,
+            created_at: 1,
+        })),
+        RolloutItem::ResponseItem(user_message("future before compaction")),
+        RolloutItem::Compacted(CompactedItem {
+            message: "future compaction summary".to_string(),
+            replacement_history: Some(vec![assistant_message("compacted future state")]),
+        }),
+        RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(
+            ContextRewoundToAnchorEvent {
+                anchor_id: "anchor-before-compact".to_string(),
+                dropped_turns: 1,
+                note: "lesson from compacted future".to_string(),
+            },
+        )),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+
+    assert_eq!(reconstructed.history[0], anchor_user);
+    assert_eq!(reconstructed.history[1], anchor_assistant);
+    assert!(history_contains_text(
+        &reconstructed.history,
+        "lesson from compacted future"
+    ));
+    assert!(!history_contains_text(
+        &reconstructed.history,
+        "compacted future state"
+    ));
 }
 
 #[tokio::test]

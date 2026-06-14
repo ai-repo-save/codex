@@ -49,11 +49,17 @@ use crate::stream_events_utils::handle_non_tool_response_item;
 use crate::stream_events_utils::handle_output_item_done;
 use crate::stream_events_utils::last_assistant_message_from_item;
 use crate::stream_events_utils::mark_thread_memory_mode_polluted_if_external_context;
+use crate::stream_events_utils::parse_function_call_output;
 use crate::stream_events_utils::raw_assistant_output_text_from_item;
 use crate::stream_events_utils::record_completed_response_item_with_finalized_facts;
 use crate::tasks::emit_compact_metric;
 use crate::tools::ToolRouter;
 use crate::tools::context::SharedTurnDiffTracker;
+use crate::tools::handlers::context_anchor::RewindContextToAnchorRequest;
+use crate::tools::handlers::context_anchor::RewindContextToAnchorResponse;
+use crate::tools::handlers::context_anchor::SaveContextAnchorResponse;
+use crate::tools::handlers::context_anchor_spec::REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME;
+use crate::tools::handlers::context_anchor_spec::SAVE_CONTEXT_ANCHOR_TOOL_NAME;
 use crate::tools::handlers::request_context_compaction_spec::REQUEST_CONTEXT_COMPACTION_TOOL_NAME;
 use crate::tools::parallel::ToolCallRuntime;
 use crate::tools::registry::ToolArgumentDiffConsumer;
@@ -86,6 +92,7 @@ use codex_protocol::items::TurnItem;
 use codex_protocol::items::build_hook_prompt_message;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
+use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::MessagePhase;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
@@ -1396,6 +1403,8 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<String> {
         | EventMsg::ModelVerification(_)
         | EventMsg::TurnModerationMetadata(_)
         | EventMsg::ContextCompacted(_)
+        | EventMsg::ContextAnchorSaved(_)
+        | EventMsg::ContextRewoundToAnchor(_)
         | EventMsg::ThreadRolledBack(_)
         | EventMsg::TurnStarted(_)
         | EventMsg::ThreadSettingsApplied(_)
@@ -1771,6 +1780,32 @@ async fn retained_response_items_for_request_context_compaction(
     Ok(vec![function_call.clone()])
 }
 
+async fn retained_response_items_for_context_rewind(
+    sess: &Session,
+    call_id: &str,
+) -> CodexResult<Vec<ResponseItem>> {
+    let history = sess.clone_history().await;
+    let Some(function_call) = history.raw_items().iter().rev().find(|item| {
+        matches!(
+            item,
+            ResponseItem::FunctionCall {
+                call_id: existing_call_id,
+                name,
+                namespace,
+                ..
+            } if existing_call_id == call_id
+                && name == REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME
+                && namespace.is_none()
+        )
+    }) else {
+        return Err(CodexErr::Fatal(format!(
+            "missing {REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME} function call for call id: {call_id}"
+        )));
+    };
+
+    Ok(vec![function_call.clone()])
+}
+
 async fn drain_in_flight(
     in_flight: &mut FuturesOrdered<BoxFuture<'static, CodexResult<InFlightToolOutput>>>,
     sess: Arc<Session>,
@@ -1778,32 +1813,29 @@ async fn drain_in_flight(
     client_session: &mut ModelClientSession,
     cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
+    let mut outputs = Vec::new();
     while let Some(res) = in_flight.next().await {
         match res {
-            Ok(output) => {
-                let response_input = match output {
-                    InFlightToolOutput::Response(response_input) => response_input,
-                    InFlightToolOutput::RequestContextCompaction(response_input) => {
-                        let retained_response_items =
-                            retained_response_items_for_request_context_compaction(
-                                sess.as_ref(),
-                                &response_input,
-                            )
-                            .await?;
-                        run_auto_compact(
-                            &sess,
-                            &turn_context,
-                            client_session,
-                            InitialContextInjection::BeforeLastUserMessage,
-                            CompactionReason::UserRequested,
-                            CompactionPhase::MidTurn,
-                            retained_response_items,
-                            cancellation_token,
-                        )
-                        .await?;
-                        response_input
-                    }
-                };
+            Ok(output) => outputs.push(output),
+            Err(err) => {
+                error_or_panic(format!("in-flight tool future failed during drain: {err}"));
+            }
+        }
+    }
+
+    let context_rewind_count = outputs
+        .iter()
+        .filter(|output| matches!(output, InFlightToolOutput::RewindContextToAnchor(_)))
+        .count();
+    if context_rewind_count > 0 && outputs.len() > 1 {
+        return Err(CodexErr::Fatal(format!(
+            "{REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME} must be the only tool call in a model response"
+        )));
+    }
+
+    for output in outputs {
+        match output {
+            InFlightToolOutput::Response(response_input) => {
                 let response_item = response_input.into();
                 sess.record_conversation_items(&turn_context, std::slice::from_ref(&response_item))
                     .await;
@@ -1814,8 +1846,84 @@ async fn drain_in_flight(
                 )
                 .await;
             }
-            Err(err) => {
-                error_or_panic(format!("in-flight tool future failed during drain: {err}"));
+            InFlightToolOutput::RequestContextCompaction(response_input) => {
+                let retained_response_items =
+                    retained_response_items_for_request_context_compaction(
+                        sess.as_ref(),
+                        &response_input,
+                    )
+                    .await?;
+                run_auto_compact(
+                    &sess,
+                    &turn_context,
+                    client_session,
+                    InitialContextInjection::BeforeLastUserMessage,
+                    CompactionReason::UserRequested,
+                    CompactionPhase::MidTurn,
+                    retained_response_items,
+                    cancellation_token,
+                )
+                .await?;
+                let response_item = response_input.into();
+                sess.record_conversation_items(&turn_context, std::slice::from_ref(&response_item))
+                    .await;
+                mark_thread_memory_mode_polluted_if_external_context(
+                    sess.as_ref(),
+                    turn_context.as_ref(),
+                    &response_item,
+                )
+                .await;
+            }
+            InFlightToolOutput::SaveContextAnchor(response_input) => {
+                let (_, response) = parse_function_call_output::<SaveContextAnchorResponse>(
+                    &response_input,
+                    SAVE_CONTEXT_ANCHOR_TOOL_NAME,
+                )?;
+                let response_item = response_input.into();
+                sess.record_conversation_items(&turn_context, std::slice::from_ref(&response_item))
+                    .await;
+                mark_thread_memory_mode_polluted_if_external_context(
+                    sess.as_ref(),
+                    turn_context.as_ref(),
+                    &response_item,
+                )
+                .await;
+                sess.save_context_anchor(response.anchor_id, response.label, response.created_at)
+                    .await?;
+            }
+            InFlightToolOutput::RewindContextToAnchor(response_input) => {
+                let (call_id, request) = parse_function_call_output::<RewindContextToAnchorRequest>(
+                    &response_input,
+                    REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME,
+                )?;
+                let retained_response_items =
+                    retained_response_items_for_context_rewind(sess.as_ref(), &call_id).await?;
+                let rewind_event = sess
+                    .rewind_context_to_anchor(
+                        turn_context.as_ref(),
+                        request.anchor_id,
+                        request.note,
+                    )
+                    .await?;
+                let response = RewindContextToAnchorResponse {
+                    anchor_id: rewind_event.anchor_id,
+                    dropped_turns: rewind_event.dropped_turns,
+                };
+                let text = serde_json::to_string(&response).map_err(|err| {
+                    CodexErr::Fatal(format!(
+                        "failed to serialize {REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME} response: {err}"
+                    ))
+                })?;
+                let mut output = FunctionCallOutputPayload::from_text(text);
+                output.success = Some(true);
+                let response_item: ResponseItem =
+                    ResponseInputItem::FunctionCallOutput { call_id, output }.into();
+                let retained_and_response = retained_response_items
+                    .into_iter()
+                    .chain(std::iter::once(response_item))
+                    .collect::<Vec<_>>();
+                sess.record_conversation_items(&turn_context, &retained_and_response)
+                    .await;
             }
         }
     }

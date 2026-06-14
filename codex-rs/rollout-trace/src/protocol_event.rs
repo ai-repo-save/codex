@@ -269,6 +269,8 @@ pub(crate) fn tool_runtime_trace_event(event: &EventMsg) -> Option<ToolRuntimeTr
         | EventMsg::EnteredReviewMode(_)
         | EventMsg::ExitedReviewMode(_)
         | EventMsg::RawResponseItem(_)
+        | EventMsg::ContextAnchorSaved(_)
+        | EventMsg::ContextRewoundToAnchor(_)
         | EventMsg::ItemStarted(_)
         | EventMsg::ItemCompleted(_)
         | EventMsg::HookStarted(_)
@@ -289,6 +291,8 @@ pub(crate) fn wrapped_protocol_event_type(event: &EventMsg) -> Option<&'static s
         EventMsg::TurnComplete(_) => Some("turn_complete"),
         EventMsg::TurnAborted(_) => Some("turn_aborted"),
         EventMsg::ThreadRolledBack(_) => Some("thread_rolled_back"),
+        EventMsg::ContextAnchorSaved(_) => Some("context_anchor_saved"),
+        EventMsg::ContextRewoundToAnchor(_) => Some("context_rewound_to_anchor"),
         EventMsg::Error(_) => Some("error"),
         EventMsg::Warning(_) => Some("warning"),
         EventMsg::ShutdownComplete => Some("shutdown_complete"),

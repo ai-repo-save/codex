@@ -16,6 +16,8 @@ use crate::function_tool::FunctionCallError;
 use crate::parse_turn_item;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
+use crate::tools::handlers::context_anchor_spec::REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME;
+use crate::tools::handlers::context_anchor_spec::SAVE_CONTEXT_ANCHOR_TOOL_NAME;
 use crate::tools::handlers::request_context_compaction_spec::REQUEST_CONTEXT_COMPACTION_TOOL_NAME;
 use crate::tools::parallel::ToolCallRuntime;
 use crate::tools::router::ToolRouter;
@@ -310,6 +312,8 @@ pub(crate) type InFlightFuture<'f> =
 pub(crate) enum InFlightToolOutput {
     Response(ResponseInputItem),
     RequestContextCompaction(ResponseInputItem),
+    SaveContextAnchor(ResponseInputItem),
+    RewindContextToAnchor(ResponseInputItem),
 }
 
 #[derive(Default)]
@@ -441,6 +445,10 @@ pub(crate) async fn handle_output_item_done(
             let cancellation_token = ctx.cancellation_token.child_token();
             let requests_context_compaction = call.tool_name.namespace.is_none()
                 && call.tool_name.name == REQUEST_CONTEXT_COMPACTION_TOOL_NAME;
+            let saves_context_anchor = call.tool_name.namespace.is_none()
+                && call.tool_name.name == SAVE_CONTEXT_ANCHOR_TOOL_NAME;
+            let rewinds_context_to_anchor = call.tool_name.namespace.is_none()
+                && call.tool_name.name == REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME;
             let tool_runtime = ctx.tool_runtime.clone();
             let tool_future: InFlightFuture<'static> = Box::pin(async move {
                 let response = tool_runtime
@@ -448,6 +456,10 @@ pub(crate) async fn handle_output_item_done(
                     .await?;
                 if requests_context_compaction && response_input_succeeded(&response) {
                     Ok(InFlightToolOutput::RequestContextCompaction(response))
+                } else if saves_context_anchor && response_input_succeeded(&response) {
+                    Ok(InFlightToolOutput::SaveContextAnchor(response))
+                } else if rewinds_context_to_anchor && response_input_succeeded(&response) {
+                    Ok(InFlightToolOutput::RewindContextToAnchor(response))
                 } else {
                     Ok(InFlightToolOutput::Response(response))
                 }
@@ -535,6 +547,31 @@ fn response_input_succeeded(response: &ResponseInputItem) -> bool {
         ResponseInputItem::ToolSearchOutput { .. } => true,
         _ => false,
     }
+}
+
+pub(crate) fn parse_function_call_output<T>(
+    response: &ResponseInputItem,
+    tool_name: &str,
+) -> Result<(String, T)>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    let ResponseInputItem::FunctionCallOutput { call_id, output } = response else {
+        return Err(CodexErr::Fatal(format!(
+            "{tool_name} returned a non-function-call output"
+        )));
+    };
+    let Some(text) = output.text_content() else {
+        return Err(CodexErr::Fatal(format!(
+            "{tool_name} returned non-text function-call output"
+        )));
+    };
+    let payload = serde_json::from_str(text).map_err(|err| {
+        CodexErr::Fatal(format!(
+            "failed to parse {tool_name} function output: {err}"
+        ))
+    })?;
+    Ok((call_id.clone(), payload))
 }
 
 pub(crate) async fn handle_non_tool_response_item(

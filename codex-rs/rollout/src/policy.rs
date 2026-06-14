@@ -84,6 +84,8 @@ pub fn should_persist_event_msg(ev: &EventMsg) -> bool {
         | EventMsg::ThreadGoalUpdated(_)
         | EventMsg::ThreadGoalCleared(_)
         | EventMsg::ContextCompacted(_)
+        | EventMsg::ContextAnchorSaved(_)
+        | EventMsg::ContextRewoundToAnchor(_)
         | EventMsg::EnteredReviewMode(_)
         | EventMsg::ExitedReviewMode(_)
         | EventMsg::McpToolCallEnd(_)

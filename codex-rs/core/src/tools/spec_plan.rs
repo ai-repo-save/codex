@@ -20,6 +20,8 @@ use crate::tools::handlers::RequestContextCompactionHandler;
 use crate::tools::handlers::RequestPermissionsHandler;
 use crate::tools::handlers::RequestPluginInstallHandler;
 use crate::tools::handlers::RequestUserInputHandler;
+use crate::tools::handlers::RewindContextToAnchorHandler;
+use crate::tools::handlers::SaveContextAnchorHandler;
 use crate::tools::handlers::ShellCommandHandler;
 use crate::tools::handlers::ShellCommandHandlerOptions;
 use crate::tools::handlers::TestSyncHandler;
@@ -649,6 +651,8 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
 
     planned_tools.add(ContextUsageHandler);
     planned_tools.add(RequestContextCompactionHandler);
+    planned_tools.add(SaveContextAnchorHandler);
+    planned_tools.add(RewindContextToAnchorHandler);
     planned_tools.add(PlanHandler);
 
     if turn_context.config.experimental_request_user_input_enabled {

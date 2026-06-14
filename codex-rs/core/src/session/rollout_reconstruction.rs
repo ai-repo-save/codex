@@ -1,5 +1,7 @@
+use super::context_anchor::context_rewind_carry_forward_item;
 use super::*;
 use crate::context_manager::is_user_turn_boundary;
+use std::collections::HashMap;
 
 // Return value of `Session::reconstruct_history_from_rollout`, bundling the rebuilt history with
 // the resume/fork hydration metadata derived from the same replay.
@@ -94,6 +96,12 @@ impl Session {
         // stopping once a surviving replacement-history checkpoint and the required resume metadata
         // are both known; then replay only the buffered surviving tail forward to preserve exact
         // history semantics.
+        let has_context_rewind = rollout_items.iter().any(|item| {
+            matches!(
+                item,
+                RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(_))
+            )
+        });
         let mut base_replacement_history: Option<&[ResponseItem]> = None;
         let mut previous_turn_settings = None;
         let mut reference_context_item = TurnReferenceContextItem::NeverSet;
@@ -120,7 +128,8 @@ impl Session {
                     ) {
                         active_segment.reference_context_item = TurnReferenceContextItem::Cleared;
                     }
-                    if active_segment.base_replacement_history.is_none()
+                    if !has_context_rewind
+                        && active_segment.base_replacement_history.is_none()
                         && let Some(replacement_history) = &compacted.replacement_history
                     {
                         active_segment.base_replacement_history = Some(replacement_history);
@@ -232,6 +241,7 @@ impl Session {
         }
 
         let mut history = ContextManager::new();
+        let mut context_anchors: HashMap<String, Vec<ResponseItem>> = HashMap::new();
         let mut saw_legacy_compaction_without_replacement_history = false;
         if let Some(base_replacement_history) = base_replacement_history {
             history.replace(base_replacement_history.to_vec());
@@ -273,6 +283,27 @@ impl Session {
                 }
                 RolloutItem::EventMsg(EventMsg::ThreadRolledBack(rollback)) => {
                     history.drop_last_n_user_turns(rollback.num_turns);
+                }
+                RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(anchor)) => {
+                    context_anchors.insert(anchor.anchor_id.clone(), history.raw_items().to_vec());
+                }
+                RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
+                    if let Some(anchor_history) = context_anchors.get(&rewind.anchor_id) {
+                        history.replace(anchor_history.clone());
+                        let carry_forward = context_rewind_carry_forward_item(
+                            rewind.anchor_id.clone(),
+                            rewind.note.clone(),
+                        );
+                        history.record_items(
+                            std::iter::once(&carry_forward),
+                            turn_context.truncation_policy,
+                        );
+                    } else {
+                        warn!(
+                            anchor_id = %rewind.anchor_id,
+                            "context rewind referenced an unknown anchor during rollout reconstruction"
+                        );
+                    }
                 }
                 RolloutItem::EventMsg(_)
                 | RolloutItem::TurnContext(_)

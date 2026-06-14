@@ -3,6 +3,7 @@ use codex_protocol::items::parse_hook_prompt_fragment;
 use codex_protocol::models::ContentItem;
 
 use super::AdditionalContextUserFragment;
+use super::ContextRewindCarryForward;
 use super::EnvironmentContext;
 use super::FragmentRegistration;
 use super::FragmentRegistrationProxy;
@@ -22,6 +23,9 @@ static ENVIRONMENT_CONTEXT_REGISTRATION: FragmentRegistrationProxy<EnvironmentCo
     FragmentRegistrationProxy::new();
 static ADDITIONAL_CONTEXT_REGISTRATION: FragmentRegistrationProxy<AdditionalContextUserFragment> =
     FragmentRegistrationProxy::new();
+static CONTEXT_REWIND_CARRY_FORWARD_REGISTRATION: FragmentRegistrationProxy<
+    ContextRewindCarryForward,
+> = FragmentRegistrationProxy::new();
 static SKILL_INSTRUCTIONS_REGISTRATION: FragmentRegistrationProxy<SkillInstructions> =
     FragmentRegistrationProxy::new();
 static USER_SHELL_COMMAND_REGISTRATION: FragmentRegistrationProxy<UserShellCommand> =
@@ -47,6 +51,7 @@ static CONTEXTUAL_USER_FRAGMENTS: &[&dyn FragmentRegistration] = &[
     &USER_INSTRUCTIONS_REGISTRATION,
     &ENVIRONMENT_CONTEXT_REGISTRATION,
     &ADDITIONAL_CONTEXT_REGISTRATION,
+    &CONTEXT_REWIND_CARRY_FORWARD_REGISTRATION,
     &SKILL_INSTRUCTIONS_REGISTRATION,
     &USER_SHELL_COMMAND_REGISTRATION,
     &TURN_ABORTED_REGISTRATION,

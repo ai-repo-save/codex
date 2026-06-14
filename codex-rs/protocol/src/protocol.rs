@@ -1193,6 +1193,12 @@ pub enum EventMsg {
     /// Conversation history was rolled back by dropping the last N user turns.
     ThreadRolledBack(ThreadRolledBackEvent),
 
+    /// A model-visible context anchor was saved for later rewind.
+    ContextAnchorSaved(ContextAnchorSavedEvent),
+
+    /// Conversation history was rewound to a previously saved context anchor.
+    ContextRewoundToAnchor(ContextRewoundToAnchorEvent),
+
     /// Agent has started a turn.
     /// v1 wire format uses `task_started`; accept `turn_started` for v2 interop.
     #[serde(rename = "task_started", alias = "turn_started")]
@@ -3250,6 +3256,22 @@ pub struct DeprecationNoticeEvent {
 pub struct ThreadRolledBackEvent {
     /// Number of user turns that were removed from context.
     pub num_turns: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct ContextAnchorSavedEvent {
+    pub anchor_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    pub history_boundary: u64,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct ContextRewoundToAnchorEvent {
+    pub anchor_id: String,
+    pub dropped_turns: u32,
+    pub note: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
