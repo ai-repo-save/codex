@@ -96,12 +96,6 @@ impl Session {
         // stopping once a surviving replacement-history checkpoint and the required resume metadata
         // are both known; then replay only the buffered surviving tail forward to preserve exact
         // history semantics.
-        let has_context_rewind = rollout_items.iter().any(|item| {
-            matches!(
-                item,
-                RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(_))
-            )
-        });
         let mut base_replacement_history: Option<&[ResponseItem]> = None;
         let mut previous_turn_settings = None;
         let mut reference_context_item = TurnReferenceContextItem::NeverSet;
@@ -128,8 +122,7 @@ impl Session {
                     ) {
                         active_segment.reference_context_item = TurnReferenceContextItem::Cleared;
                     }
-                    if !has_context_rewind
-                        && active_segment.base_replacement_history.is_none()
+                    if active_segment.base_replacement_history.is_none()
                         && let Some(replacement_history) = &compacted.replacement_history
                     {
                         active_segment.base_replacement_history = Some(replacement_history);
@@ -258,6 +251,7 @@ impl Session {
                     );
                 }
                 RolloutItem::Compacted(compacted) => {
+                    context_anchors.clear();
                     if let Some(replacement_history) = &compacted.replacement_history {
                         // This should actually never happen, because the reverse loop above (to build rollout_suffix)
                         // should stop before any compaction that has Some replacement_history

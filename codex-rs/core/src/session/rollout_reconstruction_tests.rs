@@ -117,13 +117,11 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
 }
 
 #[tokio::test]
-async fn reconstruct_history_context_rewind_can_cross_reconstructable_compaction() {
+async fn reconstruct_history_context_rewind_does_not_cross_compaction() {
     let (session, turn_context) = make_session_and_context().await;
-    let anchor_user = user_message("pre-compaction anchor user");
-    let anchor_assistant = assistant_message("pre-compaction anchor assistant");
     let rollout_items = vec![
-        RolloutItem::ResponseItem(anchor_user.clone()),
-        RolloutItem::ResponseItem(anchor_assistant.clone()),
+        RolloutItem::ResponseItem(user_message("pre-compaction anchor user")),
+        RolloutItem::ResponseItem(assistant_message("pre-compaction anchor assistant")),
         RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
             anchor_id: "anchor-before-compact".to_string(),
             label: None,
@@ -148,15 +146,74 @@ async fn reconstruct_history_context_rewind_can_cross_reconstructable_compaction
         .reconstruct_history_from_rollout(&turn_context, &rollout_items)
         .await;
 
-    assert_eq!(reconstructed.history[0], anchor_user);
-    assert_eq!(reconstructed.history[1], anchor_assistant);
-    assert!(history_contains_text(
+    assert_eq!(
+        reconstructed.history,
+        vec![assistant_message("compacted future state")]
+    );
+    assert!(!history_contains_text(
         &reconstructed.history,
         "lesson from compacted future"
     ));
     assert!(!history_contains_text(
         &reconstructed.history,
-        "compacted future state"
+        "pre-compaction anchor"
+    ));
+}
+
+#[tokio::test]
+async fn reconstruct_history_context_rewind_uses_anchor_saved_after_compaction() {
+    let (session, turn_context) = make_session_and_context().await;
+    let compacted_state = assistant_message("compacted baseline");
+    let anchor_user = user_message("post-compaction anchor user");
+    let anchor_assistant = assistant_message("post-compaction anchor assistant");
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(user_message("pre-compaction anchor user")),
+        RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
+            anchor_id: "anchor-before-compact".to_string(),
+            label: None,
+            history_boundary: 1,
+            created_at: 1,
+        })),
+        RolloutItem::Compacted(CompactedItem {
+            message: "summary".to_string(),
+            replacement_history: Some(vec![compacted_state.clone()]),
+        }),
+        RolloutItem::ResponseItem(anchor_user.clone()),
+        RolloutItem::ResponseItem(anchor_assistant.clone()),
+        RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
+            anchor_id: "anchor-after-compact".to_string(),
+            label: None,
+            history_boundary: 3,
+            created_at: 2,
+        })),
+        RolloutItem::ResponseItem(user_message("discarded post-anchor future")),
+        RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(
+            ContextRewoundToAnchorEvent {
+                anchor_id: "anchor-after-compact".to_string(),
+                dropped_turns: 1,
+                note: "post-compaction note".to_string(),
+            },
+        )),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+
+    assert_eq!(reconstructed.history[0], compacted_state);
+    assert_eq!(reconstructed.history[1], anchor_user);
+    assert_eq!(reconstructed.history[2], anchor_assistant);
+    assert!(history_contains_text(
+        &reconstructed.history,
+        "post-compaction note"
+    ));
+    assert!(!history_contains_text(
+        &reconstructed.history,
+        "pre-compaction anchor"
+    ));
+    assert!(!history_contains_text(
+        &reconstructed.history,
+        "discarded post-anchor future"
     ));
 }
 

@@ -14,13 +14,22 @@ fn count_user_turns_since_anchor(
     rollout_items: &[RolloutItem],
     anchor_id: &str,
 ) -> CodexResult<u32> {
-    let Some(anchor_index) = rollout_items.iter().rposition(|item| {
-        matches!(
-            item,
+    let mut anchor_index = None;
+    for (index, item) in rollout_items.iter().enumerate() {
+        match item {
+            RolloutItem::Compacted(_) => {
+                anchor_index = None;
+            }
             RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(event))
-                if event.anchor_id == anchor_id
-        )
-    }) else {
+                if event.anchor_id == anchor_id =>
+            {
+                anchor_index = Some(index);
+            }
+            _ => {}
+        }
+    }
+
+    let Some(anchor_index) = anchor_index else {
         return Err(CodexErr::InvalidRequest(format!(
             "unknown context anchor `{anchor_id}`"
         )));
@@ -116,3 +125,7 @@ pub(super) fn context_rewind_carry_forward_item(
 ) -> ResponseItem {
     ContextualUserFragment::into(ContextRewindCarryForward::new(anchor_id, note))
 }
+
+#[cfg(test)]
+#[path = "context_anchor_tests.rs"]
+mod tests;
