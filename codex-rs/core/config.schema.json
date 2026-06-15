@@ -1523,6 +1523,10 @@
         "use_memories": {
           "description": "When `false`, skip injecting memory usage instructions into developer prompts.",
           "type": "boolean"
+        },
+        "use_scoped_memories": {
+          "description": "When `false`, disable session/project scoped memory tools and prompt context.",
+          "type": "boolean"
         }
       },
       "type": "object"
