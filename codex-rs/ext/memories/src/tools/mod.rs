@@ -29,8 +29,7 @@ mod write_note;
 pub(crate) fn memory_tools(
     backends: MemoryToolBackends,
     metrics_client: Option<MetricsClient>,
-) -> Vec<Arc<dyn ToolExecutor<ToolCall>>>
-{
+) -> Vec<Arc<dyn ToolExecutor<ToolCall>>> {
     let mut tools: Vec<Arc<dyn ToolExecutor<ToolCall>>> = Vec::new();
     if backends.has_global() {
         tools.push(Arc::new(ad_hoc_note::AddAdHocNoteTool {

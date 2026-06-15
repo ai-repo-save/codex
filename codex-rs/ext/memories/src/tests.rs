@@ -269,11 +269,7 @@ async fn prompt_contribution_includes_scoped_memory_when_global_memories_are_dis
 
     assert_eq!(fragments.len(), 1);
     assert_eq!(fragments[0].slot(), PromptSlot::ContextualUser);
-    assert!(
-        fragments[0]
-            .text()
-            .contains("<scoped_memory_context>")
-    );
+    assert!(fragments[0].text().contains("<scoped_memory_context>"));
     assert!(
         fragments[0]
             .text()
@@ -704,9 +700,9 @@ fn memory_tool_from_backends(
 ) -> Arc<dyn ToolExecutor<ToolCall>> {
     let expected_tool_name = memory_tool_name(tool_name);
     crate::tools::memory_tools(backends, /*metrics_client*/ None)
-    .into_iter()
-    .find(|tool| tool.tool_name() == expected_tool_name)
-    .unwrap_or_else(|| panic!("{tool_name} tool should be registered"))
+        .into_iter()
+        .find(|tool| tool.tool_name() == expected_tool_name)
+        .unwrap_or_else(|| panic!("{tool_name} tool should be registered"))
 }
 
 fn memory_tool_name(tool_name: &str) -> ToolName {

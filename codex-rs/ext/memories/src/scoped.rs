@@ -15,12 +15,12 @@ use serde::Serialize;
 use sha2::Digest;
 use sha2::Sha256;
 
+use crate::backend::AddAdHocMemoryNoteRequest;
+use crate::backend::AddAdHocMemoryNoteResponse;
 use crate::backend::ListMemoriesRequest;
 use crate::backend::ListMemoriesResponse;
 use crate::backend::MemoriesBackend;
 use crate::backend::MemoriesBackendError;
-use crate::backend::AddAdHocMemoryNoteRequest;
-use crate::backend::AddAdHocMemoryNoteResponse;
 use crate::backend::ReadMemoryRequest;
 use crate::backend::ReadMemoryResponse;
 use crate::backend::SearchMemoriesRequest;
@@ -98,9 +98,7 @@ impl MemoryToolBackends {
         scope: Option<MemoryScope>,
         request: ListMemoriesRequest,
     ) -> Result<ListMemoriesResponse, MemoriesBackendError> {
-        self.backend_for_read(scope)?
-            .list(request)
-            .await
+        self.backend_for_read(scope)?.list(request).await
     }
 
     pub(crate) async fn add_global_ad_hoc_note(
@@ -121,9 +119,7 @@ impl MemoryToolBackends {
         scope: Option<MemoryScope>,
         request: ReadMemoryRequest,
     ) -> Result<ReadMemoryResponse, MemoriesBackendError> {
-        self.backend_for_read(scope)?
-            .read(request)
-            .await
+        self.backend_for_read(scope)?.read(request).await
     }
 
     pub(crate) async fn search(
@@ -131,9 +127,7 @@ impl MemoryToolBackends {
         scope: Option<MemoryScope>,
         request: SearchMemoriesRequest,
     ) -> Result<SearchMemoriesResponse, MemoriesBackendError> {
-        self.backend_for_read(scope)?
-            .search(request)
-            .await
+        self.backend_for_read(scope)?.search(request).await
     }
 
     pub(crate) async fn write_note(
@@ -318,10 +312,7 @@ impl ScopedMemoryStore {
             return None;
         }
 
-        let content = truncate_text(
-            &notes.join("\n\n"),
-            TruncationPolicy::Tokens(token_limit),
-        );
+        let content = truncate_text(&notes.join("\n\n"), TruncationPolicy::Tokens(token_limit));
         Some(format!("### {title}\n{content}"))
     }
 
@@ -337,7 +328,10 @@ impl ScopedMemoryStore {
         if metadata_path.exists() {
             return Ok(());
         }
-        let escaped_project_root = project_root.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
+        let escaped_project_root = project_root
+            .to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
         tokio::fs::write(
             metadata_path,
             format!("project_root = \"{escaped_project_root}\"\n"),
