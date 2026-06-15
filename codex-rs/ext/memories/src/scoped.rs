@@ -77,6 +77,7 @@ impl MemoryToolBackends {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn from_global_memory_root(root: impl Into<PathBuf>) -> Self {
         Self {
             global: Some(LocalMemoriesBackend::from_memory_root(root)),
