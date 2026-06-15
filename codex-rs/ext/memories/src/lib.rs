@@ -4,6 +4,7 @@ mod local;
 mod metrics;
 mod prompts;
 mod schema;
+mod scoped;
 mod tools;
 
 pub use extension::install;
@@ -20,6 +21,7 @@ pub(crate) const ADD_AD_HOC_NOTE_TOOL_NAME: &str = "add_ad_hoc_note";
 pub(crate) const LIST_TOOL_NAME: &str = "list";
 pub(crate) const READ_TOOL_NAME: &str = "read";
 pub(crate) const SEARCH_TOOL_NAME: &str = "search";
+pub(crate) const WRITE_NOTE_TOOL_NAME: &str = "write_note";
 
 #[cfg(test)]
 mod tests;

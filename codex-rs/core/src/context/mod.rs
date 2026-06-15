@@ -39,6 +39,7 @@ pub(crate) use codex_context_fragments::AdditionalContextUserFragment;
 pub use codex_context_fragments::ContextualUserFragment;
 pub(crate) use codex_context_fragments::FragmentRegistration;
 pub(crate) use codex_context_fragments::FragmentRegistrationProxy;
+pub(crate) use codex_context_fragments::ScopedMemoryContextFragment;
 pub(crate) use codex_core_skills::SkillInstructions;
 pub(crate) use collaboration_mode_instructions::CollaborationModeInstructions;
 pub(crate) use context_rewind_carry_forward::ContextRewindCarryForward;

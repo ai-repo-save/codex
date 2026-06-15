@@ -305,6 +305,7 @@ persistence = "none"
 disable_on_external_context = true
 generate_memories = false
 use_memories = false
+use_scoped_memories = false
 dedicated_tools = true
 max_raw_memories_for_consolidation = 512
 max_unused_days = 21
@@ -322,6 +323,7 @@ consolidation_model = "gpt-5.2"
             disable_on_external_context: Some(true),
             generate_memories: Some(false),
             use_memories: Some(false),
+            use_scoped_memories: Some(false),
             dedicated_tools: Some(true),
             max_raw_memories_for_consolidation: Some(512),
             max_unused_days: Some(21),
@@ -348,6 +350,7 @@ consolidation_model = "gpt-5.2"
             disable_on_external_context: true,
             generate_memories: false,
             use_memories: false,
+            use_scoped_memories: false,
             dedicated_tools: true,
             max_raw_memories_for_consolidation: 512,
             max_unused_days: 21,

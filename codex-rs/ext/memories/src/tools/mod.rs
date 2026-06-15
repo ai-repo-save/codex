@@ -16,40 +16,47 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::MEMORY_TOOLS_NAMESPACE;
-use crate::backend::MemoriesBackend;
 use crate::backend::MemoriesBackendError;
 use crate::schema;
+use crate::scoped::MemoryToolBackends;
 
 mod ad_hoc_note;
 mod list;
 mod read;
 mod search;
+mod write_note;
 
-pub(crate) fn memory_tools<B>(
-    backend: B,
+pub(crate) fn memory_tools(
+    backends: MemoryToolBackends,
     metrics_client: Option<MetricsClient>,
 ) -> Vec<Arc<dyn ToolExecutor<ToolCall>>>
-where
-    B: MemoriesBackend,
 {
-    vec![
-        Arc::new(ad_hoc_note::AddAdHocNoteTool {
-            backend: backend.clone(),
+    let mut tools: Vec<Arc<dyn ToolExecutor<ToolCall>>> = Vec::new();
+    if backends.has_global() {
+        tools.push(Arc::new(ad_hoc_note::AddAdHocNoteTool {
+            backends: backends.clone(),
             metrics_client: metrics_client.clone(),
-        }),
-        Arc::new(list::ListTool {
-            backend: backend.clone(),
+        }));
+    }
+    if backends.has_scoped() {
+        tools.push(Arc::new(write_note::WriteNoteTool {
+            backends: backends.clone(),
             metrics_client: metrics_client.clone(),
-        }),
-        Arc::new(read::ReadTool {
-            backend: backend.clone(),
-            metrics_client: metrics_client.clone(),
-        }),
-        Arc::new(search::SearchTool {
-            backend,
-            metrics_client,
-        }),
-    ]
+        }));
+    }
+    tools.push(Arc::new(list::ListTool {
+        backends: backends.clone(),
+        metrics_client: metrics_client.clone(),
+    }));
+    tools.push(Arc::new(read::ReadTool {
+        backends: backends.clone(),
+        metrics_client: metrics_client.clone(),
+    }));
+    tools.push(Arc::new(search::SearchTool {
+        backends,
+        metrics_client,
+    }));
+    tools
 }
 
 pub(super) fn memory_tool_name(name: &str) -> ToolName {

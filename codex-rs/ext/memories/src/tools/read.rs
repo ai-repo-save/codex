@@ -10,12 +10,13 @@ use serde_json::json;
 
 use crate::DEFAULT_READ_MAX_TOKENS;
 use crate::READ_TOOL_NAME;
-use crate::backend::MemoriesBackend;
 use crate::backend::ReadMemoryRequest;
 use crate::backend::ReadMemoryResponse;
 use crate::metrics::record_tool_call;
 use crate::metrics::scope_from_path;
 use crate::metrics::truncated_tag;
+use crate::scoped::MemoryScope;
+use crate::scoped::MemoryToolBackends;
 
 use super::backend_error_to_function_call;
 use super::memory_function_tool;
@@ -25,6 +26,7 @@ use super::parse_args;
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ReadArgs {
+    scope: Option<MemoryScope>,
     path: String,
     #[schemars(range(min = 1))]
     line_offset: Option<usize>,
@@ -33,16 +35,13 @@ struct ReadArgs {
 }
 
 #[derive(Clone)]
-pub(super) struct ReadTool<B> {
-    pub(super) backend: B,
+pub(super) struct ReadTool {
+    pub(super) backends: MemoryToolBackends,
     pub(super) metrics_client: Option<MetricsClient>,
 }
 
 #[async_trait::async_trait]
-impl<B> ToolExecutor<ToolCall> for ReadTool<B>
-where
-    B: MemoriesBackend,
-{
+impl ToolExecutor<ToolCall> for ReadTool {
     fn tool_name(&self) -> ToolName {
         memory_tool_name(READ_TOOL_NAME)
     }
@@ -50,7 +49,7 @@ where
     fn spec(&self) -> ToolSpec {
         memory_function_tool::<ReadArgs, ReadMemoryResponse>(
             READ_TOOL_NAME,
-            "Read a Codex memory file by relative path, optionally starting at a 1-indexed line offset and limiting the number of lines returned.",
+            "Read a Codex memory file by relative path, optionally starting at a 1-indexed line offset and limiting the number of lines returned. Optional scope may be global, session, or project; when global memories are disabled, scope must be session or project.",
         )
     }
 
@@ -59,17 +58,20 @@ where
         call: ToolCall,
     ) -> Result<Box<dyn codex_extension_api::ToolOutput>, codex_extension_api::FunctionCallError>
     {
-        let backend = self.backend.clone();
+        let backends = self.backends.clone();
         let args: ReadArgs = parse_args(&call)?;
         let path = args.path;
         let scope = scope_from_path(path.as_str());
-        let response = backend
-            .read(ReadMemoryRequest {
-                path: path.clone(),
-                line_offset: args.line_offset.unwrap_or(1),
-                max_lines: args.max_lines,
-                max_tokens: DEFAULT_READ_MAX_TOKENS,
-            })
+        let response = backends
+            .read(
+                args.scope,
+                ReadMemoryRequest {
+                    path: path.clone(),
+                    line_offset: args.line_offset.unwrap_or(1),
+                    max_lines: args.max_lines,
+                    max_tokens: DEFAULT_READ_MAX_TOKENS,
+                },
+            )
             .await;
         record_tool_call(
             self.metrics_client.as_ref(),

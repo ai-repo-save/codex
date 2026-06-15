@@ -849,6 +849,11 @@ pub struct Config {
     /// layer are resolved against this path.
     pub cwd: AbsolutePathBuf,
 
+    /// Stable project root used for project-scoped runtime state.
+    ///
+    /// This is the root Git project when one is available, otherwise `cwd`.
+    pub project_root: AbsolutePathBuf,
+
     /// Absolute runtime workspace roots for the session. Symbolic
     /// `:workspace_roots` permission entries are materialized against these
     /// roots while profile-defined workspace roots remain encoded directly in
@@ -2871,6 +2876,7 @@ impl Config {
             .map(|path| AbsolutePathBuf::resolve_path_against_base(path, resolved_cwd.as_path()))
             .collect();
         let repo_root = resolve_root_git_project_for_trust(fs, &resolved_cwd).await;
+        let project_root = repo_root.clone().unwrap_or_else(|| resolved_cwd.clone());
         let active_project = cfg
             .get_active_project(
                 resolved_cwd.as_path(),
@@ -3573,6 +3579,7 @@ impl Config {
             model_provider_id,
             model_provider,
             cwd: resolved_cwd,
+            project_root,
             workspace_roots: workspace_roots.clone(),
             workspace_roots_explicit,
             startup_warnings,

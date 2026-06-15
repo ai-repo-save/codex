@@ -21,7 +21,8 @@ use serde_json::json;
 
 use crate::extension::MemoriesExtension;
 use crate::extension::MemoriesExtensionConfig;
-use crate::local::LocalMemoriesBackend;
+use crate::scoped::MemoryScope;
+use crate::scoped::MemoryToolBackends;
 
 #[test]
 fn memory_tool_namespace_matches_responses_api_identifier() {
@@ -52,9 +53,11 @@ fn tools_are_not_contributed_when_disabled() {
     let extension = MemoriesExtension::default();
     let thread_store = ExtensionData::new("thread");
     thread_store.insert(MemoriesExtensionConfig {
-        enabled: false,
+        global_enabled: false,
+        scoped_enabled: false,
         dedicated_tools: true,
         codex_home: test_path_buf("/tmp/codex-home").abs(),
+        project_root: test_path_buf("/tmp/project").abs(),
     });
 
     assert!(
@@ -69,9 +72,11 @@ fn tools_are_not_contributed_when_dedicated_tools_disabled() {
     let extension = MemoriesExtension::default();
     let thread_store = ExtensionData::new("thread");
     thread_store.insert(MemoriesExtensionConfig {
-        enabled: true,
+        global_enabled: true,
+        scoped_enabled: false,
         dedicated_tools: false,
         codex_home: test_path_buf("/tmp/codex-home").abs(),
+        project_root: test_path_buf("/tmp/project").abs(),
     });
 
     assert!(
@@ -86,9 +91,11 @@ fn tools_are_contributed_when_enabled_with_dedicated_tools() {
     let extension = MemoriesExtension::default();
     let thread_store = ExtensionData::new("thread");
     thread_store.insert(MemoriesExtensionConfig {
-        enabled: true,
+        global_enabled: true,
+        scoped_enabled: false,
         dedicated_tools: true,
         codex_home: test_path_buf("/tmp/codex-home").abs(),
+        project_root: test_path_buf("/tmp/project").abs(),
     });
 
     let tool_names = extension
@@ -109,15 +116,46 @@ fn tools_are_contributed_when_enabled_with_dedicated_tools() {
 }
 
 #[test]
+fn scoped_tools_are_contributed_without_global_memories() {
+    let extension = MemoriesExtension::default();
+    let thread_store = ExtensionData::new("thread-1");
+    thread_store.insert(MemoriesExtensionConfig {
+        global_enabled: false,
+        scoped_enabled: true,
+        dedicated_tools: true,
+        codex_home: test_path_buf("/tmp/codex-home").abs(),
+        project_root: test_path_buf("/tmp/project").abs(),
+    });
+
+    let tool_names = extension
+        .tools(&ExtensionData::new("session"), &thread_store)
+        .into_iter()
+        .map(|tool| tool.tool_name())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        tool_names,
+        vec![
+            memory_tool_name(crate::WRITE_NOTE_TOOL_NAME),
+            memory_tool_name(crate::LIST_TOOL_NAME),
+            memory_tool_name(crate::READ_TOOL_NAME),
+            memory_tool_name(crate::SEARCH_TOOL_NAME),
+        ]
+    );
+}
+
+#[test]
 fn install_registers_dedicated_tool_contributor() {
     let mut builder = ExtensionRegistryBuilder::<codex_core::config::Config>::new();
     crate::install(&mut builder, /*metrics_client*/ None);
     let registry = builder.build();
     let thread_store = ExtensionData::new("thread");
     thread_store.insert(MemoriesExtensionConfig {
-        enabled: true,
+        global_enabled: true,
+        scoped_enabled: false,
         dedicated_tools: true,
         codex_home: test_path_buf("/tmp/codex-home").abs(),
+        project_root: test_path_buf("/tmp/project").abs(),
     });
 
     let tool_names = registry
@@ -175,9 +213,11 @@ async fn prompt_contribution_uses_memory_summary_when_enabled() {
     let extension = MemoriesExtension::default();
     let thread_store = ExtensionData::new("thread");
     thread_store.insert(MemoriesExtensionConfig {
-        enabled: true,
+        global_enabled: true,
+        scoped_enabled: false,
         dedicated_tools: false,
         codex_home: tempdir.path().abs(),
+        project_root: test_path_buf("/tmp/project").abs(),
     });
 
     let fragments = extension
@@ -190,6 +230,54 @@ async fn prompt_contribution_uses_memory_summary_when_enabled() {
         fragments[0]
             .text()
             .contains("Remember repository-specific implementation preferences.")
+    );
+}
+
+#[tokio::test]
+async fn prompt_contribution_includes_scoped_memory_when_global_memories_are_disabled() {
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let project_root = tempfile::tempdir().expect("project root");
+    let backends = MemoryToolBackends::new(
+        &tempdir.path().abs(),
+        /*global_enabled*/ false,
+        /*scoped_enabled*/ true,
+        "thread-1",
+        &project_root.path().abs(),
+    );
+    backends
+        .write_note(
+            MemoryScope::Session,
+            "Current task preference".to_string(),
+            "Remember this only for the current session.".to_string(),
+        )
+        .await
+        .expect("write session note");
+
+    let extension = MemoriesExtension::default();
+    let thread_store = ExtensionData::new("thread-1");
+    thread_store.insert(MemoriesExtensionConfig {
+        global_enabled: false,
+        scoped_enabled: true,
+        dedicated_tools: true,
+        codex_home: tempdir.path().abs(),
+        project_root: project_root.path().abs(),
+    });
+
+    let fragments = extension
+        .contribute(&ExtensionData::new("session"), &thread_store)
+        .await;
+
+    assert_eq!(fragments.len(), 1);
+    assert_eq!(fragments[0].slot(), PromptSlot::ContextualUser);
+    assert!(
+        fragments[0]
+            .text()
+            .contains("<scoped_memory_context>")
+    );
+    assert!(
+        fragments[0]
+            .text()
+            .contains("Remember this only for the current session.")
     );
 }
 
@@ -234,6 +322,122 @@ async fn add_ad_hoc_note_tool_creates_note_file() {
         .expect("read ad-hoc note"),
         "Remember to keep PR review comments concise."
     );
+}
+
+#[tokio::test]
+async fn write_note_tool_creates_scoped_note_readable_by_scope() {
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let project_root = tempfile::tempdir().expect("project root");
+    let backends = MemoryToolBackends::new(
+        &tempdir.path().abs(),
+        /*global_enabled*/ false,
+        /*scoped_enabled*/ true,
+        "thread-1",
+        &project_root.path().abs(),
+    );
+    let write_tool = memory_tool_from_backends(backends.clone(), crate::WRITE_NOTE_TOOL_NAME);
+    let write_payload = ToolPayload::Function {
+        arguments: json!({
+            "scope": "session",
+            "title": "Review Style",
+            "note": "Remember to keep review comments concise.",
+        })
+        .to_string(),
+    };
+
+    let write_output = write_tool
+        .handle(ToolCall {
+            turn_id: "turn-1".to_string(),
+            call_id: "call-1".to_string(),
+            tool_name: memory_tool_name(crate::WRITE_NOTE_TOOL_NAME),
+            model: "gpt-test".to_string(),
+            truncation_policy: TruncationPolicy::Bytes(1024),
+            conversation_history: codex_extension_api::ConversationHistory::default(),
+            turn_item_emitter: Arc::new(NoopTurnItemEmitter),
+            payload: write_payload.clone(),
+        })
+        .await
+        .expect("scoped note should be written");
+    let write_response = write_output
+        .post_tool_use_response("call-1", &write_payload)
+        .expect("write response");
+    let path = write_response
+        .pointer("/path")
+        .and_then(serde_json::Value::as_str)
+        .expect("write response path");
+    assert_eq!(write_response.pointer("/scope"), Some(&json!("session")));
+
+    let read_tool = memory_tool_from_backends(backends, crate::READ_TOOL_NAME);
+    let read_payload = ToolPayload::Function {
+        arguments: json!({
+            "scope": "session",
+            "path": path,
+        })
+        .to_string(),
+    };
+
+    let read_output = read_tool
+        .handle(ToolCall {
+            turn_id: "turn-1".to_string(),
+            call_id: "call-2".to_string(),
+            tool_name: memory_tool_name(crate::READ_TOOL_NAME),
+            model: "gpt-test".to_string(),
+            truncation_policy: TruncationPolicy::Bytes(1024),
+            conversation_history: codex_extension_api::ConversationHistory::default(),
+            turn_item_emitter: Arc::new(NoopTurnItemEmitter),
+            payload: read_payload.clone(),
+        })
+        .await
+        .expect("scoped note should be readable");
+
+    assert_eq!(
+        read_output.post_tool_use_response("call-2", &read_payload),
+        Some(json!({
+            "path": path,
+            "content": "Remember to keep review comments concise.",
+            "start_line_number": 1,
+            "truncated": false
+        }))
+    );
+}
+
+#[tokio::test]
+async fn read_tool_requires_scope_when_global_memories_are_disabled() {
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let project_root = tempfile::tempdir().expect("project root");
+    let backends = MemoryToolBackends::new(
+        &tempdir.path().abs(),
+        /*global_enabled*/ false,
+        /*scoped_enabled*/ true,
+        "thread-1",
+        &project_root.path().abs(),
+    );
+    let read_tool = memory_tool_from_backends(backends, crate::READ_TOOL_NAME);
+    let payload = ToolPayload::Function {
+        arguments: json!({
+            "path": "MEMORY.md",
+        })
+        .to_string(),
+    };
+
+    let result = read_tool
+        .handle(ToolCall {
+            turn_id: "turn-1".to_string(),
+            call_id: "call-1".to_string(),
+            tool_name: memory_tool_name(crate::READ_TOOL_NAME),
+            model: "gpt-test".to_string(),
+            truncation_policy: TruncationPolicy::Bytes(1024),
+            conversation_history: codex_extension_api::ConversationHistory::default(),
+            turn_item_emitter: Arc::new(NoopTurnItemEmitter),
+            payload,
+        })
+        .await;
+
+    let err = match result {
+        Ok(_) => panic!("global-disabled read without scope should fail"),
+        Err(err) => err,
+    };
+    assert!(err.to_string().contains("scope"));
 }
 
 #[tokio::test]
@@ -488,11 +692,18 @@ async fn search_tool_rejects_legacy_single_query() {
 }
 
 fn memory_tool(memory_root: &Path, tool_name: &str) -> Arc<dyn ToolExecutor<ToolCall>> {
-    let expected_tool_name = memory_tool_name(tool_name);
-    crate::tools::memory_tools(
-        LocalMemoriesBackend::from_memory_root(memory_root),
-        /*metrics_client*/ None,
+    memory_tool_from_backends(
+        MemoryToolBackends::from_global_memory_root(memory_root),
+        tool_name,
     )
+}
+
+fn memory_tool_from_backends(
+    backends: MemoryToolBackends,
+    tool_name: &str,
+) -> Arc<dyn ToolExecutor<ToolCall>> {
+    let expected_tool_name = memory_tool_name(tool_name);
+    crate::tools::memory_tools(backends, /*metrics_client*/ None)
     .into_iter()
     .find(|tool| tool.tool_name() == expected_tool_name)
     .unwrap_or_else(|| panic!("{tool_name} tool should be registered"))

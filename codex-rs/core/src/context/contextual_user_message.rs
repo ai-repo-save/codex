@@ -12,6 +12,7 @@ use super::LegacyApplyPatchExecCommandWarning;
 use super::LegacyModelMismatchWarning;
 use super::LegacyUnifiedExecProcessLimitWarning;
 use super::SkillInstructions;
+use super::ScopedMemoryContextFragment;
 use super::SubagentNotification;
 use super::TurnAborted;
 use super::UserInstructions;
@@ -27,6 +28,8 @@ static CONTEXT_REWIND_CARRY_FORWARD_REGISTRATION: FragmentRegistrationProxy<
     ContextRewindCarryForward,
 > = FragmentRegistrationProxy::new();
 static SKILL_INSTRUCTIONS_REGISTRATION: FragmentRegistrationProxy<SkillInstructions> =
+    FragmentRegistrationProxy::new();
+static SCOPED_MEMORY_CONTEXT_REGISTRATION: FragmentRegistrationProxy<ScopedMemoryContextFragment> =
     FragmentRegistrationProxy::new();
 static USER_SHELL_COMMAND_REGISTRATION: FragmentRegistrationProxy<UserShellCommand> =
     FragmentRegistrationProxy::new();
@@ -53,6 +56,7 @@ static CONTEXTUAL_USER_FRAGMENTS: &[&dyn FragmentRegistration] = &[
     &ADDITIONAL_CONTEXT_REGISTRATION,
     &CONTEXT_REWIND_CARRY_FORWARD_REGISTRATION,
     &SKILL_INSTRUCTIONS_REGISTRATION,
+    &SCOPED_MEMORY_CONTEXT_REGISTRATION,
     &USER_SHELL_COMMAND_REGISTRATION,
     &TURN_ABORTED_REGISTRATION,
     &SUBAGENT_NOTIFICATION_REGISTRATION,

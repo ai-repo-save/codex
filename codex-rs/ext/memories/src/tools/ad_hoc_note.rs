@@ -11,8 +11,8 @@ use serde_json::json;
 use crate::ADD_AD_HOC_NOTE_TOOL_NAME;
 use crate::backend::AddAdHocMemoryNoteRequest;
 use crate::backend::AddAdHocMemoryNoteResponse;
-use crate::backend::MemoriesBackend;
 use crate::metrics::record_tool_call;
+use crate::scoped::MemoryToolBackends;
 
 use super::backend_error_to_function_call;
 use super::memory_function_tool;
@@ -36,16 +36,13 @@ struct AddAdHocNoteArgs {
 }
 
 #[derive(Clone)]
-pub(super) struct AddAdHocNoteTool<B> {
-    pub(super) backend: B,
+pub(super) struct AddAdHocNoteTool {
+    pub(super) backends: MemoryToolBackends,
     pub(super) metrics_client: Option<MetricsClient>,
 }
 
 #[async_trait::async_trait]
-impl<B> ToolExecutor<ToolCall> for AddAdHocNoteTool<B>
-where
-    B: MemoriesBackend,
-{
+impl ToolExecutor<ToolCall> for AddAdHocNoteTool {
     fn tool_name(&self) -> ToolName {
         memory_tool_name(ADD_AD_HOC_NOTE_TOOL_NAME)
     }
@@ -62,10 +59,10 @@ where
         call: ToolCall,
     ) -> Result<Box<dyn codex_extension_api::ToolOutput>, codex_extension_api::FunctionCallError>
     {
-        let backend = self.backend.clone();
+        let backends = self.backends.clone();
         let args: AddAdHocNoteArgs = parse_args(&call)?;
-        let response = backend
-            .add_ad_hoc_note(AddAdHocMemoryNoteRequest {
+        let response = backends
+            .add_global_ad_hoc_note(AddAdHocMemoryNoteRequest {
                 filename: args.filename,
                 note: args.note,
             })

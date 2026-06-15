@@ -13,10 +13,11 @@ use crate::LIST_TOOL_NAME;
 use crate::MAX_LIST_RESULTS;
 use crate::backend::ListMemoriesRequest;
 use crate::backend::ListMemoriesResponse;
-use crate::backend::MemoriesBackend;
 use crate::metrics::record_tool_call;
 use crate::metrics::scope_from_optional_path;
 use crate::metrics::truncated_tag;
+use crate::scoped::MemoryScope;
+use crate::scoped::MemoryToolBackends;
 
 use super::backend_error_to_function_call;
 use super::clamp_max_results;
@@ -27,6 +28,7 @@ use super::parse_args;
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ListArgs {
+    scope: Option<MemoryScope>,
     path: Option<String>,
     cursor: Option<String>,
     #[schemars(range(min = 1))]
@@ -34,16 +36,13 @@ struct ListArgs {
 }
 
 #[derive(Clone)]
-pub(super) struct ListTool<B> {
-    pub(super) backend: B,
+pub(super) struct ListTool {
+    pub(super) backends: MemoryToolBackends,
     pub(super) metrics_client: Option<MetricsClient>,
 }
 
 #[async_trait::async_trait]
-impl<B> ToolExecutor<ToolCall> for ListTool<B>
-where
-    B: MemoriesBackend,
-{
+impl ToolExecutor<ToolCall> for ListTool {
     fn tool_name(&self) -> ToolName {
         memory_tool_name(LIST_TOOL_NAME)
     }
@@ -51,7 +50,7 @@ where
     fn spec(&self) -> ToolSpec {
         memory_function_tool::<ListArgs, ListMemoriesResponse>(
             LIST_TOOL_NAME,
-            "List immediate files and directories under a path in the Codex memories store.",
+            "List immediate files and directories under a path in a Codex memories store. Optional scope may be global, session, or project; when global memories are disabled, scope must be session or project.",
         )
     }
 
@@ -60,19 +59,22 @@ where
         call: ToolCall,
     ) -> Result<Box<dyn codex_extension_api::ToolOutput>, codex_extension_api::FunctionCallError>
     {
-        let backend = self.backend.clone();
+        let backends = self.backends.clone();
         let args: ListArgs = parse_args(&call)?;
         let scope = scope_from_optional_path(args.path.as_deref(), "root");
-        let response = backend
-            .list(ListMemoriesRequest {
-                path: args.path,
-                cursor: args.cursor,
-                max_results: clamp_max_results(
-                    args.max_results,
-                    DEFAULT_LIST_MAX_RESULTS,
-                    MAX_LIST_RESULTS,
-                ),
-            })
+        let response = backends
+            .list(
+                args.scope,
+                ListMemoriesRequest {
+                    path: args.path,
+                    cursor: args.cursor,
+                    max_results: clamp_max_results(
+                        args.max_results,
+                        DEFAULT_LIST_MAX_RESULTS,
+                        MAX_LIST_RESULTS,
+                    ),
+                },
+            )
             .await;
         record_tool_call(
             self.metrics_client.as_ref(),

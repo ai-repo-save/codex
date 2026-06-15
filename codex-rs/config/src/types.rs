@@ -286,6 +286,8 @@ pub struct MemoriesToml {
     pub generate_memories: Option<bool>,
     /// When `false`, skip injecting memory usage instructions into developer prompts.
     pub use_memories: Option<bool>,
+    /// When `false`, disable session/project scoped memory tools and prompt context.
+    pub use_scoped_memories: Option<bool>,
     /// When `true`, expose dedicated memory tools through the extension tool surface.
     pub dedicated_tools: Option<bool>,
     /// Maximum number of recent raw memories retained for global consolidation.
@@ -315,6 +317,7 @@ pub struct MemoriesConfig {
     pub disable_on_external_context: bool,
     pub generate_memories: bool,
     pub use_memories: bool,
+    pub use_scoped_memories: bool,
     pub dedicated_tools: bool,
     pub max_raw_memories_for_consolidation: usize,
     pub max_unused_days: i64,
@@ -332,6 +335,7 @@ impl Default for MemoriesConfig {
             disable_on_external_context: false,
             generate_memories: true,
             use_memories: true,
+            use_scoped_memories: true,
             dedicated_tools: false,
             max_raw_memories_for_consolidation: DEFAULT_MEMORIES_MAX_RAW_MEMORIES_FOR_CONSOLIDATION,
             max_unused_days: DEFAULT_MEMORIES_MAX_UNUSED_DAYS,
@@ -354,6 +358,9 @@ impl From<MemoriesToml> for MemoriesConfig {
                 .unwrap_or(defaults.disable_on_external_context),
             generate_memories: toml.generate_memories.unwrap_or(defaults.generate_memories),
             use_memories: toml.use_memories.unwrap_or(defaults.use_memories),
+            use_scoped_memories: toml
+                .use_scoped_memories
+                .unwrap_or(defaults.use_scoped_memories),
             dedicated_tools: toml.dedicated_tools.unwrap_or(defaults.dedicated_tools),
             max_raw_memories_for_consolidation: toml
                 .max_raw_memories_for_consolidation

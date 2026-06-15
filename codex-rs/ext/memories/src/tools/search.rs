@@ -11,13 +11,14 @@ use serde_json::json;
 use crate::DEFAULT_SEARCH_MAX_RESULTS;
 use crate::MAX_SEARCH_RESULTS;
 use crate::SEARCH_TOOL_NAME;
-use crate::backend::MemoriesBackend;
 use crate::backend::SearchMatchMode;
 use crate::backend::SearchMemoriesRequest;
 use crate::backend::SearchMemoriesResponse;
 use crate::metrics::record_tool_call;
 use crate::metrics::scope_from_optional_path;
 use crate::metrics::truncated_tag;
+use crate::scoped::MemoryScope;
+use crate::scoped::MemoryToolBackends;
 
 use super::backend_error_to_function_call;
 use super::clamp_max_results;
@@ -28,6 +29,7 @@ use super::parse_args;
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct SearchArgs {
+    scope: Option<MemoryScope>,
     #[schemars(length(min = 1))]
     queries: Vec<String>,
     match_mode: Option<SearchMatchMode>,
@@ -42,16 +44,13 @@ struct SearchArgs {
 }
 
 #[derive(Clone)]
-pub(super) struct SearchTool<B> {
-    pub(super) backend: B,
+pub(super) struct SearchTool {
+    pub(super) backends: MemoryToolBackends,
     pub(super) metrics_client: Option<MetricsClient>,
 }
 
 #[async_trait::async_trait]
-impl<B> ToolExecutor<ToolCall> for SearchTool<B>
-where
-    B: MemoriesBackend,
-{
+impl ToolExecutor<ToolCall> for SearchTool {
     fn tool_name(&self) -> ToolName {
         memory_tool_name(SEARCH_TOOL_NAME)
     }
@@ -59,7 +58,7 @@ where
     fn spec(&self) -> ToolSpec {
         memory_function_tool::<SearchArgs, SearchMemoriesResponse>(
             SEARCH_TOOL_NAME,
-            "Search Codex memory files for substring matches, optionally normalizing separators or requiring all query substrings on the same line or within a line window.",
+            "Search Codex memory files for substring matches, optionally normalizing separators or requiring all query substrings on the same line or within a line window. Optional scope may be global, session, or project; when global memories are disabled, scope must be session or project.",
         )
     }
 
@@ -68,10 +67,11 @@ where
         call: ToolCall,
     ) -> Result<Box<dyn codex_extension_api::ToolOutput>, codex_extension_api::FunctionCallError>
     {
-        let backend = self.backend.clone();
+        let backends = self.backends.clone();
         let args: SearchArgs = parse_args(&call)?;
         let scope = scope_from_optional_path(args.path.as_deref(), "all");
-        let response = backend.search(args.into_request()).await;
+        let request_scope = args.scope;
+        let response = backends.search(request_scope, args.into_request()).await;
         record_tool_call(
             self.metrics_client.as_ref(),
             SEARCH_TOOL_NAME,
