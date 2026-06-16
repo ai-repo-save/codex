@@ -3,6 +3,7 @@ use super::*;
 use crate::codex_thread::TryStartTurnIfIdleRejectionReason;
 use crate::config::ConfigBuilder;
 use crate::config::ConfigOverrides;
+use crate::config::DEFAULT_CONTEXT_REMINDER_MESSAGE;
 use crate::config::test_config;
 use crate::context::ContextualUserFragment;
 use crate::context::RootContextReminder;
@@ -2048,6 +2049,10 @@ async fn root_context_reminder_texts(session: &Session, turn_context: &TurnConte
         .collect()
 }
 
+fn default_root_context_reminder(remaining_percent: i64) -> String {
+    RootContextReminder::new(remaining_percent, DEFAULT_CONTEXT_REMINDER_MESSAGE).render()
+}
+
 #[tokio::test]
 async fn record_token_usage_info_adds_root_context_reminder_when_threshold_crosses() {
     let (session, mut turn_context) = make_session_and_context().await;
@@ -2066,7 +2071,28 @@ async fn record_token_usage_info_adds_root_context_reminder_when_threshold_cross
         .await;
 
     assert_eq!(
-        vec![RootContextReminder::new(15).render()],
+        vec![default_root_context_reminder(15)],
+        root_context_reminder_texts(&session, &turn_context).await
+    );
+}
+
+#[tokio::test]
+async fn record_token_usage_info_renders_configured_root_context_reminder_message() {
+    const CONTEXT_REMINDER_MESSAGE: &str =
+        "Only {remaining_percent}% context remains. Save state first.";
+    let (session, mut turn_context) = make_session_and_context().await;
+    configure_context_reminder_test_window(&mut turn_context);
+    let codex_home = tempfile::tempdir().expect("create temp dir");
+    let mut config = build_test_config(codex_home.path()).await;
+    config.context_reminder.message = CONTEXT_REMINDER_MESSAGE.to_string();
+    turn_context.config = Arc::new(config);
+
+    session
+        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
+        .await;
+
+    assert_eq!(
+        vec!["<root_context_reminder>\nOnly 15% context remains. Save state first.\n</root_context_reminder>".to_string()],
         root_context_reminder_texts(&session, &turn_context).await
     );
 }
@@ -2084,7 +2110,7 @@ async fn record_token_usage_info_does_not_repeat_root_context_reminder_while_low
         .await;
 
     assert_eq!(
-        vec![RootContextReminder::new(15).render()],
+        vec![default_root_context_reminder(15)],
         root_context_reminder_texts(&session, &turn_context).await
     );
 }
@@ -2106,8 +2132,8 @@ async fn record_token_usage_info_repeats_root_context_reminder_after_recovery() 
 
     assert_eq!(
         vec![
-            RootContextReminder::new(15).render(),
-            RootContextReminder::new(15).render(),
+            default_root_context_reminder(15),
+            default_root_context_reminder(15),
         ],
         root_context_reminder_texts(&session, &turn_context).await
     );

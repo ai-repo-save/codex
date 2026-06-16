@@ -39,6 +39,7 @@ use codex_config::types::ApprovalsReviewer;
 use codex_config::types::BundledSkillsConfig;
 use codex_config::types::FeedbackConfigToml;
 use codex_config::types::HistoryPersistence;
+use codex_config::types::MAX_CONTEXT_REMINDER_MESSAGE_BYTES;
 use codex_config::types::McpServerEnvVar;
 use codex_config::types::McpServerOAuthConfig;
 use codex_config::types::McpServerToolConfig;
@@ -10294,6 +10295,7 @@ async fn context_reminder_config_from_table() -> std::io::Result<()> {
         r#"[context_reminder]
 enabled = false
 remaining_percent = 20
+message = "Only {remaining_percent}% remains."
 "#,
     )?;
 
@@ -10305,6 +10307,10 @@ remaining_percent = 20
 
     assert!(!config.context_reminder.enabled);
     assert_eq!(config.context_reminder.remaining_percent, 20);
+    assert_eq!(
+        config.context_reminder.message,
+        "Only {remaining_percent}% remains."
+    );
 
     Ok(())
 }
@@ -10334,6 +10340,42 @@ remaining_percent = {value}
             .build()
             .await
             .expect_err("invalid context reminder remaining percent should fail");
+        assert_eq!(err.to_string(), message);
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn context_reminder_rejects_invalid_message() -> std::io::Result<()> {
+    for (value, message) in [
+        (
+            "\"   \"".to_string(),
+            "context_reminder.message must not be empty".to_string(),
+        ),
+        (
+            format!("\"{}\"", "x".repeat(MAX_CONTEXT_REMINDER_MESSAGE_BYTES + 1)),
+            format!(
+                "context_reminder.message exceeds the {MAX_CONTEXT_REMINDER_MESSAGE_BYTES}-byte limit"
+            ),
+        ),
+    ] {
+        let codex_home = TempDir::new()?;
+        std::fs::write(
+            codex_home.path().join(CONFIG_TOML_FILE),
+            format!(
+                r#"[context_reminder]
+message = {value}
+"#
+            ),
+        )?;
+
+        let err = ConfigBuilder::without_managed_config_for_tests()
+            .codex_home(codex_home.path().to_path_buf())
+            .fallback_cwd(Some(codex_home.path().to_path_buf()))
+            .build()
+            .await
+            .expect_err("invalid context reminder message should fail");
         assert_eq!(err.to_string(), message);
     }
 

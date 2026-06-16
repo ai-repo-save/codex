@@ -1,17 +1,21 @@
 use super::ContextualUserFragment;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RootContextReminder {
+pub(crate) struct RootContextReminder<'a> {
     pub(crate) remaining_percent: i64,
+    pub(crate) message_template: &'a str,
 }
 
-impl RootContextReminder {
-    pub(crate) fn new(remaining_percent: i64) -> Self {
-        Self { remaining_percent }
+impl<'a> RootContextReminder<'a> {
+    pub(crate) fn new(remaining_percent: i64, message_template: &'a str) -> Self {
+        Self {
+            remaining_percent,
+            message_template,
+        }
     }
 }
 
-impl ContextualUserFragment for RootContextReminder {
+impl ContextualUserFragment for RootContextReminder<'_> {
     fn role(&self) -> &'static str {
         "developer"
     }
@@ -25,9 +29,10 @@ impl ContextualUserFragment for RootContextReminder {
     }
 
     fn body(&self) -> String {
-        format!(
-            "\nContext remaining is about {}%. Before continuing substantial work, call `request_context_compaction` and preserve the goal, verified state, current changes, and next step.\n",
-            self.remaining_percent
-        )
+        let remaining_percent = self.remaining_percent.to_string();
+        let message = self
+            .message_template
+            .replace("{remaining_percent}", &remaining_percent);
+        format!("\n{message}\n")
     }
 }

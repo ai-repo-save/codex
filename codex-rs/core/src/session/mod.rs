@@ -3168,7 +3168,11 @@ impl Session {
     ) {
         let Some(reminder_message) =
             crate::context_manager::updates::build_developer_update_item(vec![
-                RootContextReminder::new(remaining_percent).render(),
+                RootContextReminder::new(
+                    remaining_percent,
+                    &turn_context.config.context_reminder.message,
+                )
+                .render(),
             ])
         else {
             return;

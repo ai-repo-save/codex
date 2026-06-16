@@ -42,6 +42,7 @@ use codex_config::types::ApprovalsReviewer;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_config::types::DEFAULT_CONTEXT_REMINDER_REMAINING_PERCENT;
 use codex_config::types::History;
+use codex_config::types::MAX_CONTEXT_REMINDER_MESSAGE_BYTES;
 use codex_config::types::McpServerConfig;
 use codex_config::types::McpServerDisabledReason;
 use codex_config::types::McpServerTransportConfig;
@@ -175,6 +176,7 @@ const DEFAULT_IGNORE_LARGE_UNTRACKED_DIRS: i64 = 200;
 const DEFAULT_IGNORE_LARGE_UNTRACKED_FILES: i64 = 10 * 1024 * 1024;
 const MAX_GOAL_PROMPT_OVERRIDE_BYTES: usize = 16 * 1024;
 const MAX_AUTO_REVIEW_PROMPT_OVERRIDE_BYTES: usize = 16 * 1024;
+pub(crate) const DEFAULT_CONTEXT_REMINDER_MESSAGE: &str = "Context remaining is about {remaining_percent}%. Before continuing substantial work, call `request_context_compaction` and preserve the goal, verified state, current changes, and next step.";
 
 /// Compatibility-only config retained so legacy `ghost_snapshot` settings
 /// continue to load even though snapshots are no longer produced.
@@ -1125,10 +1127,11 @@ pub struct CodeModeConfig {
     pub excluded_tool_namespaces: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ContextReminderConfig {
     pub enabled: bool,
     pub remaining_percent: i64,
+    pub message: String,
 }
 
 impl Default for ContextReminderConfig {
@@ -1136,6 +1139,7 @@ impl Default for ContextReminderConfig {
         Self {
             enabled: true,
             remaining_percent: DEFAULT_CONTEXT_REMINDER_REMAINING_PERCENT,
+            message: DEFAULT_CONTEXT_REMINDER_MESSAGE.to_string(),
         }
     }
 }
@@ -2425,6 +2429,10 @@ fn resolve_context_reminder_config(config_toml: &ConfigToml) -> ContextReminderC
         remaining_percent: base
             .and_then(|config| config.remaining_percent)
             .unwrap_or(default.remaining_percent),
+        message: base
+            .and_then(|config| config.message.as_ref())
+            .cloned()
+            .unwrap_or(default.message),
     }
 }
 
@@ -2671,6 +2679,23 @@ fn validate_context_reminder_remaining_percent(value: i64) -> std::io::Result<()
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!("{LABEL} must be at most 100"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_context_reminder_message(value: &str) -> std::io::Result<()> {
+    const LABEL: &str = "context_reminder.message";
+    if value.trim().is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{LABEL} must not be empty"),
+        ));
+    }
+    if value.len() > MAX_CONTEXT_REMINDER_MESSAGE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{LABEL} exceeds the {MAX_CONTEXT_REMINDER_MESSAGE_BYTES}-byte limit"),
         ));
     }
     Ok(())
@@ -3258,6 +3283,7 @@ impl Config {
         }
         validate_multi_agent_v2_tool_namespace(multi_agent_v2.tool_namespace.as_deref())?;
         validate_context_reminder_remaining_percent(context_reminder.remaining_percent)?;
+        validate_context_reminder_message(&context_reminder.message)?;
         let agent_max_threads = cfg.agents.as_ref().and_then(|agents| agents.max_threads);
         if agent_max_threads == Some(0) {
             return Err(std::io::Error::new(

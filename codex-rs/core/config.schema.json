@@ -824,6 +824,12 @@
           "default": true,
           "type": "boolean"
         },
+        "message": {
+          "default": null,
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
         "remaining_percent": {
           "default": 15,
           "format": "int64",
