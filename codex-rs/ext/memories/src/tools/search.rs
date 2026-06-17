@@ -49,7 +49,6 @@ pub(super) struct SearchTool {
     pub(super) metrics_client: Option<MetricsClient>,
 }
 
-#[async_trait::async_trait]
 impl ToolExecutor<ToolCall> for SearchTool {
     fn tool_name(&self) -> ToolName {
         memory_tool_name(SEARCH_TOOL_NAME)
@@ -62,7 +61,13 @@ impl ToolExecutor<ToolCall> for SearchTool {
         )
     }
 
-    async fn handle(
+    fn handle(&self, call: ToolCall) -> codex_extension_api::ToolExecutorFuture<'_> {
+        Box::pin(self.handle_call(call))
+    }
+}
+
+impl SearchTool {
+    async fn handle_call(
         &self,
         call: ToolCall,
     ) -> Result<Box<dyn codex_extension_api::ToolOutput>, codex_extension_api::FunctionCallError>

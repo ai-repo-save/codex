@@ -104,7 +104,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl ToolExecutor<ToolInvocation> for SaveContextAnchorHandler {
     fn tool_name(&self) -> ToolName {
         ToolName::plain(SAVE_CONTEXT_ANCHOR_TOOL_NAME)
@@ -114,7 +113,13 @@ impl ToolExecutor<ToolInvocation> for SaveContextAnchorHandler {
         create_save_context_anchor_tool()
     }
 
-    async fn handle(
+    fn handle(&self, invocation: ToolInvocation) -> codex_tools::ToolExecutorFuture<'_> {
+        Box::pin(self.handle_call(invocation))
+    }
+}
+
+impl SaveContextAnchorHandler {
+    async fn handle_call(
         &self,
         invocation: ToolInvocation,
     ) -> Result<Box<dyn crate::tools::context::ToolOutput>, FunctionCallError> {
@@ -155,7 +160,6 @@ impl ToolExecutor<ToolInvocation> for SaveContextAnchorHandler {
 
 impl CoreToolRuntime for SaveContextAnchorHandler {}
 
-#[async_trait::async_trait]
 impl ToolExecutor<ToolInvocation> for RewindContextToAnchorHandler {
     fn tool_name(&self) -> ToolName {
         ToolName::plain(REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME)
@@ -165,7 +169,13 @@ impl ToolExecutor<ToolInvocation> for RewindContextToAnchorHandler {
         create_rewind_context_to_anchor_tool()
     }
 
-    async fn handle(
+    fn handle(&self, invocation: ToolInvocation) -> codex_tools::ToolExecutorFuture<'_> {
+        Box::pin(self.handle_call(invocation))
+    }
+}
+
+impl RewindContextToAnchorHandler {
+    async fn handle_call(
         &self,
         invocation: ToolInvocation,
     ) -> Result<Box<dyn crate::tools::context::ToolOutput>, FunctionCallError> {

@@ -114,7 +114,6 @@ impl Session {
         ))])
         .await;
         self.flush_rollout().await.map_err(CodexErr::Io)?;
-        self.services.model_client.advance_window_generation();
         Ok(rewind_event)
     }
 }

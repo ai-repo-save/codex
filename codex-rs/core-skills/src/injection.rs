@@ -13,6 +13,7 @@ use codex_exec_server::LOCAL_FS;
 use codex_otel::SessionTelemetry;
 use codex_protocol::user_input::UserInput;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_utils_path_uri::PathUri;
 use codex_utils_plugins::mention_syntax::TOOL_MENTION_SIGIL;
 
 #[derive(Debug, Default)]
@@ -53,8 +54,9 @@ pub async fn load_skill_injection(
     let fs = loaded_skills
         .and_then(|outcome| outcome.file_system_for_skill(skill))
         .unwrap_or_else(|| Arc::clone(&LOCAL_FS));
+    let path = PathUri::from_abs_path(&skill.path_to_skills_md);
     let contents = fs
-        .read_file_text(&skill.path_to_skills_md, /*sandbox*/ None)
+        .read_file_text(&path, /*sandbox*/ None)
         .await
         .map_err(|err| {
             format!(

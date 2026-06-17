@@ -98,6 +98,7 @@ fn compacted(message: &str, replacement_history: Option<Vec<ResponseItem>>) -> C
     CompactedItem {
         message: message.to_string(),
         replacement_history,
+        window_id: None,
     }
 }
 

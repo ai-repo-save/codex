@@ -55,7 +55,6 @@ pub(super) struct WriteNoteTool {
     pub(super) metrics_client: Option<MetricsClient>,
 }
 
-#[async_trait::async_trait]
 impl ToolExecutor<ToolCall> for WriteNoteTool {
     fn tool_name(&self) -> ToolName {
         memory_tool_name(WRITE_NOTE_TOOL_NAME)
@@ -68,7 +67,13 @@ impl ToolExecutor<ToolCall> for WriteNoteTool {
         )
     }
 
-    async fn handle(
+    fn handle(&self, call: ToolCall) -> codex_extension_api::ToolExecutorFuture<'_> {
+        Box::pin(self.handle_call(call))
+    }
+}
+
+impl WriteNoteTool {
+    async fn handle_call(
         &self,
         call: ToolCall,
     ) -> Result<Box<dyn codex_extension_api::ToolOutput>, codex_extension_api::FunctionCallError>

@@ -84,7 +84,6 @@ impl ToolOutput for RequestContextCompactionOutput {
     }
 }
 
-#[async_trait::async_trait]
 impl ToolExecutor<ToolInvocation> for RequestContextCompactionHandler {
     fn tool_name(&self) -> ToolName {
         ToolName::plain(REQUEST_CONTEXT_COMPACTION_TOOL_NAME)
@@ -94,7 +93,13 @@ impl ToolExecutor<ToolInvocation> for RequestContextCompactionHandler {
         create_request_context_compaction_tool()
     }
 
-    async fn handle(
+    fn handle(&self, invocation: ToolInvocation) -> codex_tools::ToolExecutorFuture<'_> {
+        Box::pin(self.handle_call(invocation))
+    }
+}
+
+impl RequestContextCompactionHandler {
+    async fn handle_call(
         &self,
         invocation: ToolInvocation,
     ) -> Result<Box<dyn crate::tools::context::ToolOutput>, FunctionCallError> {

@@ -114,7 +114,6 @@ impl ToolOutput for ContextUsageOutput {
     }
 }
 
-#[async_trait::async_trait]
 impl ToolExecutor<ToolInvocation> for ContextUsageHandler {
     fn tool_name(&self) -> ToolName {
         ToolName::plain(GET_CONTEXT_USAGE_TOOL_NAME)
@@ -124,7 +123,13 @@ impl ToolExecutor<ToolInvocation> for ContextUsageHandler {
         create_get_context_usage_tool()
     }
 
-    async fn handle(
+    fn handle(&self, invocation: ToolInvocation) -> codex_tools::ToolExecutorFuture<'_> {
+        Box::pin(self.handle_call(invocation))
+    }
+}
+
+impl ContextUsageHandler {
+    async fn handle_call(
         &self,
         invocation: ToolInvocation,
     ) -> Result<Box<dyn crate::tools::context::ToolOutput>, FunctionCallError> {
