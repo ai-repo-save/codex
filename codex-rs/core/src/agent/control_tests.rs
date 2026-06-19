@@ -72,6 +72,7 @@ fn assistant_message(text: &str, phase: Option<MessagePhase>) -> ResponseItem {
             text: text.to_string(),
         }],
         phase,
+        metadata: None,
     }
 }
 
@@ -91,6 +92,7 @@ fn spawn_agent_call(call_id: &str) -> ResponseItem {
         namespace: None,
         arguments: "{}".to_string(),
         call_id: call_id.to_string(),
+        metadata: None,
     }
 }
 
@@ -865,6 +867,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
                         text: "You are /root.".to_string(),
                     }],
                     phase: None,
+                    metadata: None,
                 },
                 ResponseItem::Message {
                     id: None,
@@ -873,6 +876,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
                         text: "Parent subagent guidance.".to_string(),
                     }],
                     phase: None,
+                    metadata: None,
                 },
                 assistant_message("parent commentary", Some(MessagePhase::Commentary)),
                 assistant_message("parent final answer", Some(MessagePhase::FinalAnswer)),
@@ -882,6 +886,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
                     summary: Vec::new(),
                     content: None,
                     encrypted_content: None,
+                    metadata: None,
                 },
                 trigger_message.to_response_input_item().into(),
                 spawn_agent_call(&parent_spawn_call_id),
@@ -907,7 +912,6 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         .flush_rollout()
         .await
         .expect("parent rollout should flush");
-
     let child_thread_id = harness
         .control
         .spawn_agent_with_metadata(
@@ -945,6 +949,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
                 text: "parent seed context".to_string(),
             }],
             phase: None,
+            metadata: None,
         },
         ResponseItem::Message {
             id: None,
@@ -962,6 +967,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
                 text: "Child subagent guidance.".to_string(),
             }],
             phase: None,
+            metadata: None,
         },
         ResponseItem::Message {
             id: None,
@@ -1100,6 +1106,7 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history() {
                 text: "compacted parent summary".to_string(),
             }],
             phase: None,
+            metadata: None,
         },
         ResponseItem::Message {
             id: None,
@@ -1108,6 +1115,7 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history() {
                 text: "Parent root guidance.".to_string(),
             }],
             phase: None,
+            metadata: None,
         },
     ];
     parent_thread
@@ -1405,6 +1413,7 @@ async fn spawn_agent_fork_last_n_turns_drops_parent_startup_prefix_when_under_li
                     text: "parent startup developer context".to_string(),
                 }],
                 phase: None,
+                metadata: None,
             }],
         )
         .await;
@@ -1526,6 +1535,7 @@ async fn spawn_agent_fork_last_n_turns_strips_parent_usage_hints() {
                         text: "Parent root guidance.".to_string(),
                     }],
                     phase: None,
+                    metadata: None,
                 },
                 spawn_agent_call(&parent_spawn_call_id),
             ],

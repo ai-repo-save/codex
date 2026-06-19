@@ -325,6 +325,7 @@ mod tests {
                 text: "extension history".to_string(),
             }],
             phase: None,
+            metadata: None,
         };
         session
             .record_conversation_items(&turn, std::slice::from_ref(&history_item))
