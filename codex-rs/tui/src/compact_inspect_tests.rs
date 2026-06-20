@@ -110,6 +110,7 @@ fn message(role: &str, text: &str) -> ResponseItem {
             text: text.to_string(),
         }],
         phase: None,
+        metadata: None,
     }
 }
 

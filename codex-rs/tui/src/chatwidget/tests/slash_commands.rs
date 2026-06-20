@@ -2714,6 +2714,7 @@ fn compact_inspect_message(role: &str, text: &str) -> ResponseItem {
             text: text.to_string(),
         }],
         phase: None,
+        metadata: None,
     }
 }
 
