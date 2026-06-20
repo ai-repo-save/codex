@@ -2384,18 +2384,6 @@
     }
   },
   "properties": {
-    "activePermissionProfile": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/ActivePermissionProfile"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "Named or implicit built-in profile that produced the active permissions, when known."
-    },
     "approvalPolicy": {
       "$ref": "#/definitions/AskForApproval"
     },
@@ -2409,18 +2397,6 @@
     },
     "cwd": {
       "$ref": "#/definitions/AbsolutePathBuf"
-    },
-    "initialTurnsPage": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/TurnsPage"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "`thread/turns/list` page returned when requested by `initialTurnsPage`."
     },
     "instructionSources": {
       "default": [],
@@ -2445,14 +2421,6 @@
           "type": "null"
         }
       ]
-    },
-    "runtimeWorkspaceRoots": {
-      "default": [],
-      "description": "Thread-scoped runtime workspace roots used to materialize `:workspace_roots`.",
-      "items": {
-        "$ref": "#/definitions/AbsolutePathBuf"
-      },
-      "type": "array"
     },
     "sandbox": {
       "allOf": [
