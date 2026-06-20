@@ -89,6 +89,13 @@
         "null"
       ]
     },
+    "parentThreadId": {
+      "description": "Optional direct parent thread filter.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "searchTerm": {
       "description": "Optional substring filter for the extracted thread title.",
       "type": [
