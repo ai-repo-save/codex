@@ -559,8 +559,7 @@ mod tests {
         assert_eq!(
             parsed.data,
             PostToolUseHandlerData {
-                should_stop: false,
-                stop_reason: None,
+                should_block: false,
                 additional_contexts_for_model: Vec::new(),
                 feedback_messages_for_model: Vec::new(),
                 updated_tool_output: Some(json!("read /tmp/codex-output.txt")),
@@ -665,6 +664,8 @@ mod tests {
                 should_block: false,
                 additional_contexts_for_model: Vec::new(),
                 feedback_messages_for_model: vec!["PostToolUse hook stopped execution".to_string()],
+                updated_tool_output: None,
+                updated_mcp_tool_output: None,
             }
         );
         assert_eq!(parsed.completed.run.status, HookRunStatus::Stopped);
