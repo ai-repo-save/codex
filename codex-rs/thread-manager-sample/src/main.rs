@@ -20,6 +20,7 @@ use codex_core_api::AutoReviewConfig;
 use codex_core_api::CodexHomeUserInstructionsProvider;
 use codex_core_api::CodexThread;
 use codex_core_api::Config;
+use codex_core_api::ContextReminderConfig;
 use codex_core_api::ConfigLayerStack;
 use codex_core_api::Constrained;
 use codex_core_api::EnvironmentManager;
@@ -201,6 +202,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         include_skill_instructions: false,
         include_environment_context: false,
         compact_prompt: None,
+        context_reminder: ContextReminderConfig::default(),
         goal_prompt_templates: GoalPromptTemplates::default(),
         notify: None,
         tui_notifications: TuiNotificationSettings::default(),
