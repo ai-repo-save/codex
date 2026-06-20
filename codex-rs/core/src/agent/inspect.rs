@@ -128,7 +128,9 @@ pub(crate) fn summarize_transcript_tail(
                 tool_names_by_call_id.insert(call_id.clone(), tool_name.clone());
                 transcript_tail_entry("tool", "function_call", Some(tool_name), arguments.clone())
             }
-            ResponseItem::FunctionCallOutput { call_id, output } => {
+            ResponseItem::FunctionCallOutput {
+                call_id, output, ..
+            } => {
                 output.body.to_text().and_then(|text| {
                     transcript_tail_entry(
                         "tool",
@@ -156,6 +158,7 @@ pub(crate) fn summarize_transcript_tail(
                 call_id,
                 name,
                 output,
+                ..
             } => output.body.to_text().and_then(|text| {
                 transcript_tail_entry(
                     "tool",
@@ -200,7 +203,7 @@ pub(crate) fn summarize_transcript_tail(
             ),
             ResponseItem::AgentMessage { .. } => None,
             ResponseItem::Compaction { .. }
-            | ResponseItem::CompactionTrigger
+            | ResponseItem::CompactionTrigger { .. }
             | ResponseItem::ContextCompaction { .. }
             | ResponseItem::Other => None,
         };
