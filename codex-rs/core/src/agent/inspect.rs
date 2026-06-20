@@ -130,16 +130,14 @@ pub(crate) fn summarize_transcript_tail(
             }
             ResponseItem::FunctionCallOutput {
                 call_id, output, ..
-            } => {
-                output.body.to_text().and_then(|text| {
-                    transcript_tail_entry(
-                        "tool",
-                        "function_call_output",
-                        tool_names_by_call_id.get(call_id).cloned(),
-                        text,
-                    )
-                })
-            }
+            } => output.body.to_text().and_then(|text| {
+                transcript_tail_entry(
+                    "tool",
+                    "function_call_output",
+                    tool_names_by_call_id.get(call_id).cloned(),
+                    text,
+                )
+            }),
             ResponseItem::CustomToolCall {
                 call_id,
                 name,

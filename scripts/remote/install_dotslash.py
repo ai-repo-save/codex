@@ -81,12 +81,12 @@ def install_command(config: InstallDotslashConfig) -> str:
         "exit 2; "
         ";; esac; "
         'tmpdir="$(mktemp -d)"; '
-        'trap \'rm -rf "$tmpdir"\' EXIT; '
+        "trap 'rm -rf \"$tmpdir\"' EXIT; "
         f"url=https://github.com/facebook/dotslash/releases/download/v{DOTSLASH_VERSION}/dotslash-ubuntu-22.04.$arch.tar.gz; "
         'printf "installing dotslash from %s\\n" "$url"; '
         'timeout 120 curl -LSfs "$url" -o "$tmpdir/dotslash.tar.gz"; '
         f"mkdir -p {install_dir}; "
-        f"tar -xzf \"$tmpdir/dotslash.tar.gz\" -C {install_dir}; "
+        f'tar -xzf "$tmpdir/dotslash.tar.gz" -C {install_dir}; '
         f"{install_dir}/dotslash --version; "
         f'printf "dotslash installed at %s/dotslash\\n" {install_dir}'
     )

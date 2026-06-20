@@ -652,9 +652,9 @@ impl ToolRegistry {
                         .feedback_message
                         .map(|feedback_message| (feedback_message, /*success*/ None))
                         .or_else(|| {
-                            outcome
-                                .updated_tool_output
-                                .map(|updated_tool_output| (updated_tool_output, /*success*/ Some(true)))
+                            outcome.updated_tool_output.map(|updated_tool_output| {
+                                (updated_tool_output, /*success*/ Some(true))
+                            })
                         });
                     if let Some((replacement_text, success)) = replacement {
                         result.result = Box::new(PostToolUseFeedbackOutput {
