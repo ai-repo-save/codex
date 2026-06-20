@@ -6,6 +6,10 @@ Local performance is insufficient for routine compile and execution work in this
 When a task requires building, running, testing, or generating files from repository code, use
 `192.168.50.8` as the execution host.
 
+- The remote execution host is reached through the local WireGuard connection `wg0`. If
+  `192.168.50.8` is unreachable or SSH times out, check whether `wg0` is active before treating the
+  remote host as down. Use `nmcli connection up wg0` to start it when the NetworkManager connection
+  exists, then retry the project remote script.
 - Never run `just` on the local machine for this repository. This includes `just fmt`, `just fix`,
   `just test`, `just write-config-schema`, `just bazel-lock-update`, `just bazel-lock-check`,
   `just argument-comment-lint`, and every other `just` recipe. All `just` invocations must run on
