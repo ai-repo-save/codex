@@ -16,6 +16,7 @@ import type { CommandExecWriteParams } from "./v2/CommandExecWriteParams";
 import type { ConfigBatchWriteParams } from "./v2/ConfigBatchWriteParams";
 import type { ConfigReadParams } from "./v2/ConfigReadParams";
 import type { ConfigValueWriteParams } from "./v2/ConfigValueWriteParams";
+import type { ConsumeAccountRateLimitResetCreditParams } from "./v2/ConsumeAccountRateLimitResetCreditParams";
 import type { ExperimentalFeatureEnablementSetParams } from "./v2/ExperimentalFeatureEnablementSetParams";
 import type { ExperimentalFeatureListParams } from "./v2/ExperimentalFeatureListParams";
 import type { ExternalAgentConfigDetectParams } from "./v2/ExternalAgentConfigDetectParams";
