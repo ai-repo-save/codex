@@ -1741,6 +1741,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
                         text: USER_MESSAGE.to_string(),
                     }],
                     phase: None,
+                    metadata: None,
                 },
                 ResponseItem::Message {
                     id: None,
@@ -1749,6 +1750,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
                         text: ASSISTANT_MESSAGE.to_string(),
                     }],
                     phase: None,
+                    metadata: None,
                 },
                 ResponseItem::FunctionCall {
                     id: None,
@@ -1756,6 +1758,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
                     namespace: None,
                     arguments: TOOL_ARGS.to_string(),
                     call_id: "call-1".to_string(),
+                    metadata: None,
                 },
                 ResponseItem::FunctionCallOutput {
                     call_id: "call-1".to_string(),
@@ -1763,6 +1766,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
                         body: FunctionCallOutputBody::Text(TOOL_OUTPUT.to_string()),
                         success: Some(true),
                     },
+                    metadata: None,
                 },
             ],
             None,
@@ -1825,6 +1829,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
                         text: format!("entry-{index}"),
                     }],
                     phase: None,
+                    metadata: None,
                 })
                 .collect(),
             None,
