@@ -101,6 +101,11 @@ async fn handle_spawn_agent(
         role_name,
         Some(args.task_name.clone()),
     )?;
+    let new_agent_path = spawn_source.get_agent_path().ok_or_else(|| {
+        FunctionCallError::RespondToModel(
+            "spawned agent is missing a canonical task name".to_string(),
+        )
+    })?;
     let spawned_agent = Box::pin(
         session.services.agent_control.spawn_agent_with_metadata(
             config,

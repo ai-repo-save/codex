@@ -721,8 +721,8 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
             .allowed_skills_for_implicit_invocation()
             .is_empty()
     {
-        planned_tools.add(UseSkillHandler::new(Arc::clone(
-            turn_context.turn_skills.snapshot.outcome(),
+        planned_tools.add(UseSkillHandler::new(Arc::new(
+            turn_context.turn_skills.snapshot.outcome().clone(),
         )));
     }
 

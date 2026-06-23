@@ -346,7 +346,7 @@ impl Session {
                         );
                         history.record_items(
                             std::iter::once(&carry_forward),
-                            turn_context.model_info.truncation_policy,
+                            turn_context.model_info.truncation_policy.into(),
                         );
                     } else {
                         warn!(
