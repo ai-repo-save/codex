@@ -3376,6 +3376,7 @@ impl ThreadRequestProcessor {
                 params,
                 app_server_client_name,
                 app_server_client_version,
+                supports_openai_form_elicitation,
             )
             .await?;
         self.send_thread_fork_response(request_id, result).await;
@@ -3388,12 +3389,14 @@ impl ThreadRequestProcessor {
         params: ThreadForkParams,
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
+        supports_openai_form_elicitation: bool,
     ) -> Result<ThreadForkBuildResult, JSONRPCErrorError> {
         self.build_thread_fork_response_with_history(
             request_id,
             params,
             app_server_client_name,
             app_server_client_version,
+            supports_openai_form_elicitation,
             None,
         )
         .await
@@ -3405,6 +3408,7 @@ impl ThreadRequestProcessor {
         params: ThreadForkParams,
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
+        supports_openai_form_elicitation: bool,
         source_history_override: Option<Vec<ResponseItem>>,
     ) -> Result<ThreadForkBuildResult, JSONRPCErrorError> {
         let ThreadForkParams {
@@ -3733,6 +3737,7 @@ impl ThreadRequestProcessor {
                 thread_fork_params_from_reset_context(params),
                 app_server_client_name,
                 app_server_client_version,
+                /*supports_openai_form_elicitation*/ false,
                 Some(context_history),
             )
             .await?;
