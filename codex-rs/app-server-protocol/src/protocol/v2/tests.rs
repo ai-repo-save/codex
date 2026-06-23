@@ -3767,11 +3767,14 @@ fn thread_lifecycle_responses_default_missing_optional_fields() {
         .expect("thread/start response with foreign source");
     let resume: ThreadResumeResponse = serde_json::from_value(response_with_foreign_source.clone())
         .expect("thread/resume response with foreign source");
-    let fork: ThreadForkResponse = serde_json::from_value(response_with_foreign_source)
+    let fork: ThreadForkResponse = serde_json::from_value(response_with_foreign_source.clone())
         .expect("thread/fork response with foreign source");
+    let reset: ThreadResetContextResponse = serde_json::from_value(response_with_foreign_source)
+        .expect("thread/resetContext response with foreign source");
     assert_eq!(start.instruction_sources, vec![foreign_source.clone()]);
     assert_eq!(resume.instruction_sources, vec![foreign_source.clone()]);
-    assert_eq!(fork.instruction_sources, vec![foreign_source]);
+    assert_eq!(fork.instruction_sources, vec![foreign_source.clone()]);
+    assert_eq!(reset.instruction_sources, vec![foreign_source]);
     let foreign_source_uri =
         PathUri::parse("file:///C:/workspace/AGENTS.md").expect("foreign source URI");
     assert_eq!(
@@ -3784,6 +3787,10 @@ fn thread_lifecycle_responses_default_missing_optional_fields() {
     );
     assert_eq!(
         fork.instruction_source_path_uris(),
+        vec![foreign_source_uri.clone()]
+    );
+    assert_eq!(
+        reset.instruction_source_path_uris(),
         vec![foreign_source_uri]
     );
 }

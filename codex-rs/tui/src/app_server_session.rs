@@ -1756,7 +1756,7 @@ async fn thread_session_state_from_thread_clear_history_response(
         response.active_permission_profile.clone().map(Into::into),
         response.cwd.clone(),
         response.runtime_workspace_roots.clone(),
-        response.instruction_sources.clone(),
+        response.instruction_source_path_uris(),
         response.reasoning_effort.clone(),
         config,
     )

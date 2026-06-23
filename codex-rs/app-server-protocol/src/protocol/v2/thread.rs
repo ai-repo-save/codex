@@ -646,6 +646,13 @@ impl ThreadForkResponse {
     }
 }
 
+impl ThreadResetContextResponse {
+    /// Parses valid absolute instruction source paths and omits malformed legacy values.
+    pub fn instruction_source_path_uris(&self) -> Vec<PathUri> {
+        instruction_source_path_uris(&self.instruction_sources)
+    }
+}
+
 fn instruction_source_path_uris(sources: &[LegacyAppPathString]) -> Vec<PathUri> {
     // Instruction sources are advisory diagnostics. Warn and fail open so a malformed legacy
     // path cannot fail thread start, resume, or fork.
