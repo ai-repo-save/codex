@@ -679,7 +679,7 @@ pub struct ThreadResetContextResponse {
     pub runtime_workspace_roots: Vec<AbsolutePathBuf>,
     /// Instruction source files currently loaded for this thread.
     #[serde(default)]
-    pub instruction_sources: Vec<AbsolutePathBuf>,
+    pub instruction_sources: Vec<LegacyAppPathString>,
     #[experimental(nested)]
     pub approval_policy: AskForApproval,
     /// Reviewer currently used for approval requests on this thread.
