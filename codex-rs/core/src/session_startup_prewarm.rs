@@ -10,7 +10,8 @@ use tracing::instrument;
 use tracing::warn;
 
 use crate::client::ModelClientSession;
-use crate::guardian::routes_approval_to_guardian;
+use crate::guardian::GuardianReviewAction;
+use crate::guardian::routes_approval_action_to_guardian;
 use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::session::INITIAL_SUBMIT_ID;
 use crate::session::session::Session;
@@ -243,7 +244,7 @@ async fn schedule_startup_prewarm_inner(
         prewarm_started_at.elapsed(),
         /*status*/ None,
     );
-    if routes_approval_to_guardian(&startup_turn_context) {
+    if routes_approval_action_to_guardian(&startup_turn_context, GuardianReviewAction::Shell) {
         let guardian_session = Arc::clone(&session);
         let guardian_parent_turn = Arc::clone(&startup_turn_context);
         drop(tokio::spawn(async move {

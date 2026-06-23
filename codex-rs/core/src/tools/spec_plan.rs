@@ -716,12 +716,13 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
     if turn_context.config.include_skill_instructions
         && !turn_context
             .turn_skills
-            .outcome
+            .snapshot
+            .outcome()
             .allowed_skills_for_implicit_invocation()
             .is_empty()
     {
         planned_tools.add(UseSkillHandler::new(Arc::clone(
-            &turn_context.turn_skills.outcome,
+            turn_context.turn_skills.snapshot.outcome(),
         )));
     }
 

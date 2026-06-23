@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use codex_prompts::AutoReviewPromptTemplate;
 use codex_prompts::render_auto_review_prompt_template;
-use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::models::plaintext_agent_message_content;
 use codex_protocol::protocol::GuardianRiskLevel;

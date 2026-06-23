@@ -538,7 +538,7 @@ async fn record_post_compact_supplement(
         role: "user".to_string(),
         content: vec![ContentItem::InputText { text: supplement }],
         phase: None,
-        metadata: None,
+        internal_chat_message_metadata_passthrough: None,
     };
     sess.record_conversation_items(turn_context, std::slice::from_ref(&response_item))
         .await;

@@ -101,30 +101,10 @@ async fn handle_spawn_agent(
         role_name,
         Some(args.task_name.clone()),
     )?;
-    let new_agent_path = spawn_source.get_agent_path().ok_or_else(|| {
-        FunctionCallError::RespondToModel(
-            "spawned agent is missing a canonical task name".to_string(),
-        )
-    })?;
     let spawned_agent = Box::pin(
         session.services.agent_control.spawn_agent_with_metadata(
             config,
-            match initial_operation {
-                Op::UserInput { items, .. }
-                    if items
-                        .iter()
-                        .all(|item| matches!(item, UserInput::Text { .. })) =>
-                {
-                    let author = turn
-                        .session_source
-                        .get_agent_path()
-                        .unwrap_or_else(AgentPath::root);
-                    let communication =
-                        communication_from_tool_message(author, new_agent_path.clone(), message);
-                    Op::InterAgentCommunication { communication }
-                }
-                initial_operation => initial_operation,
-            },
+            initial_operation,
             Some(spawn_source),
             SpawnAgentOptions {
                 fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
