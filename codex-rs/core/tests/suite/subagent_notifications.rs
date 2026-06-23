@@ -1082,11 +1082,11 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result<()> {
+async fn multi_agent_v2_spawn_sends_initial_task_to_child_as_user_input() -> Result<()> {
     let server = start_mock_server().await;
-    let encrypted_message = "opaque-encrypted-message";
+    let initial_task = "inspect this repo";
     let spawn_args = serde_json::to_string(&json!({
-        "message": encrypted_message,
+        "message": initial_task,
         "task_name": "worker",
     }))?;
     mount_sse_once_match(
@@ -1101,7 +1101,12 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
     .await;
     let child_request_log = mount_sse_once_match(
         &server,
-        |req: &wiremock::Request| body_contains(req, "\"type\":\"agent_message\""),
+        |req: &wiremock::Request| {
+            request_message_input_texts_by_role_and_type(req, "user", "input_text")
+                .iter()
+                .any(|text| text == initial_task)
+                && !body_contains(req, SPAWN_CALL_ID)
+        },
         sse(vec![
             ev_response_created("resp-child-1"),
             ev_completed("resp-child-1"),
@@ -1110,9 +1115,7 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
     .await;
     mount_sse_once_match(
         &server,
-        |req: &wiremock::Request| {
-            body_contains(req, SPAWN_CALL_ID) && !body_contains(req, "\"type\":\"agent_message\"")
-        },
+        |req: &wiremock::Request| body_contains(req, SPAWN_CALL_ID),
         sse(vec![
             ev_response_created("resp-parent-2"),
             ev_assistant_message("msg-parent-2", "done"),
@@ -1139,24 +1142,14 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
         .await?
         .pop()
         .expect("child request");
-    assert_eq!(
-        child_request.inputs_of_type("agent_message"),
-        vec![json!({
-            "type": "agent_message",
-            "author": "/root",
-            "recipient": "/root/worker",
-            "content": [
-                {
-                    "type": "input_text",
-                    "text": "Message Type: NEW_TASK\nTask name: /root/worker\nSender: /root\nPayload:\n",
-                },
-                {
-                    "type": "encrypted_content",
-                    "encrypted_content": encrypted_message,
-                },
-            ],
-        })]
+    assert!(
+        child_request
+            .message_input_texts("user")
+            .iter()
+            .any(|text| text == initial_task),
+        "spawn initial task should be delivered as user input"
     );
+    assert_eq!(child_request.inputs_of_type("agent_message"), Vec::<Value>::new());
 
     Ok(())
 }
@@ -1198,7 +1191,12 @@ async fn plaintext_multi_agent_v2_completion_sends_agent_message(
     };
     let child_request = mount_response_once_match(
         &server,
-        |req: &wiremock::Request| body_contains(req, "\"type\":\"agent_message\""),
+        |req: &wiremock::Request| {
+            request_message_input_texts_by_role_and_type(req, "user", "input_text")
+                .iter()
+                .any(|text| text == "opaque-encrypted-message")
+                && !body_contains(req, SPAWN_CALL_ID)
+        },
         sse_response(sse(child_events)).set_delay(Duration::from_secs(1)),
     )
     .await;
@@ -1282,18 +1280,14 @@ async fn plaintext_multi_agent_v2_completion_sends_agent_message(
         .await?
         .pop()
         .expect("agent message request");
-    assert_eq!(
-        request.inputs_of_type("agent_message"),
-        vec![json!({
-            "type": "agent_message",
-            "author": "/root/worker",
-            "recipient": "/root",
-            "content": [{
-                "type": "input_text",
-                "text": notification,
-            }],
-        })]
+    assert!(
+        request
+            .message_input_texts("user")
+            .iter()
+            .any(|text| text == &notification),
+        "completion notification should be delivered as user input"
     );
+    assert_eq!(request.inputs_of_type("agent_message"), Vec::<Value>::new());
 
     Ok(())
 }

@@ -1615,7 +1615,7 @@ async fn multi_agent_v2_list_agents_returns_completed_status_without_encrypted_s
         .find(|agent| agent.agent_name == "/root/worker")
         .expect("worker agent should be listed");
     assert_eq!(worker.agent_status, json!({"completed": "done"}));
-    assert_eq!(worker.last_task_message, None);
+    assert_eq!(worker.last_task_message.as_deref(), Some("inspect this repo"));
     assert_eq!(success, Some(true));
 }
 
@@ -2297,7 +2297,8 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
                 Op::InterAgentCommunication { communication }
                     if communication.author == AgentPath::root()
                         && communication.recipient == worker_path
-                        && communication.encrypted_content.as_deref() == Some("continue")
+                        && communication.content == "continue"
+                        && communication.encrypted_content.is_none()
                         && communication.trigger_turn
             )
     }));

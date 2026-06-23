@@ -191,8 +191,13 @@ async fn prompt_tools_are_consistent_across_requests() -> anyhow::Result<()> {
         vec!["exec_command", "write_stdin"]
     };
     expected_tools_names.extend([
+        "get_context_usage",
+        "request_context_compaction",
+        "save_context_anchor",
+        "rewind_context_to_anchor",
         "update_plan",
         "request_user_input",
+        "use_skill",
         "apply_patch",
         "view_image",
         "tool_search",
