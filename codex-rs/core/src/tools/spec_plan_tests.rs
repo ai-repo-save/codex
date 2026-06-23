@@ -1563,6 +1563,7 @@ async fn hosted_tools_follow_provider_auth_model_and_config_gates() {
             "wait_agent",
             "interrupt_agent",
             "list_agents",
+            "inspect_agent",
             // Hosted Responses tools.
             "web_search",
             "image_generation",
