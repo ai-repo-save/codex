@@ -1615,7 +1615,10 @@ async fn multi_agent_v2_list_agents_returns_completed_status_without_encrypted_s
         .find(|agent| agent.agent_name == "/root/worker")
         .expect("worker agent should be listed");
     assert_eq!(worker.agent_status, json!({"completed": "done"}));
-    assert_eq!(worker.last_task_message.as_deref(), Some("inspect this repo"));
+    assert_eq!(
+        worker.last_task_message.as_deref(),
+        Some("inspect this repo")
+    );
     assert_eq!(success, Some(true));
 }
 

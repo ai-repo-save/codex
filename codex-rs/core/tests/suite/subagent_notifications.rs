@@ -1149,7 +1149,10 @@ async fn multi_agent_v2_spawn_sends_initial_task_to_child_as_user_input() -> Res
             .any(|text| text == initial_task),
         "spawn initial task should be delivered as user input"
     );
-    assert_eq!(child_request.inputs_of_type("agent_message"), Vec::<Value>::new());
+    assert_eq!(
+        child_request.inputs_of_type("agent_message"),
+        Vec::<Value>::new()
+    );
 
     Ok(())
 }
