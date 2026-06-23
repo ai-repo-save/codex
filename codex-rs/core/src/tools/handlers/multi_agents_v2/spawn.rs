@@ -106,20 +106,18 @@ async fn handle_spawn_agent(
             "spawned agent is missing a canonical task name".to_string(),
         )
     })?;
-    let spawned_agent = Box::pin(
-        session.services.agent_control.spawn_agent_with_metadata(
-            config,
-            initial_operation,
-            Some(spawn_source),
-            SpawnAgentOptions {
-                fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
-                fork_mode,
-                parent_thread_id: Some(session.thread_id),
-                environments: Some(turn.environments.to_selections()),
-                initial_multi_agent_mode: multi_agent_mode,
-            },
-        ),
-    )
+    let spawned_agent = Box::pin(session.services.agent_control.spawn_agent_with_metadata(
+        config,
+        initial_operation,
+        Some(spawn_source),
+        SpawnAgentOptions {
+            fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
+            fork_mode,
+            parent_thread_id: Some(session.thread_id),
+            environments: Some(turn.environments.to_selections()),
+            initial_multi_agent_mode: multi_agent_mode,
+        },
+    ))
     .await
     .map_err(collab_spawn_error)?;
     let new_thread_id = spawned_agent.thread_id;
