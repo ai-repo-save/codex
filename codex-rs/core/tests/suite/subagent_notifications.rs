@@ -1278,7 +1278,18 @@ async fn plaintext_multi_agent_v2_completion_sends_agent_message(
         .pop()
         .expect("agent message request");
     assert!(request.body_contains_text(&notification));
-    assert_eq!(request.inputs_of_type("agent_message"), Vec::<Value>::new());
+    assert_eq!(
+        request.inputs_of_type("agent_message"),
+        vec![json!({
+            "type": "agent_message",
+            "author": "/root/worker",
+            "recipient": "/root",
+            "content": [{
+                "type": "input_text",
+                "text": notification,
+            }],
+        })]
+    );
 
     Ok(())
 }
