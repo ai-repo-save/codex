@@ -32,7 +32,7 @@ use codex_utils_absolute_path::test_support::PathBufExt;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
-use crate::SkillLoadOutcome;
+use crate::skills::SkillLoadOutcome;
 use crate::SkillMetadata;
 use crate::session::tests::make_session_and_context;
 use crate::session::turn_context::TurnContext;

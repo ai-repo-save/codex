@@ -30,6 +30,9 @@ fn compaction() -> RolloutItem {
     RolloutItem::Compacted(CompactedItem {
         message: String::new(),
         replacement_history: Some(Vec::new()),
+        window_number: None,
+        first_window_id: None,
+        previous_window_id: None,
         window_id: None,
     })
 }

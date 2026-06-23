@@ -1009,7 +1009,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
                 text: "You are /root.".to_string(),
             }],
             phase: None,
-            metadata: None,
+            internal_chat_message_metadata_passthrough: None,
         },
         assistant_message("parent final answer", Some(MessagePhase::FinalAnswer)),
         ResponseItem::Message {
@@ -1028,7 +1028,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
                 text: child_identity.render(),
             }],
             phase: None,
-            metadata: None,
+            internal_chat_message_metadata_passthrough: None,
         },
     ];
     assert_eq!(
