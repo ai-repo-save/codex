@@ -1764,6 +1764,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
                     internal_chat_message_metadata_passthrough: None,
                 },
                 ResponseItem::FunctionCallOutput {
+                    id: None,
                     call_id: "call-1".to_string(),
                     output: FunctionCallOutputPayload {
                         body: FunctionCallOutputBody::Text(TOOL_OUTPUT.to_string()),

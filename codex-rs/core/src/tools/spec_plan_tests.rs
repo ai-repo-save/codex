@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use codex_core_skills::HostSkillsSnapshot;
 use codex_features::Feature;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
@@ -491,7 +492,9 @@ async fn use_skill_tool_is_available_when_enabled_skills_exist() {
     let plan = probe(|turn| {
         let mut outcome = SkillLoadOutcome::default();
         outcome.skills = vec![test_skill("demo")];
-        turn.turn_skills = crate::session::turn_context::TurnSkillsContext::new(Arc::new(outcome));
+        turn.turn_skills = crate::session::turn_context::TurnSkillsContext::new(
+            HostSkillsSnapshot::new(Arc::new(outcome)),
+        );
     })
     .await;
 
@@ -502,9 +505,9 @@ async fn use_skill_tool_is_available_when_enabled_skills_exist() {
 #[tokio::test]
 async fn use_skill_tool_is_hidden_without_available_skills_or_skill_instructions() {
     let no_skills = probe(|turn| {
-        turn.turn_skills = crate::session::turn_context::TurnSkillsContext::new(Arc::new(
-            SkillLoadOutcome::default(),
-        ));
+        turn.turn_skills = crate::session::turn_context::TurnSkillsContext::new(
+            HostSkillsSnapshot::new(Arc::new(SkillLoadOutcome::default())),
+        );
     })
     .await;
     no_skills.assert_visible_lacks(&["use_skill"]);
@@ -513,7 +516,9 @@ async fn use_skill_tool_is_hidden_without_available_skills_or_skill_instructions
     let hidden_in_instructions = probe(|turn| {
         let mut outcome = SkillLoadOutcome::default();
         outcome.skills = vec![test_skill("demo")];
-        turn.turn_skills = crate::session::turn_context::TurnSkillsContext::new(Arc::new(outcome));
+        turn.turn_skills = crate::session::turn_context::TurnSkillsContext::new(
+            HostSkillsSnapshot::new(Arc::new(outcome)),
+        );
         update_config(turn, |config| {
             config.include_skill_instructions = false;
         });
