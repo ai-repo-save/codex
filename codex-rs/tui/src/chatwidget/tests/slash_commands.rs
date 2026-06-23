@@ -2669,6 +2669,9 @@ async fn slash_compact_inspect_writes_latest_compaction_report() {
             compact_inspect_rollout_line(RolloutItem::Compacted(CompactedItem {
                 message: "old summary".to_string(),
                 replacement_history: Some(vec![compact_inspect_message("user", "old")]),
+                window_number: None,
+                first_window_id: None,
+                previous_window_id: None,
                 window_id: None,
             })),
             compact_inspect_rollout_line(RolloutItem::Compacted(CompactedItem {
@@ -2677,6 +2680,9 @@ async fn slash_compact_inspect_writes_latest_compaction_report() {
                     compact_inspect_message("user", "latest user"),
                     compact_inspect_message("assistant", "latest assistant"),
                 ]),
+                window_number: None,
+                first_window_id: None,
+                previous_window_id: None,
                 window_id: None,
             })),
         ]
@@ -2749,7 +2755,7 @@ fn compact_inspect_message(role: &str, text: &str) -> ResponseItem {
             text: text.to_string(),
         }],
         phase: None,
-        metadata: None,
+        internal_chat_message_metadata_passthrough: None,
     }
 }
 

@@ -98,6 +98,9 @@ fn compacted(message: &str, replacement_history: Option<Vec<ResponseItem>>) -> C
     CompactedItem {
         message: message.to_string(),
         replacement_history,
+        window_number: None,
+        first_window_id: None,
+        previous_window_id: None,
         window_id: None,
     }
 }
@@ -110,7 +113,7 @@ fn message(role: &str, text: &str) -> ResponseItem {
             text: text.to_string(),
         }],
         phase: None,
-        metadata: None,
+        internal_chat_message_metadata_passthrough: None,
     }
 }
 
