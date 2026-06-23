@@ -2233,7 +2233,8 @@ async fn record_token_usage_info_adds_root_context_reminder_when_threshold_cross
 
     session
         .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(85_920)))
-        .await;
+        .await
+        .expect("record token usage");
     assert_eq!(
         Vec::<String>::new(),
         root_context_reminder_texts(&session, &turn_context).await
@@ -2241,7 +2242,8 @@ async fn record_token_usage_info_adds_root_context_reminder_when_threshold_cross
 
     session
         .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
-        .await;
+        .await
+        .expect("record token usage");
 
     assert_eq!(
         vec![default_root_context_reminder(15)],
@@ -2262,7 +2264,8 @@ async fn record_token_usage_info_renders_configured_root_context_reminder_messag
 
     session
         .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
-        .await;
+        .await
+        .expect("record token usage");
 
     assert_eq!(
         vec!["<root_context_reminder>\nOnly 15% context remains. Save state first.\n</root_context_reminder>".to_string()],
@@ -2277,10 +2280,12 @@ async fn record_token_usage_info_does_not_repeat_root_context_reminder_while_low
 
     session
         .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
-        .await;
+        .await
+        .expect("record token usage");
     session
         .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(87_680)))
-        .await;
+        .await
+        .expect("record token usage");
 
     assert_eq!(
         vec![default_root_context_reminder(15)],
@@ -2295,13 +2300,16 @@ async fn record_token_usage_info_repeats_root_context_reminder_after_recovery() 
 
     session
         .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
-        .await;
+        .await
+        .expect("record token usage");
     session
         .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(85_000)))
-        .await;
+        .await
+        .expect("record token usage");
     session
         .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
-        .await;
+        .await
+        .expect("record token usage");
 
     assert_eq!(
         vec![
@@ -2336,7 +2344,8 @@ async fn record_token_usage_info_omits_root_context_reminder_for_subagents_and_d
             &subagent_turn_context,
             Some(&context_reminder_test_usage(86_800)),
         )
-        .await;
+        .await
+        .expect("record token usage");
     assert_eq!(
         Vec::<String>::new(),
         root_context_reminder_texts(&subagent_session, &subagent_turn_context).await
@@ -2354,7 +2363,8 @@ async fn record_token_usage_info_omits_root_context_reminder_for_subagents_and_d
             &disabled_turn_context,
             Some(&context_reminder_test_usage(86_800)),
         )
-        .await;
+        .await
+        .expect("record token usage");
     assert_eq!(
         Vec::<String>::new(),
         root_context_reminder_texts(&disabled_session, &disabled_turn_context).await

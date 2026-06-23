@@ -59,7 +59,8 @@ async fn get_context_usage_reports_current_context_usage_snapshot() {
                 ..TokenUsage::default()
             }),
         )
-        .await;
+        .await
+        .expect("record token usage");
 
     let invocation = invocation(session, turn);
     let payload = invocation.payload.clone();

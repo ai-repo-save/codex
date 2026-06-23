@@ -264,7 +264,7 @@ async fn prompt_contribution_includes_scoped_memory_when_global_memories_are_dis
     });
 
     let fragments = extension
-        .contribute(&ExtensionData::new("session"), &thread_store)
+        .contribute_thread_context(&ExtensionData::new("session"), &thread_store)
         .await;
 
     assert_eq!(fragments.len(), 1);
