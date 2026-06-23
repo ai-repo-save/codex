@@ -1142,13 +1142,7 @@ async fn multi_agent_v2_spawn_sends_initial_task_to_child_as_user_input() -> Res
         .await?
         .pop()
         .expect("child request");
-    assert!(
-        child_request
-            .message_input_texts("user")
-            .iter()
-            .any(|text| text == initial_task),
-        "spawn initial task should be delivered as user input"
-    );
+    assert!(child_request.body_contains_text(initial_task));
     assert_eq!(
         child_request.inputs_of_type("agent_message"),
         Vec::<Value>::new()
@@ -1283,13 +1277,7 @@ async fn plaintext_multi_agent_v2_completion_sends_agent_message(
         .await?
         .pop()
         .expect("agent message request");
-    assert!(
-        request
-            .message_input_texts("user")
-            .iter()
-            .any(|text| text == &notification),
-        "completion notification should be delivered as user input"
-    );
+    assert!(request.body_contains_text(&notification));
     assert_eq!(request.inputs_of_type("agent_message"), Vec::<Value>::new());
 
     Ok(())
