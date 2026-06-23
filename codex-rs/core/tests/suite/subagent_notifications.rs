@@ -1101,7 +1101,7 @@ async fn multi_agent_v2_spawn_sends_initial_task_to_child_as_user_input() -> Res
     .await;
     let child_request_log = mount_sse_once_match(
         &server,
-        |req: &wiremock::Request| {
+        move |req: &wiremock::Request| {
             request_message_input_texts_by_role_and_type(req, "user", "input_text")
                 .iter()
                 .any(|text| text == initial_task)
