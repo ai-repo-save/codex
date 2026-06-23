@@ -218,6 +218,14 @@
           ],
           "description": "Reviewer for approval prompts unless overridden by per-app settings."
         },
+        "default_tools_approval_mode": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AppToolApproval"
+            }
+          ],
+          "description": "Approval mode for tools unless overridden by per-app or per-tool settings."
+        },
         "destructive_enabled": {
           "description": "Whether tools with `destructive_hint = true` are allowed by default.",
           "type": "boolean"
@@ -332,74 +340,11 @@
         }
       ]
     },
-    "AutoReviewReviewToml": {
-      "additionalProperties": false,
-      "properties": {
-        "apply_patch": {
-          "description": "Review apply_patch approval requests.",
-          "type": "boolean"
-        },
-        "exec_command": {
-          "description": "Review unified exec command approval requests.",
-          "type": "boolean"
-        },
-        "execve": {
-          "description": "Review Unix execve approval requests.",
-          "type": "boolean"
-        },
-        "mcp_tool_call": {
-          "description": "Review MCP tool call approval requests.",
-          "type": "boolean"
-        },
-        "network_access": {
-          "description": "Review network access approval requests.",
-          "type": "boolean"
-        },
-        "request_permissions": {
-          "description": "Review request_permissions approval requests.",
-          "type": "boolean"
-        },
-        "review_skipped_exec": {
-          "description": "Review exec-like tool requests that would otherwise skip approval.",
-          "type": "boolean"
-        },
-        "review_when_approval_policy_never": {
-          "description": "Review matching requests even when approval_policy is never.",
-          "type": "boolean"
-        },
-        "shell": {
-          "description": "Review shell command approval requests.",
-          "type": "boolean"
-        }
-      },
-      "type": "object"
-    },
     "AutoReviewToml": {
-      "additionalProperties": false,
       "properties": {
         "policy": {
           "description": "Additional policy instructions inserted into the guardian prompt.",
           "type": "string"
-        },
-        "prompt": {
-          "description": "Full guardian prompt template override.",
-          "type": "string"
-        },
-        "prompt_file": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            }
-          ],
-          "description": "File containing the full guardian prompt template override."
-        },
-        "review": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/AutoReviewReviewToml"
-            }
-          ],
-          "description": "Controls which approval requests are routed to the auto-reviewer."
         }
       },
       "type": "object"
@@ -417,6 +362,13 @@
     "CodeModeConfigToml": {
       "additionalProperties": false,
       "properties": {
+        "direct_only_tool_namespaces": {
+          "description": "Exact tool namespaces to expose only as direct model tools. These tools bypass deferral, remain top-level in code-mode-only sessions, and are omitted from the nested code-mode tool surface.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "enabled": {
           "type": "boolean"
         },
@@ -488,13 +440,13 @@
             "auth_elicitation": {
               "type": "boolean"
             },
+            "auto_compaction": {
+              "type": "boolean"
+            },
             "browser_use": {
               "type": "boolean"
             },
             "browser_use_external": {
-              "type": "boolean"
-            },
-            "child_agents_md": {
               "type": "boolean"
             },
             "chronicle": {
@@ -524,7 +476,13 @@
             "connectors": {
               "type": "boolean"
             },
+            "current_time_reminder": {
+              "$ref": "#/definitions/FeatureToml_for_CurrentTimeReminderConfigToml"
+            },
             "default_mode_request_user_input": {
+              "type": "boolean"
+            },
+            "deferred_executor": {
               "type": "boolean"
             },
             "elevated_windows_sandbox": {
@@ -578,6 +536,9 @@
             "in_app_browser": {
               "type": "boolean"
             },
+            "item_ids": {
+              "type": "boolean"
+            },
             "js_repl": {
               "type": "boolean"
             },
@@ -597,6 +558,9 @@
               "type": "boolean"
             },
             "multi_agent": {
+              "type": "boolean"
+            },
+            "multi_agent_mode": {
               "type": "boolean"
             },
             "multi_agent_v2": {
@@ -650,11 +614,17 @@
             "resize_all_images": {
               "type": "boolean"
             },
+            "respect_system_proxy": {
+              "type": "boolean"
+            },
             "responses_websockets": {
               "type": "boolean"
             },
             "responses_websockets_v2": {
               "type": "boolean"
+            },
+            "rollout_budget": {
+              "$ref": "#/definitions/FeatureToml_for_RolloutBudgetConfigToml"
             },
             "runtime_metrics": {
               "type": "boolean"
@@ -702,7 +672,7 @@
               "type": "boolean"
             },
             "token_budget": {
-              "type": "boolean"
+              "$ref": "#/definitions/FeatureToml_for_TokenBudgetConfigToml"
             },
             "tool_call_mcp_elicitation": {
               "type": "boolean"
@@ -729,6 +699,9 @@
               "type": "boolean"
             },
             "unified_exec_zsh_fork": {
+              "type": "boolean"
+            },
+            "use_agent_identity": {
               "type": "boolean"
             },
             "use_legacy_landlock": {
@@ -841,28 +814,29 @@
       },
       "type": "object"
     },
-    "ContextReminderConfigToml": {
+    "CurrentTimeReminderConfigToml": {
       "additionalProperties": false,
       "properties": {
+        "clock_source": {
+          "$ref": "#/definitions/CurrentTimeSource"
+        },
         "enabled": {
-          "default": true,
           "type": "boolean"
         },
-        "message": {
-          "default": null,
-          "maxLength": 4096,
-          "minLength": 1,
-          "type": "string"
-        },
-        "remaining_percent": {
-          "default": 15,
-          "format": "int64",
-          "maximum": 100.0,
-          "minimum": 0.0,
+        "reminder_interval_model_requests": {
+          "format": "uint64",
+          "minimum": 1.0,
           "type": "integer"
         }
       },
       "type": "object"
+    },
+    "CurrentTimeSource": {
+      "enum": [
+        "system",
+        "external"
+      ],
+      "type": "string"
     },
     "DebugConfigLockToml": {
       "additionalProperties": false,
@@ -956,6 +930,16 @@
         }
       ]
     },
+    "FeatureToml_for_CurrentTimeReminderConfigToml": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/definitions/CurrentTimeReminderConfigToml"
+        }
+      ]
+    },
     "FeatureToml_for_MultiAgentV2ConfigToml": {
       "anyOf": [
         {
@@ -973,6 +957,26 @@
         },
         {
           "$ref": "#/definitions/NetworkProxyConfigToml"
+        }
+      ]
+    },
+    "FeatureToml_for_RolloutBudgetConfigToml": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/definitions/RolloutBudgetConfigToml"
+        }
+      ]
+    },
+    "FeatureToml_for_TokenBudgetConfigToml": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/definitions/TokenBudgetConfigToml"
         }
       ]
     },
@@ -1066,48 +1070,6 @@
           "description": "Legacy no-op setting retained for compatibility.",
           "format": "int64",
           "type": "integer"
-        }
-      },
-      "type": "object"
-    },
-    "GoalsToml": {
-      "additionalProperties": false,
-      "properties": {
-        "budget_limit_prompt": {
-          "description": "Prompt template injected when an active goal reaches its token budget.",
-          "type": "string"
-        },
-        "budget_limit_prompt_file": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            }
-          ],
-          "description": "File containing the prompt template injected when an active goal reaches its token budget."
-        },
-        "continuation_prompt": {
-          "description": "Prompt template used when Codex automatically continues an active goal.",
-          "type": "string"
-        },
-        "continuation_prompt_file": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            }
-          ],
-          "description": "File containing the prompt template used when Codex automatically continues an active goal."
-        },
-        "objective_updated_prompt": {
-          "description": "Prompt template injected after the active goal objective is edited.",
-          "type": "string"
-        },
-        "objective_updated_prompt_file": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            }
-          ],
-          "description": "File containing the prompt template injected after the active goal objective is edited."
         }
       },
       "type": "object"
@@ -1266,13 +1228,6 @@
     },
     "HooksToml": {
       "properties": {
-        "ApprovalReviewRoute": {
-          "default": [],
-          "items": {
-            "$ref": "#/definitions/MatcherGroup"
-          },
-          "type": "array"
-        },
         "PermissionRequest": {
           "default": [],
           "items": {
@@ -1543,10 +1498,6 @@
         "use_memories": {
           "description": "When `false`, skip injecting memory usage instructions into developer prompts.",
           "type": "boolean"
-        },
-        "use_scoped_memories": {
-          "description": "When `false`, disable session/project scoped memory tools and prompt context.",
-          "type": "boolean"
         }
       },
       "type": "object"
@@ -1738,9 +1689,6 @@
         "enabled": {
           "type": "boolean"
         },
-        "encrypt_messages": {
-          "type": "boolean"
-        },
         "hide_spawn_agent_metadata": {
           "type": "boolean"
         },
@@ -1777,6 +1725,7 @@
           "type": "string"
         },
         "usage_hint_enabled": {
+          "description": "Deprecated compatibility field. Its value is ignored.",
           "type": "boolean"
         },
         "usage_hint_text": {
@@ -2154,6 +2103,29 @@
           "type": "string"
         }
       ]
+    },
+    "OrchestratorFeatureToml": {
+      "additionalProperties": false,
+      "description": "Settings for a feature owned by the orchestrator.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "OrchestratorToml": {
+      "additionalProperties": false,
+      "description": "Orchestrator-owned feature settings.",
+      "properties": {
+        "mcp": {
+          "$ref": "#/definitions/OrchestratorFeatureToml"
+        },
+        "skills": {
+          "$ref": "#/definitions/OrchestratorFeatureToml"
+        }
+      },
+      "type": "object"
     },
     "OtelConfigToml": {
       "additionalProperties": false,
@@ -2598,13 +2570,6 @@
       },
       "type": "object"
     },
-    "RealtimeConversationArchitecture": {
-      "enum": [
-        "realtimeapi",
-        "avas"
-      ],
-      "type": "string"
-    },
     "RealtimeConversationVersion": {
       "enum": [
         "v1",
@@ -2615,9 +2580,6 @@
     "RealtimeToml": {
       "additionalProperties": false,
       "properties": {
-        "architecture": {
-          "$ref": "#/definitions/RealtimeConversationArchitecture"
-        },
         "transport": {
           "$ref": "#/definitions/RealtimeTransport"
         },
@@ -2695,6 +2657,38 @@
           "type": "string"
         }
       ]
+    },
+    "RolloutBudgetConfigToml": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "limit_tokens": {
+          "format": "int64",
+          "minimum": 1.0,
+          "type": "integer"
+        },
+        "prefill_token_weight": {
+          "format": "double",
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "reminder_at_remaining_tokens": {
+          "description": "Remaining weighted-token values that trigger reminders when crossed.",
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "sampling_token_weight": {
+          "format": "double",
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "type": "object"
     },
     "SandboxMode": {
       "enum": [
@@ -2858,6 +2852,27 @@
           "type": "object"
         }
       ]
+    },
+    "TokenBudgetConfigToml": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "reminder_message_template": {
+          "description": "Reminder template. `{n_remaining}` is replaced with the tokens remaining before auto-compaction.",
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string"
+        },
+        "reminder_threshold_tokens": {
+          "description": "Number of tokens remaining before auto-compaction when the wrap-up reminder is emitted.",
+          "format": "int64",
+          "minimum": 1.0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
     },
     "ToolSuggestConfig": {
       "additionalProperties": false,
@@ -4465,6 +4480,7 @@
       "enum": [
         "disabled",
         "cached",
+        "indexed",
         "live"
       ],
       "type": "string"
@@ -4620,15 +4636,6 @@
       "description": "Compact prompt used for history compaction.",
       "type": "string"
     },
-    "context_reminder": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/ContextReminderConfigToml"
-        }
-      ],
-      "default": null,
-      "description": "Reminder shown to root agents as the usable context window runs low."
-    },
     "debug": {
       "allOf": [
         {
@@ -4734,13 +4741,13 @@
         "auth_elicitation": {
           "type": "boolean"
         },
+        "auto_compaction": {
+          "type": "boolean"
+        },
         "browser_use": {
           "type": "boolean"
         },
         "browser_use_external": {
-          "type": "boolean"
-        },
-        "child_agents_md": {
           "type": "boolean"
         },
         "chronicle": {
@@ -4770,7 +4777,13 @@
         "connectors": {
           "type": "boolean"
         },
+        "current_time_reminder": {
+          "$ref": "#/definitions/FeatureToml_for_CurrentTimeReminderConfigToml"
+        },
         "default_mode_request_user_input": {
+          "type": "boolean"
+        },
+        "deferred_executor": {
           "type": "boolean"
         },
         "elevated_windows_sandbox": {
@@ -4824,6 +4837,9 @@
         "in_app_browser": {
           "type": "boolean"
         },
+        "item_ids": {
+          "type": "boolean"
+        },
         "js_repl": {
           "type": "boolean"
         },
@@ -4843,6 +4859,9 @@
           "type": "boolean"
         },
         "multi_agent": {
+          "type": "boolean"
+        },
+        "multi_agent_mode": {
           "type": "boolean"
         },
         "multi_agent_v2": {
@@ -4896,11 +4915,17 @@
         "resize_all_images": {
           "type": "boolean"
         },
+        "respect_system_proxy": {
+          "type": "boolean"
+        },
         "responses_websockets": {
           "type": "boolean"
         },
         "responses_websockets_v2": {
           "type": "boolean"
+        },
+        "rollout_budget": {
+          "$ref": "#/definitions/FeatureToml_for_RolloutBudgetConfigToml"
         },
         "runtime_metrics": {
           "type": "boolean"
@@ -4948,7 +4973,7 @@
           "type": "boolean"
         },
         "token_budget": {
-          "type": "boolean"
+          "$ref": "#/definitions/FeatureToml_for_TokenBudgetConfigToml"
         },
         "tool_call_mcp_elicitation": {
           "type": "boolean"
@@ -4975,6 +5000,9 @@
           "type": "boolean"
         },
         "unified_exec_zsh_fork": {
+          "type": "boolean"
+        },
+        "use_agent_identity": {
           "type": "boolean"
         },
         "use_legacy_landlock": {
@@ -5043,15 +5071,6 @@
       ],
       "default": null,
       "description": "Compatibility-only settings retained so legacy `ghost_snapshot` config still loads."
-    },
-    "goals": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/GoalsToml"
-        }
-      ],
-      "default": null,
-      "description": "Goal runtime prompt overrides."
     },
     "hide_agent_reasoning": {
       "default": false,
@@ -5236,6 +5255,14 @@
     "openai_base_url": {
       "description": "Base URL override for the built-in `openai` model provider.",
       "type": "string"
+    },
+    "orchestrator": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/OrchestratorToml"
+        }
+      ],
+      "description": "Orchestrator-owned feature settings."
     },
     "oss_provider": {
       "description": "Preferred OSS provider for local models, e.g. \"lmstudio\" or \"ollama\".",
@@ -5426,7 +5453,7 @@
           "$ref": "#/definitions/WebSearchMode"
         }
       ],
-      "description": "Controls the web search tool mode: disabled, cached, or live."
+      "description": "Controls the web search tool mode: disabled, cached, indexed, or live."
     },
     "windows": {
       "allOf": [

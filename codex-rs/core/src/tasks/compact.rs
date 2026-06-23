@@ -2,11 +2,13 @@ use std::sync::Arc;
 
 use super::SessionTask;
 use super::SessionTaskContext;
+use super::SessionTaskResult;
 use super::emit_compact_metric;
 use crate::session::TurnInput;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use crate::state::TaskKind;
+use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::user_input::UserInput;
 use tokio_util::sync::CancellationToken;
@@ -29,10 +31,13 @@ impl SessionTask for CompactTask {
         ctx: Arc<TurnContext>,
         _input: Vec<TurnInput>,
         cancellation_token: CancellationToken,
-    ) -> Option<String> {
+    ) -> SessionTaskResult {
         let session = session.clone_session();
-        let _ = run_manual_compact_task(session, ctx, cancellation_token).await;
-        None
+        let result = run_manual_compact_task(session, ctx, cancellation_token).await;
+        if let Err(err @ CodexErr::TurnAborted) = result {
+            return Err(err);
+        }
+        Ok(None)
     }
 }
 

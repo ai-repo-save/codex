@@ -1,4 +1,3 @@
-mod agents;
 mod apply_patch;
 mod auto_review;
 mod compact;
@@ -8,7 +7,6 @@ mod realtime;
 mod review_exit;
 mod review_request;
 
-pub use agents::HIERARCHICAL_AGENTS_MESSAGE;
 pub use apply_patch::APPLY_PATCH_TOOL_INSTRUCTIONS;
 pub use auto_review::AutoReviewPromptTemplate;
 pub use auto_review::AutoReviewPromptTemplateError;

@@ -65,7 +65,7 @@ impl MemoriesExtensionConfig {
 }
 
 impl ContextContributor for MemoriesExtension {
-    fn contribute<'a>(
+    fn contribute_thread_context<'a>(
         &'a self,
         _session_store: &'a ExtensionData,
         thread_store: &'a ExtensionData,
