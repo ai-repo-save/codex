@@ -11,6 +11,7 @@ use bm25::Language;
 use bm25::SearchEngine;
 use bm25::SearchEngineBuilder;
 use codex_tools::LoadableToolSpec;
+use codex_tools::ResponsesApiNamespaceTool;
 use codex_tools::TOOL_SEARCH_DEFAULT_LIMIT;
 use codex_tools::TOOL_SEARCH_TOOL_NAME;
 use codex_tools::ToolName;
@@ -18,6 +19,7 @@ use codex_tools::ToolSearchEntry;
 use codex_tools::ToolSearchInfo;
 use codex_tools::ToolSpec;
 use codex_tools::coalesce_loadable_tool_specs;
+use codex_protocol::models::SearchToolCallParams;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tracing::instrument;
@@ -128,10 +130,24 @@ impl ToolSearchHandler {
             }
         };
 
-        let query = args.query.trim();
-        if query.is_empty() {
+        let tools = self.tools_for_args(&args)?;
+
+        Ok(boxed_tool_output(ToolSearchOutput { tools }))
+    }
+}
+
+impl CoreToolRuntime for ToolSearchHandler {}
+
+impl ToolSearchHandler {
+    fn tools_for_args(
+        &self,
+        args: &SearchToolCallParams,
+    ) -> Result<Vec<LoadableToolSpec>, FunctionCallError> {
+        let query = args.query.as_deref().unwrap_or_default().trim();
+        let mcp_prefix = args.mcp_prefix.as_deref().unwrap_or_default().trim();
+        if query.is_empty() && mcp_prefix.is_empty() {
             return Err(FunctionCallError::RespondToModel(
-                "query must not be empty".to_string(),
+                "query or mcp_prefix must not be empty".to_string(),
             ));
         }
         let limit = args.limit.unwrap_or(TOOL_SEARCH_DEFAULT_LIMIT);
@@ -143,18 +159,17 @@ impl ToolSearchHandler {
         }
 
         if self.search_infos.is_empty() {
-            return Ok(boxed_tool_output(ToolSearchOutput { tools: Vec::new() }));
+            return Ok(Vec::new());
         }
 
-        let tools = self.search(query, limit)?;
-
-        Ok(boxed_tool_output(ToolSearchOutput { tools }))
+        let tools = if mcp_prefix.is_empty() {
+            self.search(query, limit)?
+        } else {
+            self.expand_mcp_prefix(mcp_prefix, limit)?
+        };
+        Ok(tools)
     }
-}
 
-impl CoreToolRuntime for ToolSearchHandler {}
-
-impl ToolSearchHandler {
     fn search(
         &self,
         query: &str,
@@ -170,6 +185,20 @@ impl ToolSearchHandler {
         self.search_output_tools(results)
     }
 
+    fn expand_mcp_prefix(
+        &self,
+        mcp_prefix: &str,
+        limit: usize,
+    ) -> Result<Vec<LoadableToolSpec>, FunctionCallError> {
+        let results = self
+            .search_infos
+            .iter()
+            .filter(|search_info| entry_matches_mcp_prefix(&search_info.entry, mcp_prefix))
+            .take(limit)
+            .map(|search_info| &search_info.entry);
+        self.search_output_tools(results)
+    }
+
     fn search_output_tools<'a>(
         &self,
         results: impl IntoIterator<Item = &'a ToolSearchEntry>,
@@ -177,6 +206,22 @@ impl ToolSearchHandler {
         Ok(coalesce_loadable_tool_specs(
             results.into_iter().map(|entry| entry.output.clone()),
         ))
+    }
+}
+
+fn entry_matches_mcp_prefix(entry: &ToolSearchEntry, mcp_prefix: &str) -> bool {
+    if !mcp_prefix.starts_with("mcp__") {
+        return false;
+    }
+    match &entry.output {
+        LoadableToolSpec::Function(tool) => tool.name.starts_with(mcp_prefix),
+        LoadableToolSpec::Namespace(namespace) => {
+            namespace.name.starts_with(mcp_prefix)
+                || namespace.tools.iter().any(|tool| {
+                    let ResponsesApiNamespaceTool::Function(tool) = tool;
+                    format!("{}__{}", namespace.name, tool.name).starts_with(mcp_prefix)
+                })
+        }
     }
 }
 
@@ -323,6 +368,143 @@ mod tests {
                 }),
             ],
         );
+    }
+
+    #[test]
+    fn mcp_prefix_expansion_returns_matching_tools_without_query() {
+        let handler = ToolSearchHandler::new(search_infos_for_mcp_tools(&[
+            tool_info("calendar", "create_event", "Create events"),
+            tool_info("calendar", "list_events", "List events"),
+            tool_info("github", "create_issue", "Create issues"),
+        ]));
+
+        let tools = handler
+            .tools_for_args(&SearchToolCallParams {
+                query: None,
+                limit: None,
+                mcp_prefix: Some("mcp__calendar".to_string()),
+            })
+            .expect("prefix expansion should succeed");
+
+        assert_eq!(
+            tools,
+            vec![LoadableToolSpec::Namespace(ResponsesApiNamespace {
+                name: "mcp__calendar".to_string(),
+                description: "Tools in the mcp__calendar namespace.".to_string(),
+                tools: vec![
+                    ResponsesApiNamespaceTool::Function(ResponsesApiTool {
+                        name: "create_event".to_string(),
+                        description: "Create events desktop tool".to_string(),
+                        strict: false,
+                        defer_loading: Some(true),
+                        parameters: codex_tools::JsonSchema::object(
+                            Default::default(),
+                            /*required*/ None,
+                            Some(false.into()),
+                        ),
+                        output_schema: None,
+                    }),
+                    ResponsesApiNamespaceTool::Function(ResponsesApiTool {
+                        name: "list_events".to_string(),
+                        description: "List events desktop tool".to_string(),
+                        strict: false,
+                        defer_loading: Some(true),
+                        parameters: codex_tools::JsonSchema::object(
+                            Default::default(),
+                            /*required*/ None,
+                            Some(false.into()),
+                        ),
+                        output_schema: None,
+                    }),
+                ],
+            })],
+        );
+    }
+
+    #[test]
+    fn mcp_prefix_expansion_respects_limit_and_allows_tool_prefixes() {
+        let handler = ToolSearchHandler::new(search_infos_for_mcp_tools(&[
+            tool_info("calendar", "create_event", "Create events"),
+            tool_info("calendar", "list_events", "List events"),
+        ]));
+
+        let tools = handler
+            .tools_for_args(&SearchToolCallParams {
+                query: None,
+                limit: Some(1),
+                mcp_prefix: Some("mcp__calendar__create".to_string()),
+            })
+            .expect("prefix expansion should succeed");
+
+        assert_eq!(
+            tools,
+            vec![LoadableToolSpec::Namespace(ResponsesApiNamespace {
+                name: "mcp__calendar".to_string(),
+                description: "Tools in the mcp__calendar namespace.".to_string(),
+                tools: vec![ResponsesApiNamespaceTool::Function(ResponsesApiTool {
+                    name: "create_event".to_string(),
+                    description: "Create events desktop tool".to_string(),
+                    strict: false,
+                    defer_loading: Some(true),
+                    parameters: codex_tools::JsonSchema::object(
+                        Default::default(),
+                        /*required*/ None,
+                        Some(false.into()),
+                    ),
+                    output_schema: None,
+                })],
+            })],
+        );
+    }
+
+    #[test]
+    fn mcp_prefix_expansion_returns_empty_for_unknown_prefix() {
+        let handler = ToolSearchHandler::new(search_infos_for_mcp_tools(&[
+            tool_info("calendar", "create_event", "Create events"),
+        ]));
+
+        let tools = handler
+            .tools_for_args(&SearchToolCallParams {
+                query: None,
+                limit: None,
+                mcp_prefix: Some("mcp__github".to_string()),
+            })
+            .expect("prefix expansion should succeed");
+
+        assert_eq!(tools, Vec::new());
+    }
+
+    #[test]
+    fn tool_search_requires_query_or_mcp_prefix() {
+        let handler = ToolSearchHandler::new(search_infos_for_mcp_tools(&[
+            tool_info("calendar", "create_event", "Create events"),
+        ]));
+
+        let result = handler
+            .tools_for_args(&SearchToolCallParams {
+                query: Some(" ".to_string()),
+                limit: None,
+                mcp_prefix: None,
+            });
+
+        assert_eq!(
+            result,
+            Err(FunctionCallError::RespondToModel(
+                "query or mcp_prefix must not be empty".to_string()
+            ))
+        );
+    }
+
+    fn search_infos_for_mcp_tools(tools: &[ToolInfo]) -> Vec<ToolSearchInfo> {
+        tools
+            .iter()
+            .map(|tool| {
+                McpHandler::new(tool.clone())
+                    .expect("MCP tool should convert")
+                    .search_info()
+                    .expect("MCP handler should return search info")
+            })
+            .collect()
     }
 
     fn tool_info(server_name: &str, tool_name: &str, description_prefix: &str) -> ToolInfo {

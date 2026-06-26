@@ -11,13 +11,23 @@ pub(crate) fn create_tool_search_tool(
     let properties = BTreeMap::from([
         (
             "query".to_string(),
-            JsonSchema::string(Some("Search query for deferred tools.".to_string())),
+            JsonSchema::string(Some(
+                "BM25 search query for deferred tools. Required unless mcp_prefix is provided."
+                    .to_string(),
+            )),
         ),
         (
             "limit".to_string(),
             JsonSchema::number(Some(format!(
                 "Maximum number of tools to return. Defaults to {default_limit}."
             ))),
+        ),
+        (
+            "mcp_prefix".to_string(),
+            JsonSchema::string(Some(
+                "MCP namespace or tool-name prefix for deterministic expansion of matching deferred MCP tools, such as mcp__github."
+                    .to_string(),
+            )),
         ),
     ]);
 
@@ -47,7 +57,7 @@ pub(crate) fn create_tool_search_tool(
     };
 
     let description = format!(
-        "# Tool discovery\n\nSearches over deferred tool metadata with BM25 and exposes matching tools for the next model call.\n\nYou have access to tools from the following sources:\n{source_descriptions}\nSome of the tools may not have been provided to you upfront, and you should use this tool (`{TOOL_SEARCH_TOOL_NAME}`) to search for the required tools. For MCP tool discovery, always use `{TOOL_SEARCH_TOOL_NAME}` instead of `list_mcp_resources` or `list_mcp_resource_templates`."
+        "# Tool discovery\n\nSearches over deferred tool metadata and exposes matching tools for the next model call.\n\nYou have access to tools from the following sources:\n{source_descriptions}\nSome of the tools may not have been provided to you upfront, and you should use this tool (`{TOOL_SEARCH_TOOL_NAME}`) to load the required tools. Use `query` for BM25 keyword search. Use `mcp_prefix` when you know the MCP namespace or tool-name prefix and need deterministic expansion of all matching deferred MCP tools. For MCP tool discovery, always use `{TOOL_SEARCH_TOOL_NAME}` instead of `list_mcp_resources` or `list_mcp_resource_templates`."
     );
 
     ToolSpec::ToolSearch {
@@ -55,7 +65,7 @@ pub(crate) fn create_tool_search_tool(
         description,
         parameters: JsonSchema::object(
             properties,
-            Some(vec!["query".to_string()]),
+            /*required*/ None,
             Some(false.into()),
         ),
     }
@@ -93,7 +103,7 @@ mod tests {
             ),
             ToolSpec::ToolSearch {
                 execution: "client".to_string(),
-                description: "# Tool discovery\n\nSearches over deferred tool metadata with BM25 and exposes matching tools for the next model call.\n\nYou have access to tools from the following sources:\n- Google Drive: Use Google Drive as the single entrypoint for Drive, Docs, Sheets, and Slides work.\n- docs\nSome of the tools may not have been provided to you upfront, and you should use this tool (`tool_search`) to search for the required tools. For MCP tool discovery, always use `tool_search` instead of `list_mcp_resources` or `list_mcp_resource_templates`.".to_string(),
+                description: "# Tool discovery\n\nSearches over deferred tool metadata and exposes matching tools for the next model call.\n\nYou have access to tools from the following sources:\n- Google Drive: Use Google Drive as the single entrypoint for Drive, Docs, Sheets, and Slides work.\n- docs\nSome of the tools may not have been provided to you upfront, and you should use this tool (`tool_search`) to load the required tools. Use `query` for BM25 keyword search. Use `mcp_prefix` when you know the MCP namespace or tool-name prefix and need deterministic expansion of all matching deferred MCP tools. For MCP tool discovery, always use `tool_search` instead of `list_mcp_resources` or `list_mcp_resource_templates`.".to_string(),
                 parameters: JsonSchema::object(BTreeMap::from([
                         (
                             "limit".to_string(),
@@ -103,10 +113,17 @@ mod tests {
                                 ),),
                         ),
                         (
-                            "query".to_string(),
-                            JsonSchema::string(Some("Search query for deferred tools.".to_string()),),
+                            "mcp_prefix".to_string(),
+                            JsonSchema::string(Some(
+                                    "MCP namespace or tool-name prefix for deterministic expansion of matching deferred MCP tools, such as mcp__github."
+                                        .to_string(),
+                                ),),
                         ),
-                    ]), Some(vec!["query".to_string()]), Some(false.into())),
+                        (
+                            "query".to_string(),
+                            JsonSchema::string(Some("BM25 search query for deferred tools. Required unless mcp_prefix is provided.".to_string()),),
+                        ),
+                    ]), /*required*/ None, Some(false.into())),
             }
         );
     }

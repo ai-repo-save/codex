@@ -322,8 +322,9 @@ fn custom_tool_calls_can_derive_text_from_content_items() {
 fn tool_search_payloads_roundtrip_as_tool_search_outputs() {
     let payload = ToolPayload::ToolSearch {
         arguments: SearchToolCallParams {
-            query: "calendar".to_string(),
+            query: Some("calendar".to_string()),
             limit: None,
+            mcp_prefix: None,
         },
     };
     let response = ToolSearchOutput {

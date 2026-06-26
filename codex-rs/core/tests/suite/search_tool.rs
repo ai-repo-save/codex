@@ -167,10 +167,10 @@ async fn search_tool_enabled_by_default_adds_tool_search() -> Result<()> {
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Search query for deferred tools."},
+                    "query": {"type": "string", "description": "BM25 search query for deferred tools. Required unless mcp_prefix is provided."},
                     "limit": {"type": "number", "description": "Maximum number of tools to return. Defaults to 8."},
+                    "mcp_prefix": {"type": "string", "description": "MCP namespace or tool-name prefix for deterministic expansion of matching deferred MCP tools, such as mcp__github."},
                 },
-                "required": ["query"],
                 "additionalProperties": false,
             }
         })
@@ -1170,6 +1170,97 @@ async fn tool_search_indexes_only_enabled_non_app_mcp_tools() -> Result<()> {
     assert!(
         !found_rmcp_image_tool,
         "disabled non-app MCP tools should not be searchable: {image_tools:?}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn tool_search_expands_non_app_mcp_tools_by_prefix_without_query() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let apps_server = AppsTestServer::mount_searchable(&server).await?;
+    let search_call_id = "tool-search-rmcp-prefix";
+    let mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-1"),
+                ev_tool_search_call(
+                    search_call_id,
+                    &json!({
+                        "mcp_prefix": "mcp__rmcp__e",
+                        "limit": 8,
+                    }),
+                ),
+                ev_completed("resp-1"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-2"),
+                ev_assistant_message("msg-1", "done"),
+                ev_completed("resp-2"),
+            ]),
+        ],
+    )
+    .await;
+
+    let rmcp_test_server_bin = stdio_server_bin()?;
+    let mut builder =
+        configured_builder(apps_server.chatgpt_base_url.clone()).with_config(move |config| {
+            let mut servers = config.mcp_servers.get().clone();
+            servers.insert(
+                "rmcp".to_string(),
+                McpServerConfig {
+                    transport: McpServerTransportConfig::Stdio {
+                        command: rmcp_test_server_bin,
+                        args: Vec::new(),
+                        env: None,
+                        env_vars: Vec::new(),
+                        cwd: None,
+                    },
+                    environment_id: "local".to_string(),
+                    enabled: true,
+                    required: false,
+                    disabled_reason: None,
+                    startup_timeout_sec: Some(Duration::from_secs(10)),
+                    tool_timeout_sec: None,
+                    default_tools_approval_mode: None,
+                    enabled_tools: Some(vec!["echo".to_string(), "image".to_string()]),
+                    disabled_tools: Some(vec!["image".to_string()]),
+                    scopes: None,
+                    oauth: None,
+                    oauth_resource: None,
+                    supports_parallel_tool_calls: false,
+                    tools: HashMap::new(),
+                },
+            );
+            config
+                .mcp_servers
+                .set(servers)
+                .expect("test mcp servers should accept any configuration");
+        });
+    let test = builder.build(&server).await?;
+    wait_for_mcp_server(&test.codex, "rmcp").await?;
+
+    test.submit_turn_with_approval_and_permission_profile(
+        "Load the rmcp echo tool by prefix.",
+        AskForApproval::Never,
+        PermissionProfile::Disabled,
+    )
+    .await?;
+
+    let requests = mock.requests();
+    assert_eq!(requests.len(), 2);
+
+    let output = tool_search_output_item(&requests[1], search_call_id);
+    assert!(
+        namespace_child_tool(&output, "mcp__rmcp", "echo").is_some(),
+        "mcp_prefix should surface rmcp echo without query: {output:?}"
+    );
+    assert!(
+        namespace_child_tool(&output, "mcp__rmcp", "image").is_none(),
+        "disabled rmcp image tool should not be surfaced by prefix: {output:?}"
     );
 
     Ok(())
