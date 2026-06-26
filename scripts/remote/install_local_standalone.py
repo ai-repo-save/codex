@@ -1,5 +1,4 @@
 #!/usr/bin/env -S uv run python
-from __future__ import annotations
 
 import logging
 import os
@@ -58,6 +57,21 @@ NO_ARGUMENTS_MESSAGE = (
     "scripts/remote/install_local_standalone.py does not accept arguments; it "
     "only builds and installs the fixed local standalone Codex package."
 )
+HELP_TEXT = f"""Build Codex on the remote host and install the local standalone package.
+
+Usage:
+  uv run --project scripts python scripts/remote/install_local_standalone.py
+
+Options:
+  -h, --help  Show this help message and exit.
+
+Behavior:
+  - Requires a clean local checkout on the main branch.
+  - Pushes the current commit to origin/main.
+  - Builds the standalone package on {DEFAULT_HOST}:{DEFAULT_REMOTE_PATH}.
+  - Compresses the remote package into a .tar.zst archive before downloading it.
+  - Installs the extracted package under the configured Codex standalone release directory.
+"""
 
 
 @dataclass(frozen=True)
@@ -82,6 +96,9 @@ class CommitInfo:
 def main(argv: Sequence[str] | None = None) -> int:
     configure_logging()
     args = tuple(argv if argv is not None else sys.argv[1:])
+    if args in (("-h",), ("--help",)):
+        print(HELP_TEXT)
+        return 0
     if args:
         print(NO_ARGUMENTS_MESSAGE, file=sys.stderr)
         return 2
@@ -98,10 +115,14 @@ def configure_logging() -> None:
 
 
 def install_local_standalone(config: StandaloneInstallConfig) -> None:
+    require_command("ssh")
     require_command("rsync")
+    require_command("tar")
+    require_command("zstd")
     repo_root = git_repo_root()
     commit = current_commit(repo_root)
     remote_package_dir = remote_package_path(commit)
+    remote_archive = remote_package_archive_path(commit)
     paths = InstallPaths.resolve(
         codex_home=config.codex_home,
         bin_dir=config.bin_dir,
@@ -111,13 +132,16 @@ def install_local_standalone(config: StandaloneInstallConfig) -> None:
     )
 
     LOGGER.info("remote package directory: %s", remote_package_dir)
+    LOGGER.info("remote package archive: %s", remote_archive)
     with timed_step(LOGGER, "remote package build workflow"):
         run_remote_workflow(
             RemoteWorkflow(
                 host=config.host,
                 branch=config.branch,
                 remote_path=config.remote_path,
-                command=remote_build_command(config, remote_package_dir),
+                command=remote_build_command(
+                    config, remote_package_dir, remote_archive
+                ),
             )
         )
 
@@ -127,7 +151,7 @@ def install_local_standalone(config: StandaloneInstallConfig) -> None:
     install_remote_package(
         config=config,
         paths=paths,
-        remote_package_dir=remote_package_dir,
+        remote_archive=remote_archive,
         staging_dir=staging_dir,
         commit=commit,
     )
@@ -159,18 +183,28 @@ def remote_package_path(commit: CommitInfo) -> PurePosixPath:
     return PurePosixPath("/tmp") / f"codex-standalone-{commit.short_hash}"
 
 
+def remote_package_archive_path(commit: CommitInfo) -> PurePosixPath:
+    return PurePosixPath("/tmp") / f"codex-standalone-{commit.short_hash}.tar.zst"
+
+
 def remote_build_command(
-    config: StandaloneInstallConfig, remote_package_dir: PurePosixPath
+    config: StandaloneInstallConfig,
+    remote_package_dir: PurePosixPath,
+    remote_archive: PurePosixPath,
 ) -> tuple[str, ...]:
     command = (
-        f"rm -rf {shell_quote(str(remote_package_dir))} && "
+        f"rm -rf {shell_quote(str(remote_package_dir))} "
+        f"{shell_quote(str(remote_archive))} && "
         f"{remote_build_env_command(config.target)} && "
         "uv run --project scripts python scripts/build_codex_package.py "
         f"--target {shell_quote(config.target)} "
         f"--variant {shell_quote(config.variant)} "
         f"--cargo-profile {shell_quote(config.cargo_profile)} "
         f"--package-dir {shell_quote(str(remote_package_dir))} "
-        "--force"
+        "--force && "
+        f"tar -I 'zstd -T0 -3' -cf {shell_quote(str(remote_archive))} "
+        f"-C {shell_quote(str(remote_package_dir))} . && "
+        f"du -h {shell_quote(str(remote_archive))}"
     )
     return ("bash", "-lc", command)
 
@@ -179,20 +213,21 @@ def install_remote_package(
     *,
     config: StandaloneInstallConfig,
     paths: InstallPaths,
-    remote_package_dir: PurePosixPath,
+    remote_archive: PurePosixPath,
     staging_dir: Path,
     commit: CommitInfo,
 ) -> None:
     if staging_dir.exists() or staging_dir.is_symlink():
         raise RuntimeError(f"staging directory already exists: {staging_dir}")
     staging_dir.parent.mkdir(parents=True, exist_ok=True)
-    prefill_staging_dir(paths.current_link, staging_dir)
-    with timed_step(
-        LOGGER, f"copying remote package to local staging directory {staging_dir}"
-    ):
-        rsync_remote_package(config.host, remote_package_dir, staging_dir)
-
+    local_archive = local_package_archive_path(commit)
+    if local_archive.exists():
+        raise RuntimeError(f"local package archive already exists: {local_archive}")
     try:
+        with timed_step(LOGGER, f"copying remote package archive to {local_archive}"):
+            rsync_remote_package_archive(config.host, remote_archive, local_archive)
+        with timed_step(LOGGER, f"extracting package archive into {staging_dir}"):
+            extract_package_archive(local_archive, staging_dir)
         with timed_step(LOGGER, f"preparing local staging package {staging_dir}"):
             finalize_package_layout(staging_dir)
             validate_package_dir(
@@ -217,47 +252,44 @@ def install_remote_package(
             )
             LOGGER.error("moved failed staging directory to %s", failed_staging)
         raise
+    finally:
+        if local_archive.exists():
+            local_archive.unlink()
+        remove_remote_package_archive(config.host, remote_archive)
 
     LOGGER.info("installed standalone Codex from %s", commit.short_hash)
     LOGGER.info("active command: %s", paths.bin_path)
 
 
-def rsync_remote_package(
-    host: str, remote_package_dir: PurePosixPath, staging_dir: Path
+def local_package_archive_path(commit: CommitInfo) -> Path:
+    return Path("/tmp") / f"codex-standalone-{commit.short_hash}.{os.getpid()}.tar.zst"
+
+
+def rsync_remote_package_archive(
+    host: str, remote_archive: PurePosixPath, local_archive: Path
 ) -> None:
     run(
         (
             "rsync",
             "--archive",
-            "--delete",
-            "--compress",
-            "--compress-choice=zstd",
-            "--compress-level=1",
-            f"{host}:{remote_package_dir}/",
-            f"{staging_dir}/",
+            f"{host}:{remote_archive}",
+            str(local_archive),
         )
     )
 
 
-def prefill_staging_dir(current_link: Path, staging_dir: Path) -> None:
-    if not current_link.is_symlink() and not current_link.exists():
-        LOGGER.info("no current standalone release to prefill staging directory")
-        return
+def extract_package_archive(local_archive: Path, staging_dir: Path) -> None:
+    staging_dir.mkdir(parents=True)
+    run(("tar", "-I", "zstd", "-xf", str(local_archive), "-C", str(staging_dir)))
 
-    current_release = current_link.resolve()
-    if not current_release.is_dir():
-        LOGGER.info(
-            "current standalone release is not a directory: %s", current_release
-        )
-        return
 
-    with timed_step(LOGGER, f"prefilling staging directory from {current_release}"):
-        shutil.copytree(
-            current_release,
-            staging_dir,
-            copy_function=os.link,
-            symlinks=True,
-        )
+def remove_remote_package_archive(host: str, remote_archive: PurePosixPath) -> None:
+    result = subprocess.run(
+        ("ssh", host, f"rm -f {shell_quote(str(remote_archive))}"),
+        text=True,
+    )
+    if result.returncode != 0:
+        LOGGER.warning("failed to remove remote package archive: %s", remote_archive)
 
 
 def activate_release_with_backup(
