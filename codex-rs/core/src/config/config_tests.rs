@@ -78,6 +78,7 @@ use codex_prompts::continuation_prompt_with_templates;
 use codex_prompts::objective_updated_prompt_with_templates;
 use codex_prompts::render_auto_review_prompt_template;
 use codex_protocol::ThreadId;
+use codex_protocol::config_types::MultiAgentMode;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::models::ActivePermissionProfile;
@@ -10502,6 +10503,7 @@ max_concurrent_threads_per_session = 5
 min_wait_timeout_ms = 2500
 max_wait_timeout_ms = 120000
 default_wait_timeout_ms = 30000
+multi_agent_mode = "proactive"
 usage_hint_text = "Custom delegation guidance."
 root_agent_usage_hint_text = "Root guidance."
 subagent_usage_hint_text = "Subagent guidance."
@@ -10523,6 +10525,10 @@ encrypt_messages = true
     assert_eq!(config.multi_agent_v2.min_wait_timeout_ms, 2500);
     assert_eq!(config.multi_agent_v2.max_wait_timeout_ms, 120000);
     assert_eq!(config.multi_agent_v2.default_wait_timeout_ms, 30000);
+    assert_eq!(
+        config.multi_agent_v2.multi_agent_mode,
+        MultiAgentMode::Proactive
+    );
     assert_eq!(
         (
             config.agent_max_threads,
@@ -10665,6 +10671,10 @@ enabled = true
         .await?;
 
     assert_eq!(config.multi_agent_v2, MultiAgentV2Config::default());
+    assert_eq!(
+        config.multi_agent_v2.multi_agent_mode,
+        MultiAgentMode::ExplicitRequestOnly
+    );
     assert_eq!(
         (
             config.agent_max_threads,

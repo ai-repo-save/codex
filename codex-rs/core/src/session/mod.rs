@@ -590,7 +590,8 @@ impl Codex {
             .await;
         let multi_agent_version =
             resolve_multi_agent_version(&conversation_history, inherited_multi_agent_version);
-        let multi_agent_mode = initial_multi_agent_mode.unwrap_or_default();
+        let multi_agent_mode =
+            initial_multi_agent_mode.unwrap_or(config.multi_agent_v2.multi_agent_mode);
         config
             .validate_multi_agent_v2_config()
             .map_err(|err| CodexErr::InvalidRequest(err.to_string()))?;

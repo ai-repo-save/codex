@@ -1,4 +1,5 @@
 use crate::FeatureConfig;
+use codex_protocol::config_types::MultiAgentMode;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Serialize;
@@ -46,6 +47,8 @@ pub struct MultiAgentV2ConfigToml {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schemars(range(min = 0, max = 3600000))]
     pub default_wait_timeout_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multi_agent_mode: Option<MultiAgentMode>,
     /// Deprecated compatibility field. Its value is ignored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage_hint_enabled: Option<bool>,

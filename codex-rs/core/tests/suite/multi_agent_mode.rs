@@ -61,6 +61,47 @@ async fn submit_turn(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn configured_multi_agent_mode_seeds_first_turn() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let responses = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-1"), ev_completed("resp-1")]),
+    )
+    .await;
+    let test = test_codex()
+        .with_config(|config| {
+            config
+                .features
+                .enable(Feature::MultiAgentV2)
+                .expect("test config should allow feature update");
+            config.multi_agent_v2.multi_agent_mode = MultiAgentMode::Proactive;
+        })
+        .build(&server)
+        .await?;
+
+    submit_turn(&test.codex, "hello", /*mode*/ None).await?;
+    assert_eq!(
+        test.codex.config_snapshot().await.multi_agent_mode,
+        MultiAgentMode::Proactive
+    );
+
+    let input = responses.single_request().input();
+    let texts = developer_texts(&input);
+    assert_eq!(
+        (
+            count_containing(&texts, MULTI_AGENT_MODE_OPEN_TAG),
+            count_containing(&texts, NO_SPAWN_TEXT),
+            count_containing(&texts, PROACTIVE_TEXT),
+        ),
+        (1, 0, 1)
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn multi_agent_mode_is_sticky_and_emits_only_on_change() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
