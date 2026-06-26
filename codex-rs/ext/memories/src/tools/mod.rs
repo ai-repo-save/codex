@@ -21,6 +21,7 @@ use crate::schema;
 use crate::scoped::MemoryToolBackends;
 
 mod ad_hoc_note;
+mod delete;
 mod list;
 mod read;
 mod search;
@@ -43,6 +44,10 @@ pub(crate) fn memory_tools(
             metrics_client: metrics_client.clone(),
         }));
     }
+    tools.push(Arc::new(delete::DeleteTool {
+        backends: backends.clone(),
+        metrics_client: metrics_client.clone(),
+    }));
     tools.push(Arc::new(list::ListTool {
         backends: backends.clone(),
         metrics_client: metrics_client.clone(),

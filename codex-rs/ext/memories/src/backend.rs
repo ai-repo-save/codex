@@ -25,6 +25,11 @@ pub trait MemoriesBackend: Clone + Send + Sync + 'static {
         request: ReadMemoryRequest,
     ) -> impl Future<Output = Result<ReadMemoryResponse, MemoriesBackendError>> + Send;
 
+    fn delete(
+        &self,
+        request: DeleteMemoryRequest,
+    ) -> impl Future<Output = Result<DeleteMemoryResponse, MemoriesBackendError>> + Send;
+
     fn search(
         &self,
         request: SearchMemoriesRequest,
@@ -72,6 +77,18 @@ pub struct ReadMemoryResponse {
     pub start_line_number: usize,
     pub content: String,
     pub truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteMemoryRequest {
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct DeleteMemoryResponse {
+    pub path: String,
+    pub deleted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

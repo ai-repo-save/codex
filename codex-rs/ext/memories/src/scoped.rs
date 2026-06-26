@@ -17,6 +17,7 @@ use sha2::Sha256;
 
 use crate::backend::AddAdHocMemoryNoteRequest;
 use crate::backend::AddAdHocMemoryNoteResponse;
+use crate::backend::DeleteMemoryRequest;
 use crate::backend::ListMemoriesRequest;
 use crate::backend::ListMemoriesResponse;
 use crate::backend::MemoriesBackend;
@@ -123,6 +124,23 @@ impl MemoryToolBackends {
         self.backend_for_read(scope)?.read(request).await
     }
 
+    pub(crate) async fn delete(
+        &self,
+        scope: Option<MemoryScope>,
+        request: DeleteMemoryRequest,
+    ) -> Result<DeleteMemoryResponse, MemoriesBackendError> {
+        let memory_scope = scope.unwrap_or(MemoryScope::Global);
+        let response = self
+            .backend_for_read(Some(memory_scope))?
+            .delete(request)
+            .await?;
+        Ok(DeleteMemoryResponse {
+            scope: memory_scope,
+            path: response.path,
+            deleted: response.deleted,
+        })
+    }
+
     pub(crate) async fn search(
         &self,
         scope: Option<MemoryScope>,
@@ -174,7 +192,7 @@ impl MemoryToolBackends {
         }
 
         let body = format!(
-            "\n## Scoped Memory\n{}\n\nUse `memories.write_note` with `scope: \"session\"` or `scope: \"project\"` when the user explicitly asks Codex to remember something for the current session or project.\n",
+            "\n## Scoped Memory\n{}\n\nUse `memories.write_note` with `scope: \"session\"` or `scope: \"project\"` when the user explicitly asks Codex to remember or update something for the current session or project. Use `memories.delete` with the matching scope when the user explicitly asks Codex to forget or remove an existing memory file.\n",
             sections.join("\n\n")
         );
         Some(ScopedMemoryContextFragment::new(body).render())
@@ -347,6 +365,14 @@ impl ScopedMemoryStore {
 pub(crate) struct WriteScopedMemoryNoteResponse {
     pub(crate) scope: MemoryScope,
     pub(crate) path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub(crate) struct DeleteMemoryResponse {
+    pub(crate) scope: MemoryScope,
+    pub(crate) path: String,
+    pub(crate) deleted: bool,
 }
 
 fn project_key(project_root: &AbsolutePathBuf) -> String {

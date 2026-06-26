@@ -108,6 +108,7 @@ fn tools_are_contributed_when_enabled_with_dedicated_tools() {
         tool_names,
         vec![
             memory_tool_name(crate::ADD_AD_HOC_NOTE_TOOL_NAME),
+            memory_tool_name(crate::DELETE_TOOL_NAME),
             memory_tool_name(crate::LIST_TOOL_NAME),
             memory_tool_name(crate::READ_TOOL_NAME),
             memory_tool_name(crate::SEARCH_TOOL_NAME),
@@ -137,6 +138,7 @@ fn scoped_tools_are_contributed_without_global_memories() {
         tool_names,
         vec![
             memory_tool_name(crate::WRITE_NOTE_TOOL_NAME),
+            memory_tool_name(crate::DELETE_TOOL_NAME),
             memory_tool_name(crate::LIST_TOOL_NAME),
             memory_tool_name(crate::READ_TOOL_NAME),
             memory_tool_name(crate::SEARCH_TOOL_NAME),
@@ -169,6 +171,7 @@ fn install_registers_dedicated_tool_contributor() {
         tool_names,
         vec![
             memory_tool_name(crate::ADD_AD_HOC_NOTE_TOOL_NAME),
+            memory_tool_name(crate::DELETE_TOOL_NAME),
             memory_tool_name(crate::LIST_TOOL_NAME),
             memory_tool_name(crate::READ_TOOL_NAME),
             memory_tool_name(crate::SEARCH_TOOL_NAME),
@@ -398,6 +401,194 @@ async fn write_note_tool_creates_scoped_note_readable_by_scope() {
             "truncated": false
         }))
     );
+}
+
+#[tokio::test]
+async fn delete_tool_removes_global_file_from_memory_reads() {
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let memory_root = tempdir.path().join("memories");
+    tokio::fs::create_dir_all(&memory_root)
+        .await
+        .expect("create memories dir");
+    tokio::fs::write(memory_root.join("MEMORY.md"), "obsolete memory\n")
+        .await
+        .expect("write memory");
+    let delete_tool = memory_tool(&memory_root, crate::DELETE_TOOL_NAME);
+    let delete_payload = ToolPayload::Function {
+        arguments: json!({
+            "path": "MEMORY.md",
+        })
+        .to_string(),
+    };
+
+    let delete_response = run_memory_tool(
+        &delete_tool,
+        crate::DELETE_TOOL_NAME,
+        "call-1",
+        delete_payload,
+    )
+    .await
+    .expect("delete should succeed");
+
+    assert_eq!(
+        delete_response,
+        Some(json!({
+            "scope": "global",
+            "path": "MEMORY.md",
+            "deleted": true
+        }))
+    );
+    let mut deleted_entries = tokio::fs::read_dir(memory_root.join(".deleted"))
+        .await
+        .expect("deleted directory should exist");
+    let deleted_entry = deleted_entries
+        .next_entry()
+        .await
+        .expect("read deleted entry")
+        .expect("deleted file should be preserved");
+    assert_eq!(
+        tokio::fs::read_to_string(deleted_entry.path())
+            .await
+            .expect("read deleted file"),
+        "obsolete memory\n"
+    );
+    assert!(
+        deleted_entries
+            .next_entry()
+            .await
+            .expect("read deleted entries")
+            .is_none()
+    );
+    let read_tool = memory_tool(&memory_root, crate::READ_TOOL_NAME);
+    let read_payload = ToolPayload::Function {
+        arguments: json!({
+            "path": "MEMORY.md",
+        })
+        .to_string(),
+    };
+    let err = run_memory_tool(&read_tool, crate::READ_TOOL_NAME, "call-2", read_payload)
+        .await
+        .expect_err("deleted file should not be readable");
+
+    assert!(err.to_string().contains("not found"));
+}
+
+#[tokio::test]
+async fn delete_tool_removes_scoped_note_from_context() {
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let project_root = tempfile::tempdir().expect("project root");
+    let backends = MemoryToolBackends::new(
+        &tempdir.path().abs(),
+        /*global_enabled*/ false,
+        /*scoped_enabled*/ true,
+        "thread-1",
+        &project_root.path().abs(),
+    );
+    let write_tool = memory_tool_from_backends(backends.clone(), crate::WRITE_NOTE_TOOL_NAME);
+    let write_payload = ToolPayload::Function {
+        arguments: json!({
+            "scope": "session",
+            "title": "Temporary Preference",
+            "note": "Forget this after the delete tool runs.",
+        })
+        .to_string(),
+    };
+    let write_response = run_memory_tool(
+        &write_tool,
+        crate::WRITE_NOTE_TOOL_NAME,
+        "call-1",
+        write_payload,
+    )
+    .await
+    .expect("write should succeed")
+    .expect("write response");
+    let path = write_response
+        .pointer("/path")
+        .and_then(serde_json::Value::as_str)
+        .expect("write response path");
+    assert!(
+        backends
+            .scoped_context_fragment()
+            .await
+            .is_some_and(|context| context.contains("Forget this after the delete tool runs."))
+    );
+
+    let delete_tool = memory_tool_from_backends(backends.clone(), crate::DELETE_TOOL_NAME);
+    let delete_payload = ToolPayload::Function {
+        arguments: json!({
+            "scope": "session",
+            "path": path,
+        })
+        .to_string(),
+    };
+    let delete_response = run_memory_tool(
+        &delete_tool,
+        crate::DELETE_TOOL_NAME,
+        "call-2",
+        delete_payload,
+    )
+    .await
+    .expect("delete should succeed");
+
+    assert_eq!(
+        delete_response,
+        Some(json!({
+            "scope": "session",
+            "path": path,
+            "deleted": true
+        }))
+    );
+    assert_eq!(backends.scoped_context_fragment().await, None);
+}
+
+#[tokio::test]
+async fn delete_tool_rejects_directories_and_keeps_them() {
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let memory_root = tempdir.path().join("memories");
+    tokio::fs::create_dir_all(memory_root.join("notes"))
+        .await
+        .expect("create memories dir");
+    let delete_tool = memory_tool(&memory_root, crate::DELETE_TOOL_NAME);
+    let payload = ToolPayload::Function {
+        arguments: json!({
+            "path": "notes",
+        })
+        .to_string(),
+    };
+
+    let err = run_memory_tool(&delete_tool, crate::DELETE_TOOL_NAME, "call-1", payload)
+        .await
+        .expect_err("directory delete should fail");
+
+    assert!(err.to_string().contains("not a file"));
+    assert!(
+        tokio::fs::metadata(memory_root.join("notes"))
+            .await
+            .expect("directory should remain")
+            .is_dir()
+    );
+}
+
+#[tokio::test]
+async fn delete_tool_rejects_path_traversal() {
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let memory_root = tempdir.path().join("memories");
+    tokio::fs::create_dir_all(&memory_root)
+        .await
+        .expect("create memories dir");
+    let delete_tool = memory_tool(&memory_root, crate::DELETE_TOOL_NAME);
+    let payload = ToolPayload::Function {
+        arguments: json!({
+            "path": "../outside.md",
+        })
+        .to_string(),
+    };
+
+    let err = run_memory_tool(&delete_tool, crate::DELETE_TOOL_NAME, "call-1", payload)
+        .await
+        .expect_err("path traversal should fail");
+
+    assert!(err.to_string().contains("memories root"));
 }
 
 #[tokio::test]
@@ -712,6 +903,29 @@ fn memory_tool_from_backends(
         .into_iter()
         .find(|tool| tool.tool_name() == expected_tool_name)
         .unwrap_or_else(|| panic!("{tool_name} tool should be registered"))
+}
+
+async fn run_memory_tool(
+    tool: &Arc<dyn ToolExecutor<ToolCall>>,
+    tool_name: &str,
+    call_id: &str,
+    payload: ToolPayload,
+) -> Result<Option<serde_json::Value>, codex_extension_api::FunctionCallError> {
+    let output = tool
+        .handle(ToolCall {
+            turn_id: "turn-1".to_string(),
+            call_id: call_id.to_string(),
+            tool_name: memory_tool_name(tool_name),
+            model: "gpt-test".to_string(),
+            truncation_policy: TruncationPolicy::Bytes(1024),
+            conversation_history: codex_extension_api::ConversationHistory::default(),
+            turn_item_emitter: Arc::new(NoopTurnItemEmitter),
+            environments: Vec::new(),
+            payload: payload.clone(),
+        })
+        .await?;
+
+    Ok(output.post_tool_use_response(call_id, &payload))
 }
 
 fn memory_tool_name(tool_name: &str) -> ToolName {

@@ -117,8 +117,9 @@ rollout_summaries/2026-02-17T21-23-02-LN3m-example.md:10-12|note=[weekly report 
 Updating memories:
 
 You can update the memories **only** when explicitly asked by the user. This must always come from a direct request from the user.
-- Write your update in {{ base_path }}/extensions/ad_hoc/notes/
-- Each update must be one small file containing what you want to add/delete/update from the memories.
+- Use the `memories.delete` tool only when the user explicitly asks to forget or remove an exact existing memory file.
+- For semantic remember/update requests, write your update in {{ base_path }}/extensions/ad_hoc/notes/
+- Each add/update note must be one small file containing what you want to add/update in the memories.
 - The name of this file must be `<timestamp>-<short slug>.md`
 - Do not try to edit the memory files yourself, only add one update note in {{ base_path }}/extensions/ad_hoc/notes/
 

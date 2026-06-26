@@ -6,6 +6,8 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 
 use crate::backend::AddAdHocMemoryNoteRequest;
 use crate::backend::AddAdHocMemoryNoteResponse;
+use crate::backend::DeleteMemoryRequest;
+use crate::backend::DeleteMemoryResponse;
 use crate::backend::ListMemoriesRequest;
 use crate::backend::ListMemoriesResponse;
 use crate::backend::MemoriesBackend;
@@ -16,6 +18,7 @@ use crate::backend::SearchMemoriesRequest;
 use crate::backend::SearchMemoriesResponse;
 
 mod ad_hoc_note;
+mod delete;
 mod list;
 mod path;
 mod read;
@@ -118,6 +121,13 @@ impl MemoriesBackend for LocalMemoriesBackend {
         request: ReadMemoryRequest,
     ) -> Result<ReadMemoryResponse, MemoriesBackendError> {
         read::read(self, request).await
+    }
+
+    async fn delete(
+        &self,
+        request: DeleteMemoryRequest,
+    ) -> Result<DeleteMemoryResponse, MemoriesBackendError> {
+        delete::delete(self, request).await
     }
 
     async fn search(
