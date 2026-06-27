@@ -63,11 +63,7 @@ pub(crate) fn create_tool_search_tool(
     ToolSpec::ToolSearch {
         execution: "client".to_string(),
         description,
-        parameters: JsonSchema::object(
-            properties,
-            /*required*/ None,
-            Some(false.into()),
-        ),
+        parameters: JsonSchema::object(properties, /*required*/ None, Some(false.into())),
     }
 }
 

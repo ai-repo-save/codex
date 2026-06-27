@@ -177,8 +177,5 @@ async fn list_context_anchors_rejects_oversized_limit() {
         panic!("oversized limit should fail");
     };
 
-    assert_eq!(
-        err.to_string(),
-        "`limit` is 101, but the maximum is 100"
-    );
+    assert_eq!(err.to_string(), "`limit` is 101, but the maximum is 100");
 }

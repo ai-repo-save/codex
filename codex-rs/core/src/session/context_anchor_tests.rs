@@ -9,7 +9,12 @@ use pretty_assertions::assert_eq;
 
 const ANCHOR_ID: &str = "anchor";
 
-fn saved_anchor(anchor_id: &str, label: Option<&str>, boundary: u64, created_at: i64) -> RolloutItem {
+fn saved_anchor(
+    anchor_id: &str,
+    label: Option<&str>,
+    boundary: u64,
+    created_at: i64,
+) -> RolloutItem {
     RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
         anchor_id: anchor_id.to_string(),
         label: label.map(str::to_string),
@@ -65,7 +70,9 @@ fn history_item(text: &str) -> ResponseItem {
 #[test]
 fn count_user_turns_since_anchor_forgets_pre_compaction_anchor() {
     let items = vec![
-        saved_anchor(ANCHOR_ID, /*label*/ None, /*boundary*/ 0, /*created_at*/ 0),
+        saved_anchor(
+            ANCHOR_ID, /*label*/ None, /*boundary*/ 0, /*created_at*/ 0,
+        ),
         user_message(),
         compaction(),
     ];
@@ -78,10 +85,14 @@ fn count_user_turns_since_anchor_forgets_pre_compaction_anchor() {
 #[test]
 fn count_user_turns_since_anchor_uses_post_compaction_anchor() {
     let items = vec![
-        saved_anchor(ANCHOR_ID, /*label*/ None, /*boundary*/ 0, /*created_at*/ 0),
+        saved_anchor(
+            ANCHOR_ID, /*label*/ None, /*boundary*/ 0, /*created_at*/ 0,
+        ),
         user_message(),
         compaction(),
-        saved_anchor(ANCHOR_ID, /*label*/ None, /*boundary*/ 0, /*created_at*/ 0),
+        saved_anchor(
+            ANCHOR_ID, /*label*/ None, /*boundary*/ 0, /*created_at*/ 0,
+        ),
         user_message(),
     ];
 
@@ -93,9 +104,19 @@ fn count_user_turns_since_anchor_uses_post_compaction_anchor() {
 #[test]
 fn list_context_anchors_returns_active_anchors_newest_first() {
     let rollout_items = vec![
-        saved_anchor("a", Some("early"), /*boundary*/ 1, /*created_at*/ 10),
+        saved_anchor(
+            "a",
+            Some("early"),
+            /*boundary*/ 1,
+            /*created_at*/ 10,
+        ),
         user_message(),
-        saved_anchor("b", Some("late"), /*boundary*/ 3, /*created_at*/ 20),
+        saved_anchor(
+            "b",
+            Some("late"),
+            /*boundary*/ 3,
+            /*created_at*/ 20,
+        ),
         user_message(),
     ];
     let current_history = vec![
@@ -105,7 +126,8 @@ fn list_context_anchors_returns_active_anchors_newest_first() {
         history_item("three"),
     ];
 
-    let result = list_context_anchors_from_rollout(&rollout_items, &current_history, /*limit*/ 20);
+    let result =
+        list_context_anchors_from_rollout(&rollout_items, &current_history, /*limit*/ 20);
 
     assert_eq!(result.current_history_items, 4);
     assert_eq!(result.active_anchor_count, 2);
@@ -126,14 +148,19 @@ fn list_context_anchors_returns_active_anchors_newest_first() {
 #[test]
 fn list_context_anchors_omits_pre_compaction_anchors() {
     let rollout_items = vec![
-        saved_anchor("old", /*label*/ None, /*boundary*/ 0, /*created_at*/ 10),
+        saved_anchor(
+            "old", /*label*/ None, /*boundary*/ 0, /*created_at*/ 10,
+        ),
         user_message(),
         compaction(),
-        saved_anchor("new", /*label*/ None, /*boundary*/ 1, /*created_at*/ 20),
+        saved_anchor(
+            "new", /*label*/ None, /*boundary*/ 1, /*created_at*/ 20,
+        ),
     ];
     let current_history = vec![history_item("zero"), history_item("one")];
 
-    let result = list_context_anchors_from_rollout(&rollout_items, &current_history, /*limit*/ 20);
+    let result =
+        list_context_anchors_from_rollout(&rollout_items, &current_history, /*limit*/ 20);
 
     assert_eq!(result.active_anchor_count, 1);
     assert_eq!(result.invalidated_anchor_count, 1);
@@ -144,11 +171,17 @@ fn list_context_anchors_omits_pre_compaction_anchors() {
 #[test]
 fn list_context_anchors_omits_anchors_after_rewound_target() {
     let rollout_items = vec![
-        saved_anchor("a", /*label*/ None, /*boundary*/ 0, /*created_at*/ 10),
+        saved_anchor(
+            "a", /*label*/ None, /*boundary*/ 0, /*created_at*/ 10,
+        ),
         user_message(),
-        saved_anchor("b", /*label*/ None, /*boundary*/ 1, /*created_at*/ 20),
+        saved_anchor(
+            "b", /*label*/ None, /*boundary*/ 1, /*created_at*/ 20,
+        ),
         user_message(),
-        saved_anchor("c", /*label*/ None, /*boundary*/ 2, /*created_at*/ 30),
+        saved_anchor(
+            "c", /*label*/ None, /*boundary*/ 2, /*created_at*/ 30,
+        ),
         rewind("b"),
         user_message(),
     ];
@@ -158,7 +191,8 @@ fn list_context_anchors_omits_anchors_after_rewound_target() {
         history_item("carry"),
     ];
 
-    let result = list_context_anchors_from_rollout(&rollout_items, &current_history, /*limit*/ 20);
+    let result =
+        list_context_anchors_from_rollout(&rollout_items, &current_history, /*limit*/ 20);
 
     assert_eq!(result.active_anchor_count, 2);
     assert_eq!(result.invalidated_anchor_count, 1);

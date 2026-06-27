@@ -10,6 +10,7 @@ use bm25::Document;
 use bm25::Language;
 use bm25::SearchEngine;
 use bm25::SearchEngineBuilder;
+use codex_protocol::models::SearchToolCallParams;
 use codex_tools::LoadableToolSpec;
 use codex_tools::ResponsesApiNamespaceTool;
 use codex_tools::TOOL_SEARCH_DEFAULT_LIMIT;
@@ -19,7 +20,6 @@ use codex_tools::ToolSearchEntry;
 use codex_tools::ToolSearchInfo;
 use codex_tools::ToolSpec;
 use codex_tools::coalesce_loadable_tool_specs;
-use codex_protocol::models::SearchToolCallParams;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tracing::instrument;
@@ -459,9 +459,11 @@ mod tests {
 
     #[test]
     fn mcp_prefix_expansion_returns_empty_for_unknown_prefix() {
-        let handler = ToolSearchHandler::new(search_infos_for_mcp_tools(&[
-            tool_info("calendar", "create_event", "Create events"),
-        ]));
+        let handler = ToolSearchHandler::new(search_infos_for_mcp_tools(&[tool_info(
+            "calendar",
+            "create_event",
+            "Create events",
+        )]));
 
         let tools = handler
             .tools_for_args(&SearchToolCallParams {
@@ -476,16 +478,17 @@ mod tests {
 
     #[test]
     fn tool_search_requires_query_or_mcp_prefix() {
-        let handler = ToolSearchHandler::new(search_infos_for_mcp_tools(&[
-            tool_info("calendar", "create_event", "Create events"),
-        ]));
+        let handler = ToolSearchHandler::new(search_infos_for_mcp_tools(&[tool_info(
+            "calendar",
+            "create_event",
+            "Create events",
+        )]));
 
-        let result = handler
-            .tools_for_args(&SearchToolCallParams {
-                query: Some(" ".to_string()),
-                limit: None,
-                mcp_prefix: None,
-            });
+        let result = handler.tools_for_args(&SearchToolCallParams {
+            query: Some(" ".to_string()),
+            limit: None,
+            mcp_prefix: None,
+        });
 
         assert_eq!(
             result,
