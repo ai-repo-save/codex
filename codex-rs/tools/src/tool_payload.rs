@@ -14,7 +14,14 @@ impl ToolPayload {
     pub fn log_payload(&self) -> Cow<'_, str> {
         match self {
             ToolPayload::Function { arguments } => Cow::Borrowed(arguments),
-            ToolPayload::ToolSearch { arguments } => Cow::Owned(arguments.query.clone()),
+            ToolPayload::ToolSearch { arguments } => Cow::Owned(
+                arguments
+                    .query
+                    .as_deref()
+                    .or(arguments.mcp_prefix.as_deref())
+                    .unwrap_or_default()
+                    .to_string(),
+            ),
             ToolPayload::Custom { input } => Cow::Borrowed(input),
         }
     }

@@ -291,7 +291,13 @@ impl ToolDispatchPayload {
     fn log_payload_preview(&self) -> String {
         match self {
             ToolDispatchPayload::Function { arguments } => truncate_preview(arguments),
-            ToolDispatchPayload::ToolSearch { arguments } => truncate_preview(&arguments.query),
+            ToolDispatchPayload::ToolSearch { arguments } => truncate_preview(
+                arguments
+                    .query
+                    .as_deref()
+                    .or(arguments.mcp_prefix.as_deref())
+                    .unwrap_or_default(),
+            ),
             ToolDispatchPayload::Custom { input } => truncate_preview(input),
             ToolDispatchPayload::LocalShell { command, .. } => truncate_preview(&command.join(" ")),
         }
