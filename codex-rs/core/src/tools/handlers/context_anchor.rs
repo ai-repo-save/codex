@@ -3,8 +3,10 @@ use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
 use crate::tools::context::boxed_tool_output;
+use crate::tools::handlers::context_anchor_spec::LIST_CONTEXT_ANCHORS_TOOL_NAME;
 use crate::tools::handlers::context_anchor_spec::REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME;
 use crate::tools::handlers::context_anchor_spec::SAVE_CONTEXT_ANCHOR_TOOL_NAME;
+use crate::tools::handlers::context_anchor_spec::create_list_context_anchors_tool;
 use crate::tools::handlers::context_anchor_spec::create_rewind_context_to_anchor_tool;
 use crate::tools::handlers::context_anchor_spec::create_save_context_anchor_tool;
 use crate::tools::handlers::parse_arguments;
@@ -21,9 +23,12 @@ use serde_json::Value as JsonValue;
 
 pub(crate) const MAX_CONTEXT_ANCHOR_LABEL_BYTES: usize = 256;
 pub(crate) const MAX_CONTEXT_REWIND_NOTE_BYTES: usize = 8 * 1024;
+pub(crate) const DEFAULT_LIST_CONTEXT_ANCHORS_LIMIT: usize = 20;
+pub(crate) const MAX_LIST_CONTEXT_ANCHORS_LIMIT: usize = 100;
 
 pub struct SaveContextAnchorHandler;
 pub struct RewindContextToAnchorHandler;
+pub struct ListContextAnchorsHandler;
 
 #[derive(Deserialize)]
 struct SaveContextAnchorArgs {
@@ -34,6 +39,11 @@ struct SaveContextAnchorArgs {
 struct RewindContextToAnchorArgs {
     anchor_id: String,
     note: String,
+}
+
+#[derive(Deserialize)]
+struct ListContextAnchorsArgs {
+    limit: Option<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -48,6 +58,11 @@ pub(crate) struct SaveContextAnchorResponse {
 pub(crate) struct RewindContextToAnchorRequest {
     pub(crate) anchor_id: String,
     pub(crate) note: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub(crate) struct ListContextAnchorsRequest {
+    pub(crate) limit: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -217,6 +232,56 @@ impl RewindContextToAnchorHandler {
 }
 
 impl CoreToolRuntime for RewindContextToAnchorHandler {}
+
+impl ToolExecutor<ToolInvocation> for ListContextAnchorsHandler {
+    fn tool_name(&self) -> ToolName {
+        ToolName::plain(LIST_CONTEXT_ANCHORS_TOOL_NAME)
+    }
+
+    fn spec(&self) -> ToolSpec {
+        create_list_context_anchors_tool()
+    }
+
+    fn handle(&self, invocation: ToolInvocation) -> codex_tools::ToolExecutorFuture<'_> {
+        Box::pin(self.handle_call(invocation))
+    }
+}
+
+impl ListContextAnchorsHandler {
+    async fn handle_call(
+        &self,
+        invocation: ToolInvocation,
+    ) -> Result<Box<dyn crate::tools::context::ToolOutput>, FunctionCallError> {
+        let ToolInvocation { payload, .. } = invocation;
+
+        let ToolPayload::Function { arguments } = payload else {
+            return Err(FunctionCallError::RespondToModel(format!(
+                "{LIST_CONTEXT_ANCHORS_TOOL_NAME} handler received unsupported payload"
+            )));
+        };
+
+        let args: ListContextAnchorsArgs = parse_arguments(&arguments)?;
+        let limit = args.limit.unwrap_or(DEFAULT_LIST_CONTEXT_ANCHORS_LIMIT);
+        if limit == 0 {
+            return Err(FunctionCallError::RespondToModel(
+                "`limit` must be greater than 0".to_string(),
+            ));
+        }
+        if limit > MAX_LIST_CONTEXT_ANCHORS_LIMIT {
+            return Err(FunctionCallError::RespondToModel(format!(
+                "`limit` is {limit}, but the maximum is {MAX_LIST_CONTEXT_ANCHORS_LIMIT}"
+            )));
+        }
+
+        let request = ListContextAnchorsRequest { limit };
+        Ok(boxed_tool_output(JsonToolOutput::new(
+            request,
+            LIST_CONTEXT_ANCHORS_TOOL_NAME,
+        )?))
+    }
+}
+
+impl CoreToolRuntime for ListContextAnchorsHandler {}
 
 #[cfg(test)]
 #[path = "context_anchor_tests.rs"]

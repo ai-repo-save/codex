@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 pub const SAVE_CONTEXT_ANCHOR_TOOL_NAME: &str = "save_context_anchor";
 pub const REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME: &str = "rewind_context_to_anchor";
+pub const LIST_CONTEXT_ANCHORS_TOOL_NAME: &str = "list_context_anchors";
 
 pub fn create_save_context_anchor_tool() -> ToolSpec {
     let mut properties = BTreeMap::new();
@@ -53,6 +54,27 @@ pub fn create_rewind_context_to_anchor_tool() -> ToolSpec {
             Some(vec!["anchor_id".to_string(), "note".to_string()]),
             Some(false.into()),
         ),
+        output_schema: None,
+    })
+}
+
+pub fn create_list_context_anchors_tool() -> ToolSpec {
+    let mut properties = BTreeMap::new();
+    properties.insert(
+        "limit".to_string(),
+        JsonSchema::number(Some(
+            "Maximum number of active anchors to return. Defaults to 20 and cannot exceed 100."
+                .to_string(),
+        )),
+    );
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: LIST_CONTEXT_ANCHORS_TOOL_NAME.to_string(),
+        description: "Lists active context anchors in this thread with bounded distance estimates so you can choose a useful rewind target."
+            .to_string(),
+        strict: false,
+        defer_loading: None,
+        parameters: JsonSchema::object(properties, /*required*/ None, Some(false.into())),
         output_schema: None,
     })
 }

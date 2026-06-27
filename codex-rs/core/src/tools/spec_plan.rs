@@ -14,6 +14,7 @@ use crate::tools::handlers::ExecCommandHandler;
 use crate::tools::handlers::ExecCommandHandlerOptions;
 use crate::tools::handlers::GetContextRemainingHandler;
 use crate::tools::handlers::ListAvailablePluginsToInstallHandler;
+use crate::tools::handlers::ListContextAnchorsHandler;
 use crate::tools::handlers::ListMcpResourceTemplatesHandler;
 use crate::tools::handlers::ListMcpResourcesHandler;
 use crate::tools::handlers::McpHandler;
@@ -701,6 +702,7 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
     planned_tools.add(ContextUsageHandler);
     planned_tools.add(RequestContextCompactionHandler);
     planned_tools.add(SaveContextAnchorHandler);
+    planned_tools.add(ListContextAnchorsHandler);
     planned_tools.add(RewindContextToAnchorHandler);
     planned_tools.add(PlanHandler);
 

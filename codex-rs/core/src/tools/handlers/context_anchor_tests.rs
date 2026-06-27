@@ -128,3 +128,57 @@ async fn rewind_context_to_anchor_rejects_oversized_note() {
         "`note` is 8193 bytes, but the maximum is 8192 bytes"
     );
 }
+
+#[tokio::test]
+async fn list_context_anchors_defaults_limit() {
+    let invocation = invocation(LIST_CONTEXT_ANCHORS_TOOL_NAME, "{}".to_string()).await;
+    let payload = invocation.payload.clone();
+    let output = ListContextAnchorsHandler
+        .handle(invocation)
+        .await
+        .expect("list context anchors should validate");
+
+    assert_eq!(
+        output_json(output.as_ref(), &payload),
+        json!({ "limit": DEFAULT_LIST_CONTEXT_ANCHORS_LIMIT })
+    );
+}
+
+#[tokio::test]
+async fn list_context_anchors_rejects_zero_limit() {
+    let result = ListContextAnchorsHandler
+        .handle(
+            invocation(
+                LIST_CONTEXT_ANCHORS_TOOL_NAME,
+                json!({ "limit": 0 }).to_string(),
+            )
+            .await,
+        )
+        .await;
+    let Err(err) = result else {
+        panic!("zero limit should fail");
+    };
+
+    assert_eq!(err.to_string(), "`limit` must be greater than 0");
+}
+
+#[tokio::test]
+async fn list_context_anchors_rejects_oversized_limit() {
+    let result = ListContextAnchorsHandler
+        .handle(
+            invocation(
+                LIST_CONTEXT_ANCHORS_TOOL_NAME,
+                json!({ "limit": MAX_LIST_CONTEXT_ANCHORS_LIMIT + 1 }).to_string(),
+            )
+            .await,
+        )
+        .await;
+    let Err(err) = result else {
+        panic!("oversized limit should fail");
+    };
+
+    assert_eq!(
+        err.to_string(),
+        "`limit` is 101, but the maximum is 100"
+    );
+}

@@ -64,6 +64,7 @@ pub(crate) use crate::tools::code_mode::CodeModeWaitHandler;
 pub use apply_patch::ApplyPatchHandler;
 use codex_protocol::models::AdditionalPermissionProfile;
 use codex_protocol::protocol::AskForApproval;
+pub use context_anchor::ListContextAnchorsHandler;
 pub use context_anchor::RewindContextToAnchorHandler;
 pub use context_anchor::SaveContextAnchorHandler;
 pub use context_usage::ContextUsageHandler;

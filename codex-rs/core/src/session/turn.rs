@@ -58,9 +58,11 @@ use crate::stream_events_utils::record_completed_response_item_with_finalized_fa
 use crate::tasks::emit_compact_metric;
 use crate::tools::ToolRouter;
 use crate::tools::context::SharedTurnDiffTracker;
+use crate::tools::handlers::context_anchor::ListContextAnchorsRequest;
 use crate::tools::handlers::context_anchor::RewindContextToAnchorRequest;
 use crate::tools::handlers::context_anchor::RewindContextToAnchorResponse;
 use crate::tools::handlers::context_anchor::SaveContextAnchorResponse;
+use crate::tools::handlers::context_anchor_spec::LIST_CONTEXT_ANCHORS_TOOL_NAME;
 use crate::tools::handlers::context_anchor_spec::REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME;
 use crate::tools::handlers::context_anchor_spec::SAVE_CONTEXT_ANCHOR_TOOL_NAME;
 use crate::tools::handlers::request_context_compaction_spec::REQUEST_CONTEXT_COMPACTION_TOOL_NAME;
@@ -2080,6 +2082,24 @@ async fn drain_in_flight(
                 .await;
                 sess.save_context_anchor(response.anchor_id, response.label, response.created_at)
                     .await?;
+            }
+            InFlightToolOutput::ListContextAnchors(response_input) => {
+                let (call_id, request) = parse_function_call_output::<ListContextAnchorsRequest>(
+                    &response_input,
+                    LIST_CONTEXT_ANCHORS_TOOL_NAME,
+                )?;
+                let response = sess.list_context_anchors(request.limit).await?;
+                let text = serde_json::to_string(&response).map_err(|err| {
+                    CodexErr::Fatal(format!(
+                        "failed to serialize {LIST_CONTEXT_ANCHORS_TOOL_NAME} response: {err}"
+                    ))
+                })?;
+                let mut output = FunctionCallOutputPayload::from_text(text);
+                output.success = Some(true);
+                let response_item: ResponseItem =
+                    ResponseInputItem::FunctionCallOutput { call_id, output }.into();
+                sess.record_conversation_items(&turn_context, std::slice::from_ref(&response_item))
+                    .await;
             }
             InFlightToolOutput::RewindContextToAnchor(response_input) => {
                 let (call_id, request) = parse_function_call_output::<RewindContextToAnchorRequest>(

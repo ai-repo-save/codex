@@ -18,6 +18,7 @@ use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use crate::tools::handlers::context_anchor_spec::REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME;
 use crate::tools::handlers::context_anchor_spec::SAVE_CONTEXT_ANCHOR_TOOL_NAME;
+use crate::tools::handlers::context_anchor_spec::LIST_CONTEXT_ANCHORS_TOOL_NAME;
 use crate::tools::handlers::request_context_compaction_spec::REQUEST_CONTEXT_COMPACTION_TOOL_NAME;
 use crate::tools::parallel::ToolCallRuntime;
 use crate::tools::router::ToolRouter;
@@ -313,6 +314,7 @@ pub(crate) enum InFlightToolOutput {
     Response(ResponseInputItem),
     RequestContextCompaction(ResponseInputItem),
     SaveContextAnchor(ResponseInputItem),
+    ListContextAnchors(ResponseInputItem),
     RewindContextToAnchor(ResponseInputItem),
 }
 
@@ -447,6 +449,8 @@ pub(crate) async fn handle_output_item_done(
                 && call.tool_name.name == REQUEST_CONTEXT_COMPACTION_TOOL_NAME;
             let saves_context_anchor = call.tool_name.namespace.is_none()
                 && call.tool_name.name == SAVE_CONTEXT_ANCHOR_TOOL_NAME;
+            let lists_context_anchors = call.tool_name.namespace.is_none()
+                && call.tool_name.name == LIST_CONTEXT_ANCHORS_TOOL_NAME;
             let rewinds_context_to_anchor = call.tool_name.namespace.is_none()
                 && call.tool_name.name == REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME;
             let tool_runtime = ctx.tool_runtime.clone();
@@ -458,6 +462,8 @@ pub(crate) async fn handle_output_item_done(
                     Ok(InFlightToolOutput::RequestContextCompaction(response))
                 } else if saves_context_anchor && response_input_succeeded(&response) {
                     Ok(InFlightToolOutput::SaveContextAnchor(response))
+                } else if lists_context_anchors && response_input_succeeded(&response) {
+                    Ok(InFlightToolOutput::ListContextAnchors(response))
                 } else if rewinds_context_to_anchor && response_input_succeeded(&response) {
                     Ok(InFlightToolOutput::RewindContextToAnchor(response))
                 } else {
