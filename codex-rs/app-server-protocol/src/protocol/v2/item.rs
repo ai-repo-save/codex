@@ -394,6 +394,22 @@ pub enum ThreadItem {
     #[serde(rename_all = "camelCase")]
     #[ts(rename_all = "camelCase")]
     ContextCompaction { id: String },
+    #[serde(rename_all = "camelCase")]
+    #[ts(rename_all = "camelCase")]
+    ContextAnchorSaved {
+        id: String,
+        anchor_id: String,
+        label: Option<String>,
+        history_boundary: u64,
+        created_at: i64,
+    },
+    #[serde(rename_all = "camelCase")]
+    #[ts(rename_all = "camelCase")]
+    ContextAnchorRewound {
+        id: String,
+        anchor_id: String,
+        dropped_turns: u32,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
@@ -434,7 +450,9 @@ impl ThreadItem {
             | ThreadItem::ImageGeneration { id, .. }
             | ThreadItem::EnteredReviewMode { id, .. }
             | ThreadItem::ExitedReviewMode { id, .. }
-            | ThreadItem::ContextCompaction { id, .. } => id,
+            | ThreadItem::ContextCompaction { id, .. }
+            | ThreadItem::ContextAnchorSaved { id, .. }
+            | ThreadItem::ContextAnchorRewound { id, .. } => id,
         }
     }
 }

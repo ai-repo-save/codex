@@ -226,6 +226,32 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
         ThreadItem::ContextCompaction { .. } => {
             vec!["context compacted".dim().into()]
         }
+        ThreadItem::ContextAnchorSaved {
+            anchor_id, label, ..
+        } => {
+            vec![
+                crate::context_anchor_display::context_anchor_saved_summary(
+                    anchor_id,
+                    label.as_deref(),
+                )
+                .dim()
+                .into(),
+            ]
+        }
+        ThreadItem::ContextAnchorRewound {
+            anchor_id,
+            dropped_turns,
+            ..
+        } => {
+            vec![
+                crate::context_anchor_display::context_anchor_rewound_summary(
+                    anchor_id,
+                    *dropped_turns,
+                )
+                .dim()
+                .into(),
+            ]
+        }
         ThreadItem::UserMessage { .. }
         | ThreadItem::AgentMessage { .. }
         | ThreadItem::Plan { .. }

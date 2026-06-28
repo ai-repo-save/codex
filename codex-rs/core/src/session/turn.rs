@@ -2080,8 +2080,11 @@ async fn drain_in_flight(
                     &response_item,
                 )
                 .await;
-                sess.save_context_anchor(response.anchor_id, response.label, response.created_at)
+                let event = sess
+                    .save_context_anchor(response.anchor_id, response.label, response.created_at)
                     .await?;
+                sess.send_event(&turn_context, EventMsg::ContextAnchorSaved(event))
+                    .await;
             }
             InFlightToolOutput::ListContextAnchors(response_input) => {
                 let (call_id, request) = parse_function_call_output::<ListContextAnchorsRequest>(
@@ -2115,6 +2118,11 @@ async fn drain_in_flight(
                         request.note,
                     )
                     .await?;
+                sess.send_event(
+                    &turn_context,
+                    EventMsg::ContextRewoundToAnchor(rewind_event.clone()),
+                )
+                .await;
                 let response = RewindContextToAnchorResponse {
                     anchor_id: rewind_event.anchor_id,
                     dropped_turns: rewind_event.dropped_turns,

@@ -1378,6 +1378,8 @@ Today both notifications carry an empty `items` array even when item events were
 - `enteredReviewMode` — `{id, review}` sent when the reviewer starts; `review` is a short user-facing label such as `"current changes"` or the requested target description.
 - `exitedReviewMode` — `{id, review}` emitted when the reviewer finishes; `review` is the full plain-text review (usually, overall notes plus bullet point findings).
 - `contextCompaction` — `{id}` emitted when codex compacts the conversation history. This can happen automatically.
+- `contextAnchorSaved` — `{id, anchorId, label?, historyBoundary, createdAt}` emitted when codex saves a rewind anchor for the current thread.
+- `contextAnchorRewound` — `{id, anchorId, droppedTurns}` emitted when codex rewinds the model context to a saved anchor.
 - `compacted` - `{threadId, turnId}` when codex compacts the conversation history. This can happen automatically. **Deprecated:** Use `contextCompaction` instead.
 
 All items emit shared lifecycle events:

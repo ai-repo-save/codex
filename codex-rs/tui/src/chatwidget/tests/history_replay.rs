@@ -76,6 +76,41 @@ async fn resumed_initial_messages_render_history() {
 }
 
 #[tokio::test]
+async fn context_anchor_items_render_history_snapshot() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    chat.replay_thread_item(
+        AppServerThreadItem::ContextAnchorSaved {
+            id: "item-1".to_string(),
+            anchor_id: "ctx-123".to_string(),
+            label: Some("before branch".to_string()),
+            history_boundary: 42,
+            created_at: 1_782_600_000,
+        },
+        "turn-1".to_string(),
+        ReplayKind::ThreadSnapshot,
+    );
+    chat.replay_thread_item(
+        AppServerThreadItem::ContextAnchorRewound {
+            id: "item-2".to_string(),
+            anchor_id: "ctx-123".to_string(),
+            dropped_turns: 3,
+        },
+        "turn-1".to_string(),
+        ReplayKind::ThreadSnapshot,
+    );
+
+    let cells = drain_insert_history(&mut rx);
+    let combined = cells
+        .iter()
+        .map(|cell| lines_to_single_string(&cell.display_lines(/*width*/ 80)))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert_chatwidget_snapshot!("context_anchor_items_history", combined);
+}
+
+#[tokio::test]
 async fn replayed_user_messages_seed_composer_history() {
     let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.bottom_pane.set_history_metadata(

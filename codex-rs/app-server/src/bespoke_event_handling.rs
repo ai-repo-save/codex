@@ -923,6 +923,60 @@ pub(crate) async fn apply_bespoke_event_handling(
             // Core still fans out this deprecated event for legacy clients;
             // v2 clients receive the canonical ContextCompaction item instead.
         }
+        EventMsg::ContextAnchorSaved(event) => {
+            let timestamp_ms = event.created_at.saturating_mul(1000);
+            let item = ThreadItem::ContextAnchorSaved {
+                id: event.anchor_id.clone(),
+                anchor_id: event.anchor_id,
+                label: event.label,
+                history_boundary: event.history_boundary,
+                created_at: event.created_at,
+            };
+            let started = ItemStartedNotification {
+                thread_id: conversation_id.to_string(),
+                turn_id: event_turn_id.clone(),
+                item: item.clone(),
+                started_at_ms: timestamp_ms,
+            };
+            outgoing
+                .send_server_notification(ServerNotification::ItemStarted(started))
+                .await;
+            let completed = ItemCompletedNotification {
+                thread_id: conversation_id.to_string(),
+                turn_id: event_turn_id.clone(),
+                item,
+                completed_at_ms: timestamp_ms,
+            };
+            outgoing
+                .send_server_notification(ServerNotification::ItemCompleted(completed))
+                .await;
+        }
+        EventMsg::ContextRewoundToAnchor(event) => {
+            let item = ThreadItem::ContextAnchorRewound {
+                id: event.anchor_id.clone(),
+                anchor_id: event.anchor_id,
+                dropped_turns: event.dropped_turns,
+            };
+            let timestamp_ms = now_unix_timestamp_ms();
+            let started = ItemStartedNotification {
+                thread_id: conversation_id.to_string(),
+                turn_id: event_turn_id.clone(),
+                item: item.clone(),
+                started_at_ms: timestamp_ms,
+            };
+            outgoing
+                .send_server_notification(ServerNotification::ItemStarted(started))
+                .await;
+            let completed = ItemCompletedNotification {
+                thread_id: conversation_id.to_string(),
+                turn_id: event_turn_id.clone(),
+                item,
+                completed_at_ms: timestamp_ms,
+            };
+            outgoing
+                .send_server_notification(ServerNotification::ItemCompleted(completed))
+                .await;
+        }
         EventMsg::DeprecationNotice(event) => {
             let notification = DeprecationNoticeNotification {
                 summary: event.summary,

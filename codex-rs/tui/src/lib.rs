@@ -105,6 +105,7 @@ mod collaboration_modes;
 mod color;
 mod compact_inspect;
 mod config_update;
+mod context_anchor_display;
 pub(crate) mod custom_terminal;
 mod pets;
 pub use custom_terminal::Terminal;

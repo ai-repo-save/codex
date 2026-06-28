@@ -29,6 +29,8 @@ use codex_protocol::protocol::AgentReasoningRawContentEvent;
 use codex_protocol::protocol::AgentStatus;
 use codex_protocol::protocol::ApplyPatchApprovalRequestEvent;
 use codex_protocol::protocol::CompactedItem;
+use codex_protocol::protocol::ContextAnchorSavedEvent;
+use codex_protocol::protocol::ContextRewoundToAnchorEvent;
 use codex_protocol::protocol::ContextCompactedEvent;
 use codex_protocol::protocol::DynamicToolCallResponseEvent;
 use codex_protocol::protocol::ErrorEvent;
@@ -363,6 +365,8 @@ impl ThreadHistoryBuilder {
             EventMsg::CollabResumeBegin(payload) => self.handle_collab_resume_begin(payload),
             EventMsg::CollabResumeEnd(payload) => self.handle_collab_resume_end(payload),
             EventMsg::ContextCompacted(payload) => self.handle_context_compacted(payload),
+            EventMsg::ContextAnchorSaved(payload) => self.handle_context_anchor_saved(payload),
+            EventMsg::ContextRewoundToAnchor(payload) => self.handle_context_rewound_to_anchor(payload),
             EventMsg::EnteredReviewMode(payload) => self.handle_entered_review_mode(payload),
             EventMsg::ExitedReviewMode(payload) => self.handle_exited_review_mode(payload),
             EventMsg::ItemStarted(payload) => self.handle_item_started(payload),
@@ -1120,6 +1124,26 @@ impl ThreadHistoryBuilder {
         self.push_item_in_current_turn(ThreadItem::ContextCompaction { id });
     }
 
+    fn handle_context_anchor_saved(&mut self, payload: &ContextAnchorSavedEvent) {
+        let id = self.next_item_id();
+        self.push_item_in_current_turn(ThreadItem::ContextAnchorSaved {
+            id,
+            anchor_id: payload.anchor_id.clone(),
+            label: payload.label.clone(),
+            history_boundary: payload.history_boundary,
+            created_at: payload.created_at,
+        });
+    }
+
+    fn handle_context_rewound_to_anchor(&mut self, payload: &ContextRewoundToAnchorEvent) {
+        let id = self.next_item_id();
+        self.push_item_in_current_turn(ThreadItem::ContextAnchorRewound {
+            id,
+            anchor_id: payload.anchor_id.clone(),
+            dropped_turns: payload.dropped_turns,
+        });
+    }
+
     fn handle_entered_review_mode(&mut self, payload: &codex_protocol::protocol::ReviewRequest) {
         let review = payload
             .user_facing_hint
@@ -1583,6 +1607,8 @@ mod tests {
     use codex_protocol::protocol::ApplyPatchApprovalRequestEvent;
     use codex_protocol::protocol::CodexErrorInfo;
     use codex_protocol::protocol::CompactedItem;
+    use codex_protocol::protocol::ContextAnchorSavedEvent;
+    use codex_protocol::protocol::ContextRewoundToAnchorEvent;
     use codex_protocol::protocol::DynamicToolCallResponseEvent;
     use codex_protocol::protocol::ExecCommandEndEvent;
     use codex_protocol::protocol::ExecCommandSource;
@@ -1711,6 +1737,48 @@ mod tests {
                 phase: None,
                 memory_citation: None,
             }
+        );
+    }
+
+    #[test]
+    fn context_anchor_events_materialize_thread_items() {
+        let events = vec![
+            EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
+                anchor_id: "ctx-123".to_string(),
+                label: Some("before branch".to_string()),
+                history_boundary: 42,
+                created_at: 1_782_600_000,
+            }),
+            EventMsg::ContextRewoundToAnchor(ContextRewoundToAnchorEvent {
+                anchor_id: "ctx-123".to_string(),
+                dropped_turns: 3,
+                note: "kept summary".to_string(),
+            }),
+        ];
+
+        let mut builder = ThreadHistoryBuilder::new();
+        for event in &events {
+            builder.handle_event(event);
+        }
+
+        let turns = builder.finish();
+        assert_eq!(turns.len(), 1);
+        assert_eq!(
+            turns[0].items,
+            vec![
+                ThreadItem::ContextAnchorSaved {
+                    id: "item-1".to_string(),
+                    anchor_id: "ctx-123".to_string(),
+                    label: Some("before branch".to_string()),
+                    history_boundary: 42,
+                    created_at: 1_782_600_000,
+                },
+                ThreadItem::ContextAnchorRewound {
+                    id: "item-2".to_string(),
+                    anchor_id: "ctx-123".to_string(),
+                    dropped_turns: 3,
+                },
+            ]
         );
     }
 

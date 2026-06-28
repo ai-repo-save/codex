@@ -180,6 +180,30 @@ impl ChatWidget {
             ThreadItem::ContextCompaction { .. } => {
                 self.add_info_message("Context compacted".to_string(), /*hint*/ None);
             }
+            ThreadItem::ContextAnchorSaved {
+                anchor_id, label, ..
+            } => {
+                self.add_info_message(
+                    crate::context_anchor_display::context_anchor_saved_summary(
+                        &anchor_id,
+                        label.as_deref(),
+                    ),
+                    /*hint*/ None,
+                );
+            }
+            ThreadItem::ContextAnchorRewound {
+                anchor_id,
+                dropped_turns,
+                ..
+            } => {
+                self.add_info_message(
+                    crate::context_anchor_display::context_anchor_rewound_summary(
+                        &anchor_id,
+                        dropped_turns,
+                    ),
+                    /*hint*/ None,
+                );
+            }
             ThreadItem::HookPrompt { .. } => {}
             ThreadItem::CollabAgentToolCall {
                 id,

@@ -11,6 +11,7 @@ mod config_rpc;
 mod connection_handling_websocket;
 #[cfg(unix)]
 mod connection_handling_websocket_unix;
+mod context_anchor;
 mod current_time;
 mod dynamic_tools;
 mod environment_add;
