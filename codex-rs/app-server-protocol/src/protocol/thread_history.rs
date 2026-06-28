@@ -30,8 +30,8 @@ use codex_protocol::protocol::AgentStatus;
 use codex_protocol::protocol::ApplyPatchApprovalRequestEvent;
 use codex_protocol::protocol::CompactedItem;
 use codex_protocol::protocol::ContextAnchorSavedEvent;
-use codex_protocol::protocol::ContextRewoundToAnchorEvent;
 use codex_protocol::protocol::ContextCompactedEvent;
+use codex_protocol::protocol::ContextRewoundToAnchorEvent;
 use codex_protocol::protocol::DynamicToolCallResponseEvent;
 use codex_protocol::protocol::ErrorEvent;
 use codex_protocol::protocol::EventMsg;
@@ -366,7 +366,9 @@ impl ThreadHistoryBuilder {
             EventMsg::CollabResumeEnd(payload) => self.handle_collab_resume_end(payload),
             EventMsg::ContextCompacted(payload) => self.handle_context_compacted(payload),
             EventMsg::ContextAnchorSaved(payload) => self.handle_context_anchor_saved(payload),
-            EventMsg::ContextRewoundToAnchor(payload) => self.handle_context_rewound_to_anchor(payload),
+            EventMsg::ContextRewoundToAnchor(payload) => {
+                self.handle_context_rewound_to_anchor(payload)
+            }
             EventMsg::EnteredReviewMode(payload) => self.handle_entered_review_mode(payload),
             EventMsg::ExitedReviewMode(payload) => self.handle_exited_review_mode(payload),
             EventMsg::ItemStarted(payload) => self.handle_item_started(payload),

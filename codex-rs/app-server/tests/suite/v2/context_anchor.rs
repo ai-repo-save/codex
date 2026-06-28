@@ -71,7 +71,8 @@ async fn save_context_anchor_emits_started_and_completed_items() -> Result<()> {
         anchor_id: started_anchor_id,
         label: started_label,
         ..
-    } = started.item else {
+    } = started.item
+    else {
         panic!("expected contextAnchorSaved started item");
     };
     let ThreadItem::ContextAnchorSaved {
@@ -79,7 +80,8 @@ async fn save_context_anchor_emits_started_and_completed_items() -> Result<()> {
         anchor_id: completed_anchor_id,
         label: completed_label,
         ..
-    } = completed.item else {
+    } = completed.item
+    else {
         panic!("expected contextAnchorSaved completed item");
     };
 

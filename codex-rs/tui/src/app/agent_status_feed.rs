@@ -198,10 +198,12 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
         ThreadItem::ContextAnchorSaved {
             anchor_id, label, ..
         } => {
-            return bounded_summary(&crate::context_anchor_display::context_anchor_saved_summary(
-                anchor_id,
-                label.as_deref(),
-            ));
+            return bounded_summary(
+                &crate::context_anchor_display::context_anchor_saved_summary(
+                    anchor_id,
+                    label.as_deref(),
+                ),
+            );
         }
         ThreadItem::ContextAnchorRewound {
             anchor_id,
