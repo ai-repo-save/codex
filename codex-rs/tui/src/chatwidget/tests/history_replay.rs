@@ -103,7 +103,7 @@ async fn context_anchor_items_render_history_snapshot() {
     let cells = drain_insert_history(&mut rx);
     let combined = cells
         .iter()
-        .map(|cell| lines_to_single_string(&cell.display_lines(/*width*/ 80)))
+        .map(|lines| lines_to_single_string(lines))
         .collect::<Vec<_>>()
         .join("\n");
 
