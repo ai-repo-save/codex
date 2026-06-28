@@ -1,0 +1,8 @@
+---
+source: tui/src/chatwidget/tests/history_replay.rs
+expression: combined
+---
+• Context anchor saved: ctx-123 · before branch
+
+
+• Context rewound to anchor: ctx-123 · dropped 3 user turns
