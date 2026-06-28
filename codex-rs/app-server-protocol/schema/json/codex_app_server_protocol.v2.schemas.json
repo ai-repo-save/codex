@@ -16026,6 +16026,77 @@
           ],
           "title": "ContextCompactionThreadItem",
           "type": "object"
+        },
+        {
+          "properties": {
+            "anchorId": {
+              "type": "string"
+            },
+            "createdAt": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "historyBoundary": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "label": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "contextAnchorSaved"
+              ],
+              "title": "ContextAnchorSavedThreadItemType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "anchorId",
+            "createdAt",
+            "historyBoundary",
+            "id",
+            "type"
+          ],
+          "title": "ContextAnchorSavedThreadItem",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "anchorId": {
+              "type": "string"
+            },
+            "droppedTurns": {
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "contextAnchorRewound"
+              ],
+              "title": "ContextAnchorRewoundThreadItemType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "anchorId",
+            "droppedTurns",
+            "id",
+            "type"
+          ],
+          "title": "ContextAnchorRewoundThreadItem",
+          "type": "object"
         }
       ]
     },
