@@ -17,7 +17,7 @@ use serde_json::json;
 const SAVE_CONTEXT_ANCHOR_TOOL_NAME: &str = "save_context_anchor";
 const LIST_CONTEXT_ANCHORS_TOOL_NAME: &str = "list_context_anchors";
 const REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME: &str = "rewind_context_to_anchor";
-const TEST_MODEL: &str = "test-gpt-5.1-codex";
+const TEST_MODEL: &str = "gpt-5.4";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn list_context_anchors_returns_saved_anchor_metadata() -> Result<()> {
