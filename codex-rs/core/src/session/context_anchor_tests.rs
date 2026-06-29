@@ -4,11 +4,14 @@ use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::Settings;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::CompactedItem;
 use codex_protocol::protocol::ContextAnchorSavedEvent;
 use codex_protocol::protocol::ContextRewoundToAnchorEvent;
+use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::protocol::TurnContextItem;
 use codex_protocol::protocol::UserMessageEvent;
+use codex_utils_absolute_path::AbsolutePathBuf;
 use pretty_assertions::assert_eq;
 
 const ANCHOR_ID: &str = "anchor";
@@ -47,7 +50,10 @@ fn saved_anchor_with_mode(
 fn turn_context(mode: ModeKind) -> RolloutItem {
     RolloutItem::TurnContext(TurnContextItem {
         turn_id: None,
-        cwd: std::env::current_dir().expect("current dir should be available").into(),
+        cwd: AbsolutePathBuf::from_absolute_path(
+            std::env::current_dir().expect("current dir should be available"),
+        )
+        .expect("current dir should be absolute"),
         workspace_roots: None,
         current_date: None,
         timezone: None,
