@@ -129,6 +129,68 @@ async fn rewind_context_to_anchor_rejects_oversized_note() {
     );
 }
 
+#[test]
+fn rewind_context_to_anchor_response_serializes_rewound_status() {
+    let response = RewindContextToAnchorResponse::Rewound {
+        anchor_id: "anchor-1".to_string(),
+        dropped_turns: 2,
+        response_items_reclaimed: 3,
+        approx_tokens_reclaimed: 4,
+        reclaim_threshold_percent: 20,
+        reclaim_threshold_tokens: Some(100),
+        reclaim_threshold_met: Some(false),
+    };
+
+    assert_eq!(
+        serde_json::to_value(response).expect("response should serialize"),
+        json!({
+            "status": "rewound",
+            "anchor_id": "anchor-1",
+            "dropped_turns": 2,
+            "response_items_reclaimed": 3,
+            "approx_tokens_reclaimed": 4,
+            "reclaim_threshold_percent": 20,
+            "reclaim_threshold_tokens": 100,
+            "reclaim_threshold_met": false,
+        })
+    );
+}
+
+#[test]
+fn rewind_context_to_anchor_response_serializes_rejected_status() {
+    let response = RewindContextToAnchorResponse::Rejected {
+        anchor_id: "anchor-1".to_string(),
+        dropped_turns: 2,
+        response_items_reclaimed: 3,
+        approx_tokens_reclaimed: 4,
+        reclaim_threshold_percent: 20,
+        reclaim_threshold_tokens: Some(100),
+        reclaim_threshold_met: Some(false),
+        reason: RewindContextToAnchorRejectionReason::BelowMinReclaimPercent,
+        min_reclaim_percent: 10,
+        min_reclaim_threshold_tokens: Some(50),
+        model_context_window: Some(500),
+    };
+
+    assert_eq!(
+        serde_json::to_value(response).expect("response should serialize"),
+        json!({
+            "status": "rejected",
+            "anchor_id": "anchor-1",
+            "dropped_turns": 2,
+            "response_items_reclaimed": 3,
+            "approx_tokens_reclaimed": 4,
+            "reclaim_threshold_percent": 20,
+            "reclaim_threshold_tokens": 100,
+            "reclaim_threshold_met": false,
+            "reason": "below_min_reclaim_percent",
+            "min_reclaim_percent": 10,
+            "min_reclaim_threshold_tokens": 50,
+            "model_context_window": 500,
+        })
+    );
+}
+
 #[tokio::test]
 async fn list_context_anchors_defaults_limit() {
     let invocation = invocation(LIST_CONTEXT_ANCHORS_TOOL_NAME, "{}".to_string()).await;

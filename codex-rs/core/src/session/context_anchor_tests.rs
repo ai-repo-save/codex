@@ -432,18 +432,17 @@ fn min_reclaim_percent_allows_rewind_when_disabled() {
         reclaim_threshold_met: Some(false),
     };
 
-    let result = validate_min_reclaim_percent(
-        ANCHOR_ID,
+    let result = evaluate_min_reclaim_percent(
         &benefit,
         Some(/*model_context_window*/ 100),
         /*min_reclaim_percent*/ 0,
     );
 
-    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), None);
 }
 
 #[test]
-fn min_reclaim_percent_rejects_rewind_below_threshold() {
+fn min_reclaim_percent_marks_rewind_below_threshold_rejected() {
     let benefit = ContextRewindBenefit {
         response_items_reclaimed: 1,
         approx_tokens_reclaimed: 19,
@@ -452,16 +451,19 @@ fn min_reclaim_percent_rejects_rewind_below_threshold() {
         reclaim_threshold_met: Some(false),
     };
 
-    let result = validate_min_reclaim_percent(
-        ANCHOR_ID,
+    let result = evaluate_min_reclaim_percent(
         &benefit,
         Some(/*model_context_window*/ 100),
         /*min_reclaim_percent*/ 20,
     );
 
     assert_eq!(
-        result.unwrap_err().to_string(),
-        "context rewind to anchor `anchor` rejected: reclaimed approximately 19 tokens, below configured minimum 20% (20 tokens)"
+        result.unwrap(),
+        Some((
+            ContextRewindRejectionReason::BelowMinReclaimPercent,
+            Some(20),
+            Some(100)
+        ))
     );
 }
 
@@ -475,18 +477,17 @@ fn min_reclaim_percent_allows_rewind_at_threshold() {
         reclaim_threshold_met: Some(true),
     };
 
-    let result = validate_min_reclaim_percent(
-        ANCHOR_ID,
+    let result = evaluate_min_reclaim_percent(
         &benefit,
         Some(/*model_context_window*/ 100),
         /*min_reclaim_percent*/ 20,
     );
 
-    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), None);
 }
 
 #[test]
-fn min_reclaim_percent_rejects_unknown_context_window() {
+fn min_reclaim_percent_marks_unknown_context_window_rejected() {
     let benefit = ContextRewindBenefit {
         response_items_reclaimed: 1,
         approx_tokens_reclaimed: 20,
@@ -495,13 +496,19 @@ fn min_reclaim_percent_rejects_unknown_context_window() {
         reclaim_threshold_met: None,
     };
 
-    let result = validate_min_reclaim_percent(
-        ANCHOR_ID, &benefit, /*model_context_window*/ None, /*min_reclaim_percent*/ 20,
+    let result = evaluate_min_reclaim_percent(
+        &benefit,
+        /*model_context_window*/ None,
+        /*min_reclaim_percent*/ 20,
     );
 
     assert_eq!(
-        result.unwrap_err().to_string(),
-        "context rewind to anchor `anchor` rejected: context_rewind.min_reclaim_percent is 20, but the model context window is unknown"
+        result.unwrap(),
+        Some((
+            ContextRewindRejectionReason::UnknownContextWindowForMinReclaimPercent,
+            None,
+            None
+        ))
     );
 }
 

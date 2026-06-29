@@ -41,6 +41,8 @@ use crate::responses_retry::ResponsesStreamRequest;
 use crate::responses_retry::handle_retryable_response_stream_error;
 use crate::session::PreviousTurnSettings;
 use crate::session::TurnInput;
+use crate::session::context_anchor::ContextRewindRejectionReason as SessionContextRewindRejectionReason;
+use crate::session::context_anchor::RewindContextToAnchorResult;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
@@ -59,6 +61,7 @@ use crate::tasks::emit_compact_metric;
 use crate::tools::ToolRouter;
 use crate::tools::context::SharedTurnDiffTracker;
 use crate::tools::handlers::context_anchor::ListContextAnchorsRequest;
+use crate::tools::handlers::context_anchor::RewindContextToAnchorRejectionReason;
 use crate::tools::handlers::context_anchor::RewindContextToAnchorRequest;
 use crate::tools::handlers::context_anchor::RewindContextToAnchorResponse;
 use crate::tools::handlers::context_anchor::SaveContextAnchorResponse;
@@ -2124,19 +2127,48 @@ async fn drain_in_flight(
                         request.note,
                     )
                     .await?;
-                sess.deliver_persisted_event(
-                    &turn_context,
-                    EventMsg::ContextRewoundToAnchor(rewind_event.clone()),
-                )
-                .await;
-                let response = RewindContextToAnchorResponse {
-                    anchor_id: rewind_event.anchor_id,
-                    dropped_turns: rewind_event.dropped_turns,
-                    response_items_reclaimed: rewind_event.response_items_reclaimed,
-                    approx_tokens_reclaimed: rewind_event.approx_tokens_reclaimed,
-                    reclaim_threshold_percent: rewind_event.reclaim_threshold_percent,
-                    reclaim_threshold_tokens: rewind_event.reclaim_threshold_tokens,
-                    reclaim_threshold_met: rewind_event.reclaim_threshold_met,
+                let (response, response_items) = match rewind_event {
+                    RewindContextToAnchorResult::Rewound(rewind_event) => {
+                        sess.deliver_persisted_event(
+                            &turn_context,
+                            EventMsg::ContextRewoundToAnchor(rewind_event.clone()),
+                        )
+                        .await;
+                        let response = RewindContextToAnchorResponse::Rewound {
+                            anchor_id: rewind_event.anchor_id,
+                            dropped_turns: rewind_event.dropped_turns,
+                            response_items_reclaimed: rewind_event.response_items_reclaimed,
+                            approx_tokens_reclaimed: rewind_event.approx_tokens_reclaimed,
+                            reclaim_threshold_percent: rewind_event.reclaim_threshold_percent,
+                            reclaim_threshold_tokens: rewind_event.reclaim_threshold_tokens,
+                            reclaim_threshold_met: rewind_event.reclaim_threshold_met,
+                        };
+                        (response, retained_response_items)
+                    }
+                    RewindContextToAnchorResult::Rejected(rejection) => {
+                        let reason = match rejection.reason {
+                            SessionContextRewindRejectionReason::BelowMinReclaimPercent => {
+                                RewindContextToAnchorRejectionReason::BelowMinReclaimPercent
+                            }
+                            SessionContextRewindRejectionReason::UnknownContextWindowForMinReclaimPercent => {
+                                RewindContextToAnchorRejectionReason::UnknownContextWindowForMinReclaimPercent
+                            }
+                        };
+                        let response = RewindContextToAnchorResponse::Rejected {
+                            anchor_id: rejection.anchor_id,
+                            dropped_turns: rejection.dropped_turns,
+                            response_items_reclaimed: rejection.response_items_reclaimed,
+                            approx_tokens_reclaimed: rejection.approx_tokens_reclaimed,
+                            reclaim_threshold_percent: rejection.reclaim_threshold_percent,
+                            reclaim_threshold_tokens: rejection.reclaim_threshold_tokens,
+                            reclaim_threshold_met: rejection.reclaim_threshold_met,
+                            reason,
+                            min_reclaim_percent: rejection.min_reclaim_percent,
+                            min_reclaim_threshold_tokens: rejection.min_reclaim_threshold_tokens,
+                            model_context_window: rejection.model_context_window,
+                        };
+                        (response, Vec::new())
+                    }
                 };
                 let text = serde_json::to_string(&response).map_err(|err| {
                     CodexErr::Fatal(format!(
@@ -2147,7 +2179,7 @@ async fn drain_in_flight(
                 output.success = Some(true);
                 let response_item: ResponseItem =
                     ResponseInputItem::FunctionCallOutput { call_id, output }.into();
-                let retained_and_response = retained_response_items
+                let retained_and_response = response_items
                     .into_iter()
                     .chain(std::iter::once(response_item))
                     .collect::<Vec<_>>();

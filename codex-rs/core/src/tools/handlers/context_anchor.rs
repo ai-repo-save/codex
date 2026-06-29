@@ -6,13 +6,13 @@ use crate::tools::context::boxed_tool_output;
 use crate::tools::handlers::context_anchor_spec::LIST_CONTEXT_ANCHORS_TOOL_NAME;
 use crate::tools::handlers::context_anchor_spec::REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME;
 use crate::tools::handlers::context_anchor_spec::SAVE_CONTEXT_ANCHOR_TOOL_NAME;
+use crate::turn_timing::now_unix_timestamp_ms;
 use crate::tools::handlers::context_anchor_spec::create_list_context_anchors_tool;
 use crate::tools::handlers::context_anchor_spec::create_rewind_context_to_anchor_tool;
 use crate::tools::handlers::context_anchor_spec::create_save_context_anchor_tool;
 use crate::tools::handlers::parse_arguments;
 use crate::tools::registry::CoreToolRuntime;
 use crate::tools::registry::ToolExecutor;
-use crate::turn_timing::now_unix_timestamp_ms;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ResponseInputItem;
 use codex_tools::ToolName;
@@ -66,16 +66,43 @@ pub(crate) struct ListContextAnchorsRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub(crate) struct RewindContextToAnchorResponse {
-    pub(crate) anchor_id: String,
-    pub(crate) dropped_turns: u32,
-    pub(crate) response_items_reclaimed: u64,
-    pub(crate) approx_tokens_reclaimed: u64,
-    pub(crate) reclaim_threshold_percent: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) reclaim_threshold_tokens: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) reclaim_threshold_met: Option<bool>,
+#[serde(tag = "status", rename_all = "snake_case")]
+pub(crate) enum RewindContextToAnchorResponse {
+    Rewound {
+        anchor_id: String,
+        dropped_turns: u32,
+        response_items_reclaimed: u64,
+        approx_tokens_reclaimed: u64,
+        reclaim_threshold_percent: u32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reclaim_threshold_tokens: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reclaim_threshold_met: Option<bool>,
+    },
+    Rejected {
+        anchor_id: String,
+        dropped_turns: u32,
+        response_items_reclaimed: u64,
+        approx_tokens_reclaimed: u64,
+        reclaim_threshold_percent: u32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reclaim_threshold_tokens: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reclaim_threshold_met: Option<bool>,
+        reason: RewindContextToAnchorRejectionReason,
+        min_reclaim_percent: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        min_reclaim_threshold_tokens: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        model_context_window: Option<u64>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RewindContextToAnchorRejectionReason {
+    BelowMinReclaimPercent,
+    UnknownContextWindowForMinReclaimPercent,
 }
 
 struct JsonToolOutput<T> {

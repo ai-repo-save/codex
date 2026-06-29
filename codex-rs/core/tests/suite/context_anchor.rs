@@ -16,6 +16,8 @@ use serde_json::json;
 
 const SAVE_CONTEXT_ANCHOR_TOOL_NAME: &str = "save_context_anchor";
 const LIST_CONTEXT_ANCHORS_TOOL_NAME: &str = "list_context_anchors";
+const REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME: &str = "rewind_context_to_anchor";
+const TEST_MODEL: &str = "test-gpt-5.1-codex";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn list_context_anchors_returns_saved_anchor_metadata() -> Result<()> {
@@ -90,6 +92,131 @@ async fn list_context_anchors_returns_saved_anchor_metadata() -> Result<()> {
             .is_some_and(|count| count > 0),
         "anchor listing should include non-zero distance: {list_json:?}"
     );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn low_benefit_context_rewind_returns_rejected_output_without_ending_turn() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let save_call_id = "save-anchor-call";
+    let first_mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-1"),
+                ev_function_call(
+                    save_call_id,
+                    SAVE_CONTEXT_ANCHOR_TOOL_NAME,
+                    &json!({ "label": "before low benefit" }).to_string(),
+                ),
+                ev_completed("resp-1"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-2"),
+                ev_assistant_message("msg-1", "anchor saved"),
+                ev_completed("resp-2"),
+            ]),
+        ],
+    )
+    .await;
+
+    let mut builder = test_codex()
+        .with_model_info_override(TEST_MODEL, |model_info| {
+            model_info.context_window = Some(1_000);
+            model_info.effective_context_window_percent = 100;
+        })
+        .with_config(|config| {
+            config.context_rewind.min_reclaim_percent = 100;
+        });
+    let test = builder.build(&server).await?;
+    test.submit_turn_with_approval_and_permission_profile(
+        "save anchor",
+        AskForApproval::Never,
+        PermissionProfile::Disabled,
+    )
+    .await?;
+
+    let first_requests = first_mock.requests();
+    assert_eq!(first_requests.len(), 2);
+
+    let save_text = first_requests[1]
+        .function_call_output_text(save_call_id)
+        .expect("save output should be text JSON");
+    let save_json: Value = serde_json::from_str(&save_text)?;
+    let anchor_id = save_json
+        .get("anchor_id")
+        .and_then(Value::as_str)
+        .expect("save output should include anchor id");
+
+    let rewind_call_id = "rewind-anchor-call";
+    let second_mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-3"),
+                ev_function_call(
+                    rewind_call_id,
+                    REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME,
+                    &json!({
+                        "anchor_id": anchor_id,
+                        "note": "carry forward only if allowed"
+                    })
+                    .to_string(),
+                ),
+                ev_completed("resp-3"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-4"),
+                ev_assistant_message("msg-2", "continued after rejection"),
+                ev_completed("resp-4"),
+            ]),
+        ],
+    )
+    .await;
+    test.submit_turn_with_approval_and_permission_profile(
+        "try low benefit rewind",
+        AskForApproval::Never,
+        PermissionProfile::Disabled,
+    )
+    .await?;
+
+    let requests = second_mock.requests();
+    assert_eq!(requests.len(), 2);
+
+    let second_request = requests[0].body_json();
+    let rewind_arguments = second_request["input"]
+        .as_array()
+        .expect("request input should be an array")
+        .iter()
+        .find(|item| {
+            item.get("type").and_then(Value::as_str) == Some("function_call")
+                && item.get("call_id").and_then(Value::as_str) == Some(rewind_call_id)
+        })
+        .and_then(|item| item.get("arguments"))
+        .and_then(Value::as_str)
+        .expect("rewind call should have arguments");
+    assert_eq!(
+        serde_json::from_str::<Value>(rewind_arguments)?["anchor_id"],
+        json!(anchor_id)
+    );
+
+    let rewind_text = requests[1]
+        .function_call_output_text(rewind_call_id)
+        .expect("rewind output should be text JSON");
+    let rewind_json: Value = serde_json::from_str(&rewind_text)?;
+
+    assert_eq!(rewind_json["status"], json!("rejected"));
+    assert_eq!(
+        rewind_json["reason"],
+        json!("below_min_reclaim_percent")
+    );
+    assert_eq!(rewind_json["anchor_id"], json!(anchor_id));
+    assert_eq!(rewind_json["min_reclaim_percent"], json!(100));
+    assert_eq!(rewind_json["min_reclaim_threshold_tokens"], json!(1_000));
+    assert_eq!(rewind_json["model_context_window"], json!(1_000));
 
     Ok(())
 }
