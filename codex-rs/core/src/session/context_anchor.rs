@@ -66,8 +66,10 @@ fn latest_active_anchor_event(
                 active_anchors.clear();
             }
             RolloutItem::TurnContext(turn_context) => {
-                current_collaboration_mode_kind =
-                    turn_context.collaboration_mode.as_ref().map(|mode| mode.mode);
+                current_collaboration_mode_kind = turn_context
+                    .collaboration_mode
+                    .as_ref()
+                    .map(|mode| mode.mode);
             }
             RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(event)) => {
                 if let Some(existing_index) = active_anchors
@@ -152,8 +154,10 @@ fn list_context_anchors_from_rollout(
                 user_turn_total = 0;
             }
             RolloutItem::TurnContext(turn_context) => {
-                latest_collaboration_mode_kind =
-                    turn_context.collaboration_mode.as_ref().map(|mode| mode.mode);
+                latest_collaboration_mode_kind = turn_context
+                    .collaboration_mode
+                    .as_ref()
+                    .map(|mode| mode.mode);
             }
             RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(event)) => {
                 if let Some(existing_index) = active_anchors

@@ -200,13 +200,12 @@ fn list_context_anchors_returns_active_anchors_newest_first() {
         history_item("three"),
     ];
 
-    let result =
-        list_context_anchors_from_rollout(
-            &rollout_items,
-            &current_history,
-            /*limit*/ 20,
-            ModeKind::Default,
-        );
+    let result = list_context_anchors_from_rollout(
+        &rollout_items,
+        &current_history,
+        /*limit*/ 20,
+        ModeKind::Default,
+    );
 
     assert_eq!(result.current_history_items, 4);
     assert_eq!(result.active_anchor_count, 2);
@@ -243,13 +242,12 @@ fn list_context_anchors_omits_pre_compaction_anchors() {
     ];
     let current_history = vec![history_item("zero"), history_item("one")];
 
-    let result =
-        list_context_anchors_from_rollout(
-            &rollout_items,
-            &current_history,
-            /*limit*/ 20,
-            ModeKind::Default,
-        );
+    let result = list_context_anchors_from_rollout(
+        &rollout_items,
+        &current_history,
+        /*limit*/ 20,
+        ModeKind::Default,
+    );
 
     assert_eq!(result.active_anchor_count, 1);
     assert_eq!(result.invalidated_anchor_count, 1);
@@ -280,13 +278,12 @@ fn list_context_anchors_omits_anchors_after_rewound_target() {
         history_item("carry"),
     ];
 
-    let result =
-        list_context_anchors_from_rollout(
-            &rollout_items,
-            &current_history,
-            /*limit*/ 20,
-            ModeKind::Default,
-        );
+    let result = list_context_anchors_from_rollout(
+        &rollout_items,
+        &current_history,
+        /*limit*/ 20,
+        ModeKind::Default,
+    );
 
     assert_eq!(result.active_anchor_count, 2);
     assert_eq!(result.invalidated_anchor_count, 1);
@@ -307,10 +304,7 @@ fn legacy_anchor_mode_is_inferred_from_latest_turn_context() {
     let rollout_items = vec![
         turn_context(ModeKind::Plan),
         saved_anchor_with_mode(
-            ANCHOR_ID,
-            /*label*/ None,
-            /*boundary*/ 0,
-            /*created_at*/ 0,
+            ANCHOR_ID, /*label*/ None, /*boundary*/ 0, /*created_at*/ 0,
             /*collaboration_mode_kind*/ None,
         ),
     ];
@@ -323,10 +317,7 @@ fn legacy_anchor_mode_is_inferred_from_latest_turn_context() {
 #[test]
 fn legacy_anchor_without_turn_context_keeps_unknown_mode() {
     let rollout_items = vec![saved_anchor_with_mode(
-        ANCHOR_ID,
-        /*label*/ None,
-        /*boundary*/ 0,
-        /*created_at*/ 0,
+        ANCHOR_ID, /*label*/ None, /*boundary*/ 0, /*created_at*/ 0,
         /*collaboration_mode_kind*/ None,
     )];
 
@@ -516,19 +507,19 @@ fn min_reclaim_percent_rejects_unknown_context_window() {
 
 #[test]
 fn collaboration_mode_guard_allows_same_mode() {
-    let result = validate_anchor_collaboration_mode(
-        ANCHOR_ID,
-        Some(ModeKind::Default),
-        ModeKind::Default,
-    );
+    let result =
+        validate_anchor_collaboration_mode(ANCHOR_ID, Some(ModeKind::Default), ModeKind::Default);
 
     assert!(result.is_ok());
 }
 
 #[test]
 fn collaboration_mode_guard_allows_unknown_legacy_anchor_mode() {
-    let result =
-        validate_anchor_collaboration_mode(ANCHOR_ID, /*anchor_collaboration_mode_kind*/ None, ModeKind::Default);
+    let result = validate_anchor_collaboration_mode(
+        ANCHOR_ID,
+        /*anchor_collaboration_mode_kind*/ None,
+        ModeKind::Default,
+    );
 
     assert!(result.is_ok());
 }
