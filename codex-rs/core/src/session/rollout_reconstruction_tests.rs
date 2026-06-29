@@ -86,6 +86,7 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
             label: Some("before future".to_string()),
             history_boundary: 2,
             created_at: 1,
+            collaboration_mode_kind: None,
         })),
         RolloutItem::ResponseItem(future_user),
         RolloutItem::ResponseItem(future_assistant),
@@ -155,6 +156,7 @@ async fn reconstruct_history_context_rewind_does_not_cross_compaction() {
             label: None,
             history_boundary: 2,
             created_at: 1,
+            collaboration_mode_kind: None,
         })),
         RolloutItem::ResponseItem(user_message("future before compaction")),
         RolloutItem::Compacted(CompactedItem {
@@ -210,6 +212,7 @@ async fn reconstruct_history_context_rewind_uses_anchor_saved_after_compaction()
             label: None,
             history_boundary: 1,
             created_at: 1,
+            collaboration_mode_kind: None,
         })),
         RolloutItem::Compacted(CompactedItem {
             message: "summary".to_string(),
@@ -226,6 +229,7 @@ async fn reconstruct_history_context_rewind_uses_anchor_saved_after_compaction()
             label: None,
             history_boundary: 3,
             created_at: 2,
+            collaboration_mode_kind: None,
         })),
         RolloutItem::ResponseItem(user_message("discarded post-anchor future")),
         RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(

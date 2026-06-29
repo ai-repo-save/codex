@@ -1,9 +1,13 @@
 use super::*;
+use codex_protocol::config_types::CollaborationMode;
+use codex_protocol::config_types::ModeKind;
+use codex_protocol::config_types::Settings;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::CompactedItem;
 use codex_protocol::protocol::ContextAnchorSavedEvent;
 use codex_protocol::protocol::ContextRewoundToAnchorEvent;
+use codex_protocol::protocol::TurnContextItem;
 use codex_protocol::protocol::UserMessageEvent;
 use pretty_assertions::assert_eq;
 
@@ -15,12 +19,60 @@ fn saved_anchor(
     boundary: u64,
     created_at: i64,
 ) -> RolloutItem {
+    saved_anchor_with_mode(
+        anchor_id,
+        label,
+        boundary,
+        created_at,
+        Some(ModeKind::Default),
+    )
+}
+
+fn saved_anchor_with_mode(
+    anchor_id: &str,
+    label: Option<&str>,
+    boundary: u64,
+    created_at: i64,
+    collaboration_mode_kind: Option<ModeKind>,
+) -> RolloutItem {
     RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
         anchor_id: anchor_id.to_string(),
         label: label.map(str::to_string),
         history_boundary: boundary,
         created_at,
+        collaboration_mode_kind,
     }))
+}
+
+fn turn_context(mode: ModeKind) -> RolloutItem {
+    RolloutItem::TurnContext(TurnContextItem {
+        turn_id: None,
+        cwd: std::env::current_dir().expect("current dir should be available").into(),
+        workspace_roots: None,
+        current_date: None,
+        timezone: None,
+        approval_policy: AskForApproval::Never,
+        sandbox_policy: SandboxPolicy::DangerFullAccess,
+        permission_profile: None,
+        network: None,
+        file_system_sandbox_policy: None,
+        model: "test-model".to_string(),
+        comp_hash: None,
+        personality: None,
+        collaboration_mode: Some(CollaborationMode {
+            mode,
+            settings: Settings {
+                model: "test-model".to_string(),
+                reasoning_effort: None,
+                developer_instructions: None,
+            },
+        }),
+        multi_agent_version: None,
+        multi_agent_mode: None,
+        realtime_active: None,
+        effort: None,
+        summary: Default::default(),
+    })
 }
 
 fn user_message() -> RolloutItem {
@@ -143,7 +195,12 @@ fn list_context_anchors_returns_active_anchors_newest_first() {
     ];
 
     let result =
-        list_context_anchors_from_rollout(&rollout_items, &current_history, /*limit*/ 20);
+        list_context_anchors_from_rollout(
+            &rollout_items,
+            &current_history,
+            /*limit*/ 20,
+            ModeKind::Default,
+        );
 
     assert_eq!(result.current_history_items, 4);
     assert_eq!(result.active_anchor_count, 2);
@@ -155,6 +212,11 @@ fn list_context_anchors_returns_active_anchors_newest_first() {
     assert_eq!(result.anchors[0].history_boundary, 3);
     assert_eq!(result.anchors[0].response_items_since_anchor, 1);
     assert_eq!(result.anchors[0].user_turns_since_anchor, 1);
+    assert_eq!(
+        result.anchors[0].collaboration_mode_kind,
+        Some(ModeKind::Default)
+    );
+    assert_eq!(result.anchors[0].compatible_with_current_mode, Some(true));
     assert!(result.anchors[0].approx_tokens_since_anchor > 0);
     assert_eq!(result.anchors[1].anchor_id, "a");
     assert_eq!(result.anchors[1].response_items_since_anchor, 3);
@@ -176,7 +238,12 @@ fn list_context_anchors_omits_pre_compaction_anchors() {
     let current_history = vec![history_item("zero"), history_item("one")];
 
     let result =
-        list_context_anchors_from_rollout(&rollout_items, &current_history, /*limit*/ 20);
+        list_context_anchors_from_rollout(
+            &rollout_items,
+            &current_history,
+            /*limit*/ 20,
+            ModeKind::Default,
+        );
 
     assert_eq!(result.active_anchor_count, 1);
     assert_eq!(result.invalidated_anchor_count, 1);
@@ -208,7 +275,12 @@ fn list_context_anchors_omits_anchors_after_rewound_target() {
     ];
 
     let result =
-        list_context_anchors_from_rollout(&rollout_items, &current_history, /*limit*/ 20);
+        list_context_anchors_from_rollout(
+            &rollout_items,
+            &current_history,
+            /*limit*/ 20,
+            ModeKind::Default,
+        );
 
     assert_eq!(result.active_anchor_count, 2);
     assert_eq!(result.invalidated_anchor_count, 1);
@@ -225,12 +297,46 @@ fn list_context_anchors_omits_anchors_after_rewound_target() {
 }
 
 #[test]
+fn legacy_anchor_mode_is_inferred_from_latest_turn_context() {
+    let rollout_items = vec![
+        turn_context(ModeKind::Plan),
+        saved_anchor_with_mode(
+            ANCHOR_ID,
+            /*label*/ None,
+            /*boundary*/ 0,
+            /*created_at*/ 0,
+            /*collaboration_mode_kind*/ None,
+        ),
+    ];
+
+    let anchor = latest_active_anchor_event(&rollout_items, ANCHOR_ID).unwrap();
+
+    assert_eq!(anchor.collaboration_mode_kind, Some(ModeKind::Plan));
+}
+
+#[test]
+fn legacy_anchor_without_turn_context_keeps_unknown_mode() {
+    let rollout_items = vec![saved_anchor_with_mode(
+        ANCHOR_ID,
+        /*label*/ None,
+        /*boundary*/ 0,
+        /*created_at*/ 0,
+        /*collaboration_mode_kind*/ None,
+    )];
+
+    let anchor = latest_active_anchor_event(&rollout_items, ANCHOR_ID).unwrap();
+
+    assert_eq!(anchor.collaboration_mode_kind, None);
+}
+
+#[test]
 fn rewind_benefit_counts_items_after_anchor_and_excludes_current_call() {
     let anchor = ContextAnchorSavedEvent {
         anchor_id: ANCHOR_ID.to_string(),
         label: None,
         history_boundary: 1,
         created_at: 0,
+        collaboration_mode_kind: Some(ModeKind::Default),
     };
     let current_history = vec![
         history_item("before anchor"),
@@ -263,6 +369,7 @@ fn rewind_benefit_is_zero_for_near_anchor() {
         label: None,
         history_boundary: 1,
         created_at: 0,
+        collaboration_mode_kind: Some(ModeKind::Default),
     };
     let current_history = vec![
         history_item("before anchor"),
@@ -295,6 +402,7 @@ fn rewind_benefit_omits_threshold_result_without_context_window() {
         label: None,
         history_boundary: 1,
         created_at: 0,
+        collaboration_mode_kind: Some(ModeKind::Default),
     };
     let current_history = vec![
         history_item("before anchor"),
@@ -397,6 +505,36 @@ fn min_reclaim_percent_rejects_unknown_context_window() {
     assert_eq!(
         result.unwrap_err().to_string(),
         "Invalid request: context rewind to anchor `anchor` rejected: context_rewind.min_reclaim_percent is 20, but the model context window is unknown"
+    );
+}
+
+#[test]
+fn collaboration_mode_guard_allows_same_mode() {
+    let result = validate_anchor_collaboration_mode(
+        ANCHOR_ID,
+        Some(ModeKind::Default),
+        ModeKind::Default,
+    );
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn collaboration_mode_guard_allows_unknown_legacy_anchor_mode() {
+    let result =
+        validate_anchor_collaboration_mode(ANCHOR_ID, /*anchor_collaboration_mode_kind*/ None, ModeKind::Default);
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn collaboration_mode_guard_rejects_cross_mode_rewind() {
+    let result =
+        validate_anchor_collaboration_mode(ANCHOR_ID, Some(ModeKind::Plan), ModeKind::Default);
+
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "Invalid request: context rewind to anchor `anchor` rejected: anchor was saved in Plan mode, but current mode is Default"
     );
 }
 

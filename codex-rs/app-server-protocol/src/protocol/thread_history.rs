@@ -1811,6 +1811,7 @@ mod tests {
                 label: Some("before branch".to_string()),
                 history_boundary: 42,
                 created_at: 1_782_600_000,
+                collaboration_mode_kind: None,
             }),
             EventMsg::ContextRewoundToAnchor(ContextRewoundToAnchorEvent {
                 anchor_id: "ctx-123".to_string(),
@@ -1862,6 +1863,7 @@ mod tests {
             label: Some("before branch".to_string()),
             history_boundary: 42,
             created_at: 1_782_600_000,
+            collaboration_mode_kind: None,
         });
         let rewound = EventMsg::ContextRewoundToAnchor(ContextRewoundToAnchorEvent {
             anchor_id: "ctx-123".to_string(),
@@ -1883,6 +1885,7 @@ mod tests {
                 label: Some("different anchor".to_string()),
                 history_boundary: 43,
                 created_at: 1_782_600_001,
+                collaboration_mode_kind: None,
             }),
         ];
 

@@ -2,6 +2,7 @@ use crate::context::ContextRewindCarryForward;
 use crate::context::ContextualUserFragment;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
+use codex_protocol::config_types::ModeKind;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::ResponseItem;
@@ -24,6 +25,10 @@ pub(crate) struct ListedContextAnchor {
     pub(crate) response_items_since_anchor: u64,
     pub(crate) user_turns_since_anchor: u32,
     pub(crate) approx_tokens_since_anchor: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) collaboration_mode_kind: Option<ModeKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) compatible_with_current_mode: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -54,10 +59,15 @@ fn latest_active_anchor_event(
     anchor_id: &str,
 ) -> CodexResult<ContextAnchorSavedEvent> {
     let mut active_anchors: Vec<ContextAnchorSavedEvent> = Vec::new();
+    let mut current_collaboration_mode_kind = None;
     for item in rollout_items {
         match item {
             RolloutItem::Compacted(_) => {
                 active_anchors.clear();
+            }
+            RolloutItem::TurnContext(turn_context) => {
+                current_collaboration_mode_kind =
+                    turn_context.collaboration_mode.as_ref().map(|mode| mode.mode);
             }
             RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(event)) => {
                 if let Some(existing_index) = active_anchors
@@ -66,7 +76,11 @@ fn latest_active_anchor_event(
                 {
                     active_anchors.remove(existing_index);
                 }
-                active_anchors.push(event.clone());
+                let mut event = event.clone();
+                if event.collaboration_mode_kind.is_none() {
+                    event.collaboration_mode_kind = current_collaboration_mode_kind;
+                }
+                active_anchors.push(event);
             }
             RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
                 if let Some(anchor_index) = active_anchors
@@ -122,10 +136,12 @@ fn list_context_anchors_from_rollout(
     rollout_items: &[RolloutItem],
     current_history: &[ResponseItem],
     limit: usize,
+    current_collaboration_mode_kind: ModeKind,
 ) -> ListContextAnchorsResponse {
     let mut active_anchors: Vec<ActiveAnchor> = Vec::new();
     let mut invalidated_anchor_count = 0usize;
     let mut user_turn_total = 0u32;
+    let mut latest_collaboration_mode_kind = None;
 
     for item in rollout_items {
         match item {
@@ -135,6 +151,10 @@ fn list_context_anchors_from_rollout(
                 active_anchors.clear();
                 user_turn_total = 0;
             }
+            RolloutItem::TurnContext(turn_context) => {
+                latest_collaboration_mode_kind =
+                    turn_context.collaboration_mode.as_ref().map(|mode| mode.mode);
+            }
             RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(event)) => {
                 if let Some(existing_index) = active_anchors
                     .iter()
@@ -142,8 +162,12 @@ fn list_context_anchors_from_rollout(
                 {
                     active_anchors.remove(existing_index);
                 }
+                let mut event = event.clone();
+                if event.collaboration_mode_kind.is_none() {
+                    event.collaboration_mode_kind = latest_collaboration_mode_kind;
+                }
                 active_anchors.push(ActiveAnchor {
-                    event: event.clone(),
+                    event,
                     user_turn_total_at_save: user_turn_total,
                 });
             }
@@ -184,6 +208,10 @@ fn list_context_anchors_from_rollout(
                 .and_then(|boundary| current_history.get(boundary..))
                 .map(approx_tokens_for_items)
                 .unwrap_or_default();
+            let compatible_with_current_mode = anchor
+                .event
+                .collaboration_mode_kind
+                .map(|anchor_mode| anchor_mode == current_collaboration_mode_kind);
             ListedContextAnchor {
                 anchor_id: anchor.event.anchor_id.clone(),
                 label: anchor.event.label.clone(),
@@ -193,6 +221,8 @@ fn list_context_anchors_from_rollout(
                 user_turns_since_anchor: user_turn_total
                     .saturating_sub(anchor.user_turn_total_at_save),
                 approx_tokens_since_anchor,
+                collaboration_mode_kind: anchor.event.collaboration_mode_kind,
+                compatible_with_current_mode,
             }
         })
         .collect();
@@ -292,9 +322,29 @@ fn validate_min_reclaim_percent(
     Ok(())
 }
 
+fn validate_anchor_collaboration_mode(
+    anchor_id: &str,
+    anchor_collaboration_mode_kind: Option<ModeKind>,
+    current_collaboration_mode_kind: ModeKind,
+) -> CodexResult<()> {
+    let Some(anchor_collaboration_mode_kind) = anchor_collaboration_mode_kind else {
+        return Ok(());
+    };
+    if anchor_collaboration_mode_kind == current_collaboration_mode_kind {
+        return Ok(());
+    }
+
+    Err(CodexErr::InvalidRequest(format!(
+        "context rewind to anchor `{anchor_id}` rejected: anchor was saved in {} mode, but current mode is {}",
+        anchor_collaboration_mode_kind.display_name(),
+        current_collaboration_mode_kind.display_name()
+    )))
+}
+
 impl Session {
     pub(crate) async fn save_context_anchor(
         &self,
+        turn_context: &TurnContext,
         anchor_id: String,
         label: Option<String>,
         created_at: i64,
@@ -309,6 +359,7 @@ impl Session {
             label,
             history_boundary,
             created_at,
+            collaboration_mode_kind: Some(turn_context.collaboration_mode.mode),
         };
         self.persist_rollout_items(&[RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(
             event.clone(),
@@ -356,6 +407,11 @@ impl Session {
             &benefit,
             turn_context.model_context_window(),
             turn_context.config.context_rewind.min_reclaim_percent,
+        )?;
+        validate_anchor_collaboration_mode(
+            &anchor_id,
+            active_anchor.collaboration_mode_kind,
+            turn_context.collaboration_mode.mode,
         )?;
         let rewind_event = ContextRewoundToAnchorEvent {
             anchor_id,
@@ -413,6 +469,7 @@ impl Session {
             &stored_history.items,
             current_history.raw_items(),
             limit,
+            self.collaboration_mode().await.mode,
         ))
     }
 }

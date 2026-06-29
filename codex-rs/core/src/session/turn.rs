@@ -2081,7 +2081,12 @@ async fn drain_in_flight(
                 )
                 .await;
                 let event = sess
-                    .save_context_anchor(response.anchor_id, response.label, response.created_at)
+                    .save_context_anchor(
+                        &turn_context,
+                        response.anchor_id,
+                        response.label,
+                        response.created_at,
+                    )
                     .await?;
                 sess.deliver_persisted_event(&turn_context, EventMsg::ContextAnchorSaved(event))
                     .await;
