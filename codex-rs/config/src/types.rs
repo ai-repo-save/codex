@@ -82,6 +82,22 @@ impl Default for ContextReminderConfigToml {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
+#[serde(default)]
+#[schemars(deny_unknown_fields)]
+pub struct ContextRewindConfigToml {
+    #[schemars(range(min = 0, max = 100))]
+    pub min_reclaim_percent: Option<i64>,
+}
+
+impl Default for ContextRewindConfigToml {
+    fn default() -> Self {
+        Self {
+            min_reclaim_percent: Some(0),
+        }
+    }
+}
+
 /// Preferred layout for the resume/fork session picker.
 #[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "kebab-case")]

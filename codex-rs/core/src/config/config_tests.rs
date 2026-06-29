@@ -10619,6 +10619,73 @@ remaining_percent = {value}
 }
 
 #[tokio::test]
+async fn context_rewind_config_defaults_to_disabled() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+
+    assert_eq!(config.context_rewind.min_reclaim_percent, 0);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn context_rewind_config_from_table() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[context_rewind]
+min_reclaim_percent = 15
+"#,
+    )?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+
+    assert_eq!(config.context_rewind.min_reclaim_percent, 15);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn context_rewind_rejects_invalid_min_reclaim_percent() -> std::io::Result<()> {
+    for (value, message) in [
+        (-1, "context_rewind.min_reclaim_percent must be at least 0"),
+        (
+            101,
+            "context_rewind.min_reclaim_percent must be at most 100",
+        ),
+    ] {
+        let codex_home = TempDir::new()?;
+        std::fs::write(
+            codex_home.path().join(CONFIG_TOML_FILE),
+            format!(
+                r#"[context_rewind]
+min_reclaim_percent = {value}
+"#
+            ),
+        )?;
+
+        let err = ConfigBuilder::without_managed_config_for_tests()
+            .codex_home(codex_home.path().to_path_buf())
+            .fallback_cwd(Some(codex_home.path().to_path_buf()))
+            .build()
+            .await
+            .expect_err("invalid context rewind minimum reclaim percent should fail");
+        assert_eq!(err.to_string(), message);
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn context_reminder_rejects_invalid_message() -> std::io::Result<()> {
     for (value, message) in [
         (

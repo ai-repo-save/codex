@@ -318,6 +318,92 @@ fn rewind_benefit_omits_threshold_result_without_context_window() {
 }
 
 #[test]
+fn min_reclaim_percent_allows_rewind_when_disabled() {
+    let benefit = ContextRewindBenefit {
+        response_items_reclaimed: 0,
+        approx_tokens_reclaimed: 0,
+        reclaim_threshold_percent: CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT,
+        reclaim_threshold_tokens: Some(20),
+        reclaim_threshold_met: Some(false),
+    };
+
+    let result = validate_min_reclaim_percent(
+        ANCHOR_ID,
+        &benefit,
+        Some(/*model_context_window*/ 100),
+        /*min_reclaim_percent*/ 0,
+    );
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn min_reclaim_percent_rejects_rewind_below_threshold() {
+    let benefit = ContextRewindBenefit {
+        response_items_reclaimed: 1,
+        approx_tokens_reclaimed: 19,
+        reclaim_threshold_percent: CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT,
+        reclaim_threshold_tokens: Some(20),
+        reclaim_threshold_met: Some(false),
+    };
+
+    let result = validate_min_reclaim_percent(
+        ANCHOR_ID,
+        &benefit,
+        Some(/*model_context_window*/ 100),
+        /*min_reclaim_percent*/ 20,
+    );
+
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "Invalid request: context rewind to anchor `anchor` rejected: reclaimed approximately 19 tokens, below configured minimum 20% (20 tokens)"
+    );
+}
+
+#[test]
+fn min_reclaim_percent_allows_rewind_at_threshold() {
+    let benefit = ContextRewindBenefit {
+        response_items_reclaimed: 1,
+        approx_tokens_reclaimed: 20,
+        reclaim_threshold_percent: CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT,
+        reclaim_threshold_tokens: Some(20),
+        reclaim_threshold_met: Some(true),
+    };
+
+    let result = validate_min_reclaim_percent(
+        ANCHOR_ID,
+        &benefit,
+        Some(/*model_context_window*/ 100),
+        /*min_reclaim_percent*/ 20,
+    );
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn min_reclaim_percent_rejects_unknown_context_window() {
+    let benefit = ContextRewindBenefit {
+        response_items_reclaimed: 1,
+        approx_tokens_reclaimed: 20,
+        reclaim_threshold_percent: CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT,
+        reclaim_threshold_tokens: None,
+        reclaim_threshold_met: None,
+    };
+
+    let result = validate_min_reclaim_percent(
+        ANCHOR_ID,
+        &benefit,
+        /*model_context_window*/ None,
+        /*min_reclaim_percent*/ 20,
+    );
+
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "Invalid request: context rewind to anchor `anchor` rejected: context_rewind.min_reclaim_percent is 20, but the model context window is unknown"
+    );
+}
+
+#[test]
 fn context_rewound_to_anchor_event_defaults_reclaim_fields() {
     let event: ContextRewoundToAnchorEvent = serde_json::from_value(serde_json::json!({
         "anchor_id": ANCHOR_ID,

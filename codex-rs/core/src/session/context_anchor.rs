@@ -260,6 +260,38 @@ fn rewind_benefit_since_anchor(
     }
 }
 
+fn validate_min_reclaim_percent(
+    anchor_id: &str,
+    benefit: &ContextRewindBenefit,
+    model_context_window: Option<i64>,
+    min_reclaim_percent: i64,
+) -> CodexResult<()> {
+    if min_reclaim_percent == 0 {
+        return Ok(());
+    }
+
+    let Some(context_window) = model_context_window.and_then(|value| u64::try_from(value).ok())
+    else {
+        return Err(CodexErr::InvalidRequest(format!(
+            "context rewind to anchor `{anchor_id}` rejected: context_rewind.min_reclaim_percent is {min_reclaim_percent}, but the model context window is unknown"
+        )));
+    };
+    let min_reclaim_percent_u64 = u64::try_from(min_reclaim_percent).map_err(|_| {
+        CodexErr::InvalidRequest(format!(
+            "context_rewind.min_reclaim_percent must be at least 0, got {min_reclaim_percent}"
+        ))
+    })?;
+    let threshold_tokens = context_window.saturating_mul(min_reclaim_percent_u64) / 100;
+    if benefit.approx_tokens_reclaimed < threshold_tokens {
+        return Err(CodexErr::InvalidRequest(format!(
+            "context rewind to anchor `{anchor_id}` rejected: reclaimed approximately {} tokens, below configured minimum {min_reclaim_percent}% ({threshold_tokens} tokens)",
+            benefit.approx_tokens_reclaimed
+        )));
+    }
+
+    Ok(())
+}
+
 impl Session {
     pub(crate) async fn save_context_anchor(
         &self,
@@ -319,6 +351,12 @@ impl Session {
             current_rewind_call_id,
             turn_context.model_context_window(),
         );
+        validate_min_reclaim_percent(
+            &anchor_id,
+            &benefit,
+            turn_context.model_context_window(),
+            turn_context.config.context_rewind.min_reclaim_percent,
+        )?;
         let rewind_event = ContextRewoundToAnchorEvent {
             anchor_id,
             dropped_turns,

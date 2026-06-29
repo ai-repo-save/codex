@@ -12,6 +12,7 @@ use crate::types::ApprovalsReviewer;
 use crate::types::AppsConfigToml;
 use crate::types::AuthCredentialsStoreMode;
 use crate::types::ContextReminderConfigToml;
+use crate::types::ContextRewindConfigToml;
 use crate::types::FeedbackConfigToml;
 use crate::types::History;
 use crate::types::MarketplaceConfig;
@@ -247,6 +248,10 @@ pub struct ConfigToml {
     /// Reminder shown to root agents as the usable context window runs low.
     #[serde(default)]
     pub context_reminder: Option<ContextReminderConfigToml>,
+
+    /// Rejects context rewinds that reclaim too little of the model context window.
+    #[serde(default)]
+    pub context_rewind: Option<ContextRewindConfigToml>,
 
     /// Goal runtime prompt overrides.
     #[serde(default)]

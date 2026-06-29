@@ -784,6 +784,9 @@ pub struct Config {
     /// Reminder shown to root agents as the usable context window runs low.
     pub context_reminder: ContextReminderConfig,
 
+    /// Policy for rejecting context rewinds that reclaim too little context.
+    pub context_rewind: ContextRewindConfig,
+
     /// Goal runtime prompt overrides.
     pub goal_prompt_templates: GoalPromptTemplates,
 
@@ -1224,6 +1227,19 @@ impl Default for ContextReminderConfig {
             enabled: true,
             remaining_percent: DEFAULT_CONTEXT_REMINDER_REMAINING_PERCENT,
             message: DEFAULT_CONTEXT_REMINDER_MESSAGE.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ContextRewindConfig {
+    pub min_reclaim_percent: i64,
+}
+
+impl Default for ContextRewindConfig {
+    fn default() -> Self {
+        Self {
+            min_reclaim_percent: 0,
         }
     }
 }
@@ -2605,6 +2621,17 @@ fn resolve_context_reminder_config(config_toml: &ConfigToml) -> ContextReminderC
     }
 }
 
+fn resolve_context_rewind_config(config_toml: &ConfigToml) -> ContextRewindConfig {
+    let default = ContextRewindConfig::default();
+    let base = config_toml.context_rewind.as_ref();
+
+    ContextRewindConfig {
+        min_reclaim_percent: base
+            .and_then(|config| config.min_reclaim_percent)
+            .unwrap_or(default.min_reclaim_percent),
+    }
+}
+
 fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config {
     let base = multi_agent_v2_toml_config(config_toml.features.as_ref());
     let max_concurrent_threads_per_session = base
@@ -3041,6 +3068,23 @@ fn validate_context_reminder_message(value: &str) -> std::io::Result<()> {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!("{LABEL} exceeds the {MAX_CONTEXT_REMINDER_MESSAGE_BYTES}-byte limit"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_context_rewind_min_reclaim_percent(value: i64) -> std::io::Result<()> {
+    const LABEL: &str = "context_rewind.min_reclaim_percent";
+    if value < 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{LABEL} must be at least 0"),
+        ));
+    }
+    if value > 100 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{LABEL} must be at most 100"),
         ));
     }
     Ok(())
@@ -3540,6 +3584,7 @@ impl Config {
             resolve_experimental_request_user_input_enabled(&cfg);
         let code_mode = resolve_code_mode_config(&cfg);
         let context_reminder = resolve_context_reminder_config(&cfg);
+        let context_rewind = resolve_context_rewind_config(&cfg);
         let multi_agent_v2 = resolve_multi_agent_v2_config(&cfg);
         let token_budget = resolve_token_budget_config(&cfg, &features)?;
         let rollout_budget = resolve_rollout_budget_config(&cfg, &features)?;
@@ -3618,6 +3663,7 @@ impl Config {
         validate_multi_agent_v2_tool_namespace(multi_agent_v2.tool_namespace.as_deref())?;
         validate_context_reminder_remaining_percent(context_reminder.remaining_percent)?;
         validate_context_reminder_message(&context_reminder.message)?;
+        validate_context_rewind_min_reclaim_percent(context_rewind.min_reclaim_percent)?;
         let agent_max_threads = cfg.agents.as_ref().and_then(|agents| agents.max_threads);
         if agent_max_threads == Some(0) {
             return Err(std::io::Error::new(
@@ -4080,6 +4126,7 @@ impl Config {
             experimental_request_user_input_enabled,
             code_mode,
             context_reminder,
+            context_rewind,
             use_experimental_unified_exec_tool,
             background_terminal_max_timeout,
             ghost_snapshot,
