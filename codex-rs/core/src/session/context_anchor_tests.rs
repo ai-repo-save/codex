@@ -497,9 +497,7 @@ fn min_reclaim_percent_marks_unknown_context_window_rejected() {
     };
 
     let result = evaluate_min_reclaim_percent(
-        &benefit,
-        /*model_context_window*/ None,
-        /*min_reclaim_percent*/ 20,
+        &benefit, /*model_context_window*/ None, /*min_reclaim_percent*/ 20,
     );
 
     assert_eq!(

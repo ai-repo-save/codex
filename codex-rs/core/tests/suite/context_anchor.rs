@@ -209,10 +209,7 @@ async fn low_benefit_context_rewind_returns_rejected_output_without_ending_turn(
     let rewind_json: Value = serde_json::from_str(&rewind_text)?;
 
     assert_eq!(rewind_json["status"], json!("rejected"));
-    assert_eq!(
-        rewind_json["reason"],
-        json!("below_min_reclaim_percent")
-    );
+    assert_eq!(rewind_json["reason"], json!("below_min_reclaim_percent"));
     assert_eq!(rewind_json["anchor_id"], json!(anchor_id));
     assert_eq!(rewind_json["min_reclaim_percent"], json!(100));
     assert_eq!(rewind_json["min_reclaim_threshold_tokens"], json!(1_000));
