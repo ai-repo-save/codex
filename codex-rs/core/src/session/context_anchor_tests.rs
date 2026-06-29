@@ -461,7 +461,7 @@ fn min_reclaim_percent_rejects_rewind_below_threshold() {
 
     assert_eq!(
         result.unwrap_err().to_string(),
-        "Invalid request: context rewind to anchor `anchor` rejected: reclaimed approximately 19 tokens, below configured minimum 20% (20 tokens)"
+        "context rewind to anchor `anchor` rejected: reclaimed approximately 19 tokens, below configured minimum 20% (20 tokens)"
     );
 }
 
@@ -501,7 +501,7 @@ fn min_reclaim_percent_rejects_unknown_context_window() {
 
     assert_eq!(
         result.unwrap_err().to_string(),
-        "Invalid request: context rewind to anchor `anchor` rejected: context_rewind.min_reclaim_percent is 20, but the model context window is unknown"
+        "context rewind to anchor `anchor` rejected: context_rewind.min_reclaim_percent is 20, but the model context window is unknown"
     );
 }
 
@@ -531,7 +531,7 @@ fn collaboration_mode_guard_rejects_cross_mode_rewind() {
 
     assert_eq!(
         result.unwrap_err().to_string(),
-        "Invalid request: context rewind to anchor `anchor` rejected: anchor was saved in Plan mode, but current mode is Default"
+        "context rewind to anchor `anchor` rejected: anchor was saved in Plan mode, but current mode is Default"
     );
 }
 
