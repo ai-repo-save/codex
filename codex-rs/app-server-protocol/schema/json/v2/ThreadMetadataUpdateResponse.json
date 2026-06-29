@@ -1823,6 +1823,25 @@
             "id": {
               "type": "string"
             },
+            "reclaimThresholdMet": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "reclaimThresholdPercent": {
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "reclaimThresholdTokens": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "responseItemsReclaimed": {
               "format": "uint64",
               "minimum": 0.0,
@@ -1841,6 +1860,7 @@
             "approxTokensReclaimed",
             "droppedTurns",
             "id",
+            "reclaimThresholdPercent",
             "responseItemsReclaimed",
             "type"
           ],
