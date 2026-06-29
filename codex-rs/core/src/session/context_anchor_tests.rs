@@ -250,7 +250,10 @@ fn rewind_benefit_is_zero_for_near_anchor() {
         history_boundary: 1,
         created_at: 0,
     };
-    let current_history = vec![history_item("before anchor"), function_call("current-rewind")];
+    let current_history = vec![
+        history_item("before anchor"),
+        function_call("current-rewind"),
+    ];
 
     let benefit = rewind_benefit_since_anchor(&anchor, &current_history, "current-rewind");
 
