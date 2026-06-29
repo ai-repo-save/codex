@@ -134,7 +134,10 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
         &reconstructed.history,
         "significance_threshold"
     ));
-    assert!(history_contains_text(&reconstructed.history, "\"met\":false"));
+    assert!(history_contains_text(
+        &reconstructed.history,
+        "\"met\":false"
+    ));
     assert!(!history_contains_text(
         &reconstructed.history,
         "discarded future"

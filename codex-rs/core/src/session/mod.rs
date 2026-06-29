@@ -1728,19 +1728,22 @@ impl Session {
     /// Persist the event to rollout and send it to clients.
     pub(crate) async fn send_event(&self, turn_context: &TurnContext, msg: EventMsg) {
         let legacy_source = msg.clone();
-        self.prepare_event_delivery(turn_context, &legacy_source).await;
+        self.prepare_event_delivery(turn_context, &legacy_source)
+            .await;
         let event = Event {
             id: turn_context.sub_id.clone(),
             msg,
         };
         self.send_event_raw(event).await;
-        self.finish_event_delivery(turn_context, legacy_source).await;
+        self.finish_event_delivery(turn_context, legacy_source)
+            .await;
     }
 
     /// Send an event already persisted by its owner to live clients without writing it again.
     pub(crate) async fn deliver_persisted_event(&self, turn_context: &TurnContext, msg: EventMsg) {
         let legacy_source = msg.clone();
-        self.prepare_event_delivery(turn_context, &legacy_source).await;
+        self.prepare_event_delivery(turn_context, &legacy_source)
+            .await;
         self.services
             .rollout_thread_trace
             .record_protocol_event(&legacy_source);
@@ -1749,7 +1752,8 @@ impl Session {
             msg,
         })
         .await;
-        self.finish_event_delivery(turn_context, legacy_source).await;
+        self.finish_event_delivery(turn_context, legacy_source)
+            .await;
     }
 
     async fn prepare_event_delivery(&self, turn_context: &TurnContext, legacy_source: &EventMsg) {
