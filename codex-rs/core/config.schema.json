@@ -900,6 +900,19 @@
       },
       "type": "object"
     },
+    "ContextRewindConfigToml": {
+      "additionalProperties": false,
+      "properties": {
+        "min_reclaim_percent": {
+          "default": 0,
+          "format": "int64",
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "CurrentTimeReminderConfigToml": {
       "additionalProperties": false,
       "properties": {
@@ -4798,6 +4811,15 @@
       ],
       "default": null,
       "description": "Reminder shown to root agents as the usable context window runs low."
+    },
+    "context_rewind": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/ContextRewindConfigToml"
+        }
+      ],
+      "default": null,
+      "description": "Rejects context rewinds that reclaim too little of the model context window."
     },
     "debug": {
       "allOf": [
