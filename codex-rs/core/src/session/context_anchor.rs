@@ -54,7 +54,7 @@ struct ContextRewindBenefit {
     reclaim_threshold_met: Option<bool>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub(crate) enum RewindContextToAnchorResult {
     Rewound(ContextRewoundToAnchorEvent),
     Rejected(ContextRewindRejected),
