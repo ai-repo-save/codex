@@ -1503,6 +1503,11 @@
             "anchorId": {
               "type": "string"
             },
+            "approxTokensReclaimed": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
+            },
             "droppedTurns": {
               "format": "uint32",
               "minimum": 0.0,
@@ -1510,6 +1515,11 @@
             },
             "id": {
               "type": "string"
+            },
+            "responseItemsReclaimed": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
             },
             "type": {
               "enum": [
@@ -1521,8 +1531,10 @@
           },
           "required": [
             "anchorId",
+            "approxTokensReclaimed",
             "droppedTurns",
             "id",
+            "responseItemsReclaimed",
             "type"
           ],
           "title": "ContextAnchorRewoundThreadItem",
