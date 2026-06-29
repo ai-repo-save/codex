@@ -45,7 +45,7 @@ pub fn create_rewind_context_to_anchor_tool() -> ToolSpec {
 
     ToolSpec::Function(ResponsesApiTool {
         name: REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME.to_string(),
-        description: "Rewinds this thread's model context to a saved anchor, discarding later context while carrying forward the provided note."
+        description: "Rewinds this thread's model context to a saved anchor, discarding later context while carrying forward the provided note. If you are not sure which anchor is far enough away, call list_context_anchors first; the rewind response reports estimated reclaimed context."
             .to_string(),
         strict: false,
         defer_loading: None,

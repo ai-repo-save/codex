@@ -194,12 +194,16 @@ impl ChatWidget {
             ThreadItem::ContextAnchorRewound {
                 anchor_id,
                 dropped_turns,
+                response_items_reclaimed,
+                approx_tokens_reclaimed,
                 ..
             } => {
                 self.add_info_message(
                     crate::context_anchor_display::context_anchor_rewound_summary(
                         &anchor_id,
                         dropped_turns,
+                        response_items_reclaimed,
+                        approx_tokens_reclaimed,
                     ),
                     /*hint*/ None,
                 );

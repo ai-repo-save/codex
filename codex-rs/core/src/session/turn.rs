@@ -2115,6 +2115,7 @@ async fn drain_in_flight(
                     .rewind_context_to_anchor(
                         turn_context.as_ref(),
                         request.anchor_id,
+                        &call_id,
                         request.note,
                     )
                     .await?;
@@ -2126,6 +2127,8 @@ async fn drain_in_flight(
                 let response = RewindContextToAnchorResponse {
                     anchor_id: rewind_event.anchor_id,
                     dropped_turns: rewind_event.dropped_turns,
+                    response_items_reclaimed: rewind_event.response_items_reclaimed,
+                    approx_tokens_reclaimed: rewind_event.approx_tokens_reclaimed,
                 };
                 let text = serde_json::to_string(&response).map_err(|err| {
                     CodexErr::Fatal(format!(

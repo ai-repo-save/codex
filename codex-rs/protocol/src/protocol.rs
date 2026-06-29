@@ -3458,6 +3458,10 @@ pub struct ContextAnchorSavedEvent {
 pub struct ContextRewoundToAnchorEvent {
     pub anchor_id: String,
     pub dropped_turns: u32,
+    #[serde(default)]
+    pub response_items_reclaimed: u64,
+    #[serde(default)]
+    pub approx_tokens_reclaimed: u64,
     pub note: String,
 }
 

@@ -956,6 +956,8 @@ pub(crate) async fn apply_bespoke_event_handling(
                 id: event.anchor_id.clone(),
                 anchor_id: event.anchor_id,
                 dropped_turns: event.dropped_turns,
+                response_items_reclaimed: event.response_items_reclaimed,
+                approx_tokens_reclaimed: event.approx_tokens_reclaimed,
             };
             let timestamp_ms = now_unix_timestamp_ms();
             let started = ItemStartedNotification {

@@ -50,6 +50,8 @@ fn rewind(anchor_id: &str) -> RolloutItem {
         ContextRewoundToAnchorEvent {
             anchor_id: anchor_id.to_string(),
             dropped_turns: 1,
+            response_items_reclaimed: 2,
+            approx_tokens_reclaimed: 10,
             note: "carry".to_string(),
         },
     ))
@@ -63,6 +65,17 @@ fn history_item(text: &str) -> ResponseItem {
             text: text.to_string(),
         }],
         phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    }
+}
+
+fn function_call(call_id: &str) -> ResponseItem {
+    ResponseItem::FunctionCall {
+        id: None,
+        name: "rewind_context_to_anchor".to_string(),
+        namespace: None,
+        arguments: "{}".to_string(),
+        call_id: call_id.to_string(),
         internal_chat_message_metadata_passthrough: None,
     }
 }
@@ -206,4 +219,59 @@ fn list_context_anchors_omits_anchors_after_rewound_target() {
     );
     assert_eq!(result.anchors[0].user_turns_since_anchor, 1);
     assert_eq!(result.anchors[1].user_turns_since_anchor, 2);
+}
+
+#[test]
+fn rewind_benefit_counts_items_after_anchor_and_excludes_current_call() {
+    let anchor = ContextAnchorSavedEvent {
+        anchor_id: ANCHOR_ID.to_string(),
+        label: None,
+        history_boundary: 1,
+        created_at: 0,
+    };
+    let current_history = vec![
+        history_item("before anchor"),
+        history_item("reclaimed one"),
+        function_call("current-rewind"),
+        history_item("reclaimed two"),
+    ];
+
+    let benefit = rewind_benefit_since_anchor(&anchor, &current_history, "current-rewind");
+
+    assert_eq!(benefit.response_items_reclaimed, 2);
+    assert!(benefit.approx_tokens_reclaimed > 0);
+}
+
+#[test]
+fn rewind_benefit_is_zero_for_near_anchor() {
+    let anchor = ContextAnchorSavedEvent {
+        anchor_id: ANCHOR_ID.to_string(),
+        label: None,
+        history_boundary: 1,
+        created_at: 0,
+    };
+    let current_history = vec![history_item("before anchor"), function_call("current-rewind")];
+
+    let benefit = rewind_benefit_since_anchor(&anchor, &current_history, "current-rewind");
+
+    assert_eq!(
+        benefit,
+        ContextRewindBenefit {
+            response_items_reclaimed: 0,
+            approx_tokens_reclaimed: 0,
+        }
+    );
+}
+
+#[test]
+fn context_rewound_to_anchor_event_defaults_reclaim_fields() {
+    let event: ContextRewoundToAnchorEvent = serde_json::from_value(serde_json::json!({
+        "anchor_id": ANCHOR_ID,
+        "dropped_turns": 1,
+        "note": "carry",
+    }))
+    .expect("legacy context rewind event should deserialize");
+
+    assert_eq!(event.response_items_reclaimed, 0);
+    assert_eq!(event.approx_tokens_reclaimed, 0);
 }

@@ -38,6 +38,49 @@ struct ActiveAnchor {
     user_turn_total_at_save: u32,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ContextRewindBenefit {
+    response_items_reclaimed: u64,
+    approx_tokens_reclaimed: u64,
+}
+
+fn latest_active_anchor_event(
+    rollout_items: &[RolloutItem],
+    anchor_id: &str,
+) -> CodexResult<ContextAnchorSavedEvent> {
+    let mut active_anchors: Vec<ContextAnchorSavedEvent> = Vec::new();
+    for item in rollout_items {
+        match item {
+            RolloutItem::Compacted(_) => {
+                active_anchors.clear();
+            }
+            RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(event)) => {
+                if let Some(existing_index) = active_anchors
+                    .iter()
+                    .position(|anchor| anchor.anchor_id == event.anchor_id)
+                {
+                    active_anchors.remove(existing_index);
+                }
+                active_anchors.push(event.clone());
+            }
+            RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
+                if let Some(anchor_index) = active_anchors
+                    .iter()
+                    .position(|anchor| anchor.anchor_id == rewind.anchor_id)
+                {
+                    active_anchors.truncate(anchor_index + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    active_anchors
+        .into_iter()
+        .find(|anchor| anchor.anchor_id == anchor_id)
+        .ok_or_else(|| CodexErr::InvalidRequest(format!("unknown context anchor `{anchor_id}`")))
+}
+
 fn count_user_turns_since_anchor(
     rollout_items: &[RolloutItem],
     anchor_id: &str,
@@ -169,6 +212,36 @@ fn approx_tokens_for_items(items: &[ResponseItem]) -> usize {
         .sum()
 }
 
+fn rewind_benefit_since_anchor(
+    anchor: &ContextAnchorSavedEvent,
+    current_history: &[ResponseItem],
+    current_rewind_call_id: &str,
+) -> ContextRewindBenefit {
+    let reclaimed_items = usize::try_from(anchor.history_boundary)
+        .ok()
+        .and_then(|boundary| current_history.get(boundary..))
+        .map(|items| {
+            items
+                .iter()
+                .filter(|item| {
+                    !matches!(
+                        item,
+                        ResponseItem::FunctionCall { call_id, .. }
+                            if call_id == current_rewind_call_id
+                    )
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    ContextRewindBenefit {
+        response_items_reclaimed: u64::try_from(reclaimed_items.len()).unwrap_or(u64::MAX),
+        approx_tokens_reclaimed: u64::try_from(approx_tokens_for_items(&reclaimed_items))
+            .unwrap_or(u64::MAX),
+    }
+}
+
 impl Session {
     pub(crate) async fn save_context_anchor(
         &self,
@@ -199,6 +272,7 @@ impl Session {
         &self,
         turn_context: &TurnContext,
         anchor_id: String,
+        current_rewind_call_id: &str,
         note: String,
     ) -> CodexResult<ContextRewoundToAnchorEvent> {
         let live_thread = self
@@ -219,9 +293,18 @@ impl Session {
                 )))
             })?;
         let dropped_turns = count_user_turns_since_anchor(&stored_history.items, &anchor_id)?;
+        let active_anchor = latest_active_anchor_event(&stored_history.items, &anchor_id)?;
+        let current_history = self.clone_history().await;
+        let benefit = rewind_benefit_since_anchor(
+            &active_anchor,
+            current_history.raw_items(),
+            current_rewind_call_id,
+        );
         let rewind_event = ContextRewoundToAnchorEvent {
             anchor_id,
             dropped_turns,
+            response_items_reclaimed: benefit.response_items_reclaimed,
+            approx_tokens_reclaimed: benefit.approx_tokens_reclaimed,
             note,
         };
         let replay_items = stored_history
@@ -276,9 +359,18 @@ impl Session {
 
 pub(super) fn context_rewind_carry_forward_item(
     anchor_id: impl Into<String>,
+    dropped_turns: u32,
+    response_items_reclaimed: u64,
+    approx_tokens_reclaimed: u64,
     note: impl Into<String>,
 ) -> ResponseItem {
-    ContextualUserFragment::into(ContextRewindCarryForward::new(anchor_id, note))
+    ContextualUserFragment::into(ContextRewindCarryForward::new(
+        anchor_id,
+        dropped_turns,
+        response_items_reclaimed,
+        approx_tokens_reclaimed,
+        note,
+    ))
 }
 
 #[cfg(test)]

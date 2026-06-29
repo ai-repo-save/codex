@@ -93,6 +93,8 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
             ContextRewoundToAnchorEvent {
                 anchor_id: "anchor-1".to_string(),
                 dropped_turns: 1,
+                response_items_reclaimed: 2,
+                approx_tokens_reclaimed: 20,
                 note: "carry this back".to_string(),
             },
         )),
@@ -112,6 +114,18 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
     assert!(history_contains_text(
         &reconstructed.history,
         "carry this back"
+    ));
+    assert!(history_contains_text(
+        &reconstructed.history,
+        "rewind_benefit"
+    ));
+    assert!(history_contains_text(
+        &reconstructed.history,
+        "list_context_anchors"
+    ));
+    assert!(history_contains_text(
+        &reconstructed.history,
+        "approx_tokens_reclaimed"
     ));
     assert!(!history_contains_text(
         &reconstructed.history,
@@ -144,6 +158,8 @@ async fn reconstruct_history_context_rewind_does_not_cross_compaction() {
             ContextRewoundToAnchorEvent {
                 anchor_id: "anchor-before-compact".to_string(),
                 dropped_turns: 1,
+                response_items_reclaimed: 1,
+                approx_tokens_reclaimed: 10,
                 note: "lesson from compacted future".to_string(),
             },
         )),
@@ -202,6 +218,8 @@ async fn reconstruct_history_context_rewind_uses_anchor_saved_after_compaction()
             ContextRewoundToAnchorEvent {
                 anchor_id: "anchor-after-compact".to_string(),
                 dropped_turns: 1,
+                response_items_reclaimed: 1,
+                approx_tokens_reclaimed: 10,
                 note: "post-compaction note".to_string(),
             },
         )),

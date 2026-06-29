@@ -69,6 +69,8 @@ pub(crate) struct ListContextAnchorsRequest {
 pub(crate) struct RewindContextToAnchorResponse {
     pub(crate) anchor_id: String,
     pub(crate) dropped_turns: u32,
+    pub(crate) response_items_reclaimed: u64,
+    pub(crate) approx_tokens_reclaimed: u64,
 }
 
 struct JsonToolOutput<T> {

@@ -95,6 +95,8 @@ async fn context_anchor_items_render_history_snapshot() {
             id: "item-2".to_string(),
             anchor_id: "ctx-123".to_string(),
             dropped_turns: 3,
+            response_items_reclaimed: 4,
+            approx_tokens_reclaimed: 120,
         },
         "turn-1".to_string(),
         ReplayKind::ThreadSnapshot,

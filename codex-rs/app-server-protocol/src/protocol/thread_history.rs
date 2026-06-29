@@ -1143,6 +1143,8 @@ impl ThreadHistoryBuilder {
             id,
             anchor_id: payload.anchor_id.clone(),
             dropped_turns: payload.dropped_turns,
+            response_items_reclaimed: payload.response_items_reclaimed,
+            approx_tokens_reclaimed: payload.approx_tokens_reclaimed,
         });
     }
 
@@ -1754,6 +1756,8 @@ mod tests {
             EventMsg::ContextRewoundToAnchor(ContextRewoundToAnchorEvent {
                 anchor_id: "ctx-123".to_string(),
                 dropped_turns: 3,
+                response_items_reclaimed: 4,
+                approx_tokens_reclaimed: 120,
                 note: "kept summary".to_string(),
             }),
         ];
@@ -1779,6 +1783,8 @@ mod tests {
                     id: "item-2".to_string(),
                     anchor_id: "ctx-123".to_string(),
                     dropped_turns: 3,
+                    response_items_reclaimed: 4,
+                    approx_tokens_reclaimed: 120,
                 },
             ]
         );
