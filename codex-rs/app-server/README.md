@@ -1379,7 +1379,7 @@ Today both notifications carry an empty `items` array even when item events were
 - `exitedReviewMode` — `{id, review}` emitted when the reviewer finishes; `review` is the full plain-text review (usually, overall notes plus bullet point findings).
 - `contextCompaction` — `{id}` emitted when codex compacts the conversation history. This can happen automatically.
 - `contextAnchorSaved` — `{id, anchorId, label?, historyBoundary, createdAt}` emitted when codex saves a rewind anchor for the current thread.
-- `contextAnchorRewound` — `{id, anchorId, droppedTurns, responseItemsReclaimed, approxTokensReclaimed}` emitted when codex rewinds the model context to a saved anchor.
+- `contextAnchorRewound` — `{id, anchorId, droppedTurns, responseItemsReclaimed, approxTokensReclaimed, reclaimThresholdPercent, reclaimThresholdTokens, reclaimThresholdMet}` emitted when codex rewinds the model context to a saved anchor.
 - `compacted` - `{threadId, turnId}` when codex compacts the conversation history. This can happen automatically. **Deprecated:** Use `contextCompaction` instead.
 
 All items emit shared lifecycle events:

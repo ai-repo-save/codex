@@ -210,6 +210,8 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
             dropped_turns,
             response_items_reclaimed,
             approx_tokens_reclaimed,
+            reclaim_threshold_percent,
+            reclaim_threshold_met,
             ..
         } => {
             return bounded_summary(
@@ -218,6 +220,8 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
                     *dropped_turns,
                     *response_items_reclaimed,
                     *approx_tokens_reclaimed,
+                    *reclaim_threshold_percent,
+                    *reclaim_threshold_met,
                 ),
             );
         }

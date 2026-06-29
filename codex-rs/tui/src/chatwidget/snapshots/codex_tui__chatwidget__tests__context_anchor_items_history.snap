@@ -5,4 +5,4 @@ expression: combined
 • Context anchor saved: ctx-123 · before branch
 
 
-• Context rewound to anchor: ctx-123 · reclaimed ~120 tokens (4 items) · dropped 3 user turns
+• Context rewound to anchor: ctx-123 · reclaimed ~120 tokens (4 items) · meets 20% threshold · dropped 3 user turns

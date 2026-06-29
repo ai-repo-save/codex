@@ -1728,7 +1728,32 @@ impl Session {
     /// Persist the event to rollout and send it to clients.
     pub(crate) async fn send_event(&self, turn_context: &TurnContext, msg: EventMsg) {
         let legacy_source = msg.clone();
-        if let EventMsg::Error(error) = &legacy_source
+        self.prepare_event_delivery(turn_context, &legacy_source).await;
+        let event = Event {
+            id: turn_context.sub_id.clone(),
+            msg,
+        };
+        self.send_event_raw(event).await;
+        self.finish_event_delivery(turn_context, legacy_source).await;
+    }
+
+    /// Send an event already persisted by its owner to live clients without writing it again.
+    pub(crate) async fn deliver_persisted_event(&self, turn_context: &TurnContext, msg: EventMsg) {
+        let legacy_source = msg.clone();
+        self.prepare_event_delivery(turn_context, &legacy_source).await;
+        self.services
+            .rollout_thread_trace
+            .record_protocol_event(&legacy_source);
+        self.deliver_event_raw(Event {
+            id: turn_context.sub_id.clone(),
+            msg,
+        })
+        .await;
+        self.finish_event_delivery(turn_context, legacy_source).await;
+    }
+
+    async fn prepare_event_delivery(&self, turn_context: &TurnContext, legacy_source: &EventMsg) {
+        if let EventMsg::Error(error) = legacy_source
             && error
                 .codex_error_info
                 .as_ref()
@@ -1742,15 +1767,13 @@ impl Session {
         }
         self.services
             .rollout_thread_trace
-            .record_codex_turn_event(&turn_context.sub_id, &legacy_source);
+            .record_codex_turn_event(&turn_context.sub_id, legacy_source);
         self.services
             .rollout_thread_trace
-            .record_tool_call_event(turn_context.sub_id.clone(), &legacy_source);
-        let event = Event {
-            id: turn_context.sub_id.clone(),
-            msg,
-        };
-        self.send_event_raw(event).await;
+            .record_tool_call_event(turn_context.sub_id.clone(), legacy_source);
+    }
+
+    async fn finish_event_delivery(&self, turn_context: &TurnContext, legacy_source: EventMsg) {
         self.maybe_notify_parent_of_terminal_turn(turn_context, &legacy_source)
             .await;
         self.maybe_mirror_event_text_to_realtime(&legacy_source)

@@ -12,6 +12,8 @@ use codex_protocol::protocol::RolloutItem;
 use codex_utils_output_truncation::approx_token_count;
 use serde::Serialize;
 
+pub(crate) const CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT: u32 = 20;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(crate) struct ListedContextAnchor {
     pub(crate) anchor_id: String,
@@ -42,6 +44,9 @@ struct ActiveAnchor {
 struct ContextRewindBenefit {
     response_items_reclaimed: u64,
     approx_tokens_reclaimed: u64,
+    reclaim_threshold_percent: u32,
+    reclaim_threshold_tokens: Option<u64>,
+    reclaim_threshold_met: Option<bool>,
 }
 
 fn latest_active_anchor_event(
@@ -216,6 +221,7 @@ fn rewind_benefit_since_anchor(
     anchor: &ContextAnchorSavedEvent,
     current_history: &[ResponseItem],
     current_rewind_call_id: &str,
+    model_context_window: Option<i64>,
 ) -> ContextRewindBenefit {
     let reclaimed_items = usize::try_from(anchor.history_boundary)
         .ok()
@@ -235,10 +241,22 @@ fn rewind_benefit_since_anchor(
         })
         .unwrap_or_default();
 
+    let approx_tokens_reclaimed =
+        u64::try_from(approx_tokens_for_items(&reclaimed_items)).unwrap_or(u64::MAX);
+    let reclaim_threshold_tokens = model_context_window
+        .and_then(|context_window| u64::try_from(context_window).ok())
+        .map(|context_window| {
+            context_window.saturating_mul(u64::from(CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT))
+                / 100
+        });
+
     ContextRewindBenefit {
         response_items_reclaimed: u64::try_from(reclaimed_items.len()).unwrap_or(u64::MAX),
-        approx_tokens_reclaimed: u64::try_from(approx_tokens_for_items(&reclaimed_items))
-            .unwrap_or(u64::MAX),
+        approx_tokens_reclaimed,
+        reclaim_threshold_percent: CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT,
+        reclaim_threshold_tokens,
+        reclaim_threshold_met: reclaim_threshold_tokens
+            .map(|threshold| approx_tokens_reclaimed >= threshold),
     }
 }
 
@@ -299,12 +317,16 @@ impl Session {
             &active_anchor,
             current_history.raw_items(),
             current_rewind_call_id,
+            turn_context.model_context_window(),
         );
         let rewind_event = ContextRewoundToAnchorEvent {
             anchor_id,
             dropped_turns,
             response_items_reclaimed: benefit.response_items_reclaimed,
             approx_tokens_reclaimed: benefit.approx_tokens_reclaimed,
+            reclaim_threshold_percent: benefit.reclaim_threshold_percent,
+            reclaim_threshold_tokens: benefit.reclaim_threshold_tokens,
+            reclaim_threshold_met: benefit.reclaim_threshold_met,
             note,
         };
         let replay_items = stored_history
@@ -362,6 +384,9 @@ pub(super) fn context_rewind_carry_forward_item(
     dropped_turns: u32,
     response_items_reclaimed: u64,
     approx_tokens_reclaimed: u64,
+    reclaim_threshold_percent: u32,
+    reclaim_threshold_tokens: Option<u64>,
+    reclaim_threshold_met: Option<bool>,
     note: impl Into<String>,
 ) -> ResponseItem {
     ContextualUserFragment::into(ContextRewindCarryForward::new(
@@ -369,6 +394,9 @@ pub(super) fn context_rewind_carry_forward_item(
         dropped_turns,
         response_items_reclaimed,
         approx_tokens_reclaimed,
+        reclaim_threshold_percent,
+        reclaim_threshold_tokens,
+        reclaim_threshold_met,
         note,
     ))
 }

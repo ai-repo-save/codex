@@ -71,6 +71,11 @@ pub(crate) struct RewindContextToAnchorResponse {
     pub(crate) dropped_turns: u32,
     pub(crate) response_items_reclaimed: u64,
     pub(crate) approx_tokens_reclaimed: u64,
+    pub(crate) reclaim_threshold_percent: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) reclaim_threshold_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) reclaim_threshold_met: Option<bool>,
 }
 
 struct JsonToolOutput<T> {

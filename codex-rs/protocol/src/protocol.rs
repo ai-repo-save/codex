@@ -3462,7 +3462,17 @@ pub struct ContextRewoundToAnchorEvent {
     pub response_items_reclaimed: u64,
     #[serde(default)]
     pub approx_tokens_reclaimed: u64,
+    #[serde(default = "default_context_rewind_reclaim_threshold_percent")]
+    pub reclaim_threshold_percent: u32,
+    #[serde(default)]
+    pub reclaim_threshold_tokens: Option<u64>,
+    #[serde(default)]
+    pub reclaim_threshold_met: Option<bool>,
     pub note: String,
+}
+
+fn default_context_rewind_reclaim_threshold_percent() -> u32 {
+    20
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]

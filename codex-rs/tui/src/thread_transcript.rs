@@ -243,6 +243,8 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
             dropped_turns,
             response_items_reclaimed,
             approx_tokens_reclaimed,
+            reclaim_threshold_percent,
+            reclaim_threshold_met,
             ..
         } => {
             vec![
@@ -251,6 +253,8 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
                     *dropped_turns,
                     *response_items_reclaimed,
                     *approx_tokens_reclaimed,
+                    *reclaim_threshold_percent,
+                    *reclaim_threshold_met,
                 )
                 .dim()
                 .into(),

@@ -2083,7 +2083,7 @@ async fn drain_in_flight(
                 let event = sess
                     .save_context_anchor(response.anchor_id, response.label, response.created_at)
                     .await?;
-                sess.send_event(&turn_context, EventMsg::ContextAnchorSaved(event))
+                sess.deliver_persisted_event(&turn_context, EventMsg::ContextAnchorSaved(event))
                     .await;
             }
             InFlightToolOutput::ListContextAnchors(response_input) => {
@@ -2119,7 +2119,7 @@ async fn drain_in_flight(
                         request.note,
                     )
                     .await?;
-                sess.send_event(
+                sess.deliver_persisted_event(
                     &turn_context,
                     EventMsg::ContextRewoundToAnchor(rewind_event.clone()),
                 )
@@ -2129,6 +2129,9 @@ async fn drain_in_flight(
                     dropped_turns: rewind_event.dropped_turns,
                     response_items_reclaimed: rewind_event.response_items_reclaimed,
                     approx_tokens_reclaimed: rewind_event.approx_tokens_reclaimed,
+                    reclaim_threshold_percent: rewind_event.reclaim_threshold_percent,
+                    reclaim_threshold_tokens: rewind_event.reclaim_threshold_tokens,
+                    reclaim_threshold_met: rewind_event.reclaim_threshold_met,
                 };
                 let text = serde_json::to_string(&response).map_err(|err| {
                     CodexErr::Fatal(format!(

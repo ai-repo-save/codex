@@ -958,6 +958,9 @@ pub(crate) async fn apply_bespoke_event_handling(
                 dropped_turns: event.dropped_turns,
                 response_items_reclaimed: event.response_items_reclaimed,
                 approx_tokens_reclaimed: event.approx_tokens_reclaimed,
+                reclaim_threshold_percent: event.reclaim_threshold_percent,
+                reclaim_threshold_tokens: event.reclaim_threshold_tokens,
+                reclaim_threshold_met: event.reclaim_threshold_met,
             };
             let timestamp_ms = now_unix_timestamp_ms();
             let started = ItemStartedNotification {

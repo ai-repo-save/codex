@@ -345,6 +345,9 @@ impl Session {
                             rewind.dropped_turns,
                             rewind.response_items_reclaimed,
                             rewind.approx_tokens_reclaimed,
+                            rewind.reclaim_threshold_percent,
+                            rewind.reclaim_threshold_tokens,
+                            rewind.reclaim_threshold_met,
                             rewind.note.clone(),
                         );
                         history.record_items(

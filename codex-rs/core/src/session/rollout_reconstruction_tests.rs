@@ -95,6 +95,9 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
                 dropped_turns: 1,
                 response_items_reclaimed: 2,
                 approx_tokens_reclaimed: 20,
+                reclaim_threshold_percent: 20,
+                reclaim_threshold_tokens: Some(100),
+                reclaim_threshold_met: Some(false),
                 note: "carry this back".to_string(),
             },
         )),
@@ -127,6 +130,11 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
         &reconstructed.history,
         "approx_tokens_reclaimed"
     ));
+    assert!(history_contains_text(
+        &reconstructed.history,
+        "significance_threshold"
+    ));
+    assert!(history_contains_text(&reconstructed.history, "\"met\":false"));
     assert!(!history_contains_text(
         &reconstructed.history,
         "discarded future"
@@ -160,6 +168,9 @@ async fn reconstruct_history_context_rewind_does_not_cross_compaction() {
                 dropped_turns: 1,
                 response_items_reclaimed: 1,
                 approx_tokens_reclaimed: 10,
+                reclaim_threshold_percent: 20,
+                reclaim_threshold_tokens: Some(100),
+                reclaim_threshold_met: Some(false),
                 note: "lesson from compacted future".to_string(),
             },
         )),
@@ -220,6 +231,9 @@ async fn reconstruct_history_context_rewind_uses_anchor_saved_after_compaction()
                 dropped_turns: 1,
                 response_items_reclaimed: 1,
                 approx_tokens_reclaimed: 10,
+                reclaim_threshold_percent: 20,
+                reclaim_threshold_tokens: Some(100),
+                reclaim_threshold_met: Some(false),
                 note: "post-compaction note".to_string(),
             },
         )),

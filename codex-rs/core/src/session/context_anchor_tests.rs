@@ -52,6 +52,9 @@ fn rewind(anchor_id: &str) -> RolloutItem {
             dropped_turns: 1,
             response_items_reclaimed: 2,
             approx_tokens_reclaimed: 10,
+            reclaim_threshold_percent: CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT,
+            reclaim_threshold_tokens: Some(2_000),
+            reclaim_threshold_met: Some(false),
             note: "carry".to_string(),
         },
     ))
@@ -236,10 +239,21 @@ fn rewind_benefit_counts_items_after_anchor_and_excludes_current_call() {
         history_item("reclaimed two"),
     ];
 
-    let benefit = rewind_benefit_since_anchor(&anchor, &current_history, "current-rewind");
+    let benefit = rewind_benefit_since_anchor(
+        &anchor,
+        &current_history,
+        "current-rewind",
+        Some(/*model_context_window*/ 10_000),
+    );
 
     assert_eq!(benefit.response_items_reclaimed, 2);
     assert!(benefit.approx_tokens_reclaimed > 0);
+    assert_eq!(
+        benefit.reclaim_threshold_percent,
+        CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT
+    );
+    assert_eq!(benefit.reclaim_threshold_tokens, Some(2_000));
+    assert_eq!(benefit.reclaim_threshold_met, Some(false));
 }
 
 #[test]
@@ -255,15 +269,52 @@ fn rewind_benefit_is_zero_for_near_anchor() {
         function_call("current-rewind"),
     ];
 
-    let benefit = rewind_benefit_since_anchor(&anchor, &current_history, "current-rewind");
+    let benefit = rewind_benefit_since_anchor(
+        &anchor,
+        &current_history,
+        "current-rewind",
+        Some(/*model_context_window*/ 10_000),
+    );
 
     assert_eq!(
         benefit,
         ContextRewindBenefit {
             response_items_reclaimed: 0,
             approx_tokens_reclaimed: 0,
+            reclaim_threshold_percent: CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT,
+            reclaim_threshold_tokens: Some(2_000),
+            reclaim_threshold_met: Some(false),
         }
     );
+}
+
+#[test]
+fn rewind_benefit_omits_threshold_result_without_context_window() {
+    let anchor = ContextAnchorSavedEvent {
+        anchor_id: ANCHOR_ID.to_string(),
+        label: None,
+        history_boundary: 1,
+        created_at: 0,
+    };
+    let current_history = vec![
+        history_item("before anchor"),
+        history_item("reclaimed one"),
+        function_call("current-rewind"),
+    ];
+
+    let benefit = rewind_benefit_since_anchor(
+        &anchor,
+        &current_history,
+        "current-rewind",
+        /*model_context_window*/ None,
+    );
+
+    assert_eq!(
+        benefit.reclaim_threshold_percent,
+        CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT
+    );
+    assert_eq!(benefit.reclaim_threshold_tokens, None);
+    assert_eq!(benefit.reclaim_threshold_met, None);
 }
 
 #[test]
@@ -277,4 +328,10 @@ fn context_rewound_to_anchor_event_defaults_reclaim_fields() {
 
     assert_eq!(event.response_items_reclaimed, 0);
     assert_eq!(event.approx_tokens_reclaimed, 0);
+    assert_eq!(
+        event.reclaim_threshold_percent,
+        CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT
+    );
+    assert_eq!(event.reclaim_threshold_tokens, None);
+    assert_eq!(event.reclaim_threshold_met, None);
 }

@@ -1127,6 +1127,10 @@ impl ThreadHistoryBuilder {
     }
 
     fn handle_context_anchor_saved(&mut self, payload: &ContextAnchorSavedEvent) {
+        if self.context_anchor_saved_is_duplicate(payload) {
+            return;
+        }
+
         let id = self.next_item_id();
         self.push_item_in_current_turn(ThreadItem::ContextAnchorSaved {
             id,
@@ -1138,6 +1142,10 @@ impl ThreadHistoryBuilder {
     }
 
     fn handle_context_rewound_to_anchor(&mut self, payload: &ContextRewoundToAnchorEvent) {
+        if self.context_anchor_rewound_is_duplicate(payload) {
+            return;
+        }
+
         let id = self.next_item_id();
         self.push_item_in_current_turn(ThreadItem::ContextAnchorRewound {
             id,
@@ -1145,7 +1153,58 @@ impl ThreadHistoryBuilder {
             dropped_turns: payload.dropped_turns,
             response_items_reclaimed: payload.response_items_reclaimed,
             approx_tokens_reclaimed: payload.approx_tokens_reclaimed,
+            reclaim_threshold_percent: payload.reclaim_threshold_percent,
+            reclaim_threshold_tokens: payload.reclaim_threshold_tokens,
+            reclaim_threshold_met: payload.reclaim_threshold_met,
         });
+    }
+
+    fn context_anchor_saved_is_duplicate(&self, payload: &ContextAnchorSavedEvent) -> bool {
+        self.current_turn
+            .as_ref()
+            .and_then(|turn| turn.items.last())
+            .is_some_and(|last| {
+                matches!(
+                    last,
+                    ThreadItem::ContextAnchorSaved {
+                        anchor_id,
+                        label,
+                        history_boundary,
+                        created_at,
+                        ..
+                    } if anchor_id == &payload.anchor_id
+                        && label == &payload.label
+                        && history_boundary == &payload.history_boundary
+                        && created_at == &payload.created_at
+                )
+            })
+    }
+
+    fn context_anchor_rewound_is_duplicate(&self, payload: &ContextRewoundToAnchorEvent) -> bool {
+        self.current_turn
+            .as_ref()
+            .and_then(|turn| turn.items.last())
+            .is_some_and(|last| {
+                matches!(
+                    last,
+                    ThreadItem::ContextAnchorRewound {
+                        anchor_id,
+                        dropped_turns,
+                        response_items_reclaimed,
+                        approx_tokens_reclaimed,
+                        reclaim_threshold_percent,
+                        reclaim_threshold_tokens,
+                        reclaim_threshold_met,
+                        ..
+                    } if anchor_id == &payload.anchor_id
+                        && dropped_turns == &payload.dropped_turns
+                        && response_items_reclaimed == &payload.response_items_reclaimed
+                        && approx_tokens_reclaimed == &payload.approx_tokens_reclaimed
+                        && reclaim_threshold_percent == &payload.reclaim_threshold_percent
+                        && reclaim_threshold_tokens == &payload.reclaim_threshold_tokens
+                        && reclaim_threshold_met == &payload.reclaim_threshold_met
+                )
+            })
     }
 
     fn handle_entered_review_mode(&mut self, payload: &codex_protocol::protocol::ReviewRequest) {
@@ -1758,6 +1817,9 @@ mod tests {
                 dropped_turns: 3,
                 response_items_reclaimed: 4,
                 approx_tokens_reclaimed: 120,
+                reclaim_threshold_percent: 20,
+                reclaim_threshold_tokens: Some(100),
+                reclaim_threshold_met: Some(true),
                 note: "kept summary".to_string(),
             }),
         ];
@@ -1785,6 +1847,78 @@ mod tests {
                     dropped_turns: 3,
                     response_items_reclaimed: 4,
                     approx_tokens_reclaimed: 120,
+                    reclaim_threshold_percent: 20,
+                    reclaim_threshold_tokens: Some(100),
+                    reclaim_threshold_met: Some(true),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn adjacent_duplicate_context_anchor_events_are_deduplicated() {
+        let saved = EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
+            anchor_id: "ctx-123".to_string(),
+            label: Some("before branch".to_string()),
+            history_boundary: 42,
+            created_at: 1_782_600_000,
+        });
+        let rewound = EventMsg::ContextRewoundToAnchor(ContextRewoundToAnchorEvent {
+            anchor_id: "ctx-123".to_string(),
+            dropped_turns: 3,
+            response_items_reclaimed: 4,
+            approx_tokens_reclaimed: 120,
+            reclaim_threshold_percent: 20,
+            reclaim_threshold_tokens: Some(100),
+            reclaim_threshold_met: Some(true),
+            note: "kept summary".to_string(),
+        });
+        let events = vec![
+            saved.clone(),
+            saved,
+            rewound.clone(),
+            rewound,
+            EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
+                anchor_id: "ctx-456".to_string(),
+                label: Some("different anchor".to_string()),
+                history_boundary: 43,
+                created_at: 1_782_600_001,
+            }),
+        ];
+
+        let mut builder = ThreadHistoryBuilder::new();
+        for event in &events {
+            builder.handle_event(event);
+        }
+
+        let turns = builder.finish();
+        assert_eq!(turns.len(), 1);
+        assert_eq!(
+            turns[0].items,
+            vec![
+                ThreadItem::ContextAnchorSaved {
+                    id: "item-1".to_string(),
+                    anchor_id: "ctx-123".to_string(),
+                    label: Some("before branch".to_string()),
+                    history_boundary: 42,
+                    created_at: 1_782_600_000,
+                },
+                ThreadItem::ContextAnchorRewound {
+                    id: "item-2".to_string(),
+                    anchor_id: "ctx-123".to_string(),
+                    dropped_turns: 3,
+                    response_items_reclaimed: 4,
+                    approx_tokens_reclaimed: 120,
+                    reclaim_threshold_percent: 20,
+                    reclaim_threshold_tokens: Some(100),
+                    reclaim_threshold_met: Some(true),
+                },
+                ThreadItem::ContextAnchorSaved {
+                    id: "item-3".to_string(),
+                    anchor_id: "ctx-456".to_string(),
+                    label: Some("different anchor".to_string()),
+                    history_boundary: 43,
+                    created_at: 1_782_600_001,
                 },
             ]
         );

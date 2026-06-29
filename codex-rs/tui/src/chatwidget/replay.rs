@@ -196,6 +196,8 @@ impl ChatWidget {
                 dropped_turns,
                 response_items_reclaimed,
                 approx_tokens_reclaimed,
+                reclaim_threshold_percent,
+                reclaim_threshold_met,
                 ..
             } => {
                 self.add_info_message(
@@ -204,6 +206,8 @@ impl ChatWidget {
                         dropped_turns,
                         response_items_reclaimed,
                         approx_tokens_reclaimed,
+                        reclaim_threshold_percent,
+                        reclaim_threshold_met,
                     ),
                     /*hint*/ None,
                 );

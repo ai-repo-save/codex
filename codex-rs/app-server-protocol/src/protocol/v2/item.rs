@@ -411,6 +411,9 @@ pub enum ThreadItem {
         dropped_turns: u32,
         response_items_reclaimed: u64,
         approx_tokens_reclaimed: u64,
+        reclaim_threshold_percent: u32,
+        reclaim_threshold_tokens: Option<u64>,
+        reclaim_threshold_met: Option<bool>,
     },
 }
 
