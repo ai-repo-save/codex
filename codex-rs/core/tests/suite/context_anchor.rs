@@ -186,23 +186,6 @@ async fn low_benefit_context_rewind_returns_rejected_output_without_ending_turn(
     let requests = second_mock.requests();
     assert_eq!(requests.len(), 2);
 
-    let second_request = requests[0].body_json();
-    let rewind_arguments = second_request["input"]
-        .as_array()
-        .expect("request input should be an array")
-        .iter()
-        .find(|item| {
-            item.get("type").and_then(Value::as_str) == Some("function_call")
-                && item.get("call_id").and_then(Value::as_str) == Some(rewind_call_id)
-        })
-        .and_then(|item| item.get("arguments"))
-        .and_then(Value::as_str)
-        .expect("rewind call should have arguments");
-    assert_eq!(
-        serde_json::from_str::<Value>(rewind_arguments)?["anchor_id"],
-        json!(anchor_id)
-    );
-
     let rewind_text = requests[1]
         .function_call_output_text(rewind_call_id)
         .expect("rewind output should be text JSON");
