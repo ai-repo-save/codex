@@ -391,10 +391,7 @@ fn min_reclaim_percent_rejects_unknown_context_window() {
     };
 
     let result = validate_min_reclaim_percent(
-        ANCHOR_ID,
-        &benefit,
-        /*model_context_window*/ None,
-        /*min_reclaim_percent*/ 20,
+        ANCHOR_ID, &benefit, /*model_context_window*/ None, /*min_reclaim_percent*/ 20,
     );
 
     assert_eq!(
