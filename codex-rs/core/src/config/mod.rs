@@ -23,6 +23,7 @@ use codex_config::SandboxModeRequirement;
 use codex_config::Sourced;
 use codex_config::ThreadConfigLoader;
 use codex_config::config_toml::AutoReviewToml;
+use codex_config::config_toml::CollaborationModeToml;
 use codex_config::config_toml::ConfigLockfileToml;
 use codex_config::config_toml::ConfigToml;
 use codex_config::config_toml::DEFAULT_PROJECT_DOC_MAX_BYTES;
@@ -2639,10 +2640,10 @@ fn resolve_context_rewind_config(config_toml: &ConfigToml) -> ContextRewindConfi
 }
 
 fn resolve_collaboration_mode_presets(
-    config_toml: &ConfigToml,
+    collaboration_modes: &BTreeMap<String, CollaborationModeToml>,
 ) -> std::io::Result<Vec<CollaborationModeMask>> {
     let mut presets = builtin_collaboration_mode_presets();
-    for (mode_key, mode_config) in &config_toml.collaboration_modes {
+    for (mode_key, mode_config) in collaboration_modes {
         let Some(mode) = collaboration_mode_from_config_key(mode_key) else {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -3786,7 +3787,8 @@ impl Config {
         };
 
         let use_experimental_unified_exec_tool = features.enabled(Feature::UnifiedExec);
-        let collaboration_mode_presets = resolve_collaboration_mode_presets(&cfg)?;
+        let collaboration_mode_presets =
+            resolve_collaboration_mode_presets(&cfg.collaboration_modes)?;
 
         let forced_chatgpt_workspace_id = cfg
             .forced_chatgpt_workspace_id
