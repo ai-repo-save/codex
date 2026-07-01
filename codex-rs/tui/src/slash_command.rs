@@ -41,6 +41,7 @@ pub enum SlashCommand {
     Compact,
     CompactInspect,
     Plan,
+    Research,
     Goal,
     Agent,
     Side,
@@ -123,6 +124,7 @@ impl SlashCommand {
             }
             SlashCommand::Personality => "choose a communication style for Codex",
             SlashCommand::Plan => "switch to Plan mode",
+            SlashCommand::Research => "switch to Research mode",
             SlashCommand::Goal => "set or view the goal for a long-running task",
             SlashCommand::Agent | SlashCommand::MultiAgents => "switch the active agent thread",
             SlashCommand::Side | SlashCommand::Btw => {
@@ -207,6 +209,7 @@ impl SlashCommand {
             | SlashCommand::Import
             | SlashCommand::Review
             | SlashCommand::Plan
+            | SlashCommand::Research
             | SlashCommand::Clear
             | SlashCommand::Logout
             | SlashCommand::MemoryDrop

@@ -1,5 +1,6 @@
 use codex_collaboration_mode_templates::DEFAULT as COLLABORATION_MODE_DEFAULT;
 use codex_collaboration_mode_templates::PLAN as COLLABORATION_MODE_PLAN;
+use codex_collaboration_mode_templates::RESEARCH as COLLABORATION_MODE_RESEARCH;
 use codex_protocol::config_types::CollaborationModeMask;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::TUI_VISIBLE_COLLABORATION_MODES;
@@ -14,7 +15,7 @@ static COLLABORATION_MODE_DEFAULT_TEMPLATE: LazyLock<Template> = LazyLock::new(|
 });
 
 pub fn builtin_collaboration_mode_presets() -> Vec<CollaborationModeMask> {
-    vec![plan_preset(), default_preset()]
+    vec![default_preset(), research_preset(), plan_preset()]
 }
 
 fn plan_preset() -> CollaborationModeMask {
@@ -34,6 +35,16 @@ fn default_preset() -> CollaborationModeMask {
         model: None,
         reasoning_effort: None,
         developer_instructions: Some(Some(default_mode_instructions())),
+    }
+}
+
+fn research_preset() -> CollaborationModeMask {
+    CollaborationModeMask {
+        name: ModeKind::Research.display_name().to_string(),
+        mode: Some(ModeKind::Research),
+        model: None,
+        reasoning_effort: None,
+        developer_instructions: Some(Some(COLLABORATION_MODE_RESEARCH.to_string())),
     }
 }
 

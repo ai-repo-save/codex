@@ -76,6 +76,11 @@ async fn request_user_input_round_trip_emits_auto_resolution_ms() -> anyhow::Res
     request_user_input_round_trip_for_mode(ModeKind::Plan, Some(60_000)).await
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn request_user_input_round_trip_in_research_mode() -> anyhow::Result<()> {
+    request_user_input_round_trip_for_mode(ModeKind::Research, /*auto_resolution_ms*/ None).await
+}
+
 async fn request_user_input_round_trip_for_mode(
     mode: ModeKind,
     auto_resolution_ms: Option<u64>,

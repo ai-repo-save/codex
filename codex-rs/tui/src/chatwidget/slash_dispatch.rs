@@ -101,6 +101,26 @@ impl ChatWidget {
         }
     }
 
+    fn apply_research_slash_command(&mut self) -> bool {
+        if !self.collaboration_modes_enabled() {
+            self.add_info_message(
+                "Collaboration modes are disabled.".to_string(),
+                Some("Enable collaboration modes to use /research.".to_string()),
+            );
+            return false;
+        }
+        if let Some(mask) = collaboration_modes::research_mask(self.model_catalog.as_ref()) {
+            self.set_collaboration_mask_from_user_action(mask);
+            true
+        } else {
+            self.add_info_message(
+                "Research mode unavailable right now.".to_string(),
+                /*hint*/ None,
+            );
+            false
+        }
+    }
+
     fn request_side_conversation(
         &mut self,
         parent_thread_id: ThreadId,
@@ -281,6 +301,9 @@ impl ChatWidget {
             }
             SlashCommand::Plan => {
                 self.apply_plan_slash_command();
+            }
+            SlashCommand::Research => {
+                self.apply_research_slash_command();
             }
             SlashCommand::Goal => {
                 if !self.config.features.enabled(Feature::Goals) {
@@ -1104,6 +1127,7 @@ impl ChatWidget {
             | SlashCommand::Model
             | SlashCommand::Personality
             | SlashCommand::Plan
+            | SlashCommand::Research
             | SlashCommand::Goal
             | SlashCommand::Side
             | SlashCommand::Btw

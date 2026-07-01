@@ -1,5 +1,19 @@
 # Rust/codex-rs
 
+## Context anchor rewind notes
+
+When using `rewind_context_to_anchor`, the note must start by naming the current task that should
+continue after the rewind. If the current task changed since the target anchor was saved, the first
+sentence must explicitly say that the older task is complete or abandoned and must not be resumed.
+
+- Treat the note as task-control state, not just a summary.
+- State any filesystem changes that remain after rewind, because rewinding only changes model
+  context and never rolls back files.
+- Include the next concrete action after rewind; do not end with a completed-task summary unless
+  the task is actually done.
+- If the target anchor belongs to an older task, prefer saving a fresh anchor instead of rewinding
+  to it.
+
 ## Remote build and execution
 
 Local performance is insufficient for routine compile and execution work in this repository.
