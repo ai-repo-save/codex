@@ -2657,9 +2657,7 @@ fn resolve_collaboration_mode_presets(
         if developer_instructions.is_empty() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!(
-                    "collaboration_modes.{mode_key}.developer_instructions cannot be blank"
-                ),
+                format!("collaboration_modes.{mode_key}.developer_instructions cannot be blank"),
             ));
         }
         let Some(preset) = presets.iter_mut().find(|preset| preset.mode == Some(mode)) else {

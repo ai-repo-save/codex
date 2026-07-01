@@ -1439,7 +1439,9 @@ async fn research_slash_command_uses_configured_developer_instructions() {
         );
     }
     assert_eq!(
-        chat.effective_collaboration_mode().settings.developer_instructions,
+        chat.effective_collaboration_mode()
+            .settings
+            .developer_instructions,
         Some(configured_instructions)
     );
 }
