@@ -2677,6 +2677,7 @@ fn sandbox_policy_mode(permission_profile: &PermissionProfile, cwd: &Path) -> &'
 fn collaboration_mode_mode(mode: ModeKind) -> &'static str {
     match mode {
         ModeKind::Plan => "plan",
+        ModeKind::Research => "research",
         ModeKind::Default | ModeKind::PairProgramming | ModeKind::Execute => "default",
     }
 }
