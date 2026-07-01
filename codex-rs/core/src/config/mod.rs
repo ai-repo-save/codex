@@ -3884,6 +3884,8 @@ impl Config {
             .or_else(|| InstallContext::current().bundled_zsh_path())
             .map(AbsolutePathBuf::into_path_buf);
 
+        let collaboration_mode_presets = resolve_collaboration_mode_presets(&cfg)?;
+
         let review_model = override_review_model.or(cfg.review_model);
 
         let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(true);
@@ -4011,7 +4013,6 @@ impl Config {
             profile_workspace_roots,
         )
         .map_err(std::io::Error::from)?;
-        let collaboration_mode_presets = resolve_collaboration_mode_presets(&cfg)?;
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
         let config = Self {
             model,

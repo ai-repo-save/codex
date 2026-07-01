@@ -32,6 +32,7 @@ use codex_login::CodexAuth;
 use codex_model_provider::create_model_provider;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::OPENAI_PROVIDER_ID;
+use codex_models_manager::collaboration_mode_presets::builtin_collaboration_mode_presets;
 use codex_models_manager::manager::RefreshStrategy;
 use codex_models_manager::manager::SharedModelsManager;
 use codex_protocol::ThreadId;
@@ -403,6 +404,7 @@ impl ThreadManager {
                 thread_created_tx,
                 models_manager: create_model_provider(provider, Some(auth_manager.clone()))
                     .models_manager(codex_home, /*config_model_catalog*/ None),
+                collaboration_mode_presets: builtin_collaboration_mode_presets(),
                 environment_manager,
                 skills_service,
                 plugins_manager,
