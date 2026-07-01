@@ -3786,6 +3786,7 @@ impl Config {
         };
 
         let use_experimental_unified_exec_tool = features.enabled(Feature::UnifiedExec);
+        let collaboration_mode_presets = resolve_collaboration_mode_presets(&cfg)?;
 
         let forced_chatgpt_workspace_id = cfg
             .forced_chatgpt_workspace_id
@@ -3883,8 +3884,6 @@ impl Config {
         let zsh_path = default_zsh_path
             .or_else(|| InstallContext::current().bundled_zsh_path())
             .map(AbsolutePathBuf::into_path_buf);
-
-        let collaboration_mode_presets = resolve_collaboration_mode_presets(&cfg)?;
 
         let review_model = override_review_model.or(cfg.review_model);
 
