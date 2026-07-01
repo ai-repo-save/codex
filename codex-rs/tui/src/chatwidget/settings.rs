@@ -402,7 +402,7 @@ impl ChatWidget {
         let trimmed = text.trim_start();
         self.collaboration_modes_enabled()
             && collaboration_modes::plan_mask(self.model_catalog.as_ref()).is_some()
-            && self.active_mode_kind() != ModeKind::Plan
+            && self.active_mode_kind() == ModeKind::Default
             && self.bottom_pane.composer_input_enabled()
             && !self.bottom_pane.is_task_running()
             && self.bottom_pane.no_modal_or_popup_active()
