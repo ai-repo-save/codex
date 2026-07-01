@@ -12430,6 +12430,7 @@
         "description": "Initial collaboration mode to use when the TUI starts.",
         "enum": [
           "plan",
+          "research",
           "default"
         ],
         "type": "string"
