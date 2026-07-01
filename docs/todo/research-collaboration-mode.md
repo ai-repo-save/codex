@@ -21,6 +21,17 @@
 
 验证覆盖 protocol/preset、TUI `/research` 和循环入口、`request_user_input` 可用性、app-server schema 与本地 standalone 安装。
 
+## Validation State
+
+已完成并通过的验证：
+
+- `write-app-server-schema` 已更新 app-server schema。
+- `write-config-schema` 无 Git 可见变化。
+- `fmt` 无 Git 可见变化。
+- `codex-protocol config_types`、`codex-tools request_user_input_modes`、`codex-models-manager collaboration_mode_presets`、`codex-app-server-protocol` 已通过远程测试。
+
+剩余验证包括 core `request_user_input`、TUI `/research` 与协作模式循环，以及本地 standalone 安装。
+
 ## Implementation Entry Points
 
 - `ModeKind` 与 `TUI_VISIBLE_COLLABORATION_MODES` 由 `codex-rs/protocol/src/config_types.rs` 持有。
