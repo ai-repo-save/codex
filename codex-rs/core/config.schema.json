@@ -445,6 +445,16 @@
       },
       "type": "object"
     },
+    "CollaborationModeToml": {
+      "additionalProperties": false,
+      "description": "Per-mode collaboration prompt overrides.",
+      "properties": {
+        "developer_instructions": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "ConfigProfile": {
       "additionalProperties": false,
       "description": "Collection of common configuration options that a user can define as a unit in `config.toml`.",
@@ -4798,6 +4808,14 @@
       ],
       "default": null,
       "description": "Preferred backend for storing CLI auth credentials. file (default): Use a file in the Codex home directory. keyring: Use an OS-specific keyring service. auto: Use the keyring if available, otherwise use a file."
+    },
+    "collaboration_modes": {
+      "additionalProperties": {
+        "$ref": "#/definitions/CollaborationModeToml"
+      },
+      "default": {},
+      "description": "Collaboration mode prompt overrides keyed by mode name.",
+      "type": "object"
     },
     "compact_prompt": {
       "description": "Compact prompt used for history compaction.",
