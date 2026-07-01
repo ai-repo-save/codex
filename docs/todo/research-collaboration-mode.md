@@ -29,8 +29,11 @@
 - `write-config-schema` 无 Git 可见变化。
 - `fmt` 无 Git 可见变化。
 - `codex-protocol config_types`、`codex-tools request_user_input_modes`、`codex-models-manager collaboration_mode_presets`、`codex-app-server-protocol` 已通过远程测试。
+- `codex-core request_user_input` 已通过远程测试，覆盖 Research 模式下 `request_user_input` 可用。
+- `codex-tui chatwidget::tests::plan_mode` 已通过远程测试，覆盖 `/research` slash command、模式循环与 Plan nudge 边界。
+- `codex-app-server list_collaboration_modes_returns_presets` 已通过远程测试，覆盖 app-server preset list 入口。
 
-剩余验证包括 core `request_user_input`、TUI `/research` 与协作模式循环，以及本地 standalone 安装。
+剩余验证为本地 standalone 安装。
 
 ## Implementation Entry Points
 
