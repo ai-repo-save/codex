@@ -88,9 +88,12 @@ use codex_model_provider_info::OLLAMA_CHAT_PROVIDER_REMOVED_ERROR;
 use codex_model_provider_info::built_in_model_providers;
 use codex_model_provider_info::merge_configured_model_providers;
 use codex_models_manager::ModelsManagerConfig;
+use codex_models_manager::collaboration_mode_presets::builtin_collaboration_mode_presets;
 use codex_protocol::config_types::AltScreenMode;
 use codex_protocol::config_types::AutoCompactTokenLimitScope;
+use codex_protocol::config_types::CollaborationModeMask;
 use codex_protocol::config_types::ForcedLoginMethod;
+use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::MultiAgentMode;
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ReasoningSummary;
@@ -747,6 +750,9 @@ pub struct Config {
 
     /// Developer instructions override injected as a separate message.
     pub developer_instructions: Option<String>,
+
+    /// Resolved collaboration mode presets after config overrides.
+    pub collaboration_mode_presets: Vec<CollaborationModeMask>,
 
     /// Guardian-specific policy config override from requirements.toml or config.toml.
     /// This is inserted into the fixed guardian prompt template under the
@@ -2632,6 +2638,49 @@ fn resolve_context_rewind_config(config_toml: &ConfigToml) -> ContextRewindConfi
     }
 }
 
+fn resolve_collaboration_mode_presets(
+    config_toml: &ConfigToml,
+) -> std::io::Result<Vec<CollaborationModeMask>> {
+    let mut presets = builtin_collaboration_mode_presets();
+    for (mode_key, mode_config) in &config_toml.collaboration_modes {
+        let Some(mode) = collaboration_mode_from_config_key(mode_key) else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("collaboration mode `{mode_key}` is not configurable"),
+            ));
+        };
+        let Some(developer_instructions) = mode_config.developer_instructions.as_ref() else {
+            continue;
+        };
+        let developer_instructions = developer_instructions.trim();
+        if developer_instructions.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "collaboration_modes.{mode_key}.developer_instructions cannot be blank"
+                ),
+            ));
+        }
+        let Some(preset) = presets.iter_mut().find(|preset| preset.mode == Some(mode)) else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("collaboration mode `{mode_key}` is not configurable"),
+            ));
+        };
+        preset.developer_instructions = Some(Some(developer_instructions.to_string()));
+    }
+    Ok(presets)
+}
+
+fn collaboration_mode_from_config_key(mode_key: &str) -> Option<ModeKind> {
+    match mode_key {
+        "default" => Some(ModeKind::Default),
+        "research" => Some(ModeKind::Research),
+        "plan" => Some(ModeKind::Plan),
+        _ => None,
+    }
+}
+
 fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config {
     let base = multi_agent_v2_toml_config(config_toml.features.as_ref());
     let max_concurrent_threads_per_session = base
@@ -3962,6 +4011,7 @@ impl Config {
             profile_workspace_roots,
         )
         .map_err(std::io::Error::from)?;
+        let collaboration_mode_presets = resolve_collaboration_mode_presets(&cfg)?;
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
         let config = Self {
             model,
@@ -3997,6 +4047,7 @@ impl Config {
             base_instructions,
             personality,
             developer_instructions,
+            collaboration_mode_presets,
             compact_prompt,
             goal_prompt_templates,
             include_permissions_instructions,

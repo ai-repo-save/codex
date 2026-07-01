@@ -210,6 +210,7 @@ pub(crate) struct ThreadManagerState {
     thread_created_tx: broadcast::Sender<ThreadId>,
     auth_manager: Arc<AuthManager>,
     models_manager: SharedModelsManager,
+    collaboration_mode_presets: Vec<CollaborationModeMask>,
     environment_manager: Arc<EnvironmentManager>,
     skills_service: Arc<SkillsService>,
     plugins_manager: Arc<PluginsManager>,
@@ -297,6 +298,7 @@ impl ThreadManager {
                 threads: Arc::new(RwLock::new(HashMap::new())),
                 thread_created_tx,
                 models_manager: build_models_manager(config, auth_manager.clone()),
+                collaboration_mode_presets: config.collaboration_mode_presets.clone(),
                 environment_manager,
                 skills_service,
                 plugins_manager,
@@ -492,7 +494,7 @@ impl ThreadManager {
     }
 
     pub fn list_collaboration_modes(&self) -> Vec<CollaborationModeMask> {
-        self.state.models_manager.list_collaboration_modes()
+        self.state.collaboration_mode_presets.clone()
     }
 
     pub async fn list_thread_ids(&self) -> Vec<ThreadId> {

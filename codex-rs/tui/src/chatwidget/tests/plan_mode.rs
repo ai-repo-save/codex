@@ -1414,6 +1414,37 @@ async fn research_slash_command_switches_to_research_mode() {
 }
 
 #[tokio::test]
+async fn research_slash_command_uses_configured_developer_instructions() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_feature_enabled(Feature::CollaborationModes, /*enabled*/ true);
+    let mut collaboration_modes =
+        codex_models_manager::collaboration_mode_presets::builtin_collaboration_mode_presets();
+    let configured_instructions = "Research from local config".to_string();
+    let research = collaboration_modes
+        .iter_mut()
+        .find(|mask| mask.mode == Some(ModeKind::Research))
+        .expect("research preset should exist");
+    research.developer_instructions = Some(Some(configured_instructions.clone()));
+    chat.model_catalog = Arc::new(ModelCatalog::new_with_collaboration_modes(
+        crate::test_support::TEST_MODEL_PRESETS.clone(),
+        collaboration_modes,
+    ));
+
+    chat.dispatch_command(SlashCommand::Research);
+
+    while let Ok(event) = rx.try_recv() {
+        assert!(
+            matches!(event, AppEvent::InsertHistoryCell(_)),
+            "research should not emit a non-history app event: {event:?}"
+        );
+    }
+    assert_eq!(
+        chat.effective_collaboration_mode().settings.developer_instructions,
+        Some(configured_instructions)
+    );
+}
+
+#[tokio::test]
 async fn plan_slash_command_with_args_submits_prompt_in_plan_mode() {
     let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.set_feature_enabled(Feature::CollaborationModes, /*enabled*/ true);

@@ -58,6 +58,7 @@ use codex_core_api::UserInput;
 use codex_core_api::WebSearchMode;
 use codex_core_api::arg0_dispatch_or_else;
 use codex_core_api::built_in_model_providers;
+use codex_core_api::builtin_collaboration_mode_presets;
 use codex_core_api::empty_extension_registry;
 use codex_core_api::find_codex_home;
 use codex_core_api::init_state_db;
@@ -195,6 +196,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         show_raw_agent_reasoning: false,
         base_instructions: None,
         developer_instructions: None,
+        collaboration_mode_presets: builtin_collaboration_mode_presets(),
         guardian_policy_config: None,
         auto_review: AutoReviewConfig::default(),
         include_permissions_instructions: false,

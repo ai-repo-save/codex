@@ -78,6 +78,7 @@ use codex_prompts::continuation_prompt_with_templates;
 use codex_prompts::objective_updated_prompt_with_templates;
 use codex_prompts::render_auto_review_prompt_template;
 use codex_protocol::ThreadId;
+use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::MultiAgentMode;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use codex_protocol::config_types::ServiceTier;
@@ -10305,6 +10306,83 @@ include_instructions = false
     assert!(!config.include_collaboration_mode_instructions);
     assert!(!config.include_skill_instructions);
     assert!(!config.include_environment_context);
+    Ok(())
+}
+
+#[tokio::test]
+async fn collaboration_mode_developer_instructions_can_be_overridden_from_config()
+-> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[collaboration_modes.research]
+developer_instructions = "Research from local config"
+"#,
+    )?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+
+    let research = config
+        .collaboration_mode_presets
+        .iter()
+        .find(|preset| preset.mode == Some(ModeKind::Research))
+        .expect("research preset should exist");
+    assert_eq!(
+        research.developer_instructions.as_ref(),
+        Some(&Some("Research from local config".to_string()))
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn collaboration_mode_developer_instructions_cannot_be_blank() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[collaboration_modes.research]
+developer_instructions = "   "
+"#,
+    )?;
+
+    let err = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await
+        .expect_err("blank collaboration mode instructions should fail");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(
+        err.to_string()
+            .contains("collaboration_modes.research.developer_instructions cannot be blank")
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn collaboration_mode_keys_must_be_known_modes() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[collaboration_modes.reseach]
+developer_instructions = "Typo should not be accepted"
+"#,
+    )?;
+
+    let err = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await
+        .expect_err("unknown collaboration mode should fail");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(
+        err.to_string()
+            .contains("collaboration mode `reseach` is not configurable")
+    );
     Ok(())
 }
 

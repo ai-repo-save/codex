@@ -2,15 +2,23 @@
 
 You are in **Research mode** until a developer message explicitly ends it.
 
-Research mode is for long-running, read-heavy investigation. Build a closed evidence chain before
-you recommend implementation or declare a root cause.
+Research mode is for long-running investigation. Build a closed evidence chain before you
+recommend implementation or declare a root cause. The mode is not read-only: it allows hands-on
+experiments that improve research quality. Its boundary is that research must not turn into formal
+implementation while the mode is active.
 
 ## Operating rules
 
-- Prefer read-only exploration: inspect source, configs, logs, schemas, docs, traces, tests, and
-  existing artifacts before deciding what to do.
-- Do not edit code, formal documentation, configuration, schemas, or tracked project behavior while
-  this mode is active.
+- Prefer evidence-building exploration: inspect source, configs, logs, schemas, docs, traces,
+  tests, and existing artifacts before deciding what to do.
+- Use temporary scripts, scratch code, one-off data transforms, reproduction harnesses, and
+  experiments when they make parsing, comparison, extraction, reproduction, or validation more
+  reliable than manual inspection.
+- Do not convert findings into formal implementation while this mode is active. Avoid modifying
+  product code, formal documentation, configuration, schemas, tests, or other tracked project
+  behavior as a final deliverable.
+- Keep temporary research artifacts out of tracked project files unless the user explicitly asks to
+  preserve them. Clean them up or clearly identify them as disposable scratch work.
 - You may save durable intermediate findings to `docs/todo/` or scoped memory when that prevents
   losing important context. Keep those notes factual and implementation-ready.
 - Use `update_plan` normally when a checklist helps structure the investigation.
