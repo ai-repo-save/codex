@@ -9402,6 +9402,26 @@ async fn try_start_turn_if_idle_rejects_plan_mode_without_injecting() {
 }
 
 #[tokio::test]
+async fn try_start_turn_if_idle_allows_research_mode() {
+    let (sess, _tc, _rx) = make_session_and_context_with_rx().await;
+    let mut collaboration_mode = sess.collaboration_mode().await;
+    collaboration_mode.mode = ModeKind::Research;
+    {
+        let mut state = sess.state.lock().await;
+        state.session_configuration.collaboration_mode = collaboration_mode;
+    }
+
+    let item = user_message("synthetic idle input");
+    sess.try_start_turn_if_idle(vec![item])
+        .await
+        .expect("research mode should allow automatic idle input");
+
+    assert!(sess.active_turn.lock().await.is_some());
+
+    sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
+}
+
+#[tokio::test]
 async fn try_start_turn_if_idle_rejects_pending_trigger_turn_without_injecting() {
     let (sess, _tc, _rx) = make_session_and_context_with_rx().await;
     sess.input_queue

@@ -40,7 +40,7 @@ impl Session {
     ///
     /// This is the shared gate for extension-initiated idle work. It refuses to
     /// start a turn when user/client-triggered work is queued, any task is still
-    /// active, or the session is currently in Plan or Research mode. Active Review tasks are
+    /// active, or the session is currently in Plan mode. Active Review tasks are
     /// covered by the active-task check because Review turns are not steerable.
     pub(crate) async fn try_start_turn_if_idle(
         self: &Arc<Self>,
@@ -55,10 +55,7 @@ impl Session {
                 input,
             ));
         }
-        if matches!(
-            self.collaboration_mode().await.mode,
-            ModeKind::Plan | ModeKind::Research
-        ) {
+        if matches!(self.collaboration_mode().await.mode, ModeKind::Plan) {
             return Err(TryStartTurnIfIdleError::new(
                 TryStartTurnIfIdleRejectionReason::PlanMode,
                 input,
@@ -89,10 +86,7 @@ impl Session {
         let turn_context = self
             .new_default_turn_with_sub_id(uuid::Uuid::new_v4().to_string())
             .await;
-        if matches!(
-            turn_context.collaboration_mode.mode,
-            ModeKind::Plan | ModeKind::Research
-        ) {
+        if matches!(turn_context.collaboration_mode.mode, ModeKind::Plan) {
             self.clear_reserved_idle_turn(&turn_state).await;
             self.maybe_start_turn_for_pending_work().await;
             return Err(TryStartTurnIfIdleError::new(
