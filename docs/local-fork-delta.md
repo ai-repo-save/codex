@@ -9,28 +9,28 @@ merging a newer upstream tag.
 - Local branch: `main`
 - Fork remote: `origin`
 - Upstream remote: `upstream`
-- Last merged stable tag: `rust-v0.142.0`
-- Upstream tag commit: `3a76f3ac68c8949d1cac6ea769b6ec7b8953a415`
-- Local merge commit for `rust-v0.142.0`: `bf8bc561a8700e0d24872cb88ad9de26f1ed7dd8`
-- Completed 0.142 merge-repair boundary:
-  `cf656b3d35a424304b2d6456d26132ae9d04e661`
+- Last merged stable tag: `rust-v0.143.0`
+- Upstream tag commit: `c4d748f586a84a3ed5b6aceb82e9a1db4abb1cda`
+- Local merge commit for `rust-v0.143.0`: `722aa36f29136a489ab21885c038f7e67140175c`
+- Completed 0.143 merge-repair boundary:
+  `25742b1a057d0fa7bf2dfffa85f8fc1bc44e1f10`
 
-`bf8bc561a8..HEAD` is the full local history after the 0.142 merge commit. It includes merge-repair
-commits that adapted existing fork behavior to upstream API drift. `cf656b3d35..HEAD` is the
+`722aa36f29..HEAD` is the full local history after the 0.143 merge commit. It includes
+merge-repair commits that adapted fork behavior to upstream API drift. `25742b1a05..HEAD` is the
 post-repair feature delta and is the most useful range for identifying behavior newly added after
-the completed 0.142 sync.
+the completed 0.143 sync.
 
 Useful local queries:
 
-- Full post-0.142 history:
-  `git log --first-parent --reverse --format='%h%x09%s' bf8bc561a8..HEAD`
+- Full post-0.143 history:
+  `git log --first-parent --reverse --format='%h%x09%s' 722aa36f29..HEAD`
 - New post-repair local behavior:
-  `git log --first-parent --reverse --format='%h%x09%s' cf656b3d35..HEAD`
-- Touched paths for 0.143 conflict planning:
-  `git diff --name-status bf8bc561a8..HEAD`
+  `git log --first-parent --reverse --format='%h%x09%s' 25742b1a05..HEAD`
+- Touched paths for the next stable conflict plan:
+  `git diff --name-status 722aa36f29..HEAD`
 
-The next stable sync target is `rust-v0.143.0`. Fetch the target tag before merging so the local
-checkout records the exact upstream tag object and commit being integrated.
+For the next stable sync, fetch the target tag before merging so the local checkout records the
+exact upstream tag object and commit being integrated.
 
 ## Fork-Owned Behavior
 
@@ -144,11 +144,11 @@ checkout records the exact upstream tag object and commit being integrated.
   Bazel locks.
 - Schema generation distinguishes regular and experimental outputs; experimental generation must
   not overwrite regular fixtures unless the regular fixture change is expected.
-- The 0.142 merge repair set preserved reset-context instruction source conversion, app-server
-  schema output, core API drift fixes, skill snapshot fixtures, fork elicitation support, TUI
-  compaction fixtures, and multi-agent test expectations.
+- The 0.143 merge repair set preserved context anchors, reset-context, Research mode,
+  configurable multi-agent mode, app-server schemas, stable schema fixtures, legacy event
+  conversion, compaction code generation, and focused app-server/core/TUI test expectations.
 
-## Post-0.142 Conflict Hotspots
+## Post-0.143 Conflict Hotspots
 
 ### Core session, tools, and config
 
