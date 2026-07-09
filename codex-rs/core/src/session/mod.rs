@@ -563,7 +563,8 @@ impl Codex {
         };
 
         if !config.multi_agent_v2.multi_agent_mode_explicitly_configured
-            && let Some(multi_agent_mode) = conversation_history.get_latest_effective_multi_agent_mode()
+            && let Some(multi_agent_mode) =
+                conversation_history.get_latest_effective_multi_agent_mode()
         {
             config.multi_agent_v2.multi_agent_mode = multi_agent_mode;
         }

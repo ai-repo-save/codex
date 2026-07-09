@@ -58,9 +58,7 @@ fn configure_ultra(config: &mut Config) {
 fn configure_proactive(config: &mut Config) {
     configure_multi_agent_v2(config);
     config.multi_agent_v2.multi_agent_mode = MultiAgentMode::Proactive;
-    config
-        .multi_agent_v2
-        .multi_agent_mode_explicitly_configured = true;
+    config.multi_agent_v2.multi_agent_mode_explicitly_configured = true;
 }
 
 fn developer_texts(input: &[Value]) -> Vec<&str> {
@@ -198,12 +196,24 @@ async fn explicit_proactive_config_wins_over_resumed_explicit_mode_history() -> 
         .clone()
         .expect("rollout path");
 
-    submit_turn(&initial.codex, "before resume", Some(ReasoningEffort::Medium)).await?;
+    submit_turn(
+        &initial.codex,
+        "before resume",
+        Some(ReasoningEffort::Medium),
+    )
+    .await?;
     drop(initial);
 
     let mut resume_builder = test_codex().with_config(configure_proactive);
-    let resumed = resume_builder.resume(&server, home, rollout_path.clone()).await?;
-    submit_turn(&resumed.codex, "after resume", Some(ReasoningEffort::Medium)).await?;
+    let resumed = resume_builder
+        .resume(&server, home, rollout_path.clone())
+        .await?;
+    submit_turn(
+        &resumed.codex,
+        "after resume",
+        Some(ReasoningEffort::Medium),
+    )
+    .await?;
 
     let requests = responses.requests();
     let resumed_input = requests[1].input();

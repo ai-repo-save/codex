@@ -2716,9 +2716,9 @@ fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config
     let multi_agent_mode = base
         .and_then(|config| config.multi_agent_mode.clone())
         .unwrap_or_else(|| default.multi_agent_mode.clone());
-    let multi_agent_mode_explicitly_configured =
-        base.and_then(|config| config.multi_agent_mode.as_ref())
-            .is_some();
+    let multi_agent_mode_explicitly_configured = base
+        .and_then(|config| config.multi_agent_mode.as_ref())
+        .is_some();
     let usage_hint_text = base
         .and_then(|config| config.usage_hint_text.as_ref())
         .cloned()
