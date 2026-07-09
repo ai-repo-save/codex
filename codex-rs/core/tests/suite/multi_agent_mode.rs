@@ -55,6 +55,14 @@ fn configure_ultra(config: &mut Config) {
     config.model_reasoning_effort = Some(ReasoningEffort::Ultra);
 }
 
+fn configure_proactive(config: &mut Config) {
+    configure_multi_agent_v2(config);
+    config.multi_agent_v2.multi_agent_mode = MultiAgentMode::Proactive;
+    config
+        .multi_agent_v2
+        .multi_agent_mode_explicitly_configured = true;
+}
+
 fn developer_texts(input: &[Value]) -> Vec<&str> {
     input
         .iter()
@@ -105,16 +113,12 @@ async fn configured_multi_agent_mode_seeds_first_turn() -> Result<()> {
     .await;
     let test = test_codex()
         .with_config(|config| {
-            config
-                .features
-                .enable(Feature::MultiAgentV2)
-                .expect("test config should allow feature update");
-            config.multi_agent_v2.multi_agent_mode = MultiAgentMode::Proactive;
+            configure_proactive(config);
         })
         .build(&server)
         .await?;
 
-    submit_turn(&test.codex, "hello", /*mode*/ None).await?;
+    submit_turn(&test.codex, "hello", Some(ReasoningEffort::Medium)).await?;
 
     let input = responses.single_request().input();
     let texts = developer_texts(&input);
@@ -161,6 +165,71 @@ async fn ultra_reasoning_uses_max_and_proactive_mode() -> Result<()> {
             count_containing(&texts, PROACTIVE_TEXT),
         ),
         (0, 1)
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn explicit_proactive_config_wins_over_resumed_explicit_mode_history() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let responses = mount_sse_sequence(
+        &server,
+        (1..=2)
+            .map(|index| {
+                sse(vec![
+                    ev_response_created(&format!("resp-{index}")),
+                    ev_completed(&format!("resp-{index}")),
+                ])
+            })
+            .collect(),
+    )
+    .await;
+    let initial = test_codex()
+        .with_config(configure_multi_agent_v2)
+        .build(&server)
+        .await?;
+    let home = initial.home.clone();
+    let rollout_path = initial
+        .session_configured
+        .rollout_path
+        .clone()
+        .expect("rollout path");
+
+    submit_turn(&initial.codex, "before resume", Some(ReasoningEffort::Medium)).await?;
+    drop(initial);
+
+    let mut resume_builder = test_codex().with_config(configure_proactive);
+    let resumed = resume_builder.resume(&server, home, rollout_path.clone()).await?;
+    submit_turn(&resumed.codex, "after resume", Some(ReasoningEffort::Medium)).await?;
+
+    let requests = responses.requests();
+    let resumed_input = requests[1].input();
+    let texts = developer_texts(&resumed_input);
+    assert_eq!(
+        (
+            count_containing(&texts, NO_SPAWN_TEXT),
+            count_containing(&texts, PROACTIVE_TEXT),
+        ),
+        (1, 1)
+    );
+    let rollout_values = std::fs::read_to_string(rollout_path)?
+        .lines()
+        .map(serde_json::from_str::<Value>)
+        .collect::<serde_json::Result<Vec<_>>>()?;
+    let recorded_modes = rollout_values
+        .iter()
+        .filter(|value| value.get("type").and_then(Value::as_str) == Some("turn_context"))
+        .filter_map(|value| value.pointer("/payload/multi_agent_mode").cloned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        recorded_modes,
+        [
+            serde_json::to_value(MultiAgentMode::ExplicitRequestOnly)?,
+            serde_json::to_value(MultiAgentMode::Proactive)?,
+        ]
     );
 
     Ok(())

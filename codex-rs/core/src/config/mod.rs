@@ -1269,6 +1269,8 @@ pub struct MultiAgentV2Config {
     pub max_wait_timeout_ms: i64,
     pub default_wait_timeout_ms: i64,
     pub multi_agent_mode: MultiAgentMode,
+    #[serde(skip)]
+    pub multi_agent_mode_explicitly_configured: bool,
     pub usage_hint_text: Option<String>,
     pub root_agent_usage_hint_text: Option<String>,
     pub subagent_usage_hint_text: Option<String>,
@@ -1287,6 +1289,7 @@ impl MultiAgentV2Config {
             max_wait_timeout_ms: DEFAULT_MULTI_AGENT_V2_MAX_WAIT_TIMEOUT_MS,
             default_wait_timeout_ms: DEFAULT_MULTI_AGENT_V2_DEFAULT_WAIT_TIMEOUT_MS,
             multi_agent_mode: MultiAgentMode::ExplicitRequestOnly,
+            multi_agent_mode_explicitly_configured: false,
             usage_hint_text: None,
             root_agent_usage_hint_text: Some(default_multi_agent_v2_usage_hint_text(
                 DEFAULT_MULTI_AGENT_V2_ROOT_AGENT_USAGE_HINT_TEXT,
@@ -2713,6 +2716,9 @@ fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config
     let multi_agent_mode = base
         .and_then(|config| config.multi_agent_mode.clone())
         .unwrap_or_else(|| default.multi_agent_mode.clone());
+    let multi_agent_mode_explicitly_configured =
+        base.and_then(|config| config.multi_agent_mode.as_ref())
+            .is_some();
     let usage_hint_text = base
         .and_then(|config| config.usage_hint_text.as_ref())
         .cloned()
@@ -2749,6 +2755,7 @@ fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config
         max_wait_timeout_ms,
         default_wait_timeout_ms,
         multi_agent_mode,
+        multi_agent_mode_explicitly_configured,
         usage_hint_text,
         root_agent_usage_hint_text,
         subagent_usage_hint_text,

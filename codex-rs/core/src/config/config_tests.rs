@@ -10801,6 +10801,7 @@ encrypt_messages = true
         config.multi_agent_v2.multi_agent_mode,
         MultiAgentMode::Proactive
     );
+    assert!(config.multi_agent_v2.multi_agent_mode_explicitly_configured);
     assert_eq!(
         (
             config.agent_max_threads,
@@ -11018,6 +11019,7 @@ enabled = true
         config.multi_agent_v2.multi_agent_mode,
         MultiAgentMode::ExplicitRequestOnly
     );
+    assert!(!config.multi_agent_v2.multi_agent_mode_explicitly_configured);
     assert_eq!(
         (
             config.agent_max_threads,

@@ -41,22 +41,24 @@ pub(crate) fn effective_multi_agent_mode(turn_context: &TurnContext) -> Option<M
         return None;
     }
 
-    // A configured hint, including an empty string, defines a custom policy instead of an
-    // effort-derived built-in policy.
+    // A configured hint, including an empty string, defines a custom policy instead of any
+    // built-in policy. An explicit built-in mode also wins over effort-derived defaults.
     let multi_agent_mode = match &turn_context
         .config
         .multi_agent_v2
         .multi_agent_mode_hint_text
     {
         Some(hint_text) => MultiAgentMode::Custom(hint_text.clone()),
+        None if turn_context
+            .config
+            .multi_agent_v2
+            .multi_agent_mode_explicitly_configured =>
+        {
+            turn_context.config.multi_agent_v2.multi_agent_mode.clone()
+        }
         None => match turn_context.reasoning_effort.as_ref() {
             Some(ReasoningEffort::Ultra) => MultiAgentMode::Proactive,
             Some(_) => MultiAgentMode::default(),
-            None if turn_context.config.multi_agent_v2.multi_agent_mode
-                != MultiAgentMode::default() =>
-            {
-                turn_context.config.multi_agent_v2.multi_agent_mode.clone()
-            }
             None => MultiAgentMode::default(),
         },
     };
