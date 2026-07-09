@@ -4,33 +4,19 @@
 import type { AbsolutePathBuf } from "../AbsolutePathBuf";
 import type { LegacyAppPathString } from "../LegacyAppPathString";
 import type { ReasoningEffort } from "../ReasoningEffort";
-import type { ActivePermissionProfile } from "./ActivePermissionProfile";
 import type { ApprovalsReviewer } from "./ApprovalsReviewer";
 import type { AskForApproval } from "./AskForApproval";
 import type { SandboxPolicy } from "./SandboxPolicy";
 import type { Thread } from "./Thread";
 
-export type ThreadResetContextResponse = { thread: Thread, model: string, modelProvider: string, serviceTier: string | null, cwd: AbsolutePathBuf,
-/**
- * Thread-scoped runtime workspace roots used to materialize
- * `:workspace_roots`.
- */
-runtimeWorkspaceRoots: Array<AbsolutePathBuf>,
-/**
+export type ThreadResetContextResponse = {thread: Thread, model: string, modelProvider: string, serviceTier: string | null, cwd: AbsolutePathBuf, /**
  * Instruction source files currently loaded for this thread.
  */
-instructionSources: Array<LegacyAppPathString>, approvalPolicy: AskForApproval,
-/**
+instructionSources: Array<LegacyAppPathString>, approvalPolicy: AskForApproval, /**
  * Reviewer currently used for approval requests on this thread.
  */
-approvalsReviewer: ApprovalsReviewer,
-/**
+approvalsReviewer: ApprovalsReviewer, /**
  * Legacy sandbox policy retained for compatibility. Experimental clients
  * should prefer `activePermissionProfile` for profile provenance.
  */
-sandbox: SandboxPolicy,
-/**
- * Named or implicit built-in profile that produced the active
- * permissions, when known.
- */
-activePermissionProfile: ActivePermissionProfile | null, reasoningEffort: ReasoningEffort | null, };
+sandbox: SandboxPolicy, reasoningEffort: ReasoningEffort | null};
