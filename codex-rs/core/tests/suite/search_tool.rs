@@ -1215,6 +1215,7 @@ async fn tool_search_expands_non_app_mcp_tools_by_prefix_without_query() -> Resu
             servers.insert(
                 "rmcp".to_string(),
                 McpServerConfig {
+                    auth: Default::default(),
                     transport: McpServerTransportConfig::Stdio {
                         command: rmcp_test_server_bin,
                         args: Vec::new(),

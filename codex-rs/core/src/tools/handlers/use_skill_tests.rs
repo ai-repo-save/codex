@@ -1,4 +1,5 @@
 use super::*;
+use crate::session::step_context::StepContext;
 use crate::session::tests::make_session_and_context_with_rx;
 use crate::tools::context::ToolCallSource;
 use crate::tools::context::ToolInvocation;
@@ -43,9 +44,11 @@ fn skill_outcome(
 
 async fn invocation_with_rx(name: &str) -> (ToolInvocation, async_channel::Receiver<Event>) {
     let (session, turn, rx) = make_session_and_context_with_rx().await;
+    let step_context = StepContext::for_test(Arc::clone(&turn));
     (
         ToolInvocation {
             session,
+            step_context,
             turn,
             cancellation_token: tokio_util::sync::CancellationToken::new(),
             tracker: Arc::new(Mutex::new(TurnDiffTracker::default())),

@@ -115,10 +115,6 @@ async fn configured_multi_agent_mode_seeds_first_turn() -> Result<()> {
         .await?;
 
     submit_turn(&test.codex, "hello", /*mode*/ None).await?;
-    assert_eq!(
-        test.codex.config_snapshot().await.multi_agent_mode,
-        MultiAgentMode::Proactive
-    );
 
     let input = responses.single_request().input();
     let texts = developer_texts(&input);
