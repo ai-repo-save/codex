@@ -493,6 +493,7 @@ impl TurnItem {
                 .into_iter()
                 .collect(),
             TurnItem::McpToolCall(item) => item.as_legacy_end_event().into_iter().collect(),
+            TurnItem::SkillLoad(_) => Vec::new(),
             TurnItem::Reasoning(item) => item.as_legacy_events(show_raw_agent_reasoning),
             TurnItem::ContextCompaction(item) => vec![item.as_legacy_event()],
         }
