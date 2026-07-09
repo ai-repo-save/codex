@@ -67,7 +67,14 @@ pub(crate) async fn run_inline_auto_compact_task(
             Arc::new(sess.build_world_state_for_step(&step_context).await)
         }
     };
-    run_compact_task_inner(&sess, turn_context, world_state, CompactionTrigger::Auto, phase).await
+    run_compact_task_inner(
+        &sess,
+        turn_context,
+        world_state,
+        CompactionTrigger::Auto,
+        phase,
+    )
+    .await
 }
 
 async fn run_compact_task_inner(

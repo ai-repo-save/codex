@@ -2,8 +2,8 @@ use super::context_anchor::context_rewind_carry_forward_item;
 use super::*;
 use crate::context::world_state::WorldStateSnapshot;
 use crate::context_manager::is_user_turn_boundary;
-use std::collections::HashMap;
 use codex_protocol::protocol::SessionContextWindow;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 // Return value of `Session::reconstruct_history_from_rollout`, bundling the rebuilt history with
