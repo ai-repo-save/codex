@@ -63,6 +63,7 @@ async fn mcp_server_status_list_returns_raw_server_and_tool_names() -> Result<()
         r#"
 [mcp_servers.some-server]
 url = "{mcp_server_url}/mcp"
+bearer_token_env_var = "MCP_STATUS_TEST_TOKEN"
 "#
     ));
     std::fs::write(config_path, config_toml)?;
