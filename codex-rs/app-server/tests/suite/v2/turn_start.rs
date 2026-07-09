@@ -66,6 +66,7 @@ use codex_core::personality_migration::PERSONALITY_MIGRATION_FILENAME;
 use codex_core::test_support::all_model_presets;
 use codex_features::FEATURES;
 use codex_features::Feature;
+use codex_features::Features;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::MultiAgentMode;
@@ -77,6 +78,7 @@ use codex_protocol::models::ImageDetail;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::MULTI_AGENT_MODE_OPEN_TAG;
 use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
+use codex_tools::request_user_input_available_modes;
 use codex_utils_absolute_path::test_support::PathExt;
 use core_test_support::responses;
 use core_test_support::skip_if_no_network;
@@ -1756,9 +1758,20 @@ async fn turn_start_uses_thread_feature_overrides_for_request_user_input_tool_de
 
     let request = response_mock.single_request();
     let payload_text = request.body_json().to_string();
-    assert!(payload_text.contains("This tool is only available in Default or Plan mode."));
+    assert!(payload_text.contains(&request_user_input_default_mode_description_fragment()));
 
     Ok(())
+}
+
+fn request_user_input_default_mode_description_fragment() -> String {
+    let mut features = Features::with_defaults();
+    features.enable(Feature::DefaultModeRequestUserInput);
+    let mode_names = request_user_input_available_modes(&features)
+        .into_iter()
+        .map(|mode| mode.display_name())
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("This tool is only available in modes: {mode_names}.")
 }
 
 #[tokio::test]
