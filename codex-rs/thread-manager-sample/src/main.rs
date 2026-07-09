@@ -209,6 +209,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         include_environment_context: false,
         compact_prompt: None,
         context_reminder: ContextReminderConfig::default(),
+        context_rewind: Default::default(),
         goal_prompt_templates: GoalPromptTemplates::default(),
         notify: None,
         tui_notifications: TuiNotificationSettings::default(),
