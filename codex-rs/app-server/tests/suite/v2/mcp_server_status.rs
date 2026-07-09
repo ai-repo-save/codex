@@ -329,15 +329,17 @@ async fn mcp_server_status_list_tools_and_auth_only_skips_slow_inventory_calls()
     )?;
 
     let config_path = codex_home.path().join("config.toml");
-    let mut config_toml = std::fs::read_to_string(&config_path)?;
-    config_toml.push_str(&format!(
+    let config_toml = std::fs::read_to_string(&config_path)?;
+    let config_toml = format!(
         r#"
 mcp_oauth_credentials_store = "file"
+
+{config_toml}
 
 [mcp_servers.some-server]
 url = "{mcp_server_url}/mcp"
 "#
-    ));
+    );
     std::fs::write(config_path, config_toml)?;
 
     let mut mcp = TestAppServer::new(codex_home.path()).await?;
