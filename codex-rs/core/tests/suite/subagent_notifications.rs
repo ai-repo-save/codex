@@ -1045,9 +1045,8 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
     let child_request_log = mount_sse_once_match(
         &server,
         |req: &wiremock::Request| {
-            request_message_input_texts_by_role_and_type(req, "user", "input_text")
-                .iter()
-                .any(|text| text == CHILD_PROMPT)
+            request_has_input_type(req, "agent_message")
+                && body_contains(req, CHILD_PROMPT)
                 && !body_contains(req, SPAWN_CALL_ID)
         },
         sse(vec![
@@ -1088,18 +1087,23 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
         .last()
         .expect("child request log should capture at least one request");
     assert!(child_request.body_contains_text("Parent developer instructions."));
-    assert!(
-        child_request
-            .message_input_texts("user")
-            .iter()
-            .any(|text| text == CHILD_PROMPT),
-        "spawned child's initial task should be delivered as user input"
+    assert_eq!(
+        strip_metadata_from_json(Value::Array(child_request.inputs_of_type("agent_message"))),
+        Value::Array(vec![json!({
+            "type": "agent_message",
+            "author": "/root",
+            "recipient": "/root/worker",
+            "content": [{
+                "type": "input_text",
+                "text": CHILD_PROMPT,
+            }],
+        })])
     );
     assert!(
-        !message_texts_by_role_and_type(child_request, "assistant", "output_text")
+        !message_texts_by_role_and_type(child_request, "user", "input_text")
             .iter()
             .any(|text| text.contains(CHILD_PROMPT)),
-        "spawned child's initial task should not be delivered as assistant commentary"
+        "spawned child's initial task should not be delivered as user input"
     );
 
     Ok(())
@@ -1167,6 +1171,7 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
             .features
             .enable(Feature::MultiAgentV2)
             .expect("test config should allow feature update");
+        config.multi_agent_v2.encrypt_messages = true;
     });
     let test = builder.build(&server).await?;
     let root_thread_id = test.session_configured.thread_id;

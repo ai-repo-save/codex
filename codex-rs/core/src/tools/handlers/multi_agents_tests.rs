@@ -1212,11 +1212,13 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
         *id == child_thread_id
             && matches!(
                 op,
-                Op::UserInput { items, .. }
-                    if matches!(
-                        items.as_slice(),
-                        [UserInput::Text { text, .. }] if text == "spawn-message"
-                    )
+                Op::InterAgentCommunication { communication }
+                    if communication.author == AgentPath::root()
+                        && communication.recipient.as_str() == "/root/test_process"
+                        && communication.other_recipients.is_empty()
+                        && communication.content == "spawn-message"
+                        && communication.encrypted_content.is_none()
+                        && communication.trigger_turn
             )
     }));
 
