@@ -4,6 +4,7 @@ use crate::compact::InitialContextInjection;
 use crate::context::world_state::WorldState;
 use crate::hook_runtime::PostCompactHookOutcome;
 use crate::hook_runtime::PreCompactHookOutcome;
+use crate::hook_runtime::CompactionPhase;
 use crate::hook_runtime::run_post_compact_hooks;
 use crate::hook_runtime::run_pre_compact_hooks;
 use crate::session::session::Session;

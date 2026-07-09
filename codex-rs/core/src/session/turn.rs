@@ -1158,6 +1158,7 @@ async fn run_sampling_request(
         let err = match try_run_sampling_request(
             tool_runtime.clone(),
             Arc::clone(&sess),
+            Arc::clone(&step_context),
             Arc::clone(&turn_context),
             Arc::clone(&turn_store),
             client_session,
@@ -2166,6 +2167,7 @@ async fn drain_in_flight(
 async fn try_run_sampling_request(
     tool_runtime: ToolCallRuntime,
     sess: Arc<Session>,
+    step_context: Arc<StepContext>,
     turn_context: Arc<TurnContext>,
     turn_store: Arc<codex_extension_api::ExtensionData>,
     mut client_session: &mut ModelClientSession,

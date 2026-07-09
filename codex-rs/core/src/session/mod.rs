@@ -562,6 +562,10 @@ impl Codex {
             )
         };
 
+        if let Some(multi_agent_mode) = conversation_history.get_latest_effective_multi_agent_mode()
+        {
+            config.multi_agent_v2.multi_agent_mode = multi_agent_mode;
+        }
         let config = Arc::new(config);
         let refresh_strategy = if session_source.is_non_root_agent() {
             codex_models_manager::manager::RefreshStrategy::Offline
@@ -604,10 +608,6 @@ impl Codex {
             .await;
         let multi_agent_version =
             resolve_multi_agent_version(&conversation_history, inherited_multi_agent_version);
-        if let Some(multi_agent_mode) = conversation_history.get_latest_effective_multi_agent_mode()
-        {
-            config.multi_agent_v2.multi_agent_mode = multi_agent_mode;
-        }
         let history_mode = conversation_history.get_history_mode(
             requested_history_mode.unwrap_or_else(|| thread_store.default_history_mode()),
         );
