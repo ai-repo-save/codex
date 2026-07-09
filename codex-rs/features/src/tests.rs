@@ -680,6 +680,7 @@ usage_hint_enabled = false
             usage_hint_text: None,
             root_agent_usage_hint_text: None,
             subagent_usage_hint_text: None,
+            multi_agent_mode_hint_text: None,
             tool_namespace: None,
             hide_spawn_agent_metadata: None,
             non_code_mode_only: None,
