@@ -2128,14 +2128,25 @@ async fn drain_in_flight(
                     )
                     .await?;
                 let (response, response_items) = match rewind_event {
-                    RewindContextToAnchorResult::Rewound(rewind_event) => {
+                    RewindContextToAnchorResult::Rewound {
+                        rewind_event,
+                        replacement_anchor,
+                    } => {
                         sess.deliver_persisted_event(
                             &turn_context,
                             EventMsg::ContextRewoundToAnchor(rewind_event.clone()),
                         )
                         .await;
+                        sess.deliver_persisted_event(
+                            &turn_context,
+                            EventMsg::ContextAnchorSaved(replacement_anchor),
+                        )
+                        .await;
                         let response = RewindContextToAnchorResponse::Rewound {
                             anchor_id: rewind_event.anchor_id,
+                            replacement_anchor_id: rewind_event.replacement_anchor_id.expect(
+                                "successful context rewind should create replacement anchor",
+                            ),
                             dropped_turns: rewind_event.dropped_turns,
                             response_items_reclaimed: rewind_event.response_items_reclaimed,
                             approx_tokens_reclaimed: rewind_event.approx_tokens_reclaimed,

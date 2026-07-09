@@ -1815,6 +1815,7 @@ mod tests {
             }),
             EventMsg::ContextRewoundToAnchor(ContextRewoundToAnchorEvent {
                 anchor_id: "ctx-123".to_string(),
+                replacement_anchor_id: None,
                 dropped_turns: 3,
                 response_items_reclaimed: 4,
                 approx_tokens_reclaimed: 120,
@@ -1867,6 +1868,7 @@ mod tests {
         });
         let rewound = EventMsg::ContextRewoundToAnchor(ContextRewoundToAnchorEvent {
             anchor_id: "ctx-123".to_string(),
+            replacement_anchor_id: None,
             dropped_turns: 3,
             response_items_reclaimed: 4,
             approx_tokens_reclaimed: 120,

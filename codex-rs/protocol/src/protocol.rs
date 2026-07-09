@@ -3459,6 +3459,8 @@ pub struct ContextAnchorSavedEvent {
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
 pub struct ContextRewoundToAnchorEvent {
     pub anchor_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replacement_anchor_id: Option<String>,
     pub dropped_turns: u32,
     #[serde(default)]
     pub response_items_reclaimed: u64,

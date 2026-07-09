@@ -70,6 +70,7 @@ pub(crate) struct ListContextAnchorsRequest {
 pub(crate) enum RewindContextToAnchorResponse {
     Rewound {
         anchor_id: String,
+        replacement_anchor_id: String,
         dropped_turns: u32,
         response_items_reclaimed: u64,
         approx_tokens_reclaimed: u64,

@@ -338,8 +338,9 @@ impl Session {
                     context_anchors.insert(anchor.anchor_id.clone(), history.raw_items().to_vec());
                 }
                 RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
-                    if let Some(anchor_history) = context_anchors.get(&rewind.anchor_id) {
-                        history.replace(anchor_history.clone());
+                    if let Some(anchor_history) = context_anchors.get(&rewind.anchor_id).cloned() {
+                        context_anchors.clear();
+                        history.replace(anchor_history);
                         let carry_forward = context_rewind_carry_forward_item(
                             rewind.anchor_id.clone(),
                             rewind.dropped_turns,

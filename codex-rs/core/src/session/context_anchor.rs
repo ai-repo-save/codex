@@ -12,6 +12,7 @@ use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::RolloutItem;
 use codex_utils_output_truncation::approx_token_count;
 use serde::Serialize;
+use uuid::Uuid;
 
 pub(crate) const CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT: u32 = 20;
 
@@ -56,7 +57,10 @@ struct ContextRewindBenefit {
 
 #[derive(Clone, Debug)]
 pub(crate) enum RewindContextToAnchorResult {
-    Rewound(ContextRewoundToAnchorEvent),
+    Rewound {
+        rewind_event: ContextRewoundToAnchorEvent,
+        replacement_anchor: ContextAnchorSavedEvent,
+    },
     Rejected(ContextRewindRejected),
 }
 
@@ -112,11 +116,12 @@ fn latest_active_anchor_event(
                 active_anchors.push(event);
             }
             RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
-                if let Some(anchor_index) = active_anchors
+                if active_anchors
                     .iter()
                     .position(|anchor| anchor.anchor_id == rewind.anchor_id)
+                    .is_some()
                 {
-                    active_anchors.truncate(anchor_index + 1);
+                    active_anchors.clear();
                 }
             }
             _ => {}
@@ -133,32 +138,47 @@ fn count_user_turns_since_anchor(
     rollout_items: &[RolloutItem],
     anchor_id: &str,
 ) -> CodexResult<u32> {
-    let mut anchor_index = None;
-    for (index, item) in rollout_items.iter().enumerate() {
+    let mut active_anchors: Vec<(String, u32)> = Vec::new();
+    let mut user_turn_total = 0u32;
+    for item in rollout_items {
         match item {
             RolloutItem::Compacted(_) => {
-                anchor_index = None;
+                active_anchors.clear();
+                user_turn_total = 0;
             }
-            RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(event))
-                if event.anchor_id == anchor_id =>
-            {
-                anchor_index = Some(index);
+            RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(event)) => {
+                if let Some(existing_index) = active_anchors
+                    .iter()
+                    .position(|(active_anchor_id, _)| active_anchor_id == &event.anchor_id)
+                {
+                    active_anchors.remove(existing_index);
+                }
+                active_anchors.push((event.anchor_id.clone(), user_turn_total));
+            }
+            RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
+                if let Some(anchor_index) = active_anchors
+                    .iter()
+                    .position(|(active_anchor_id, _)| active_anchor_id == &rewind.anchor_id)
+                {
+                    user_turn_total = active_anchors[anchor_index].1;
+                    active_anchors.clear();
+                }
+            }
+            RolloutItem::EventMsg(EventMsg::UserMessage(_)) => {
+                user_turn_total = user_turn_total.saturating_add(1);
+            }
+            RolloutItem::EventMsg(EventMsg::ThreadRolledBack(rollback)) => {
+                user_turn_total = user_turn_total.saturating_sub(rollback.num_turns);
             }
             _ => {}
         }
     }
 
-    let Some(anchor_index) = anchor_index else {
-        return Err(CodexErr::InvalidRequest(format!(
-            "unknown context anchor `{anchor_id}`"
-        )));
-    };
-
-    let turn_count = rollout_items[anchor_index + 1..]
-        .iter()
-        .filter(|item| matches!(item, RolloutItem::EventMsg(EventMsg::UserMessage(_))))
-        .count();
-    Ok(u32::try_from(turn_count).unwrap_or(u32::MAX))
+    active_anchors
+        .into_iter()
+        .find(|(active_anchor_id, _)| active_anchor_id == anchor_id)
+        .map(|(_, user_turn_total_at_save)| user_turn_total.saturating_sub(user_turn_total_at_save))
+        .ok_or_else(|| CodexErr::InvalidRequest(format!("unknown context anchor `{anchor_id}`")))
 }
 
 fn list_context_anchors_from_rollout(
@@ -207,11 +227,13 @@ fn list_context_anchors_from_rollout(
                     .iter()
                     .position(|anchor| anchor.event.anchor_id == rewind.anchor_id)
                 {
-                    let removed_count = active_anchors.len().saturating_sub(anchor_index + 1);
+                    let user_turn_total_at_save =
+                        active_anchors[anchor_index].user_turn_total_at_save;
+                    let removed_count = active_anchors.len();
                     invalidated_anchor_count =
                         invalidated_anchor_count.saturating_add(removed_count);
-                    active_anchors.truncate(anchor_index + 1);
-                    user_turn_total = active_anchors[anchor_index].user_turn_total_at_save;
+                    active_anchors.clear();
+                    user_turn_total = user_turn_total_at_save;
                 }
             }
             RolloutItem::EventMsg(EventMsg::UserMessage(_)) => {
@@ -465,7 +487,8 @@ impl Session {
             ));
         }
         let rewind_event = ContextRewoundToAnchorEvent {
-            anchor_id,
+            anchor_id: anchor_id.clone(),
+            replacement_anchor_id: None,
             dropped_turns,
             response_items_reclaimed: benefit.response_items_reclaimed,
             approx_tokens_reclaimed: benefit.approx_tokens_reclaimed,
@@ -484,14 +507,31 @@ impl Session {
             .collect::<Vec<_>>();
         self.apply_rollout_reconstruction(turn_context, replay_items.as_slice())
             .await;
+        let replacement_anchor_id = format!("ctx-{}", Uuid::now_v7());
+        let replacement_anchor = ContextAnchorSavedEvent {
+            anchor_id: replacement_anchor_id.clone(),
+            label: Some(format!("after rewind from {anchor_id}")),
+            history_boundary: u64::try_from(self.clone_history().await.raw_items().len())
+                .unwrap_or(u64::MAX),
+            created_at: crate::turn_timing::now_unix_timestamp_ms() / 1000,
+            collaboration_mode_kind: Some(turn_context.collaboration_mode.mode),
+        };
+        let rewind_event = ContextRewoundToAnchorEvent {
+            replacement_anchor_id: Some(replacement_anchor_id),
+            ..rewind_event
+        };
         self.recompute_token_usage(turn_context).await;
 
-        self.persist_rollout_items(&[RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(
-            rewind_event.clone(),
-        ))])
+        self.persist_rollout_items(&[
+            RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind_event.clone())),
+            RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(replacement_anchor.clone())),
+        ])
         .await;
         self.flush_rollout().await.map_err(CodexErr::Io)?;
-        Ok(RewindContextToAnchorResult::Rewound(rewind_event))
+        Ok(RewindContextToAnchorResult::Rewound {
+            rewind_event,
+            replacement_anchor,
+        })
     }
 
     pub(crate) async fn list_context_anchors(

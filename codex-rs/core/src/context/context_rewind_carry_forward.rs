@@ -67,7 +67,6 @@ impl ContextualUserFragment for ContextRewindCarryForward {
                         "tokens": self.reclaim_threshold_tokens,
                         "met": self.reclaim_threshold_met,
                     },
-                    "guidance": "If the reclaim benefit is unexpectedly small, call list_context_anchors before the next rewind and choose an earlier active anchor.",
                 },
             })
         )

@@ -93,6 +93,7 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
         RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(
             ContextRewoundToAnchorEvent {
                 anchor_id: "anchor-1".to_string(),
+                replacement_anchor_id: None,
                 dropped_turns: 1,
                 response_items_reclaimed: 2,
                 approx_tokens_reclaimed: 20,
@@ -122,10 +123,6 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
     assert!(history_contains_text(
         &reconstructed.history,
         "rewind_benefit"
-    ));
-    assert!(history_contains_text(
-        &reconstructed.history,
-        "list_context_anchors"
     ));
     assert!(history_contains_text(
         &reconstructed.history,
@@ -170,6 +167,7 @@ async fn reconstruct_history_context_rewind_does_not_cross_compaction() {
         RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(
             ContextRewoundToAnchorEvent {
                 anchor_id: "anchor-before-compact".to_string(),
+                replacement_anchor_id: None,
                 dropped_turns: 1,
                 response_items_reclaimed: 1,
                 approx_tokens_reclaimed: 10,
@@ -235,6 +233,7 @@ async fn reconstruct_history_context_rewind_uses_anchor_saved_after_compaction()
         RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(
             ContextRewoundToAnchorEvent {
                 anchor_id: "anchor-after-compact".to_string(),
+                replacement_anchor_id: None,
                 dropped_turns: 1,
                 response_items_reclaimed: 1,
                 approx_tokens_reclaimed: 10,

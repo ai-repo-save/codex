@@ -107,6 +107,7 @@ fn rewind(anchor_id: &str) -> RolloutItem {
     RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(
         ContextRewoundToAnchorEvent {
             anchor_id: anchor_id.to_string(),
+            replacement_anchor_id: None,
             dropped_turns: 1,
             response_items_reclaimed: 2,
             approx_tokens_reclaimed: 10,
@@ -256,7 +257,22 @@ fn list_context_anchors_omits_pre_compaction_anchors() {
 }
 
 #[test]
-fn list_context_anchors_omits_anchors_after_rewound_target() {
+fn count_user_turns_since_anchor_forgets_rewound_anchor() {
+    let items = vec![
+        saved_anchor(
+            ANCHOR_ID, /*label*/ None, /*boundary*/ 0, /*created_at*/ 0,
+        ),
+        user_message(),
+        rewind(ANCHOR_ID),
+    ];
+
+    let result = count_user_turns_since_anchor(&items, ANCHOR_ID);
+
+    assert!(matches!(result, Err(CodexErr::InvalidRequest(_))));
+}
+
+#[test]
+fn list_context_anchors_omits_all_old_anchors_after_rewind() {
     let rollout_items = vec![
         saved_anchor(
             "a", /*label*/ None, /*boundary*/ 0, /*created_at*/ 10,
@@ -285,18 +301,60 @@ fn list_context_anchors_omits_anchors_after_rewound_target() {
         ModeKind::Default,
     );
 
-    assert_eq!(result.active_anchor_count, 2);
-    assert_eq!(result.invalidated_anchor_count, 1);
+    assert_eq!(result.active_anchor_count, 0);
+    assert_eq!(result.invalidated_anchor_count, 3);
+    assert_eq!(result.anchors, Vec::new());
+}
+
+#[test]
+fn list_context_anchors_shows_replacement_after_rewind() {
+    let rollout_items = vec![
+        saved_anchor(
+            "a", /*label*/ None, /*boundary*/ 0, /*created_at*/ 10,
+        ),
+        user_message(),
+        saved_anchor(
+            "b", /*label*/ None, /*boundary*/ 1, /*created_at*/ 20,
+        ),
+        user_message(),
+        saved_anchor(
+            "c", /*label*/ None, /*boundary*/ 2, /*created_at*/ 30,
+        ),
+        rewind("b"),
+        saved_anchor(
+            "replacement",
+            /*label*/ None,
+            /*boundary*/ 3,
+            /*created_at*/ 40,
+        ),
+        user_message(),
+    ];
+    let current_history = vec![
+        history_item("zero"),
+        history_item("one"),
+        history_item("carry"),
+        history_item("after"),
+    ];
+
+    let result = list_context_anchors_from_rollout(
+        &rollout_items,
+        &current_history,
+        /*limit*/ 20,
+        ModeKind::Default,
+    );
+
+    assert_eq!(result.active_anchor_count, 1);
+    assert_eq!(result.invalidated_anchor_count, 3);
     assert_eq!(
         result
             .anchors
             .iter()
             .map(|anchor| anchor.anchor_id.as_str())
             .collect::<Vec<_>>(),
-        vec!["b", "a"]
+        vec!["replacement"]
     );
+    assert_eq!(result.anchors[0].response_items_since_anchor, 1);
     assert_eq!(result.anchors[0].user_turns_since_anchor, 1);
-    assert_eq!(result.anchors[1].user_turns_since_anchor, 2);
 }
 
 #[test]
@@ -549,6 +607,7 @@ fn context_rewound_to_anchor_event_defaults_reclaim_fields() {
     }))
     .expect("legacy context rewind event should deserialize");
 
+    assert_eq!(event.replacement_anchor_id, None);
     assert_eq!(event.response_items_reclaimed, 0);
     assert_eq!(event.approx_tokens_reclaimed, 0);
     assert_eq!(

@@ -133,6 +133,7 @@ async fn rewind_context_to_anchor_rejects_oversized_note() {
 fn rewind_context_to_anchor_response_serializes_rewound_status() {
     let response = RewindContextToAnchorResponse::Rewound {
         anchor_id: "anchor-1".to_string(),
+        replacement_anchor_id: "anchor-2".to_string(),
         dropped_turns: 2,
         response_items_reclaimed: 3,
         approx_tokens_reclaimed: 4,
@@ -146,6 +147,7 @@ fn rewind_context_to_anchor_response_serializes_rewound_status() {
         json!({
             "status": "rewound",
             "anchor_id": "anchor-1",
+            "replacement_anchor_id": "anchor-2",
             "dropped_turns": 2,
             "response_items_reclaimed": 3,
             "approx_tokens_reclaimed": 4,
