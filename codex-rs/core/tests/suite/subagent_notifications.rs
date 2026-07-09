@@ -100,31 +100,6 @@ fn decoded_body(req: &wiremock::Request) -> Option<Vec<u8>> {
     }
 }
 
-fn request_message_input_texts_by_role_and_type(
-    req: &wiremock::Request,
-    role: &str,
-    content_type: &str,
-) -> Vec<String> {
-    let Some(body) = decoded_body(req) else {
-        return Vec::new();
-    };
-    let Ok(body) = serde_json::from_slice::<Value>(&body) else {
-        return Vec::new();
-    };
-
-    body.get("input")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|item| item.get("type").and_then(Value::as_str) == Some("message"))
-        .filter(|item| item.get("role").and_then(Value::as_str) == Some(role))
-        .filter_map(|item| item.get("content").and_then(Value::as_array))
-        .flatten()
-        .filter(|span| span.get("type").and_then(Value::as_str) == Some(content_type))
-        .filter_map(|span| span.get("text").and_then(Value::as_str).map(str::to_owned))
-        .collect()
-}
-
 fn log_field<'a>(line: &'a str, name: &str) -> Option<&'a str> {
     let prefix = format!("{name}=");
     line.split_ascii_whitespace()
@@ -1036,7 +1011,12 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
         |req: &wiremock::Request| body_contains(req, TURN_1_PROMPT),
         sse(vec![
             ev_response_created("resp-turn1-1"),
-            ev_function_call(SPAWN_CALL_ID, "spawn_agent", &spawn_args),
+            ev_function_call_with_namespace(
+                SPAWN_CALL_ID,
+                MULTI_AGENT_V2_NAMESPACE,
+                "spawn_agent",
+                &spawn_args,
+            ),
             ev_completed("resp-turn1-1"),
         ]),
     )

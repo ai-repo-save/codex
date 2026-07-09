@@ -49,12 +49,15 @@ pub(crate) fn effective_multi_agent_mode(turn_context: &TurnContext) -> Option<M
         .multi_agent_mode_hint_text
     {
         Some(hint_text) => MultiAgentMode::Custom(hint_text.clone()),
-        None if turn_context.config.multi_agent_v2.multi_agent_mode != MultiAgentMode::default() => {
-            turn_context.config.multi_agent_v2.multi_agent_mode.clone()
-        }
         None => match turn_context.effective_reasoning_effort() {
             Some(ReasoningEffort::Ultra) => MultiAgentMode::Proactive,
-            _ => MultiAgentMode::default(),
+            Some(_) => MultiAgentMode::default(),
+            None if turn_context.config.multi_agent_v2.multi_agent_mode
+                != MultiAgentMode::default() =>
+            {
+                turn_context.config.multi_agent_v2.multi_agent_mode.clone()
+            }
+            None => MultiAgentMode::default(),
         },
     };
 
