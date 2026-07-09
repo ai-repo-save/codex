@@ -325,7 +325,6 @@ pub(crate) async fn run_approval_review_route_hooks(
 fn approval_policy_for_hook(approval_policy: AskForApproval) -> String {
     match approval_policy {
         AskForApproval::Never => "never",
-        AskForApproval::OnFailure => "on_failure",
         AskForApproval::OnRequest => "on_request",
         AskForApproval::UnlessTrusted => "unless_trusted",
         AskForApproval::Granular(_) => "granular",

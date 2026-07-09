@@ -199,7 +199,7 @@ pub(crate) fn summarize_transcript_tail(
                 Some("image_generation".to_string()),
                 revised_prompt.clone().unwrap_or_else(|| status.clone()),
             ),
-            ResponseItem::AgentMessage { .. } => None,
+            ResponseItem::AdditionalTools { .. } | ResponseItem::AgentMessage { .. } => None,
             ResponseItem::Compaction { .. }
             | ResponseItem::CompactionTrigger { .. }
             | ResponseItem::ContextCompaction { .. }

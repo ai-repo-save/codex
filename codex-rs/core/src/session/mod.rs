@@ -604,8 +604,10 @@ impl Codex {
             .await;
         let multi_agent_version =
             resolve_multi_agent_version(&conversation_history, inherited_multi_agent_version);
-        let multi_agent_mode =
-            initial_multi_agent_mode.unwrap_or(config.multi_agent_v2.multi_agent_mode);
+        if let Some(multi_agent_mode) = conversation_history.get_latest_effective_multi_agent_mode()
+        {
+            config.multi_agent_v2.multi_agent_mode = multi_agent_mode;
+        }
         let history_mode = conversation_history.get_history_mode(
             requested_history_mode.unwrap_or_else(|| thread_store.default_history_mode()),
         );
@@ -667,7 +669,6 @@ impl Codex {
             app_server_client_name: None,
             app_server_client_version: None,
             session_source,
-            multi_agent_mode,
             history_mode,
             forked_from_thread_id,
             parent_thread_id,

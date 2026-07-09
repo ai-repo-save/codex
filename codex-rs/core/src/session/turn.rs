@@ -964,6 +964,7 @@ async fn run_auto_compact(
             Arc::clone(sess),
             step_context,
             initial_context_injection,
+            phase,
         )
         .await?;
         return Ok(());
@@ -1953,10 +1954,11 @@ async fn retained_response_items_for_context_rewind(
 async fn drain_in_flight(
     in_flight: &mut FuturesOrdered<BoxFuture<'static, CodexResult<InFlightToolOutput>>>,
     sess: Arc<Session>,
-    turn_context: Arc<TurnContext>,
+    step_context: Arc<StepContext>,
     client_session: &mut ModelClientSession,
     cancellation_token: &CancellationToken,
 ) -> CodexResult<()> {
+    let turn_context = Arc::clone(&step_context.turn);
     let mut outputs = Vec::new();
     while let Some(res) = in_flight.next().await {
         match res {
@@ -1999,9 +2001,11 @@ async fn drain_in_flight(
                     .await?;
                 run_auto_compact(
                     &sess,
-                    &turn_context,
+                    Arc::clone(&step_context),
                     client_session,
-                    InitialContextInjection::BeforeLastUserMessage,
+                    InitialContextInjection::BeforeLastUserMessage(Arc::new(
+                        sess.build_world_state_for_step(&step_context).await,
+                    )),
                     CompactionReason::UserRequested,
                     CompactionPhase::MidTurn,
                     retained_response_items,
@@ -2684,7 +2688,7 @@ async fn try_run_sampling_request(
     drain_in_flight(
         &mut in_flight,
         sess.clone(),
-        turn_context.clone(),
+        Arc::clone(&step_context),
         &mut client_session,
         &cancellation_token,
     )

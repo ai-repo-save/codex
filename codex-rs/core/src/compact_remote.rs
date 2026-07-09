@@ -280,7 +280,7 @@ async fn run_remote_compact_task_inner_impl(
         )
         .await?;
     let (new_window_number, new_window_ids) = sess.advance_auto_compact_window().await;
-    let (new_history, world_state_baseline) = process_compacted_history(
+    let (mut new_history, world_state_baseline) = process_compacted_history(
         sess.as_ref(),
         turn_context.as_ref(),
         new_history,

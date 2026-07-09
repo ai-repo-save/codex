@@ -2711,8 +2711,8 @@ fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config
         .and_then(|config| config.default_wait_timeout_ms)
         .unwrap_or(default.default_wait_timeout_ms);
     let multi_agent_mode = base
-        .and_then(|config| config.multi_agent_mode)
-        .unwrap_or(default.multi_agent_mode);
+        .and_then(|config| config.multi_agent_mode.clone())
+        .unwrap_or_else(|| default.multi_agent_mode.clone());
     let usage_hint_text = base
         .and_then(|config| config.usage_hint_text.as_ref())
         .cloned()

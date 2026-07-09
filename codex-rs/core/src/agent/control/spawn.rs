@@ -2,7 +2,6 @@ use super::residency::is_v2_resident_session_source;
 use super::*;
 use crate::context::ContextualUserFragment;
 use crate::context::SubagentIdentity;
-use codex_protocol::config_types::MultiAgentMode;
 use codex_extension_api::ExtensionDataInit;
 
 const AGENT_NAMES: &str = include_str!("../agent_names.txt");

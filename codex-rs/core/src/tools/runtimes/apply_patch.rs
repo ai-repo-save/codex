@@ -4,7 +4,6 @@
 //! selected turn environment filesystem for both local and remote turns, with
 //! sandboxing enforced by the explicit filesystem sandbox context.
 use crate::exec::is_likely_sandbox_denied;
-use crate::guardian::GuardianApprovalRequest;
 use crate::guardian::GuardianReviewAction;
 use crate::session::turn_context::TurnEnvironment;
 use crate::tools::hook_names::HookToolName;

@@ -50,6 +50,7 @@ pub(crate) async fn run_inline_auto_compact_task(
     sess: Arc<Session>,
     step_context: Arc<StepContext>,
     initial_context_injection: InitialContextInjection,
+    phase: CompactionPhase,
 ) -> CodexResult<()> {
     let turn_context = &step_context.turn;
     let world_state = match initial_context_injection {
@@ -81,7 +82,7 @@ async fn run_compact_task_inner(
     sess.emit_turn_item_completed(turn_context, compaction_item)
         .await;
 
-    let post_compact_outcome = run_post_compact_hooks(sess, turn_context, trigger).await;
+    let post_compact_outcome = run_post_compact_hooks(sess, turn_context, trigger, phase).await;
     if let PostCompactHookOutcome::Stopped = post_compact_outcome {
         return Err(CodexErr::TurnAborted);
     }

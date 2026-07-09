@@ -193,7 +193,7 @@ pub(crate) fn routes_approval_action_to_guardian_with_reviewer(
     let approval_policy_allows_review = match turn.approval_policy.value() {
         AskForApproval::OnRequest | AskForApproval::Granular(_) => true,
         AskForApproval::Never => review.review_when_approval_policy_never,
-        AskForApproval::OnFailure | AskForApproval::UnlessTrusted => false,
+        AskForApproval::UnlessTrusted => false,
     };
     if !approval_policy_allows_review {
         return false;
