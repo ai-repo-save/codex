@@ -12,6 +12,7 @@ use app_test_support::write_mock_responses_config_toml;
 use axum::Router;
 use codex_app_server_protocol::ListMcpServerStatusParams;
 use codex_app_server_protocol::ListMcpServerStatusResponse;
+use codex_app_server_protocol::McpAuthStatus;
 use codex_app_server_protocol::McpServerStatusDetail;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ThreadStartParams;
@@ -331,6 +332,8 @@ async fn mcp_server_status_list_tools_and_auth_only_skips_slow_inventory_calls()
     let mut config_toml = std::fs::read_to_string(&config_path)?;
     config_toml.push_str(&format!(
         r#"
+mcp_oauth_credentials_store = "file"
+
 [mcp_servers.some-server]
 url = "{mcp_server_url}/mcp"
 "#
@@ -365,6 +368,7 @@ url = "{mcp_server_url}/mcp"
     );
     assert_eq!(status.resources, Vec::new());
     assert_eq!(status.resource_templates, Vec::new());
+    assert_eq!(status.auth_status, McpAuthStatus::Unsupported);
 
     mcp_server_handle.abort();
     let _ = mcp_server_handle.await;
