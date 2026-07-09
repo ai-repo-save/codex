@@ -207,6 +207,7 @@ fn thread_fork_params_from_reset_context(params: ThreadResetContextParams) -> Th
         ephemeral,
         thread_source,
         exclude_turns: false,
+        last_turn_id: None,
     }
 }
 
