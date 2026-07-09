@@ -253,13 +253,6 @@
           "type": "string"
         },
         {
-          "description": "DEPRECATED: *All* commands are auto‑approved, but they are expected to run inside a sandbox where network access is disabled and writes are confined to a specific set of paths. If the command fails, it will be escalated to the user to approve execution without a sandbox. Prefer `OnRequest` for interactive runs or `Never` for non-interactive runs.",
-          "enum": [
-            "on-failure"
-          ],
-          "type": "string"
-        },
-        {
           "description": "The model decides when to ask the user for approval.",
           "enum": [
             "on-request"
@@ -340,74 +333,11 @@
         }
       ]
     },
-    "AutoReviewReviewToml": {
-      "additionalProperties": false,
-      "properties": {
-        "apply_patch": {
-          "description": "Review apply_patch approval requests.",
-          "type": "boolean"
-        },
-        "exec_command": {
-          "description": "Review unified exec command approval requests.",
-          "type": "boolean"
-        },
-        "execve": {
-          "description": "Review Unix execve approval requests.",
-          "type": "boolean"
-        },
-        "mcp_tool_call": {
-          "description": "Review MCP tool call approval requests.",
-          "type": "boolean"
-        },
-        "network_access": {
-          "description": "Review network access approval requests.",
-          "type": "boolean"
-        },
-        "request_permissions": {
-          "description": "Review request_permissions approval requests.",
-          "type": "boolean"
-        },
-        "review_skipped_exec": {
-          "description": "Review exec-like tool requests that would otherwise skip approval.",
-          "type": "boolean"
-        },
-        "review_when_approval_policy_never": {
-          "description": "Review matching requests even when approval_policy is never.",
-          "type": "boolean"
-        },
-        "shell": {
-          "description": "Review shell command approval requests.",
-          "type": "boolean"
-        }
-      },
-      "type": "object"
-    },
     "AutoReviewToml": {
-      "additionalProperties": false,
       "properties": {
         "policy": {
           "description": "Additional policy instructions inserted into the guardian prompt.",
           "type": "string"
-        },
-        "prompt": {
-          "description": "Full guardian prompt template override.",
-          "type": "string"
-        },
-        "prompt_file": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            }
-          ],
-          "description": "File containing the full guardian prompt template override."
-        },
-        "review": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/AutoReviewReviewToml"
-            }
-          ],
-          "description": "Controls which approval requests are routed to the auto-reviewer."
         }
       },
       "type": "object"
@@ -441,16 +371,6 @@
             "type": "string"
           },
           "type": "array"
-        }
-      },
-      "type": "object"
-    },
-    "CollaborationModeToml": {
-      "additionalProperties": false,
-      "description": "Per-mode collaboration prompt overrides.",
-      "properties": {
-        "developer_instructions": {
-          "type": "string"
         }
       },
       "type": "object"
@@ -513,13 +433,13 @@
             "auth_elicitation": {
               "type": "boolean"
             },
-            "auto_compaction": {
-              "type": "boolean"
-            },
             "browser_use": {
               "type": "boolean"
             },
             "browser_use_external": {
+              "type": "boolean"
+            },
+            "browser_use_full_cdp_access": {
               "type": "boolean"
             },
             "chronicle": {
@@ -527,6 +447,9 @@
             },
             "code_mode": {
               "$ref": "#/definitions/FeatureToml_for_CodeModeConfigToml"
+            },
+            "code_mode_host": {
+              "type": "boolean"
             },
             "code_mode_only": {
               "type": "boolean"
@@ -544,6 +467,9 @@
               "type": "boolean"
             },
             "computer_use": {
+              "type": "boolean"
+            },
+            "concurrent_reasoning_summaries": {
               "type": "boolean"
             },
             "connectors": {
@@ -723,9 +649,6 @@
             "skill_mcp_dependency_install": {
               "type": "boolean"
             },
-            "sleep_tool": {
-              "type": "boolean"
-            },
             "sqlite": {
               "type": "boolean"
             },
@@ -887,58 +810,48 @@
       },
       "type": "object"
     },
-    "ContextReminderConfigToml": {
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "default": true,
-          "type": "boolean"
-        },
-        "message": {
-          "default": null,
-          "maxLength": 4096,
-          "minLength": 1,
-          "type": "string"
-        },
-        "remaining_percent": {
-          "default": 15,
-          "format": "int64",
-          "maximum": 100.0,
-          "minimum": 0.0,
-          "type": "integer"
-        }
-      },
-      "type": "object"
-    },
-    "ContextRewindConfigToml": {
-      "additionalProperties": false,
-      "properties": {
-        "min_reclaim_percent": {
-          "default": 0,
-          "format": "int64",
-          "maximum": 100.0,
-          "minimum": 0.0,
-          "type": "integer"
-        }
-      },
-      "type": "object"
-    },
     "CurrentTimeReminderConfigToml": {
       "additionalProperties": false,
       "properties": {
         "clock_source": {
           "$ref": "#/definitions/CurrentTimeSource"
         },
+        "delivery_mode": {
+          "$ref": "#/definitions/CurrentTimeReminderDeliveryMode"
+        },
         "enabled": {
           "type": "boolean"
         },
-        "reminder_interval_model_requests": {
+        "reminder_interval_seconds": {
           "format": "uint64",
-          "minimum": 1.0,
+          "minimum": 0.0,
           "type": "integer"
+        },
+        "sleep_tool": {
+          "description": "Expose the input-interruptible `clock.sleep` tool.",
+          "type": "boolean"
         }
       },
       "type": "object"
+    },
+    "CurrentTimeReminderDeliveryMode": {
+      "description": "Which inference boundaries may receive current-time reminders.",
+      "oneOf": [
+        {
+          "description": "Allow a reminder before any inference request once the interval is due.",
+          "enum": [
+            "any_inference"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Allow reminders after user input or tool output; new context windows still force one.",
+          "enum": [
+            "after_user_or_tool_output"
+          ],
+          "type": "string"
+        }
+      ]
     },
     "CurrentTimeSource": {
       "enum": [
@@ -1183,48 +1096,6 @@
       },
       "type": "object"
     },
-    "GoalsToml": {
-      "additionalProperties": false,
-      "properties": {
-        "budget_limit_prompt": {
-          "description": "Prompt template injected when an active goal reaches its token budget.",
-          "type": "string"
-        },
-        "budget_limit_prompt_file": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            }
-          ],
-          "description": "File containing the prompt template injected when an active goal reaches its token budget."
-        },
-        "continuation_prompt": {
-          "description": "Prompt template used when Codex automatically continues an active goal.",
-          "type": "string"
-        },
-        "continuation_prompt_file": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            }
-          ],
-          "description": "File containing the prompt template used when Codex automatically continues an active goal."
-        },
-        "objective_updated_prompt": {
-          "description": "Prompt template injected after the active goal objective is edited.",
-          "type": "string"
-        },
-        "objective_updated_prompt_file": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            }
-          ],
-          "description": "File containing the prompt template injected after the active goal objective is edited."
-        }
-      },
-      "type": "object"
-    },
     "GranularApprovalConfig": {
       "properties": {
         "mcp_elicitations": {
@@ -1379,13 +1250,6 @@
     },
     "HooksToml": {
       "properties": {
-        "ApprovalReviewRoute": {
-          "default": [],
-          "items": {
-            "$ref": "#/definitions/MatcherGroup"
-          },
-          "type": "array"
-        },
         "PermissionRequest": {
           "default": [],
           "items": {
@@ -1479,6 +1343,9 @@
       ],
       "description": "One action binding value in config.\n\nThis accepts either:\n\n1. A single key spec string (`\"ctrl-a\"`). 2. A list of key spec strings (`[\"ctrl-a\", \"alt-a\"]`).\n\nAn empty list explicitly unbinds the action in that scope. Because an explicit empty list is still a configured value, runtime resolution must not fall through to global or built-in defaults for that action."
     },
+    "LegacyAppPathString": {
+      "type": "string"
+    },
     "MarketplaceConfig": {
       "additionalProperties": false,
       "properties": {
@@ -1544,6 +1411,25 @@
         }
       },
       "type": "object"
+    },
+    "McpServerAuth": {
+      "description": "Authentication flow Codex attempts after resolving an HTTP MCP server's configured bearer token and authorization headers, which always take precedence. ChatGPT authentication falls back to stored OAuth credentials when its session provider is unavailable; both modes ultimately fall back to an unauthenticated connection.",
+      "oneOf": [
+        {
+          "description": "Use stored MCP OAuth credentials when available. Starting an OAuth login is a separate operation.",
+          "enum": [
+            "oauth"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Use the current ChatGPT session for servers on the trusted first-party ChatGPT origin. If no ChatGPT session provider is available, startup can still fall back to stored OAuth credentials.",
+          "enum": [
+            "chatgpt"
+          ],
+          "type": "string"
+        }
+      ]
     },
     "McpServerEnvVar": {
       "anyOf": [
@@ -1655,10 +1541,6 @@
         },
         "use_memories": {
           "description": "When `false`, skip injecting memory usage instructions into developer prompts.",
-          "type": "boolean"
-        },
-        "use_scoped_memories": {
-          "description": "When `false`, disable session/project scoped memory tools and prompt context.",
           "type": "boolean"
         }
       },
@@ -1839,15 +1721,6 @@
       },
       "type": "object"
     },
-    "MultiAgentMode": {
-      "description": "Controls whether the model receives multi-agent delegation instructions and, when it does, whether it should only spawn sub-agents after an explicit user request or may delegate proactively when doing so would help. `none` leaves the multi-agent tools available without injecting delegation instructions.",
-      "enum": [
-        "none",
-        "explicitRequestOnly",
-        "proactive"
-      ],
-      "type": "string"
-    },
     "MultiAgentV2ConfigToml": {
       "additionalProperties": false,
       "properties": {
@@ -1858,9 +1731,6 @@
           "type": "integer"
         },
         "enabled": {
-          "type": "boolean"
-        },
-        "encrypt_messages": {
           "type": "boolean"
         },
         "hide_spawn_agent_metadata": {
@@ -1883,8 +1753,8 @@
           "minimum": 0.0,
           "type": "integer"
         },
-        "multi_agent_mode": {
-          "$ref": "#/definitions/MultiAgentMode"
+        "multi_agent_mode_hint_text": {
+          "type": "string"
         },
         "non_code_mode_only": {
           "type": "boolean"
@@ -2607,6 +2477,14 @@
           },
           "type": "array"
         },
+        "auth": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/McpServerAuth"
+            }
+          ],
+          "default": null
+        },
         "bearer_token_env_var": {
           "type": "string"
         },
@@ -2614,8 +2492,12 @@
           "type": "string"
         },
         "cwd": {
-          "default": null,
-          "type": "string"
+          "allOf": [
+            {
+              "$ref": "#/definitions/LegacyAppPathString"
+            }
+          ],
+          "default": null
         },
         "default_tools_approval_mode": {
           "allOf": [
@@ -3036,9 +2918,14 @@
         "enabled": {
           "type": "boolean"
         },
+        "guidance_message": {
+          "description": "Guidance appended to the context-window metadata in a developer message.",
+          "maxLength": 2000,
+          "type": "string"
+        },
         "reminder_message_template": {
           "description": "Reminder template. `{n_remaining}` is replaced with the tokens remaining before auto-compaction.",
-          "maxLength": 1000,
+          "maxLength": 2000,
           "minLength": 1,
           "type": "string"
         },
@@ -4809,35 +4696,9 @@
       "default": null,
       "description": "Preferred backend for storing CLI auth credentials. file (default): Use a file in the Codex home directory. keyring: Use an OS-specific keyring service. auto: Use the keyring if available, otherwise use a file."
     },
-    "collaboration_modes": {
-      "additionalProperties": {
-        "$ref": "#/definitions/CollaborationModeToml"
-      },
-      "default": {},
-      "description": "Collaboration mode prompt overrides keyed by mode name.",
-      "type": "object"
-    },
     "compact_prompt": {
       "description": "Compact prompt used for history compaction.",
       "type": "string"
-    },
-    "context_reminder": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/ContextReminderConfigToml"
-        }
-      ],
-      "default": null,
-      "description": "Reminder shown to root agents as the usable context window runs low."
-    },
-    "context_rewind": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/ContextRewindConfigToml"
-        }
-      ],
-      "default": null,
-      "description": "Rejects context rewinds that reclaim too little of the model context window."
     },
     "debug": {
       "allOf": [
@@ -4944,13 +4805,13 @@
         "auth_elicitation": {
           "type": "boolean"
         },
-        "auto_compaction": {
-          "type": "boolean"
-        },
         "browser_use": {
           "type": "boolean"
         },
         "browser_use_external": {
+          "type": "boolean"
+        },
+        "browser_use_full_cdp_access": {
           "type": "boolean"
         },
         "chronicle": {
@@ -4958,6 +4819,9 @@
         },
         "code_mode": {
           "$ref": "#/definitions/FeatureToml_for_CodeModeConfigToml"
+        },
+        "code_mode_host": {
+          "type": "boolean"
         },
         "code_mode_only": {
           "type": "boolean"
@@ -4975,6 +4839,9 @@
           "type": "boolean"
         },
         "computer_use": {
+          "type": "boolean"
+        },
+        "concurrent_reasoning_summaries": {
           "type": "boolean"
         },
         "connectors": {
@@ -5154,9 +5021,6 @@
         "skill_mcp_dependency_install": {
           "type": "boolean"
         },
-        "sleep_tool": {
-          "type": "boolean"
-        },
         "sqlite": {
           "type": "boolean"
         },
@@ -5274,15 +5138,6 @@
       ],
       "default": null,
       "description": "Compatibility-only settings retained so legacy `ghost_snapshot` config still loads."
-    },
-    "goals": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/GoalsToml"
-        }
-      ],
-      "default": null,
-      "description": "Goal runtime prompt overrides."
     },
     "hide_agent_reasoning": {
       "default": false,

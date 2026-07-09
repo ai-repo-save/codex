@@ -22,7 +22,6 @@ import type { McpToolCallResult } from "./McpToolCallResult";
 import type { McpToolCallStatus } from "./McpToolCallStatus";
 import type { MemoryCitation } from "./MemoryCitation";
 import type { PatchApplyStatus } from "./PatchApplyStatus";
-import type { SkillLoadStatus } from "./SkillLoadStatus";
 import type { SubAgentActivityKind } from "./SubAgentActivityKind";
 import type { UserInput } from "./UserInput";
 import type { WebSearchAction } from "./WebSearchAction";
@@ -65,7 +64,7 @@ mcpAppResourceUri?: string, pluginId: string | null, result: McpToolCallResult |
 /**
  * The duration of the MCP tool call in milliseconds.
  */
-durationMs: number | null, } | { "type": "skillLoad", id: string, name: string, path: AbsolutePathBuf | null, status: SkillLoadStatus, error: string | null, } | { "type": "dynamicToolCall", id: string, namespace: string | null, tool: string, arguments: JsonValue, status: DynamicToolCallStatus, contentItems: Array<DynamicToolCallOutputContentItem> | null, success: boolean | null,
+durationMs: number | null, } | { "type": "dynamicToolCall", id: string, namespace: string | null, tool: string, arguments: JsonValue, status: DynamicToolCallStatus, contentItems: Array<DynamicToolCallOutputContentItem> | null, success: boolean | null,
 /**
  * The duration of the dynamic tool call in milliseconds.
  */
@@ -106,4 +105,4 @@ reasoningEffort: ReasoningEffort | null,
 /**
  * Last known status of the target agents, when available.
  */
-agentsStates: { [key in string]?: CollabAgentState }, } | { "type": "subAgentActivity", id: string, kind: SubAgentActivityKind, agentThreadId: string, agentPath: string, } | { "type": "webSearch", id: string, query: string, action: WebSearchAction | null, } | { "type": "imageView", id: string, path: AbsolutePathBuf, } | { "type": "sleep", id: string, durationMs: number, } | { "type": "imageGeneration", id: string, status: string, revisedPrompt: string | null, result: string, savedPath?: AbsolutePathBuf, } | { "type": "enteredReviewMode", id: string, review: string, } | { "type": "exitedReviewMode", id: string, review: string, } | { "type": "contextCompaction", id: string, } | { "type": "contextAnchorSaved", id: string, anchorId: string, label: string | null, historyBoundary: bigint, createdAt: bigint, } | { "type": "contextAnchorRewound", id: string, anchorId: string, droppedTurns: number, responseItemsReclaimed: bigint, approxTokensReclaimed: bigint, reclaimThresholdPercent: number, reclaimThresholdTokens: bigint | null, reclaimThresholdMet: boolean | null, };
+agentsStates: { [key in string]?: CollabAgentState }, } | { "type": "subAgentActivity", id: string, kind: SubAgentActivityKind, agentThreadId: string, agentPath: string, } | { "type": "webSearch", id: string, query: string, action: WebSearchAction | null, } | { "type": "imageView", id: string, path: LegacyAppPathString, } | { "type": "sleep", id: string, durationMs: number, } | { "type": "imageGeneration", id: string, status: string, revisedPrompt: string | null, result: string, savedPath?: AbsolutePathBuf, } | { "type": "enteredReviewMode", id: string, review: string, } | { "type": "exitedReviewMode", id: string, review: string, } | { "type": "contextCompaction", id: string, };

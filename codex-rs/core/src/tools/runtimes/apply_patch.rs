@@ -6,10 +6,10 @@
 use crate::exec::is_likely_sandbox_denied;
 use crate::guardian::GuardianApprovalRequest;
 use crate::guardian::GuardianReviewAction;
-use crate::guardian::review_approval_request;
 use crate::session::turn_context::TurnEnvironment;
 use crate::tools::hook_names::HookToolName;
 use crate::tools::sandboxing::Approvable;
+use crate::tools::sandboxing::ApprovalAction;
 use crate::tools::sandboxing::ApprovalCtx;
 use crate::tools::sandboxing::ExecApprovalRequirement;
 use crate::tools::sandboxing::PermissionRequestPayload;
@@ -78,7 +78,7 @@ impl ApplyPatchRuntime {
     fn build_guardian_review_request(
         req: &ApplyPatchRequest,
         call_id: &str,
-    ) -> std::io::Result<GuardianApprovalRequest> {
+    ) -> std::io::Result<ApprovalAction> {
         // TODO(anp): Remove this conversion once the guardian API supports PathUri.
         let cwd = req.action.cwd.to_abs_path()?;
         let files = req
@@ -86,7 +86,7 @@ impl ApplyPatchRuntime {
             .iter()
             .map(PathUri::to_abs_path)
             .collect::<std::io::Result<Vec<_>>>()?;
-        Ok(GuardianApprovalRequest::ApplyPatch {
+        Ok(ApprovalAction::ApplyPatch {
             id: call_id.to_string(),
             cwd,
             files,
@@ -153,22 +153,7 @@ impl Approvable<ApplyPatchRequest> for ApplyPatchRuntime {
         let retry_reason = ctx.retry_reason.clone();
         let approval_keys = self.approval_keys(req);
         let changes = req.changes.clone();
-        let guardian_review_id = ctx.guardian_review_id.clone();
         Box::pin(async move {
-            if let Some(review_id) = guardian_review_id {
-                let action = match ApplyPatchRuntime::build_guardian_review_request(
-                    req,
-                    ctx.call_id,
-                ) {
-                    Ok(action) => action,
-                    Err(err) => {
-                        tracing::error!(cwd = %req.action.cwd, %err, "guardian apply_patch cwd is not host-native");
-                        return ReviewDecision::Abort;
-                    }
-                };
-                return review_approval_request(session, turn, review_id, action, retry_reason)
-                    .await;
-            }
             if req.permissions_preapproved && retry_reason.is_none() {
                 return ReviewDecision::Approved;
             }
@@ -202,11 +187,18 @@ impl Approvable<ApplyPatchRequest> for ApplyPatchRuntime {
         })
     }
 
+    fn approval_action(
+        &self,
+        req: &ApplyPatchRequest,
+        ctx: &ApprovalCtx<'_>,
+    ) -> std::io::Result<ApprovalAction> {
+        ApplyPatchRuntime::build_guardian_review_request(req, ctx.call_id)
+    }
+
     fn wants_no_sandbox_approval(&self, policy: AskForApproval) -> bool {
         match policy {
             AskForApproval::Never => false,
             AskForApproval::Granular(granular_config) => granular_config.allows_sandbox_approval(),
-            AskForApproval::OnFailure => true,
             AskForApproval::OnRequest => true,
             AskForApproval::UnlessTrusted => true,
         }

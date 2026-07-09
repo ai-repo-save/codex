@@ -10,6 +10,7 @@ use crate::guardian::GuardianReviewAction;
 use crate::guardian::guardian_rejection_message;
 use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
+use crate::guardian::review_approval_request;
 use crate::guardian::routes_approval_action_to_guardian;
 use crate::hook_runtime::ApprovalReviewRouteHookRequest;
 use crate::hook_runtime::run_approval_review_route_hooks;
@@ -77,13 +78,18 @@ impl ToolOrchestrator {
     where
         T: ToolRuntime<Rq, Out>,
     {
-        let network_approval = begin_network_approval(
+        let network_approval = match begin_network_approval(
             &tool_ctx.session,
             &tool_ctx.turn.sub_id,
             managed_network_active,
+            attempt.sandbox,
             tool.network_approval_spec(req, tool_ctx),
         )
-        .await;
+        .await
+        {
+            Ok(network_approval) => network_approval,
+            Err(err) => return (Err(err), None),
+        };
 
         let attempt_tool_ctx = ToolCtx {
             session: tool_ctx.session.clone(),
@@ -107,6 +113,9 @@ impl ToolOrchestrator {
             network_denial_cancellation_token: network_approval
                 .as_ref()
                 .map(ActiveNetworkApproval::cancellation_token),
+            network_proxy: network_approval
+                .as_ref()
+                .map(ActiveNetworkApproval::execution_proxy),
         };
         let run_result = tool
             .run(req, &attempt_with_network_approval, &attempt_tool_ctx)
@@ -303,6 +312,7 @@ impl ToolOrchestrator {
                 .permissions
                 .windows_sandbox_private_desktop,
             network_denial_cancellation_token: None,
+            network_proxy: None,
         };
 
         let initial_attempt_start = Instant::now();
@@ -492,6 +502,7 @@ impl ToolOrchestrator {
                         .permissions
                         .windows_sandbox_private_desktop,
                     network_denial_cancellation_token: None,
+                    network_proxy: None,
                 };
 
                 // Second attempt.
@@ -634,7 +645,26 @@ impl ToolOrchestrator {
         } else {
             ToolDecisionSource::User
         };
-        let decision = tool.start_approval_async(req, approval_ctx).await;
+        let decision = if let Some(review_id) = approval_ctx.guardian_review_id.clone() {
+            match tool.approval_action(req, &approval_ctx) {
+                Ok(action) => {
+                    review_approval_request(
+                        approval_ctx.session,
+                        approval_ctx.turn,
+                        review_id,
+                        action,
+                        approval_ctx.retry_reason.clone(),
+                    )
+                    .await
+                }
+                Err(err) => {
+                    tracing::error!(%err, "failed to build guardian approval action");
+                    ReviewDecision::Abort
+                }
+            }
+        } else {
+            tool.start_approval_async(req, approval_ctx).await
+        };
         let tool_name = flat_tool_name(&tool_ctx.tool_name);
         otel.tool_decision(
             tool_name.as_ref(),

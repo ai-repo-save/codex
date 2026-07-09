@@ -4,9 +4,13 @@ use crate::agent::control::SpawnAgentOptions;
 use crate::agent::next_thread_spawn_depth;
 use crate::agent::role::DEFAULT_ROLE_NAME;
 use crate::agent::role::apply_role_to_config;
+use crate::agent_communication::AgentCommunicationContext;
+use crate::agent_communication::AgentCommunicationKind;
 use crate::tools::handlers::multi_agents_spec::SpawnAgentToolOptions;
 use crate::tools::handlers::multi_agents_spec::create_spawn_agent_tool_v2;
+use crate::tools::handlers::multi_agents_v2::message_tool::message_content;
 use crate::turn_timing::now_unix_timestamp_ms;
+use codex_protocol::AgentPath;
 use codex_tools::ToolSpec;
 
 #[derive(Default)]
@@ -47,18 +51,13 @@ async fn handle_spawn_agent(
     let arguments = function_arguments(payload)?;
     let args: SpawnAgentArgs = parse_arguments(&arguments)?;
     let fork_mode = args.fork_mode()?;
-    let multi_agent_mode = crate::session::multi_agents::effective_multi_agent_mode(
-        turn.multi_agent_version,
-        &turn.session_source,
-        turn.multi_agent_mode,
-    );
     let role_name = args
         .agent_type
         .as_deref()
         .map(str::trim)
         .filter(|role| !role.is_empty());
 
-    let initial_operation = parse_collab_input(Some(args.message), /*items*/ None)?;
+    let message = message_content(args.message)?;
     let session_source = turn.session_source.clone();
     let child_depth = next_thread_spawn_depth(&session_source);
     let mut config =
@@ -106,18 +105,34 @@ async fn handle_spawn_agent(
             "spawned agent is missing a canonical task name".to_string(),
         )
     })?;
-    let spawned_agent = Box::pin(session.services.agent_control.spawn_agent_with_metadata(
-        config,
-        initial_operation,
-        Some(spawn_source),
-        SpawnAgentOptions {
-            fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
-            fork_mode,
-            parent_thread_id: Some(session.thread_id),
-            environments: Some(turn.environments.to_selections()),
-            initial_multi_agent_mode: multi_agent_mode,
-        },
-    ))
+    let author = turn
+        .session_source
+        .get_agent_path()
+        .unwrap_or_else(AgentPath::root);
+    let communication = communication_from_tool_message(
+        author,
+        new_agent_path.clone(),
+        message,
+        turn.config.multi_agent_v2.encrypt_messages,
+    );
+    let context = AgentCommunicationContext::new(AgentCommunicationKind::Spawn, session.thread_id);
+    let spawned_agent = Box::pin(
+        session
+            .services
+            .agent_control
+            .spawn_agent_with_communication(
+                config,
+                communication,
+                context,
+                Some(spawn_source),
+                SpawnAgentOptions {
+                    fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
+                    fork_mode,
+                    parent_thread_id: Some(session.thread_id),
+                    environments: Some(turn.environments.to_selections()),
+                },
+            ),
+    )
     .await
     .map_err(collab_spawn_error)?;
     let new_thread_id = spawned_agent.thread_id;
