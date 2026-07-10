@@ -53,7 +53,11 @@ async fn thread_reset_context_forks_with_context_without_compaction() -> Result<
         COMPACT_PROMPT,
     )?;
 
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build()
+        .await?;
     timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
 
     let source_thread_id = start_thread(&mut mcp).await?;
