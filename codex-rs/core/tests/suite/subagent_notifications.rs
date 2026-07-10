@@ -1173,6 +1173,23 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
 
     let requests = wait_for_requests(&child_reminder_request).await?;
     assert_eq!(requests.len(), 1);
+    let child_request = &requests[0];
+    assert_eq!(
+        strip_metadata_from_json(Value::Array(child_request.inputs_of_type("agent_message"))),
+        Value::Array(vec![json!({
+            "type": "agent_message",
+            "author": "/root",
+            "recipient": "/root/worker",
+            "content": [{
+                "type": "input_text",
+                "text": CHILD_PROMPT,
+            }],
+        })])
+    );
+    assert_ne!(
+        child_request.function_call_output("child-list-agents"),
+        Value::Null
+    );
 
     Ok(())
 }

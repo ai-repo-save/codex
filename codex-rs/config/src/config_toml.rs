@@ -256,7 +256,8 @@ pub struct ConfigToml {
     /// Compact prompt used for history compaction.
     pub compact_prompt: Option<String>,
 
-    /// Reminder shown to root agents as the usable context window runs low.
+    /// Reminder shown to every agent session when enabled and either the remaining context
+    /// percentage or optional used-token threshold is reached.
     #[serde(default)]
     pub context_reminder: Option<ContextReminderConfigToml>,
 

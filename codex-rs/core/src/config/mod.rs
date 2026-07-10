@@ -794,7 +794,8 @@ pub struct Config {
     /// Compact prompt override.
     pub compact_prompt: Option<String>,
 
-    /// Reminder shown to root agents as the usable context window runs low.
+    /// Reminder shown to every agent session when enabled and either the remaining context
+    /// percentage or optional used-token threshold is reached.
     pub context_reminder: ContextReminderConfig,
 
     /// Policy for rejecting context rewinds that reclaim too little context.

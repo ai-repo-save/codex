@@ -136,19 +136,20 @@ history mutation, and event delivery.
 
 ### Context Reminder
 
-Every root and subagent session evaluates its own configurable context reminder after token usage
-is recorded. The reminder triggers when either the remaining context percentage is at or below
-`context_reminder.remaining_percent` or the used token count is at or above the optional
-`context_reminder.used_tokens` threshold. The absolute threshold is disabled when `used_tokens` is
-not configured, preserving the percentage-only default behavior.
+When `context_reminder.enabled` is true, every root and subagent session evaluates its own context
+usage after token accounting. The reminder triggers when either the remaining context percentage
+is at or below `context_reminder.remaining_percent` or the used token count is at or above the
+optional `context_reminder.used_tokens` threshold. Omitting `used_tokens` preserves the
+percentage-only default behavior; setting `enabled` to false disables both threshold checks.
 
-Crossing either threshold appends a hidden developer update containing the rendered
+Crossing either active threshold appends a hidden developer update containing the rendered
 `ContextReminder` fragment. It becomes model-visible on the next inference rather than
 interrupting the response that produced the usage data. The two thresholds share one crossing
 state: a session receives one reminder while either condition remains active, and another reminder
-is permitted only after both conditions return to their safe side. The advisory directs the agent
-to rewind to a suitable context anchor first and to request compaction when rewind cannot reclaim
-enough context; it does not automatically mutate context or block the current task.
+is permitted only after both conditions return to their safe side. The default message directs the
+agent to rewind to a suitable context anchor first and to request compaction when rewind cannot
+reclaim enough context. A configured custom message replaces that guidance. Neither message
+automatically mutates context or blocks the current task.
 
 ## Scoped Memories
 
