@@ -942,6 +942,7 @@ mod tests {
     use super::UpdaterRefreshMode;
     use super::is_bootstrapped_from_states;
     use super::restart_decision;
+    use super::should_stop_updater_for_settings;
     use super::should_reexec_updater;
     use crate::client::ProbeInfo;
 
