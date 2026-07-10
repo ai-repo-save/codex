@@ -960,9 +960,9 @@ mod tests {
     use tempfile::TempDir;
 
     use super::BackendKind;
-    use super::BootstrapUpdaterAction;
     use super::BootstrapOutput;
     use super::BootstrapStatus;
+    use super::BootstrapUpdaterAction;
     use super::Daemon;
     use super::DaemonSettings;
     use super::LifecycleOutput;

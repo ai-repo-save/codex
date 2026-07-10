@@ -3878,8 +3878,7 @@ mod tests {
     fn app_server_daemon_bootstrap_options_include_auto_update_config() {
         assert_eq!(
             app_server_bootstrap_options(
-                /*remote_control_enabled*/ true,
-                /*auto_update_enabled*/ false,
+                /*remote_control_enabled*/ true, /*auto_update_enabled*/ false,
             ),
             AppServerBootstrapOptions {
                 remote_control_enabled: true,
