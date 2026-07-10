@@ -10859,6 +10859,7 @@ async fn context_reminder_config_from_table() -> std::io::Result<()> {
         r#"[context_reminder]
 enabled = false
 remaining_percent = 20
+used_tokens = 250000
 message = "Only {remaining_percent}% remains."
 "#,
     )?;
@@ -10871,10 +10872,54 @@ message = "Only {remaining_percent}% remains."
 
     assert!(!config.context_reminder.enabled);
     assert_eq!(config.context_reminder.remaining_percent, 20);
+    assert_eq!(config.context_reminder.used_tokens, Some(250_000));
     assert_eq!(
         config.context_reminder.message,
         "Only {remaining_percent}% remains."
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn context_reminder_used_tokens_defaults_to_disabled() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+
+    assert_eq!(config.context_reminder.used_tokens, None);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn context_reminder_rejects_non_positive_used_tokens() -> std::io::Result<()> {
+    for value in [-1, 0] {
+        let codex_home = TempDir::new()?;
+        std::fs::write(
+            codex_home.path().join(CONFIG_TOML_FILE),
+            format!(
+                r#"[context_reminder]
+used_tokens = {value}
+"#
+            ),
+        )?;
+
+        let err = ConfigBuilder::without_managed_config_for_tests()
+            .codex_home(codex_home.path().to_path_buf())
+            .fallback_cwd(Some(codex_home.path().to_path_buf()))
+            .build()
+            .await
+            .expect_err("non-positive context reminder used tokens should fail");
+        assert_eq!(
+            err.to_string(),
+            "context_reminder.used_tokens must be greater than 0"
+        );
+    }
 
     Ok(())
 }

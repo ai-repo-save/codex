@@ -134,14 +134,21 @@ the actual compaction, anchor persistence, listing, and rewind side effects afte
 has been collected. This separation is required for correct response retention, tool-call ordering,
 history mutation, and event delivery.
 
-### Root Context Reminder
+### Context Reminder
 
-The configurable context reminder is root-only. After token usage is recorded, crossing the
-configured remaining-context threshold appends a hidden developer update containing the rendered
-`RootContextReminder` fragment. The reminder becomes model-visible on the next inference rather
-than interrupting the response that produced the usage data. Threshold state suppresses repeated
-delivery while usage remains on the same side of the threshold, and non-root agent sessions never
-receive the reminder.
+Every root and subagent session evaluates its own configurable context reminder after token usage
+is recorded. The reminder triggers when either the remaining context percentage is at or below
+`context_reminder.remaining_percent` or the used token count is at or above the optional
+`context_reminder.used_tokens` threshold. The absolute threshold is disabled when `used_tokens` is
+not configured, preserving the percentage-only default behavior.
+
+Crossing either threshold appends a hidden developer update containing the rendered
+`ContextReminder` fragment. It becomes model-visible on the next inference rather than
+interrupting the response that produced the usage data. The two thresholds share one crossing
+state: a session receives one reminder while either condition remains active, and another reminder
+is permitted only after both conditions return to their safe side. The advisory directs the agent
+to rewind to a suitable context anchor first and to request compaction when rewind cannot reclaim
+enough context; it does not automatically mutate context or block the current task.
 
 ## Scoped Memories
 
@@ -259,7 +266,7 @@ Validate context lifecycle and scoped memories:
 ```bash
 uv run --project scripts python scripts/remote/just.py test -p codex-core context_anchor
 uv run --project scripts python scripts/remote/just.py test -p codex-core request_context_compaction
-uv run --project scripts python scripts/remote/just.py test -p codex-core root_context_reminder
+uv run --project scripts python scripts/remote/just.py test -p codex-core context_reminder
 uv run --project scripts python scripts/remote/just.py test -p codex-core compact_remote
 uv run --project scripts python scripts/remote/just.py test -p codex-core tool_harness
 uv run --project scripts python scripts/remote/just.py test -p codex-memories-extension

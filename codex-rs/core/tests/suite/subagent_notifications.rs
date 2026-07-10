@@ -17,6 +17,7 @@ use core_test_support::hooks::trust_discovered_hooks;
 use core_test_support::responses::ResponsesRequest;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
+use core_test_support::responses::ev_completed_with_tokens;
 use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_function_call_with_namespace;
 use core_test_support::responses::ev_response_created;
@@ -65,6 +66,7 @@ const ROLE_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::High;
 const SUBAGENT_START_CONTEXT: &str = "subagent start context reaches child";
 const SUBAGENT_STOP_CONTINUATION: &str = "continue only the child";
 const INTERNAL_SUBAGENT_PROMPT: &str = "internal subagent: review";
+const CHILD_CONTEXT_REMINDER_MESSAGE: &str = "child context threshold reached";
 
 fn body_contains(req: &wiremock::Request, text: &str) -> bool {
     decoded_body(req)
@@ -1085,6 +1087,92 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
             .any(|text| text.contains(CHILD_PROMPT)),
         "spawned child's initial task should not be delivered as user input"
     );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let spawn_args = serde_json::to_string(&json!({
+        "message": CHILD_PROMPT,
+        "task_name": "worker",
+    }))?;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, TURN_1_PROMPT),
+        sse(vec![
+            ev_response_created("resp-parent-reminder-1"),
+            ev_function_call_with_namespace(
+                SPAWN_CALL_ID,
+                MULTI_AGENT_V2_NAMESPACE,
+                "spawn_agent",
+                &spawn_args,
+            ),
+            ev_completed("resp-parent-reminder-1"),
+        ]),
+    )
+    .await;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| {
+            request_has_input_type(req, "agent_message") && body_contains(req, CHILD_PROMPT)
+        },
+        sse(vec![
+            ev_response_created("resp-child-reminder-1"),
+            ev_function_call_with_namespace(
+                "child-list-agents",
+                MULTI_AGENT_V2_NAMESPACE,
+                "list_agents",
+                "{}",
+            ),
+            ev_completed_with_tokens("resp-child-reminder-1", 2),
+        ]),
+    )
+    .await;
+    let child_reminder_request = mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, CHILD_CONTEXT_REMINDER_MESSAGE),
+        sse(vec![
+            ev_response_created("resp-child-reminder-2"),
+            ev_assistant_message("msg-child-reminder-2", "child done"),
+            ev_completed("resp-child-reminder-2"),
+        ]),
+    )
+    .await;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, SPAWN_CALL_ID),
+        sse(vec![
+            ev_response_created("resp-parent-reminder-2"),
+            ev_assistant_message("msg-parent-reminder-2", "parent done"),
+            ev_completed("resp-parent-reminder-2"),
+        ]),
+    )
+    .await;
+
+    let test = test_codex()
+        .with_config(|config| {
+            config
+                .features
+                .enable(Feature::Collab)
+                .expect("test config should allow feature update");
+            config
+                .features
+                .enable(Feature::MultiAgentV2)
+                .expect("test config should allow feature update");
+            config.context_reminder.used_tokens = Some(1);
+            config.context_reminder.message = CHILD_CONTEXT_REMINDER_MESSAGE.to_string();
+        })
+        .build(&server)
+        .await?;
+
+    test.submit_turn(TURN_1_PROMPT).await?;
+
+    let requests = wait_for_requests(&child_reminder_request).await?;
+    assert_eq!(requests.len(), 1);
 
     Ok(())
 }

@@ -69,6 +69,8 @@ pub struct ContextReminderConfigToml {
     pub enabled: Option<bool>,
     #[schemars(range(min = 0, max = 100))]
     pub remaining_percent: Option<i64>,
+    #[schemars(range(min = 1))]
+    pub used_tokens: Option<i64>,
     #[schemars(length(min = 1, max = 4096))]
     pub message: Option<String>,
 }
@@ -78,6 +80,7 @@ impl Default for ContextReminderConfigToml {
         Self {
             enabled: Some(true),
             remaining_percent: Some(DEFAULT_CONTEXT_REMINDER_REMAINING_PERCENT),
+            used_tokens: None,
             message: None,
         }
     }

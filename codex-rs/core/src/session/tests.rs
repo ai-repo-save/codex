@@ -7,7 +7,7 @@ use crate::config::ConfigOverrides;
 use crate::config::DEFAULT_CONTEXT_REMINDER_MESSAGE;
 use crate::config::test_config;
 use crate::context::ContextualUserFragment;
-use crate::context::RootContextReminder;
+use crate::context::ContextReminder;
 use crate::context::SubagentIdentity;
 use crate::context::TurnAborted;
 use crate::environment_selection::ThreadEnvironments;
@@ -2480,24 +2480,30 @@ fn configure_context_reminder_test_window(turn_context: &mut TurnContext) {
     turn_context.model_info.effective_context_window_percent = 100;
 }
 
-async fn root_context_reminder_texts(session: &Session, turn_context: &TurnContext) -> Vec<String> {
+async fn context_reminder_texts(session: &Session, turn_context: &TurnContext) -> Vec<String> {
     let prompt_items = session
         .clone_history()
         .await
         .for_prompt(&turn_context.model_info.input_modalities);
     developer_input_texts(&prompt_items)
         .into_iter()
-        .filter(|text| text.contains(RootContextReminder::type_markers().0))
+        .filter(|text| text.contains(ContextReminder::type_markers().0))
         .map(str::to_string)
         .collect()
 }
 
-fn default_root_context_reminder(remaining_percent: i64) -> String {
-    RootContextReminder::new(remaining_percent, DEFAULT_CONTEXT_REMINDER_MESSAGE).render()
+fn default_context_reminder(remaining_percent: Option<i64>, used_tokens: i64) -> String {
+    ContextReminder::new(
+        remaining_percent,
+        used_tokens,
+        None,
+        DEFAULT_CONTEXT_REMINDER_MESSAGE,
+    )
+    .render()
 }
 
 #[tokio::test]
-async fn record_token_usage_info_adds_root_context_reminder_when_threshold_crosses() {
+async fn record_token_usage_info_adds_context_reminder_when_percent_threshold_crosses() {
     let (session, mut turn_context) = make_session_and_context().await;
     configure_context_reminder_test_window(&mut turn_context);
 
@@ -2507,7 +2513,7 @@ async fn record_token_usage_info_adds_root_context_reminder_when_threshold_cross
         .expect("record token usage");
     assert_eq!(
         Vec::<String>::new(),
-        root_context_reminder_texts(&session, &turn_context).await
+        context_reminder_texts(&session, &turn_context).await
     );
 
     session
@@ -2516,20 +2522,21 @@ async fn record_token_usage_info_adds_root_context_reminder_when_threshold_cross
         .expect("record token usage");
 
     assert_eq!(
-        vec![default_root_context_reminder(15)],
-        root_context_reminder_texts(&session, &turn_context).await
+        vec![default_context_reminder(Some(15), 86_800)],
+        context_reminder_texts(&session, &turn_context).await
     );
 }
 
 #[tokio::test]
-async fn record_token_usage_info_renders_configured_root_context_reminder_message() {
+async fn record_token_usage_info_renders_all_configured_context_reminder_values() {
     const CONTEXT_REMINDER_MESSAGE: &str =
-        "Only {remaining_percent}% context remains. Save state first.";
+        "remaining={remaining_percent}; used={used_tokens}; threshold={used_tokens_threshold}";
     let (session, mut turn_context) = make_session_and_context().await;
     configure_context_reminder_test_window(&mut turn_context);
     let codex_home = tempfile::tempdir().expect("create temp dir");
     let mut config = build_test_config(codex_home.path()).await;
     config.context_reminder.message = CONTEXT_REMINDER_MESSAGE.to_string();
+    config.context_reminder.used_tokens = Some(80_000);
     turn_context.config = Arc::new(config);
 
     session
@@ -2538,42 +2545,56 @@ async fn record_token_usage_info_renders_configured_root_context_reminder_messag
         .expect("record token usage");
 
     assert_eq!(
-        vec!["<root_context_reminder>\nOnly 15% context remains. Save state first.\n</root_context_reminder>".to_string()],
-        root_context_reminder_texts(&session, &turn_context).await
+        vec![ContextReminder::new(Some(15), 86_800, Some(80_000), CONTEXT_REMINDER_MESSAGE).render()],
+        context_reminder_texts(&session, &turn_context).await
     );
 }
 
 #[tokio::test]
-async fn record_token_usage_info_does_not_repeat_root_context_reminder_while_low() {
+async fn record_token_usage_info_uses_one_crossing_for_percent_or_absolute_thresholds() {
     let (session, mut turn_context) = make_session_and_context().await;
     configure_context_reminder_test_window(&mut turn_context);
+    let codex_home = tempfile::tempdir().expect("create temp dir");
+    let mut config = build_test_config(codex_home.path()).await;
+    config.context_reminder.used_tokens = Some(80_000);
+    turn_context.config = Arc::new(config);
 
     session
-        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
+        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(80_000)))
         .await
         .expect("record token usage");
     session
-        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(87_680)))
+        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
         .await
         .expect("record token usage");
 
     assert_eq!(
-        vec![default_root_context_reminder(15)],
-        root_context_reminder_texts(&session, &turn_context).await
+        vec![ContextReminder::new(
+            Some(23),
+            80_000,
+            Some(80_000),
+            DEFAULT_CONTEXT_REMINDER_MESSAGE,
+        )
+        .render()],
+        context_reminder_texts(&session, &turn_context).await
     );
 }
 
 #[tokio::test]
-async fn record_token_usage_info_repeats_root_context_reminder_after_recovery() {
+async fn record_token_usage_info_repeats_after_both_thresholds_recover() {
     let (session, mut turn_context) = make_session_and_context().await;
     configure_context_reminder_test_window(&mut turn_context);
+    let codex_home = tempfile::tempdir().expect("create temp dir");
+    let mut config = build_test_config(codex_home.path()).await;
+    config.context_reminder.used_tokens = Some(86_000);
+    turn_context.config = Arc::new(config);
 
     session
         .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
         .await
         .expect("record token usage");
     session
-        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(85_000)))
+        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(84_000)))
         .await
         .expect("record token usage");
     session
@@ -2583,15 +2604,27 @@ async fn record_token_usage_info_repeats_root_context_reminder_after_recovery() 
 
     assert_eq!(
         vec![
-            default_root_context_reminder(15),
-            default_root_context_reminder(15),
+            ContextReminder::new(
+                Some(15),
+                86_800,
+                Some(86_000),
+                DEFAULT_CONTEXT_REMINDER_MESSAGE,
+            )
+            .render(),
+            ContextReminder::new(
+                Some(15),
+                86_800,
+                Some(86_000),
+                DEFAULT_CONTEXT_REMINDER_MESSAGE,
+            )
+            .render(),
         ],
-        root_context_reminder_texts(&session, &turn_context).await
+        context_reminder_texts(&session, &turn_context).await
     );
 }
 
 #[tokio::test]
-async fn record_token_usage_info_omits_root_context_reminder_for_subagents_and_disabled_config() {
+async fn record_token_usage_info_adds_context_reminder_for_subagents_but_not_when_disabled() {
     let (subagent_session, mut subagent_turn_context) = make_session_and_context().await;
     configure_context_reminder_test_window(&mut subagent_turn_context);
     let subagent_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
@@ -2617,8 +2650,8 @@ async fn record_token_usage_info_omits_root_context_reminder_for_subagents_and_d
         .await
         .expect("record token usage");
     assert_eq!(
-        Vec::<String>::new(),
-        root_context_reminder_texts(&subagent_session, &subagent_turn_context).await
+        vec![default_context_reminder(Some(15), 86_800)],
+        context_reminder_texts(&subagent_session, &subagent_turn_context).await
     );
 
     let (disabled_session, mut disabled_turn_context) = make_session_and_context().await;
@@ -2637,7 +2670,35 @@ async fn record_token_usage_info_omits_root_context_reminder_for_subagents_and_d
         .expect("record token usage");
     assert_eq!(
         Vec::<String>::new(),
-        root_context_reminder_texts(&disabled_session, &disabled_turn_context).await
+        context_reminder_texts(&disabled_session, &disabled_turn_context).await
+    );
+}
+
+#[tokio::test]
+async fn record_token_usage_info_uses_absolute_threshold_without_known_context_window() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    turn_context.model_info.context_window = None;
+    turn_context.model_info.max_context_window = None;
+    let codex_home = tempfile::tempdir().expect("create temp dir");
+    let mut config = build_test_config(codex_home.path()).await;
+    config.model_context_window = None;
+    config.context_reminder.used_tokens = Some(80_000);
+    turn_context.config = Arc::new(config);
+
+    session
+        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(80_000)))
+        .await
+        .expect("record token usage");
+
+    assert_eq!(
+        vec![ContextReminder::new(
+            None,
+            80_000,
+            Some(80_000),
+            DEFAULT_CONTEXT_REMINDER_MESSAGE,
+        )
+        .render()],
+        context_reminder_texts(&session, &turn_context).await
     );
 }
 

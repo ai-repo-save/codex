@@ -196,7 +196,7 @@ const DEFAULT_IGNORE_LARGE_UNTRACKED_DIRS: i64 = 200;
 const DEFAULT_IGNORE_LARGE_UNTRACKED_FILES: i64 = 10 * 1024 * 1024;
 const MAX_GOAL_PROMPT_OVERRIDE_BYTES: usize = 16 * 1024;
 const MAX_AUTO_REVIEW_PROMPT_OVERRIDE_BYTES: usize = 16 * 1024;
-pub(crate) const DEFAULT_CONTEXT_REMINDER_MESSAGE: &str = "Context remaining is about {remaining_percent}%. Before continuing substantial work, call `request_context_compaction` and preserve the goal, verified state, current changes, and next step.";
+pub(crate) const DEFAULT_CONTEXT_REMINDER_MESSAGE: &str = "Context usage has reached a configured reminder threshold (about {used_tokens} tokens used, {remaining_percent}% remaining). Before continuing substantial work, call `rewind_context_to_anchor` with a suitable saved anchor when it would reclaim useful context. If no suitable anchor is available, call `request_context_compaction`. Preserve the goal, verified state, current changes, and next step.";
 
 /// Compatibility-only config retained so legacy `ghost_snapshot` settings
 /// continue to load even though snapshots are no longer produced.
@@ -1239,6 +1239,7 @@ impl Default for CurrentTimeReminderConfig {
 pub struct ContextReminderConfig {
     pub enabled: bool,
     pub remaining_percent: i64,
+    pub used_tokens: Option<i64>,
     pub message: String,
 }
 
@@ -1247,6 +1248,7 @@ impl Default for ContextReminderConfig {
         Self {
             enabled: true,
             remaining_percent: DEFAULT_CONTEXT_REMINDER_REMAINING_PERCENT,
+            used_tokens: None,
             message: DEFAULT_CONTEXT_REMINDER_MESSAGE.to_string(),
         }
     }
@@ -2641,6 +2643,7 @@ fn resolve_context_reminder_config(config_toml: &ConfigToml) -> ContextReminderC
         remaining_percent: base
             .and_then(|config| config.remaining_percent)
             .unwrap_or(default.remaining_percent),
+        used_tokens: base.and_then(|config| config.used_tokens),
         message: base
             .and_then(|config| config.message.as_ref())
             .cloned()
@@ -3145,6 +3148,17 @@ fn validate_context_reminder_remaining_percent(value: i64) -> std::io::Result<()
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!("{LABEL} must be at most 100"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_context_reminder_used_tokens(value: Option<i64>) -> std::io::Result<()> {
+    const LABEL: &str = "context_reminder.used_tokens";
+    if value.is_some_and(|value| value <= 0) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{LABEL} must be greater than 0"),
         ));
     }
     Ok(())
@@ -3757,6 +3771,7 @@ impl Config {
         }
         validate_multi_agent_v2_tool_namespace(multi_agent_v2.tool_namespace.as_deref())?;
         validate_context_reminder_remaining_percent(context_reminder.remaining_percent)?;
+        validate_context_reminder_used_tokens(context_reminder.used_tokens)?;
         validate_context_reminder_message(&context_reminder.message)?;
         validate_context_rewind_min_reclaim_percent(context_rewind.min_reclaim_percent)?;
         let agent_max_threads = cfg.agents.as_ref().and_then(|agents| agents.max_threads);

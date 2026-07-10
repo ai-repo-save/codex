@@ -31,7 +31,7 @@ use crate::context::NetworkRuleSaved;
 use crate::context::PermissionsInstructions;
 use crate::context::PersonalitySpecInstructions;
 use crate::context::RecommendedPluginsInstructions;
-use crate::context::RootContextReminder;
+use crate::context::ContextReminder;
 use crate::context::SubagentIdentity;
 use crate::context::world_state::WorldState;
 use crate::current_time::TimeProvider;
@@ -998,22 +998,40 @@ async fn thread_title_from_thread_store(
     (!title.is_empty() && thread.preview.trim() != title).then(|| title.to_string())
 }
 
-fn root_context_reminder_remaining_percent(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ContextReminderStatus {
+    remaining_percent: Option<i64>,
+    used_tokens: i64,
+    percent_threshold_active: bool,
+    used_tokens_threshold_active: bool,
+}
+
+fn context_reminder_status(
     turn_context: &TurnContext,
     token_info: &TokenUsageInfo,
-) -> Option<i64> {
-    if !turn_context.config.context_reminder.enabled
-        || turn_context.session_source.is_non_root_agent()
-    {
-        return None;
-    }
-
-    let context_window = turn_context.model_context_window()?;
-    Some(
+) -> ContextReminderStatus {
+    let remaining_percent = turn_context.model_context_window().map(|context_window| {
         token_info
             .last_token_usage
-            .percent_of_context_window_remaining(context_window),
-    )
+            .percent_of_context_window_remaining(context_window)
+    });
+    let used_tokens = token_info.last_token_usage.total_tokens;
+    let percent_threshold_active = turn_context.config.context_reminder.enabled
+        && remaining_percent
+            .is_some_and(|value| value <= turn_context.config.context_reminder.remaining_percent);
+    let used_tokens_threshold_active = turn_context.config.context_reminder.enabled
+        && turn_context
+            .config
+            .context_reminder
+            .used_tokens
+            .is_some_and(|threshold| used_tokens >= threshold);
+
+    ContextReminderStatus {
+        remaining_percent,
+        used_tokens,
+        percent_threshold_active,
+        used_tokens_threshold_active,
+    }
 }
 
 fn push_prompt_fragment(
@@ -3786,7 +3804,7 @@ impl Session {
         token_usage: Option<&TokenUsage>,
     ) -> CodexResult<()> {
         if let Some(token_usage) = token_usage {
-            let (token_info, context_reminder_remaining_percent) = {
+            let (token_info, context_reminder_status) = {
                 let mut state = self.state.lock().await;
                 state
                     .update_token_info_from_usage(token_usage, turn_context.model_context_window());
@@ -3797,22 +3815,20 @@ impl Session {
                     state.ensure_auto_compact_window_server_prefill_from_usage(token_usage);
                 }
                 let token_info = state.token_info();
-                let context_reminder_remaining_percent = token_info
+                let context_reminder_status = token_info
                     .as_ref()
-                    .and_then(|token_info| {
-                        root_context_reminder_remaining_percent(turn_context, token_info)
-                    })
-                    .filter(|remaining_percent| {
+                    .map(|token_info| context_reminder_status(turn_context, token_info))
+                    .filter(|status| {
                         state.record_context_reminder_threshold_status(
-                            *remaining_percent,
-                            turn_context.config.context_reminder.remaining_percent,
+                            status.percent_threshold_active,
+                            status.used_tokens_threshold_active,
                         )
                     });
-                (token_info, context_reminder_remaining_percent)
+                (token_info, context_reminder_status)
             };
             let budget_result = self.record_rollout_budget_usage(token_usage);
-            if let Some(remaining_percent) = context_reminder_remaining_percent {
-                self.record_root_context_reminder(turn_context, remaining_percent)
+            if let Some(status) = context_reminder_status {
+                self.record_context_reminder(turn_context, status)
                     .await;
             }
             if let Some(token_info) = token_info.as_ref() {
@@ -3832,15 +3848,17 @@ impl Session {
         Ok(())
     }
 
-    async fn record_root_context_reminder(
+    async fn record_context_reminder(
         &self,
         turn_context: &TurnContext,
-        remaining_percent: i64,
+        status: ContextReminderStatus,
     ) {
         let Some(reminder_message) =
             crate::context_manager::updates::build_developer_update_item(vec![
-                RootContextReminder::new(
-                    remaining_percent,
+                ContextReminder::new(
+                    status.remaining_percent,
+                    status.used_tokens,
+                    turn_context.config.context_reminder.used_tokens,
                     &turn_context.config.context_reminder.message,
                 )
                 .render(),
