@@ -752,8 +752,9 @@ impl Daemon {
                 });
             }
         };
-        let config: AppServerDaemonConfig = toml::from_str(&contents)
-            .with_context(|| format!("failed to parse config.toml {}", self.config_file.display()))?;
+        let config: AppServerDaemonConfig = toml::from_str(&contents).with_context(|| {
+            format!("failed to parse config.toml {}", self.config_file.display())
+        })?;
         Ok(config.app_server_auto_update.unwrap_or(true))
     }
 
@@ -1073,14 +1074,10 @@ mod tests {
         };
 
         assert!(is_bootstrapped_from_states(
-            &settings,
-            /*updater_running*/ false,
-            /*app_server_running*/ true,
+            &settings, /*updater_running*/ false, /*app_server_running*/ true,
         ));
         assert!(!is_bootstrapped_from_states(
-            &settings,
-            /*updater_running*/ true,
-            /*app_server_running*/ false,
+            &settings, /*updater_running*/ true, /*app_server_running*/ false,
         ));
     }
 
@@ -1092,14 +1089,10 @@ mod tests {
         };
 
         assert!(is_bootstrapped_from_states(
-            &settings,
-            /*updater_running*/ true,
-            /*app_server_running*/ false,
+            &settings, /*updater_running*/ true, /*app_server_running*/ false,
         ));
         assert!(!is_bootstrapped_from_states(
-            &settings,
-            /*updater_running*/ false,
-            /*app_server_running*/ true,
+            &settings, /*updater_running*/ false, /*app_server_running*/ true,
         ));
     }
 
@@ -1108,10 +1101,12 @@ mod tests {
         let temp_dir = TempDir::new().expect("temp dir");
         let daemon = test_daemon(temp_dir.path());
 
-        assert!(daemon
-            .load_app_server_auto_update_enabled()
-            .await
-            .expect("load daemon config"));
+        assert!(
+            daemon
+                .load_app_server_auto_update_enabled()
+                .await
+                .expect("load daemon config")
+        );
     }
 
     #[tokio::test]
@@ -1122,10 +1117,12 @@ mod tests {
             .await
             .expect("write config");
 
-        assert!(!daemon
-            .load_app_server_auto_update_enabled()
-            .await
-            .expect("load daemon config"));
+        assert!(
+            !daemon
+                .load_app_server_auto_update_enabled()
+                .await
+                .expect("load daemon config")
+        );
     }
 
     #[tokio::test]
