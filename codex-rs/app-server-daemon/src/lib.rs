@@ -916,6 +916,7 @@ mod tests {
     use super::BootstrapOutput;
     use super::BootstrapStatus;
     use super::Daemon;
+    use super::DaemonSettings;
     use super::LifecycleOutput;
     use super::LifecycleStatus;
     use super::RemoteControlStartOutput;
@@ -924,6 +925,7 @@ mod tests {
     use super::RestartIfRunningOutcome;
     use super::RestartMode;
     use super::UpdaterRefreshMode;
+    use super::is_bootstrapped_from_states;
     use super::restart_decision;
     use super::should_reexec_updater;
     use crate::client::ProbeInfo;
