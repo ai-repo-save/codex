@@ -515,7 +515,18 @@ impl Daemon {
 
     async fn ensure_remote_control_started(&self) -> Result<RemoteControlStartOutput> {
         let _operation_lock = self.acquire_operation_lock().await?;
-        let settings = self.load_settings().await?;
+        let mut settings = self.load_settings().await?;
+        let auto_update_enabled = self.load_app_server_auto_update_enabled().await?;
+        if settings.auto_update_enabled != auto_update_enabled {
+            settings.auto_update_enabled = auto_update_enabled;
+            settings.save(&self.settings_file).await?;
+        }
+        if should_stop_updater_for_settings(&settings, /*updater_running*/ true) {
+            let updater = backend::pid_update_loop_backend(self.backend_paths(&settings));
+            if updater.is_starting_or_running().await? {
+                updater.stop().await?;
+            }
+        }
         if self.is_bootstrapped(&settings).await? {
             let _ = self
                 .set_remote_control_locked(RemoteControlMode::Enabled)
@@ -527,7 +538,7 @@ impl Daemon {
         let output = self
             .bootstrap_locked(BootstrapOptions {
                 remote_control_enabled: true,
-                auto_update_enabled: self.load_app_server_auto_update_enabled().await?,
+                auto_update_enabled: settings.auto_update_enabled,
             })
             .await?;
         Ok(RemoteControlStartOutput::Bootstrap(output))
@@ -860,6 +871,10 @@ fn is_bootstrapped_from_states(
     }
 }
 
+fn should_stop_updater_for_settings(settings: &DaemonSettings, updater_running: bool) -> bool {
+    !settings.auto_update_enabled && updater_running
+}
+
 #[cfg(unix)]
 fn restart_decision(
     mode: RestartMode,
@@ -1095,6 +1110,36 @@ mod tests {
         ));
         assert!(!is_bootstrapped_from_states(
             &settings, /*updater_running*/ false, /*app_server_running*/ true,
+        ));
+    }
+
+    #[test]
+    fn disabled_auto_update_stops_running_updater() {
+        let settings = DaemonSettings {
+            remote_control_enabled: true,
+            auto_update_enabled: false,
+        };
+
+        assert!(should_stop_updater_for_settings(
+            &settings,
+            /*updater_running*/ true
+        ));
+        assert!(!should_stop_updater_for_settings(
+            &settings,
+            /*updater_running*/ false
+        ));
+    }
+
+    #[test]
+    fn enabled_auto_update_keeps_running_updater() {
+        let settings = DaemonSettings {
+            remote_control_enabled: true,
+            auto_update_enabled: true,
+        };
+
+        assert!(!should_stop_updater_for_settings(
+            &settings,
+            /*updater_running*/ true
         ));
     }
 

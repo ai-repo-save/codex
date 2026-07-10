@@ -92,9 +92,13 @@ async fn update_once(
     running_updater_identity: &ExecutableIdentity,
     terminate: &mut Signal,
 ) -> Result<UpdateLoopControl> {
+    let daemon = Daemon::from_environment()?;
+    if !daemon.load_app_server_auto_update_enabled().await? {
+        return Ok(UpdateLoopControl::Stop);
+    }
+
     install_latest_standalone().await?;
 
-    let daemon = Daemon::from_environment()?;
     let managed_codex_bin = resolved_managed_codex_bin(&daemon.managed_codex_bin).await?;
     let managed_identity = executable_identity(&managed_codex_bin).await?;
     let (restart_mode, updater_refresh_mode) =
