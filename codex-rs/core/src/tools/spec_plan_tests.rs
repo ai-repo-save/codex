@@ -457,8 +457,8 @@ fn apply_patch_accepts_environment_id(spec: &ToolSpec) -> bool {
 #[tokio::test]
 async fn get_context_usage_tool_is_available_by_default() {
     let plan = probe(|_| {}).await;
-    plan.assert_visible_contains(&["get_context_usage"]);
-    plan.assert_registered_contains(&["get_context_usage"]);
+    plan.assert_visible_contains(&["get_account_rate_limits", "get_context_usage"]);
+    plan.assert_registered_contains(&["get_account_rate_limits", "get_context_usage"]);
 }
 
 #[tokio::test]

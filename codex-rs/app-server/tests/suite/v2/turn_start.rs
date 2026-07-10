@@ -3897,10 +3897,12 @@ async fn direct_input_to_multi_agent_v2_subagent_is_rejected() -> Result<()> {
                 id,
                 kind: SubAgentActivityKind::Started,
                 agent_thread_id,
+                model,
                 ..
             } = completed.item
                 && id == SPAWN_CALL_ID
             {
+                assert_eq!(model.as_deref(), Some("gpt-5.4"));
                 return Ok::<String, anyhow::Error>(agent_thread_id);
             }
         }

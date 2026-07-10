@@ -165,3 +165,39 @@ fn agent_status_summarizes_skill_load_items() {
     assert!(!rendered.contains("/skills/code-review"));
     assert!(!rendered.contains("not found"));
 }
+
+#[test]
+fn agent_status_includes_started_agent_model() {
+    let mut store = ThreadEventStore::new(/*capacity*/ 8);
+    store.push_notification(ServerNotification::ItemCompleted(
+        ItemCompletedNotification {
+            item: ThreadItem::SubAgentActivity {
+                id: "activity-1".to_string(),
+                kind: SubAgentActivityKind::Started,
+                agent_thread_id: "thread-child".to_string(),
+                agent_path: "/root/reviewer".to_string(),
+                model: Some("gpt-5.6".to_string()),
+            },
+            thread_id: "thread-child".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 1,
+        },
+    ));
+
+    let preview = AgentStatusThreadPreview::from_store("/root/reviewer".to_string(), &store);
+    let cell = AgentStatusHistoryCell::new(vec![preview]);
+    let rendered = cell
+        .display_lines(/*width*/ 80)
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    insta::assert_snapshot!(rendered, @r###"
+    /agent
+    Sub-agents running
+
+      • `/root/reviewer`
+        Started /root/reviewer (gpt-5.6)
+    "###);
+}

@@ -176,14 +176,29 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
             return Some(action.to_string());
         }
         ThreadItem::SubAgentActivity {
-            kind, agent_path, ..
+            kind,
+            agent_path,
+            model,
+            ..
         } => {
-            let action = match kind {
-                SubAgentActivityKind::Started => "Started",
-                SubAgentActivityKind::Interacted => "Contacted",
-                SubAgentActivityKind::Interrupted => "Interrupted",
+            let summary = match kind {
+                SubAgentActivityKind::Started => {
+                    let mut summary = format!("Started {agent_path}");
+                    if let Some(model) = model.as_deref().map(str::trim).filter(|model| !model.is_empty())
+                    {
+                        summary.push_str(&format!(" ({model})"));
+                    }
+                    summary
+                }
+                SubAgentActivityKind::Interacted => "Contacted".to_string(),
+                SubAgentActivityKind::Interrupted => "Interrupted".to_string(),
             };
-            return bounded_summary(&format!("{action} {agent_path}"));
+            return match kind {
+                SubAgentActivityKind::Started => bounded_summary(&summary),
+                SubAgentActivityKind::Interacted | SubAgentActivityKind::Interrupted => {
+                    bounded_summary(&format!("{summary} {agent_path}"))
+                }
+            };
         }
         ThreadItem::WebSearch(item) => {
             return bounded_summary(&format!("Web search: {}", item.query));

@@ -976,6 +976,7 @@ impl ThreadHistoryBuilder {
             kind: payload.kind.into(),
             agent_thread_id: payload.agent_thread_id.to_string(),
             agent_path: String::from(payload.agent_path.clone()),
+            model: payload.model.clone(),
         });
     }
 
@@ -1673,6 +1674,7 @@ impl From<&PendingTurn> for Turn {
 mod tests {
     use super::*;
     use crate::protocol::v2::CommandExecutionSource;
+    use crate::protocol::v2::SubAgentActivityKind;
     use codex_extension_items::ExtensionItem as CoreExtensionItem;
     use codex_protocol::ThreadId;
     use codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem as CoreDynamicToolCallOutputContentItem;
@@ -1708,6 +1710,8 @@ mod tests {
     use codex_protocol::protocol::McpToolCallEndEvent;
     use codex_protocol::protocol::PatchApplyBeginEvent;
     use codex_protocol::protocol::ReviewTarget;
+    use codex_protocol::protocol::SubAgentActivityEvent;
+    use codex_protocol::protocol::SubAgentActivityKind as CoreSubAgentActivityKind;
     use codex_protocol::protocol::ThreadRolledBackEvent;
     use codex_protocol::protocol::TurnAbortReason;
     use codex_protocol::protocol::TurnAbortedEvent;
@@ -3966,6 +3970,46 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
+            }
+        );
+    }
+
+    #[test]
+    fn reconstructs_sub_agent_activity_with_model() {
+        let agent_thread_id = ThreadId::new();
+        let events = vec![
+            EventMsg::UserMessage(UserMessageEvent {
+                client_id: None,
+                message: "spawn agent".into(),
+                images: None,
+                text_elements: Vec::new(),
+                local_images: Vec::new(),
+                ..Default::default()
+            }),
+            EventMsg::SubAgentActivity(SubAgentActivityEvent {
+                event_id: "activity-1".into(),
+                occurred_at_ms: 42,
+                agent_thread_id,
+                agent_path: codex_protocol::AgentPath::try_from("/root/worker")
+                    .expect("valid agent path"),
+                kind: CoreSubAgentActivityKind::Started,
+                model: Some("gpt-5.4".into()),
+            }),
+        ];
+
+        let items = events
+            .into_iter()
+            .map(RolloutItem::EventMsg)
+            .collect::<Vec<_>>();
+        let turns = build_turns_from_rollout_items(&items);
+        assert_eq!(
+            turns[0].items[1],
+            ThreadItem::SubAgentActivity {
+                id: "activity-1".into(),
+                kind: SubAgentActivityKind::Started,
+                agent_thread_id: agent_thread_id.to_string(),
+                agent_path: "/root/worker".into(),
+                model: Some("gpt-5.4".into()),
             }
         );
     }

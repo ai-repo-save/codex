@@ -184,6 +184,7 @@ pub fn item_event_to_server_notification(
                 kind: activity.kind.into(),
                 agent_thread_id: activity.agent_thread_id.to_string(),
                 agent_path: String::from(activity.agent_path),
+                model: activity.model,
             };
             ServerNotification::ItemCompleted(ItemCompletedNotification {
                 thread_id,
@@ -466,11 +467,15 @@ pub fn item_event_to_server_notification(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::v2::SubAgentActivityKind;
     use codex_protocol::ThreadId;
+    use codex_protocol::AgentPath;
     use codex_protocol::protocol::CollabResumeBeginEvent;
     use codex_protocol::protocol::CollabResumeEndEvent;
     use codex_protocol::protocol::ExecCommandOutputDeltaEvent;
     use codex_protocol::protocol::ExecOutputStream;
+    use codex_protocol::protocol::SubAgentActivityEvent;
+    use codex_protocol::protocol::SubAgentActivityKind as CoreSubAgentActivityKind;
     use pretty_assertions::assert_eq;
 
     fn assert_item_started_server_notification(
@@ -581,6 +586,39 @@ mod tests {
                     )]
                     .into_iter()
                     .collect(),
+                },
+            },
+        );
+    }
+
+    #[test]
+    fn sub_agent_activity_maps_model_to_completed_item() {
+        let event = SubAgentActivityEvent {
+            event_id: "activity-1".to_string(),
+            occurred_at_ms: 456,
+            agent_thread_id: ThreadId::new(),
+            agent_path: AgentPath::try_from("/root/worker").expect("valid agent path"),
+            kind: CoreSubAgentActivityKind::Started,
+            model: Some("gpt-5.4".to_string()),
+        };
+
+        let notification = item_event_to_server_notification(
+            EventMsg::SubAgentActivity(event.clone()),
+            "thread-1",
+            "turn-1",
+        );
+        assert_item_completed_server_notification(
+            notification,
+            ItemCompletedNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                completed_at_ms: event.occurred_at_ms,
+                item: ThreadItem::SubAgentActivity {
+                    id: event.event_id,
+                    kind: SubAgentActivityKind::Started,
+                    agent_thread_id: event.agent_thread_id.to_string(),
+                    agent_path: String::from(event.agent_path),
+                    model: event.model,
                 },
             },
         );

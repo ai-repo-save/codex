@@ -4303,6 +4303,9 @@ pub struct SubAgentActivityEvent {
     /// Canonical v2 path of the affected sub-agent.
     pub agent_path: AgentPath,
     pub kind: SubAgentActivityKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
@@ -4420,6 +4423,7 @@ mod tests {
     use crate::items::ImageGenerationItem;
     use crate::items::McpToolCallItem;
     use crate::items::McpToolCallStatus;
+    use crate::items::SubAgentActivityItem;
     use crate::items::UserMessageItem;
     use crate::items::WebSearchItem;
     use crate::mcp::CallToolResult;
@@ -5614,6 +5618,68 @@ mod tests {
 
         let event = serde_json::from_value::<ItemCompletedEvent>(value).unwrap();
         assert_eq!(event.completed_at_ms, 0);
+    }
+
+    #[test]
+    fn sub_agent_activity_model_survives_legacy_event_bridge() {
+        let agent_thread_id = ThreadId::new();
+        let agent_path = AgentPath::try_from("/root/worker").expect("valid agent path");
+        let completed = ItemCompletedEvent {
+            thread_id: ThreadId::new(),
+            turn_id: "turn-1".into(),
+            completed_at_ms: 42,
+            item: TurnItem::SubAgentActivity(SubAgentActivityItem {
+                id: "spawn-1".into(),
+                kind: SubAgentActivityKind::Started,
+                agent_thread_id,
+                agent_path: agent_path.clone(),
+                model: Some("gpt-5.4".into()),
+            }),
+        };
+
+        assert_eq!(
+            completed.as_legacy_events(/*show_raw_agent_reasoning*/ false),
+            vec![EventMsg::SubAgentActivity(SubAgentActivityEvent {
+                event_id: "spawn-1".into(),
+                occurred_at_ms: 42,
+                agent_thread_id,
+                agent_path,
+                kind: SubAgentActivityKind::Started,
+                model: Some("gpt-5.4".into()),
+            })]
+        );
+    }
+
+    #[test]
+    fn sub_agent_activity_deserializes_without_model() {
+        let agent_thread_id = ThreadId::new();
+        let agent_path = AgentPath::try_from("/root/worker").expect("valid agent path");
+        let expected_item = TurnItem::SubAgentActivity(SubAgentActivityItem {
+            id: "activity-1".into(),
+            kind: SubAgentActivityKind::Interacted,
+            agent_thread_id,
+            agent_path: agent_path.clone(),
+            model: None,
+        });
+        let expected_event = EventMsg::SubAgentActivity(SubAgentActivityEvent {
+            event_id: "activity-1".into(),
+            occurred_at_ms: 42,
+            agent_thread_id,
+            agent_path,
+            kind: SubAgentActivityKind::Interacted,
+            model: None,
+        });
+
+        assert_eq!(
+            serde_json::from_value::<TurnItem>(serde_json::to_value(&expected_item).unwrap())
+                .unwrap(),
+            expected_item
+        );
+        assert_eq!(
+            serde_json::from_value::<EventMsg>(serde_json::to_value(&expected_event).unwrap())
+                .unwrap(),
+            expected_event
+        );
     }
 
     #[test]

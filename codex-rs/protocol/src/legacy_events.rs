@@ -401,6 +401,7 @@ impl SubAgentActivityItem {
             agent_thread_id: self.agent_thread_id,
             agent_path: self.agent_path.clone(),
             kind: self.kind,
+            model: self.model.clone(),
         })
     }
 }

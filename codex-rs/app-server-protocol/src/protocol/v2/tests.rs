@@ -1695,7 +1695,7 @@ fn ask_for_approval_granular_is_marked_experimental() {
 #[test]
 fn config_granular_approval_policy_is_marked_experimental() {
     let reason = crate::experimental_api::ExperimentalApi::experimental_reason(&Config {
-        model: None,
+        model: Some("gpt-5.4".to_string()),
         review_model: None,
         model_context_window: None,
         model_auto_compact_token_limit: None,
@@ -2760,6 +2760,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         agent_path: codex_protocol::AgentPath::root()
             .join("worker")
             .expect("worker path"),
+        model: None,
     });
 
     assert_eq!(
@@ -2769,6 +2770,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             kind: SubAgentActivityKind::Interrupted,
             agent_thread_id: receiver_thread_id.to_string(),
             agent_path: "/root/worker".to_string(),
+            model: Some("gpt-5.4".to_string()),
         }
     );
 

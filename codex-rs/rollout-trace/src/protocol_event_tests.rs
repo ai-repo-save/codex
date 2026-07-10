@@ -24,6 +24,7 @@ fn sub_agent_activity_is_a_terminal_tool_runtime_event() -> anyhow::Result<()> {
         agent_thread_id,
         agent_path: AgentPath::try_from("/root/reviewer").map_err(anyhow::Error::msg)?,
         kind: SubAgentActivityKind::Started,
+        model: Some("gpt-5.4".to_string()),
     });
 
     let Some(ToolRuntimeTraceEvent::Ended {
@@ -44,7 +45,8 @@ fn sub_agent_activity_is_a_terminal_tool_runtime_event() -> anyhow::Result<()> {
             "occurred_at_ms": 1234,
             "agent_thread_id": agent_thread_id,
             "agent_path": "/root/reviewer",
-            "kind": "started"
+            "kind": "started",
+            "model": "gpt-5.4"
         })
     );
     Ok(())

@@ -297,35 +297,59 @@ pub(crate) fn sub_agent_activity_display(item: &ThreadItem) -> Option<SubAgentAc
 
 pub(crate) fn sub_agent_activity_history_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
     let ThreadItem::SubAgentActivity {
-        kind, agent_path, ..
+        kind,
+        agent_path,
+        model,
+        ..
     } = item
     else {
         return None;
     };
     Some(collab_event(
-        sub_agent_activity_title(*kind, agent_path),
+        sub_agent_activity_title(*kind, agent_path, model.as_deref()),
         Vec::new(),
     ))
 }
 
-pub(crate) fn sub_agent_activity_summary(kind: SubAgentActivityKind, agent_path: &str) -> String {
+pub(crate) fn sub_agent_activity_summary(
+    kind: SubAgentActivityKind,
+    agent_path: &str,
+    model: Option<&str>,
+) -> String {
     match kind {
-        SubAgentActivityKind::Started => format!("Started `{agent_path}`"),
+        SubAgentActivityKind::Started => {
+            let mut summary = format!("Started `{agent_path}`");
+            if let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) {
+                summary.push_str(&format!(" ({model})"));
+            }
+            summary
+        }
         SubAgentActivityKind::Interacted => format!("Interacted with `{agent_path}`"),
         SubAgentActivityKind::Interrupted => format!("Interrupted `{agent_path}`"),
     }
 }
 
-fn sub_agent_activity_title(kind: SubAgentActivityKind, agent_path: &str) -> Line<'static> {
+fn sub_agent_activity_title(
+    kind: SubAgentActivityKind,
+    agent_path: &str,
+    model: Option<&str>,
+) -> Line<'static> {
     let (prefix, path) = match kind {
         SubAgentActivityKind::Started => ("Started ", agent_path),
         SubAgentActivityKind::Interacted => ("Interacted with ", agent_path),
         SubAgentActivityKind::Interrupted => ("Interrupted ", agent_path),
     };
-    title_spans_line(vec![
+    let mut spans = vec![
         Span::from(prefix).bold(),
         Span::from(format!("`{path}`")).cyan(),
-    ])
+    ];
+    if matches!(kind, SubAgentActivityKind::Started)
+        && let Some(model) = model.map(str::trim).filter(|model| !model.is_empty())
+    {
+        spans.push(Span::from(" ").dim());
+        spans.push(Span::from(format!("({model})")).magenta());
+    }
+    title_spans_line(spans)
 }
 
 fn spawn_end(
@@ -792,6 +816,60 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n\n");
         assert_snapshot!("collab_agent_transcript", snapshot);
+    }
+
+    #[test]
+    fn sub_agent_activity_snapshot() {
+        let started = sub_agent_activity_history_cell(&ThreadItem::SubAgentActivity {
+            id: "activity-started".to_string(),
+            kind: SubAgentActivityKind::Started,
+            agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
+            agent_path: "/root/task".to_string(),
+            model: Some("gpt-5.6".to_string()),
+        })
+        .expect("started activity renders");
+        let interacted = sub_agent_activity_history_cell(&ThreadItem::SubAgentActivity {
+            id: "activity-interacted".to_string(),
+            kind: SubAgentActivityKind::Interacted,
+            agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
+            agent_path: "/root/task".to_string(),
+            model: Some("gpt-5.6".to_string()),
+        })
+        .expect("interacted activity renders");
+        let interrupted = sub_agent_activity_history_cell(&ThreadItem::SubAgentActivity {
+            id: "activity-interrupted".to_string(),
+            kind: SubAgentActivityKind::Interrupted,
+            agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
+            agent_path: "/root/task".to_string(),
+            model: Some("gpt-5.6".to_string()),
+        })
+        .expect("interrupted activity renders");
+
+        let history = [started, interacted, interrupted]
+            .iter()
+            .map(cell_to_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let transcript = [
+            sub_agent_activity_summary(
+                SubAgentActivityKind::Started,
+                "/root/task",
+                Some("gpt-5.6"),
+            ),
+            sub_agent_activity_summary(
+                SubAgentActivityKind::Interacted,
+                "/root/task",
+                Some("gpt-5.6"),
+            ),
+            sub_agent_activity_summary(
+                SubAgentActivityKind::Interrupted,
+                "/root/task",
+                Some("gpt-5.6"),
+            ),
+        ]
+        .join("\n");
+        let snapshot = format!("History:\n{history}\n\nTranscript:\n{transcript}");
+        assert_snapshot!("sub_agent_activity", snapshot);
     }
 
     #[cfg(target_os = "macos")]
