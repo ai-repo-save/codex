@@ -4,7 +4,6 @@ use crate::agents_md_manager::AgentsMdManager;
 use crate::codex_thread::TryStartTurnIfIdleRejectionReason;
 use crate::config::ConfigBuilder;
 use crate::config::ConfigOverrides;
-use crate::config::DEFAULT_CONTEXT_REMINDER_MESSAGE;
 use crate::config::test_config;
 use crate::context::ContextReminder;
 use crate::context::ContextualUserFragment;
@@ -2493,13 +2492,13 @@ async fn context_reminder_texts(session: &Session, turn_context: &TurnContext) -
 }
 
 fn default_context_reminder(remaining_percent: Option<i64>, used_tokens: i64) -> String {
-    ContextReminder::new(
-        remaining_percent,
-        used_tokens,
-        None,
-        DEFAULT_CONTEXT_REMINDER_MESSAGE,
+    let remaining_percent = remaining_percent.map_or_else(
+        || "unknown".to_string(),
+        |remaining_percent| remaining_percent.to_string(),
+    );
+    format!(
+        "<context_reminder>\nContext usage has reached a configured reminder threshold (about {used_tokens} tokens used, {remaining_percent}% remaining). Before continuing substantial work, call `rewind_context_to_anchor` with a suitable saved anchor when it would reclaim useful context. If no suitable anchor is available, call `request_context_compaction`. Preserve the goal, verified state, current changes, and next step.\n</context_reminder>"
     )
-    .render()
 }
 
 #[tokio::test]
@@ -2571,15 +2570,7 @@ async fn record_token_usage_info_uses_one_crossing_for_percent_or_absolute_thres
         .expect("record token usage");
 
     assert_eq!(
-        vec![
-            ContextReminder::new(
-                Some(23),
-                80_000,
-                Some(80_000),
-                DEFAULT_CONTEXT_REMINDER_MESSAGE,
-            )
-            .render()
-        ],
+        vec![default_context_reminder(Some(23), 80_000)],
         context_reminder_texts(&session, &turn_context).await
     );
 }
@@ -2608,20 +2599,8 @@ async fn record_token_usage_info_repeats_after_both_thresholds_recover() {
 
     assert_eq!(
         vec![
-            ContextReminder::new(
-                Some(15),
-                86_800,
-                Some(86_000),
-                DEFAULT_CONTEXT_REMINDER_MESSAGE,
-            )
-            .render(),
-            ContextReminder::new(
-                Some(15),
-                86_800,
-                Some(86_000),
-                DEFAULT_CONTEXT_REMINDER_MESSAGE,
-            )
-            .render(),
+            default_context_reminder(Some(15), 86_800),
+            default_context_reminder(Some(15), 86_800),
         ],
         context_reminder_texts(&session, &turn_context).await
     );
