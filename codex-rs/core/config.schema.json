@@ -4818,6 +4818,10 @@
       ],
       "description": "When `false`, disables analytics across Codex product surfaces in this machine. Defaults to `true`."
     },
+    "app_server_auto_update": {
+      "description": "When `false`, disables the app-server daemon standalone updater loop. Defaults to `true`.",
+      "type": "boolean"
+    },
     "approval_policy": {
       "allOf": [
         {
