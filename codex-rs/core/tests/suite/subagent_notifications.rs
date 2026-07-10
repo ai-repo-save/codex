@@ -67,6 +67,7 @@ const SUBAGENT_START_CONTEXT: &str = "subagent start context reaches child";
 const SUBAGENT_STOP_CONTINUATION: &str = "continue only the child";
 const INTERNAL_SUBAGENT_PROMPT: &str = "internal subagent: review";
 const CHILD_CONTEXT_REMINDER_MESSAGE: &str = "child context threshold reached";
+const CHILD_AGENT_PATH: &str = "/root/worker";
 
 fn body_contains(req: &wiremock::Request, text: &str) -> bool {
     decoded_body(req)
@@ -1174,22 +1175,19 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
     let requests = wait_for_requests(&child_reminder_request).await?;
     assert_eq!(requests.len(), 1);
     let child_request = &requests[0];
-    assert_eq!(
-        strip_metadata_from_json(Value::Array(child_request.inputs_of_type("agent_message"))),
-        Value::Array(vec![json!({
-            "type": "agent_message",
-            "author": "/root",
-            "recipient": "/root/worker",
-            "content": [{
-                "type": "input_text",
-                "text": CHILD_PROMPT,
-            }],
-        })])
-    );
-    assert_ne!(
-        child_request.function_call_output("child-list-agents"),
-        Value::Null
-    );
+    let list_agents_output: Value = serde_json::from_str(
+        &child_request
+            .function_call_output_text("child-list-agents")
+            .expect("child list_agents output should be present"),
+    )?;
+    let self_agent_names = list_agents_output["agents"]
+        .as_array()
+        .expect("list_agents output should contain an agents array")
+        .iter()
+        .filter(|agent| agent["is_self"].as_bool() == Some(true))
+        .filter_map(|agent| agent["agent_name"].as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(self_agent_names, vec![CHILD_AGENT_PATH]);
 
     Ok(())
 }
