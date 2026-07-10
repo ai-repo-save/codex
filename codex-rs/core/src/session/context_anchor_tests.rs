@@ -108,10 +108,7 @@ fn rewind(anchor_id: &str) -> RolloutItem {
     rewind_with_replacement(anchor_id, /*replacement_anchor_id*/ None)
 }
 
-fn rewind_with_replacement(
-    anchor_id: &str,
-    replacement_anchor_id: Option<&str>,
-) -> RolloutItem {
+fn rewind_with_replacement(anchor_id: &str, replacement_anchor_id: Option<&str>) -> RolloutItem {
     RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(
         ContextRewoundToAnchorEvent {
             anchor_id: anchor_id.to_string(),
