@@ -105,10 +105,17 @@ fn compaction() -> RolloutItem {
 }
 
 fn rewind(anchor_id: &str) -> RolloutItem {
+    rewind_with_replacement(anchor_id, /*replacement_anchor_id*/ None)
+}
+
+fn rewind_with_replacement(
+    anchor_id: &str,
+    replacement_anchor_id: Option<&str>,
+) -> RolloutItem {
     RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(
         ContextRewoundToAnchorEvent {
             anchor_id: anchor_id.to_string(),
-            replacement_anchor_id: None,
+            replacement_anchor_id: replacement_anchor_id.map(str::to_string),
             dropped_turns: 1,
             response_items_reclaimed: 2,
             approx_tokens_reclaimed: 10,
@@ -118,6 +125,56 @@ fn rewind(anchor_id: &str) -> RolloutItem {
             note: "carry".to_string(),
         },
     ))
+}
+
+#[test]
+fn active_replacement_anchor_id_resolves_rewind_chain() {
+    const FIRST_REPLACEMENT_ID: &str = "replacement-1";
+    const ACTIVE_REPLACEMENT_ID: &str = "replacement-2";
+    let items = vec![
+        saved_anchor(
+            ANCHOR_ID, /*label*/ None, /*boundary*/ 0, /*created_at*/ 0,
+        ),
+        rewind_with_replacement(ANCHOR_ID, Some(FIRST_REPLACEMENT_ID)),
+        saved_anchor(
+            FIRST_REPLACEMENT_ID,
+            /*label*/ None,
+            /*boundary*/ 0,
+            /*created_at*/ 1,
+        ),
+        rewind_with_replacement(FIRST_REPLACEMENT_ID, Some(ACTIVE_REPLACEMENT_ID)),
+        saved_anchor(
+            ACTIVE_REPLACEMENT_ID,
+            /*label*/ None,
+            /*boundary*/ 0,
+            /*created_at*/ 2,
+        ),
+    ];
+
+    assert_eq!(
+        active_replacement_anchor_id(&items, ANCHOR_ID),
+        Some(ACTIVE_REPLACEMENT_ID.to_string())
+    );
+}
+
+#[test]
+fn active_replacement_anchor_id_does_not_cross_compaction() {
+    const REPLACEMENT_ID: &str = "replacement";
+    let items = vec![
+        saved_anchor(
+            ANCHOR_ID, /*label*/ None, /*boundary*/ 0, /*created_at*/ 0,
+        ),
+        rewind_with_replacement(ANCHOR_ID, Some(REPLACEMENT_ID)),
+        saved_anchor(
+            REPLACEMENT_ID,
+            /*label*/ None,
+            /*boundary*/ 0,
+            /*created_at*/ 1,
+        ),
+        compaction(),
+    ];
+
+    assert_eq!(active_replacement_anchor_id(&items, ANCHOR_ID), None);
 }
 
 fn history_item(text: &str) -> ResponseItem {
