@@ -184,7 +184,10 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
             let summary = match kind {
                 SubAgentActivityKind::Started => {
                     let mut summary = format!("Started {agent_path}");
-                    if let Some(model) = model.as_deref().map(str::trim).filter(|model| !model.is_empty())
+                    if let Some(model) = model
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|model| !model.is_empty())
                     {
                         summary.push_str(&format!(" ({model})"));
                     }

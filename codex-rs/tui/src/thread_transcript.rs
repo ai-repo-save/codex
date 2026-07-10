@@ -203,9 +203,11 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
             model,
             ..
         } => {
-            vec![sub_agent_activity_summary(*kind, agent_path, model.as_deref())
-                .dim()
-                .into()]
+            vec![
+                sub_agent_activity_summary(*kind, agent_path, model.as_deref())
+                    .dim()
+                    .into(),
+            ]
         }
         ThreadItem::WebSearch(item) => {
             vec![vec!["web search: ".dim(), item.query.clone().into()].into()]

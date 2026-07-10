@@ -204,9 +204,7 @@ impl AccountRateLimitsHandler {
                 ))
             })?;
         let rate_limits = client.get_rate_limits_many().await.map_err(|err| {
-            FunctionCallError::RespondToModel(format!(
-                "failed to fetch account rate limits: {err}"
-            ))
+            FunctionCallError::RespondToModel(format!("failed to fetch account rate limits: {err}"))
         })?;
         if rate_limits.is_empty() {
             return Err(FunctionCallError::RespondToModel(

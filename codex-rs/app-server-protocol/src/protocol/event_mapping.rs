@@ -468,8 +468,8 @@ pub fn item_event_to_server_notification(
 mod tests {
     use super::*;
     use crate::protocol::v2::SubAgentActivityKind;
-    use codex_protocol::ThreadId;
     use codex_protocol::AgentPath;
+    use codex_protocol::ThreadId;
     use codex_protocol::protocol::CollabResumeBeginEvent;
     use codex_protocol::protocol::CollabResumeEndEvent;
     use codex_protocol::protocol::ExecCommandOutputDeltaEvent;
