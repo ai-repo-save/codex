@@ -25,13 +25,13 @@ use crate::context::ApprovalPromptContext;
 use crate::context::ApprovedCommandPrefixSaved;
 use crate::context::AvailableSkillsInstructions;
 use crate::context::CollaborationModeInstructions;
+use crate::context::ContextReminder;
 use crate::context::ContextualUserFragment;
 use crate::context::MultiAgentModeInstructions;
 use crate::context::NetworkRuleSaved;
 use crate::context::PermissionsInstructions;
 use crate::context::PersonalitySpecInstructions;
 use crate::context::RecommendedPluginsInstructions;
-use crate::context::ContextReminder;
 use crate::context::SubagentIdentity;
 use crate::context::world_state::WorldState;
 use crate::current_time::TimeProvider;
@@ -3828,8 +3828,7 @@ impl Session {
             };
             let budget_result = self.record_rollout_budget_usage(token_usage);
             if let Some(status) = context_reminder_status {
-                self.record_context_reminder(turn_context, status)
-                    .await;
+                self.record_context_reminder(turn_context, status).await;
             }
             if let Some(token_info) = token_info.as_ref() {
                 for contributor in self.services.extensions.token_usage_contributors() {

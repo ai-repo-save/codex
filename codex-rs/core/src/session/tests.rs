@@ -6,8 +6,8 @@ use crate::config::ConfigBuilder;
 use crate::config::ConfigOverrides;
 use crate::config::DEFAULT_CONTEXT_REMINDER_MESSAGE;
 use crate::config::test_config;
-use crate::context::ContextualUserFragment;
 use crate::context::ContextReminder;
+use crate::context::ContextualUserFragment;
 use crate::context::SubagentIdentity;
 use crate::context::TurnAborted;
 use crate::environment_selection::ThreadEnvironments;
@@ -2545,7 +2545,9 @@ async fn record_token_usage_info_renders_all_configured_context_reminder_values(
         .expect("record token usage");
 
     assert_eq!(
-        vec![ContextReminder::new(Some(15), 86_800, Some(80_000), CONTEXT_REMINDER_MESSAGE).render()],
+        vec![
+            ContextReminder::new(Some(15), 86_800, Some(80_000), CONTEXT_REMINDER_MESSAGE).render()
+        ],
         context_reminder_texts(&session, &turn_context).await
     );
 }
@@ -2569,13 +2571,15 @@ async fn record_token_usage_info_uses_one_crossing_for_percent_or_absolute_thres
         .expect("record token usage");
 
     assert_eq!(
-        vec![ContextReminder::new(
-            Some(23),
-            80_000,
-            Some(80_000),
-            DEFAULT_CONTEXT_REMINDER_MESSAGE,
-        )
-        .render()],
+        vec![
+            ContextReminder::new(
+                Some(23),
+                80_000,
+                Some(80_000),
+                DEFAULT_CONTEXT_REMINDER_MESSAGE,
+            )
+            .render()
+        ],
         context_reminder_texts(&session, &turn_context).await
     );
 }
@@ -2691,13 +2695,10 @@ async fn record_token_usage_info_uses_absolute_threshold_without_known_context_w
         .expect("record token usage");
 
     assert_eq!(
-        vec![ContextReminder::new(
-            None,
-            80_000,
-            Some(80_000),
-            DEFAULT_CONTEXT_REMINDER_MESSAGE,
-        )
-        .render()],
+        vec![
+            ContextReminder::new(None, 80_000, Some(80_000), DEFAULT_CONTEXT_REMINDER_MESSAGE,)
+                .render()
+        ],
         context_reminder_texts(&session, &turn_context).await
     );
 }
