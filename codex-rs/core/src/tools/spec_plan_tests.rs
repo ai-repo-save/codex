@@ -1618,6 +1618,10 @@ async fn code_mode_only_can_expose_namespaced_multi_agent_v2_as_normal_tools() {
         vec![
             "exec",
             "wait",
+            "request_context_compaction",
+            "save_context_anchor",
+            "list_context_anchors",
+            "rewind_context_to_anchor",
             "request_user_input",
             "subagents",
             // Hosted Responses tool.
@@ -1738,6 +1742,10 @@ async fn hosted_web_search_and_standalone_image_generation_follow_runtime_gates(
             // Code-mode entrypoints.
             codex_code_mode::PUBLIC_TOOL_NAME,
             codex_code_mode::WAIT_TOOL_NAME,
+            "request_context_compaction",
+            "save_context_anchor",
+            "list_context_anchors",
+            "rewind_context_to_anchor",
             "request_user_input",
             // Multi-agent v2 tools.
             MULTI_AGENT_V2_NAMESPACE,
