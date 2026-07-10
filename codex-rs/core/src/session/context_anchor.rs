@@ -164,10 +164,8 @@ fn active_replacement_anchor_id(
                 if active_anchor_ids.contains(&rewind.anchor_id) {
                     active_anchor_ids.clear();
                     if let Some(replacement_anchor_id) = &rewind.replacement_anchor_id {
-                        replacements.push((
-                            rewind.anchor_id.clone(),
-                            replacement_anchor_id.clone(),
-                        ));
+                        replacements
+                            .push((rewind.anchor_id.clone(), replacement_anchor_id.clone()));
                     }
                 }
             }
