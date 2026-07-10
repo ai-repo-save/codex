@@ -903,6 +903,12 @@
           "maximum": 100.0,
           "minimum": 0.0,
           "type": "integer"
+        },
+        "used_tokens": {
+          "default": null,
+          "format": "int64",
+          "minimum": 1.0,
+          "type": "integer"
         }
       },
       "type": "object"
