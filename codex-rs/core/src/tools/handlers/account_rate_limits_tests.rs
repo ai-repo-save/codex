@@ -299,6 +299,7 @@ fn bounds_bucket_count_and_backend_strings() {
             "rate_limits": vec![expected_bucket; MAX_RATE_LIMIT_BUCKETS],
         })
     );
+    assert!(json.to_string().len() <= MAX_SERIALIZED_OUTPUT_BYTES);
 }
 
 #[test]

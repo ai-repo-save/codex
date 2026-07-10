@@ -20,9 +20,9 @@ use codex_tools::ToolSpec;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 
-const MAX_RATE_LIMIT_BUCKETS: usize = 16;
+const MAX_RATE_LIMIT_BUCKETS: usize = 4;
 const MAX_BACKEND_STRING_BYTES: usize = 256;
-const MAX_SERIALIZED_OUTPUT_BYTES: usize = 32 * 1024;
+const MAX_SERIALIZED_OUTPUT_BYTES: usize = 8 * 1024;
 const CLIENT_ERROR_MESSAGE: &str = "failed to construct account rate limits client";
 const FETCH_ERROR_MESSAGE: &str = "failed to fetch account rate limits";
 const SERIALIZATION_ERROR_MESSAGE: &str = "failed to serialize account rate limits response";
