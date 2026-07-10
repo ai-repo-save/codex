@@ -516,11 +516,7 @@ impl Daemon {
     async fn ensure_remote_control_started(&self) -> Result<RemoteControlStartOutput> {
         let _operation_lock = self.acquire_operation_lock().await?;
         let mut settings = self.load_settings().await?;
-        let auto_update_enabled = self.load_app_server_auto_update_enabled().await?;
-        if settings.auto_update_enabled != auto_update_enabled {
-            settings.auto_update_enabled = auto_update_enabled;
-            settings.save(&self.settings_file).await?;
-        }
+        self.sync_auto_update_setting(&mut settings).await?;
         if should_stop_updater_for_settings(&settings, /*updater_running*/ true) {
             let updater = backend::pid_update_loop_backend(self.backend_paths(&settings));
             if updater.is_starting_or_running().await? {
@@ -751,6 +747,15 @@ impl Daemon {
 
     async fn load_settings(&self) -> Result<DaemonSettings> {
         DaemonSettings::load(&self.settings_file).await
+    }
+
+    async fn sync_auto_update_setting(&self, settings: &mut DaemonSettings) -> Result<()> {
+        let auto_update_enabled = self.load_app_server_auto_update_enabled().await?;
+        if settings.auto_update_enabled != auto_update_enabled {
+            settings.auto_update_enabled = auto_update_enabled;
+            settings.save(&self.settings_file).await?;
+        }
+        Ok(())
     }
 
     async fn load_app_server_auto_update_enabled(&self) -> Result<bool> {
@@ -1167,6 +1172,36 @@ mod tests {
                 .load_app_server_auto_update_enabled()
                 .await
                 .expect("load daemon config")
+        );
+    }
+
+    #[tokio::test]
+    async fn auto_update_setting_syncs_from_config() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let daemon = test_daemon(temp_dir.path());
+        tokio::fs::write(&daemon.config_file, "app_server_auto_update = false\n")
+            .await
+            .expect("write config");
+        let mut settings = DaemonSettings {
+            remote_control_enabled: true,
+            auto_update_enabled: true,
+        };
+
+        daemon
+            .sync_auto_update_setting(&mut settings)
+            .await
+            .expect("sync auto-update setting");
+
+        let expected = DaemonSettings {
+            remote_control_enabled: true,
+            auto_update_enabled: false,
+        };
+        assert_eq!(settings, expected);
+        assert_eq!(
+            DaemonSettings::load(&daemon.settings_file)
+                .await
+                .expect("load settings"),
+            expected
         );
     }
 
