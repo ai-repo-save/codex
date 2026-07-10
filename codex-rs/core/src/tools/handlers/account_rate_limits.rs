@@ -129,10 +129,7 @@ struct AccountSpendControlLimitSnapshot {
     resets_at: i64,
 }
 
-fn truncate_optional_backend_string(
-    value: Option<String>,
-    truncated: &mut bool,
-) -> Option<String> {
+fn truncate_optional_backend_string(value: Option<String>, truncated: &mut bool) -> Option<String> {
     value.map(|value| truncate_backend_string(value, truncated))
 }
 
