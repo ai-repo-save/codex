@@ -58,6 +58,7 @@ fn turn_context(mode: ModeKind) -> RolloutItem {
         current_date: None,
         timezone: None,
         approval_policy: AskForApproval::Never,
+        approvals_reviewer: None,
         sandbox_policy: SandboxPolicy::DangerFullAccess,
         permission_profile: None,
         network: None,
