@@ -719,10 +719,7 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
     );
     planned_tools.add_with_exposure(SaveContextAnchorHandler, ToolExposure::DirectModelOnly);
     planned_tools.add_with_exposure(ListContextAnchorsHandler, ToolExposure::DirectModelOnly);
-    planned_tools.add_with_exposure(
-        RewindContextToAnchorHandler,
-        ToolExposure::DirectModelOnly,
-    );
+    planned_tools.add_with_exposure(RewindContextToAnchorHandler, ToolExposure::DirectModelOnly);
     planned_tools.add(PlanHandler);
 
     if features.enabled(Feature::DeferredExecutor) {
