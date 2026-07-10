@@ -166,14 +166,15 @@ fn rewind_context_to_anchor_response_serializes_rewound_status() {
 fn rewind_context_to_anchor_response_serializes_rejected_status() {
     let response = RewindContextToAnchorResponse::Rejected {
         anchor_id: "anchor-1".to_string(),
-        dropped_turns: 2,
-        response_items_reclaimed: 3,
-        approx_tokens_reclaimed: 4,
-        reclaim_threshold_percent: 20,
+        replacement_anchor_id: None,
+        dropped_turns: Some(2),
+        response_items_reclaimed: Some(3),
+        approx_tokens_reclaimed: Some(4),
+        reclaim_threshold_percent: Some(20),
         reclaim_threshold_tokens: Some(100),
         reclaim_threshold_met: Some(false),
         reason: RewindContextToAnchorRejectionReason::BelowMinReclaimPercent,
-        min_reclaim_percent: 10,
+        min_reclaim_percent: Some(10),
         min_reclaim_threshold_tokens: Some(50),
         model_context_window: Some(500),
     };

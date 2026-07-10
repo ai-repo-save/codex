@@ -82,16 +82,23 @@ pub(crate) enum RewindContextToAnchorResponse {
     },
     Rejected {
         anchor_id: String,
-        dropped_turns: u32,
-        response_items_reclaimed: u64,
-        approx_tokens_reclaimed: u64,
-        reclaim_threshold_percent: u32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        replacement_anchor_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        dropped_turns: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        response_items_reclaimed: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        approx_tokens_reclaimed: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reclaim_threshold_percent: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         reclaim_threshold_tokens: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         reclaim_threshold_met: Option<bool>,
         reason: RewindContextToAnchorRejectionReason,
-        min_reclaim_percent: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        min_reclaim_percent: Option<i64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         min_reclaim_threshold_tokens: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -102,6 +109,7 @@ pub(crate) enum RewindContextToAnchorResponse {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RewindContextToAnchorRejectionReason {
+    UnknownContextAnchor,
     BelowMinReclaimPercent,
     UnknownContextWindowForMinReclaimPercent,
 }

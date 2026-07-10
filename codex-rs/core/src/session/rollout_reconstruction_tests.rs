@@ -123,6 +123,8 @@ fn completed_user_turn_rollout(
 
 #[tokio::test]
 async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
+    const CONSUMED_ANCHOR_ID: &str = "anchor-1";
+    const REPLACEMENT_ANCHOR_ID: &str = "anchor-2";
     let (session, turn_context) = make_session_and_context().await;
     let anchor_user = user_message("anchor user");
     let anchor_assistant = assistant_message("anchor assistant");
@@ -132,7 +134,7 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
         RolloutItem::ResponseItem(anchor_user.clone()),
         RolloutItem::ResponseItem(anchor_assistant.clone()),
         RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
-            anchor_id: "anchor-1".to_string(),
+            anchor_id: CONSUMED_ANCHOR_ID.to_string(),
             label: Some("before future".to_string()),
             history_boundary: 2,
             created_at: 1,
@@ -142,8 +144,8 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
         RolloutItem::ResponseItem(future_assistant),
         RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(
             ContextRewoundToAnchorEvent {
-                anchor_id: "anchor-1".to_string(),
-                replacement_anchor_id: None,
+                anchor_id: CONSUMED_ANCHOR_ID.to_string(),
+                replacement_anchor_id: Some(REPLACEMENT_ANCHOR_ID.to_string()),
                 dropped_turns: 1,
                 response_items_reclaimed: 2,
                 approx_tokens_reclaimed: 20,
@@ -169,6 +171,14 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
     assert!(history_contains_text(
         &reconstructed.history,
         "carry this back"
+    ));
+    assert!(history_contains_text(
+        &reconstructed.history,
+        CONSUMED_ANCHOR_ID
+    ));
+    assert!(history_contains_text(
+        &reconstructed.history,
+        REPLACEMENT_ANCHOR_ID
     ));
     assert!(history_contains_text(
         &reconstructed.history,

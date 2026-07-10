@@ -97,7 +97,8 @@ async fn list_context_anchors_returns_saved_anchor_metadata() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn successful_context_rewind_replaces_visible_anchor() -> Result<()> {
+async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_rejected()
+-> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -210,6 +211,55 @@ async fn successful_context_rewind_replaces_visible_anchor() -> Result<()> {
     assert_eq!(
         list_json["anchors"][0]["anchor_id"],
         json!(replacement_anchor_id)
+    );
+
+    let stale_rewind_call_id = "stale-rewind-anchor-call";
+    let third_mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-6"),
+                ev_function_call(
+                    stale_rewind_call_id,
+                    REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME,
+                    &json!({
+                        "anchor_id": anchor_id,
+                        "note": "stale anchor should not interrupt this turn"
+                    })
+                    .to_string(),
+                ),
+                ev_completed("resp-6"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-7"),
+                ev_assistant_message("msg-3", "continued after stale anchor rejection"),
+                ev_completed("resp-7"),
+            ]),
+        ],
+    )
+    .await;
+    test.submit_turn_with_approval_and_permission_profile(
+        "reuse consumed anchor",
+        AskForApproval::Never,
+        PermissionProfile::Disabled,
+    )
+    .await?;
+
+    let requests = third_mock.requests();
+    assert_eq!(requests.len(), 2);
+    let stale_rewind_text = requests[1]
+        .function_call_output_text(stale_rewind_call_id)
+        .expect("stale rewind output should be text JSON");
+    let stale_rewind_json: Value = serde_json::from_str(&stale_rewind_text)?;
+
+    assert_eq!(
+        stale_rewind_json,
+        json!({
+            "status": "rejected",
+            "anchor_id": anchor_id,
+            "replacement_anchor_id": replacement_anchor_id,
+            "reason": "unknown_context_anchor",
+        })
     );
 
     Ok(())

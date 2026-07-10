@@ -65,7 +65,16 @@ pub(crate) enum RewindContextToAnchorResult {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ContextRewindRejected {
+pub(crate) enum ContextRewindRejected {
+    UnknownAnchor {
+        anchor_id: String,
+        replacement_anchor_id: Option<String>,
+    },
+    BelowThreshold(ContextRewindThresholdRejected),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ContextRewindThresholdRejected {
     pub(crate) anchor_id: String,
     pub(crate) dropped_turns: u32,
     pub(crate) response_items_reclaimed: u64,
@@ -88,7 +97,7 @@ pub(crate) enum ContextRewindRejectionReason {
 fn latest_active_anchor_event(
     rollout_items: &[RolloutItem],
     anchor_id: &str,
-) -> CodexResult<ContextAnchorSavedEvent> {
+) -> Option<ContextAnchorSavedEvent> {
     let mut active_anchors: Vec<ContextAnchorSavedEvent> = Vec::new();
     let mut current_collaboration_mode_kind = None;
     for item in rollout_items {
@@ -131,7 +140,57 @@ fn latest_active_anchor_event(
     active_anchors
         .into_iter()
         .find(|anchor| anchor.anchor_id == anchor_id)
-        .ok_or_else(|| CodexErr::InvalidRequest(format!("unknown context anchor `{anchor_id}`")))
+}
+
+fn active_replacement_anchor_id(
+    rollout_items: &[RolloutItem],
+    invalidated_anchor_id: &str,
+) -> Option<String> {
+    let segment_start = rollout_items
+        .iter()
+        .rposition(|item| matches!(item, RolloutItem::Compacted(_)))
+        .map_or(0, |index| index.saturating_add(1));
+    let mut active_anchor_ids = Vec::new();
+    let mut replacements = Vec::new();
+
+    for item in &rollout_items[segment_start..] {
+        match item {
+            RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(event)) => {
+                if !active_anchor_ids.contains(&event.anchor_id) {
+                    active_anchor_ids.push(event.anchor_id.clone());
+                }
+            }
+            RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
+                if active_anchor_ids.contains(&rewind.anchor_id) {
+                    active_anchor_ids.clear();
+                    if let Some(replacement_anchor_id) = &rewind.replacement_anchor_id {
+                        replacements.push((
+                            rewind.anchor_id.clone(),
+                            replacement_anchor_id.clone(),
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut candidate = invalidated_anchor_id;
+    for _ in 0..replacements.len() {
+        let Some((_, replacement_anchor_id)) = replacements
+            .iter()
+            .rev()
+            .find(|(anchor_id, _)| anchor_id == candidate)
+        else {
+            break;
+        };
+        candidate = replacement_anchor_id;
+    }
+
+    active_anchor_ids
+        .iter()
+        .find(|anchor_id| anchor_id.as_str() == candidate && candidate != invalidated_anchor_id)
+        .cloned()
 }
 
 fn count_user_turns_since_anchor(
@@ -448,8 +507,19 @@ impl Session {
                     "failed to load thread history for context rewind replay: {err}"
                 )))
             })?;
+        let Some(active_anchor) = latest_active_anchor_event(&stored_history.items, &anchor_id)
+        else {
+            return Ok(RewindContextToAnchorResult::Rejected(
+                ContextRewindRejected::UnknownAnchor {
+                    replacement_anchor_id: active_replacement_anchor_id(
+                        &stored_history.items,
+                        &anchor_id,
+                    ),
+                    anchor_id,
+                },
+            ));
+        };
         let dropped_turns = count_user_turns_since_anchor(&stored_history.items, &anchor_id)?;
-        let active_anchor = latest_active_anchor_event(&stored_history.items, &anchor_id)?;
         let current_history = self.clone_history().await;
         let benefit = rewind_benefit_since_anchor(
             &active_anchor,
@@ -471,7 +541,7 @@ impl Session {
             )?
         {
             return Ok(RewindContextToAnchorResult::Rejected(
-                ContextRewindRejected {
+                ContextRewindRejected::BelowThreshold(ContextRewindThresholdRejected {
                     anchor_id,
                     dropped_turns,
                     response_items_reclaimed: benefit.response_items_reclaimed,
@@ -483,12 +553,13 @@ impl Session {
                     min_reclaim_percent,
                     min_reclaim_threshold_tokens,
                     model_context_window,
-                },
+                }),
             ));
         }
+        let replacement_anchor_id = format!("ctx-{}", Uuid::now_v7());
         let rewind_event = ContextRewoundToAnchorEvent {
             anchor_id: anchor_id.clone(),
-            replacement_anchor_id: None,
+            replacement_anchor_id: Some(replacement_anchor_id.clone()),
             dropped_turns,
             response_items_reclaimed: benefit.response_items_reclaimed,
             approx_tokens_reclaimed: benefit.approx_tokens_reclaimed,
@@ -507,7 +578,6 @@ impl Session {
             .collect::<Vec<_>>();
         self.apply_rollout_reconstruction(turn_context, replay_items.as_slice())
             .await;
-        let replacement_anchor_id = format!("ctx-{}", Uuid::now_v7());
         let replacement_anchor = ContextAnchorSavedEvent {
             anchor_id: replacement_anchor_id.clone(),
             label: Some(format!("after rewind from {anchor_id}")),
@@ -515,10 +585,6 @@ impl Session {
                 .unwrap_or(u64::MAX),
             created_at: crate::turn_timing::now_unix_timestamp_ms() / 1000,
             collaboration_mode_kind: Some(turn_context.collaboration_mode.mode),
-        };
-        let rewind_event = ContextRewoundToAnchorEvent {
-            replacement_anchor_id: Some(replacement_anchor_id),
-            ..rewind_event
         };
         self.recompute_token_usage(turn_context).await;
 
@@ -567,6 +633,7 @@ impl Session {
 
 pub(super) fn context_rewind_carry_forward_item(
     anchor_id: impl Into<String>,
+    replacement_anchor_id: Option<String>,
     dropped_turns: u32,
     response_items_reclaimed: u64,
     approx_tokens_reclaimed: u64,
@@ -577,6 +644,7 @@ pub(super) fn context_rewind_carry_forward_item(
 ) -> ResponseItem {
     ContextualUserFragment::into(ContextRewindCarryForward::new(
         anchor_id,
+        replacement_anchor_id,
         dropped_turns,
         response_items_reclaimed,
         approx_tokens_reclaimed,

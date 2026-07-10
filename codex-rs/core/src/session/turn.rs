@@ -2151,26 +2151,57 @@ async fn drain_in_flight(
                         (response, retained_response_items)
                     }
                     RewindContextToAnchorResult::Rejected(rejection) => {
-                        let reason = match rejection.reason {
-                            SessionContextRewindRejectionReason::BelowMinReclaimPercent => {
-                                RewindContextToAnchorRejectionReason::BelowMinReclaimPercent
+                        let response = match rejection {
+                            crate::session::context_anchor::ContextRewindRejected::UnknownAnchor {
+                                anchor_id,
+                                replacement_anchor_id,
+                            } => RewindContextToAnchorResponse::Rejected {
+                                anchor_id,
+                                replacement_anchor_id,
+                                dropped_turns: None,
+                                response_items_reclaimed: None,
+                                approx_tokens_reclaimed: None,
+                                reclaim_threshold_percent: None,
+                                reclaim_threshold_tokens: None,
+                                reclaim_threshold_met: None,
+                                reason: RewindContextToAnchorRejectionReason::UnknownContextAnchor,
+                                min_reclaim_percent: None,
+                                min_reclaim_threshold_tokens: None,
+                                model_context_window: None,
+                            },
+                            crate::session::context_anchor::ContextRewindRejected::BelowThreshold(
+                                rejection,
+                            ) => {
+                                let reason = match rejection.reason {
+                                    SessionContextRewindRejectionReason::BelowMinReclaimPercent => {
+                                        RewindContextToAnchorRejectionReason::BelowMinReclaimPercent
+                                    }
+                                    SessionContextRewindRejectionReason::UnknownContextWindowForMinReclaimPercent => {
+                                        RewindContextToAnchorRejectionReason::UnknownContextWindowForMinReclaimPercent
+                                    }
+                                };
+                                RewindContextToAnchorResponse::Rejected {
+                                    anchor_id: rejection.anchor_id,
+                                    replacement_anchor_id: None,
+                                    dropped_turns: Some(rejection.dropped_turns),
+                                    response_items_reclaimed: Some(
+                                        rejection.response_items_reclaimed,
+                                    ),
+                                    approx_tokens_reclaimed: Some(
+                                        rejection.approx_tokens_reclaimed,
+                                    ),
+                                    reclaim_threshold_percent: Some(
+                                        rejection.reclaim_threshold_percent,
+                                    ),
+                                    reclaim_threshold_tokens: rejection.reclaim_threshold_tokens,
+                                    reclaim_threshold_met: rejection.reclaim_threshold_met,
+                                    reason,
+                                    min_reclaim_percent: Some(rejection.min_reclaim_percent),
+                                    min_reclaim_threshold_tokens: rejection
+                                        .min_reclaim_threshold_tokens,
+                                    model_context_window: rejection.model_context_window,
+                                }
                             }
-                            SessionContextRewindRejectionReason::UnknownContextWindowForMinReclaimPercent => {
-                                RewindContextToAnchorRejectionReason::UnknownContextWindowForMinReclaimPercent
-                            }
-                        };
-                        let response = RewindContextToAnchorResponse::Rejected {
-                            anchor_id: rejection.anchor_id,
-                            dropped_turns: rejection.dropped_turns,
-                            response_items_reclaimed: rejection.response_items_reclaimed,
-                            approx_tokens_reclaimed: rejection.approx_tokens_reclaimed,
-                            reclaim_threshold_percent: rejection.reclaim_threshold_percent,
-                            reclaim_threshold_tokens: rejection.reclaim_threshold_tokens,
-                            reclaim_threshold_met: rejection.reclaim_threshold_met,
-                            reason,
-                            min_reclaim_percent: rejection.min_reclaim_percent,
-                            min_reclaim_threshold_tokens: rejection.min_reclaim_threshold_tokens,
-                            model_context_window: rejection.model_context_window,
                         };
                         (response, Vec::new())
                     }

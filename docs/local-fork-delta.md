@@ -109,11 +109,14 @@ roots, permissions, history reconstruction, and TUI state all follow the newly f
 - `save_context_anchor` creates a thread-local anchor at committed model context and optionally
   records a bounded label.
 - `list_context_anchors` flushes persistence before reconstructing the bounded active anchor list.
-- `rewind_context_to_anchor` discards later context, injects a bounded carry-forward note, reports
-  approximate reclaimed items and tokens, and atomically creates a replacement anchor.
-- Successful rewinds consume obsolete anchors. Rewinds below
-  `context_rewind.min_reclaim_percent` return a structured soft rejection instead of mutating
-  history.
+- `rewind_context_to_anchor` discards later context, reports approximate reclaimed items and tokens,
+  and atomically creates a replacement anchor. Its bounded carry-forward fragment identifies both
+  the consumed anchor and the active replacement so reconstructed model context does not reuse a
+  stale ID.
+- Successful rewinds consume obsolete anchors. Reusing a consumed or otherwise unknown anchor
+  returns a structured soft rejection and includes its still-active replacement when the persisted
+  rewind chain can resolve one. Rewinds below `context_rewind.min_reclaim_percent` use the same
+  non-mutating soft-rejection path.
 - Rewind eligibility follows collaboration-mode guards, and a rewind call must be the only tool
   call in its model response.
 - Anchor save and rewind events persist through rollout history, app-server thread items, analytics,

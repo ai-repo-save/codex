@@ -3,6 +3,7 @@ use super::ContextualUserFragment;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ContextRewindCarryForward {
     anchor_id: String,
+    replacement_anchor_id: Option<String>,
     dropped_turns: u32,
     response_items_reclaimed: u64,
     approx_tokens_reclaimed: u64,
@@ -15,6 +16,7 @@ pub(crate) struct ContextRewindCarryForward {
 impl ContextRewindCarryForward {
     pub(crate) fn new(
         anchor_id: impl Into<String>,
+        replacement_anchor_id: Option<String>,
         dropped_turns: u32,
         response_items_reclaimed: u64,
         approx_tokens_reclaimed: u64,
@@ -25,6 +27,7 @@ impl ContextRewindCarryForward {
     ) -> Self {
         Self {
             anchor_id: anchor_id.into(),
+            replacement_anchor_id,
             dropped_turns,
             response_items_reclaimed,
             approx_tokens_reclaimed,
@@ -56,7 +59,10 @@ impl ContextualUserFragment for ContextRewindCarryForward {
         format!(
             "\n{}\n",
             serde_json::json!({
-                "anchor_id": &self.anchor_id,
+                "anchor_state": {
+                    "consumed_anchor_id": &self.anchor_id,
+                    "active_replacement_anchor_id": &self.replacement_anchor_id,
+                },
                 "note": &self.note,
                 "rewind_benefit": {
                     "dropped_user_turns": self.dropped_turns,

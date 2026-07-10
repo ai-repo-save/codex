@@ -378,6 +378,7 @@ impl Session {
                         history.replace(anchor_history);
                         let carry_forward = context_rewind_carry_forward_item(
                             rewind.anchor_id.clone(),
+                            rewind.replacement_anchor_id.clone(),
                             rewind.dropped_turns,
                             rewind.response_items_reclaimed,
                             rewind.approx_tokens_reclaimed,
