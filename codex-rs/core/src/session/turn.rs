@@ -2042,6 +2042,7 @@ async fn drain_in_flight(
                 run_auto_compact(
                     &sess,
                     Arc::clone(&step_context),
+                    /*fallback_step_context*/ None,
                     client_session,
                     InitialContextInjection::BeforeLastUserMessage(Arc::new(
                         sess.build_world_state_for_step(&step_context).await,
