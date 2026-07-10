@@ -4918,7 +4918,7 @@
         }
       ],
       "default": null,
-      "description": "Reminder shown to root agents as the usable context window runs low."
+      "description": "Reminder shown to every agent session when enabled and either the remaining context percentage or optional used-token threshold is reached."
     },
     "context_rewind": {
       "allOf": [
