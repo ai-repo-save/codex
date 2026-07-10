@@ -46,7 +46,7 @@ use crate::tools::router::ToolRouterParams;
 use crate::tools::router::ToolSuggestCandidates;
 use crate::tools::router::ToolSuggestPresentation;
 
-const MULTI_AGENT_V2_NAMESPACE: &str = "collaboration";
+const MULTI_AGENT_V2_NAMESPACE: &str = "agents";
 
 #[derive(Default)]
 struct ToolPlanInputs {
@@ -1472,25 +1472,25 @@ async fn multi_agent_v2_can_use_configured_tool_namespace() {
     let namespaced = probe(|turn| {
         set_feature(turn, Feature::MultiAgentV2, /*enabled*/ true);
         update_config(turn, |config| {
-            config.multi_agent_v2.tool_namespace = Some("agents".to_string());
+            config.multi_agent_v2.tool_namespace = Some("subagents".to_string());
         });
     })
     .await;
 
-    namespaced.assert_visible_contains(&["agents"]);
+    namespaced.assert_visible_contains(&["subagents"]);
     namespaced.assert_visible_lacks(&["assign_task"]);
     assert!(
         !namespaced
             .registered_names
-            .contains(&ToolName::namespaced("agents", "assign_task").to_string()),
+            .contains(&ToolName::namespaced("subagents", "assign_task").to_string()),
         "expected no namespaced runtime for assign_task"
     );
     assert!(
         !namespaced
-            .namespace_function_names("agents")
+            .namespace_function_names("subagents")
             .iter()
             .any(|name| name == "assign_task"),
-        "expected assign_task to be absent from agents namespace"
+        "expected assign_task to be absent from subagents namespace"
     );
     for tool_name in [
         "spawn_agent",
@@ -1505,7 +1505,7 @@ async fn multi_agent_v2_can_use_configured_tool_namespace() {
         assert!(
             namespaced
                 .registered_names
-                .contains(&ToolName::namespaced("agents", tool_name).to_string()),
+                .contains(&ToolName::namespaced("subagents", tool_name).to_string()),
             "expected namespaced runtime for {tool_name}"
         );
         assert!(
@@ -1516,10 +1516,10 @@ async fn multi_agent_v2_can_use_configured_tool_namespace() {
         );
         assert!(
             namespaced
-                .namespace_function_names("agents")
+                .namespace_function_names("subagents")
                 .iter()
                 .any(|name| name == tool_name),
-            "expected {tool_name} in agents namespace"
+            "expected {tool_name} in subagents namespace"
         );
     }
 }
@@ -1529,13 +1529,13 @@ async fn multi_agent_v2_namespace_is_supported_by_bedrock_provider() {
     let plan = probe(|turn| {
         set_feature(turn, Feature::MultiAgentV2, /*enabled*/ true);
         update_config(turn, |config| {
-            config.multi_agent_v2.tool_namespace = Some("agents".to_string());
+            config.multi_agent_v2.tool_namespace = Some("subagents".to_string());
         });
         use_bedrock_provider(turn);
     })
     .await;
 
-    plan.assert_visible_contains(&["agents"]);
+    plan.assert_visible_contains(&["subagents"]);
     plan.assert_visible_lacks(&[
         "spawn_agent",
         "send_message",
@@ -1549,7 +1549,7 @@ async fn multi_agent_v2_namespace_is_supported_by_bedrock_provider() {
     );
     assert!(
         plan.registered_names
-            .contains(&ToolName::namespaced("agents", "spawn_agent").to_string())
+            .contains(&ToolName::namespaced("subagents", "spawn_agent").to_string())
     );
 }
 
@@ -1566,7 +1566,7 @@ async fn code_mode_only_can_expose_namespaced_multi_agent_v2_as_normal_tools() {
         );
         update_config(turn, |config| {
             config.multi_agent_v2.non_code_mode_only = true;
-            config.multi_agent_v2.tool_namespace = Some("agents".to_string());
+            config.multi_agent_v2.tool_namespace = Some("subagents".to_string());
         });
     })
     .await;
@@ -1577,17 +1577,17 @@ async fn code_mode_only_can_expose_namespaced_multi_agent_v2_as_normal_tools() {
             "exec",
             "wait",
             "request_user_input",
-            "agents",
+            "subagents",
             // Hosted Responses tool.
             "web_search",
         ]
     );
     assert!(
         !plan
-            .namespace_function_names("agents")
+            .namespace_function_names("subagents")
             .iter()
             .any(|name| name == "assign_task"),
-        "expected assign_task to be absent from agents namespace"
+        "expected assign_task to be absent from subagents namespace"
     );
     for tool_name in [
         "spawn_agent",
@@ -1599,10 +1599,10 @@ async fn code_mode_only_can_expose_namespaced_multi_agent_v2_as_normal_tools() {
         "inspect_agent",
     ] {
         assert!(
-            plan.namespace_function_names("agents")
+            plan.namespace_function_names("subagents")
                 .iter()
                 .any(|name| name == tool_name),
-            "expected {tool_name} in agents namespace"
+            "expected {tool_name} in subagents namespace"
         );
     }
 }
