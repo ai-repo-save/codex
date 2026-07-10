@@ -505,6 +505,10 @@ pub struct ConfigToml {
     /// Defaults to `true`.
     pub check_for_update_on_startup: Option<bool>,
 
+    /// When `false`, disables the app-server daemon standalone updater loop.
+    /// Defaults to `true`.
+    pub app_server_auto_update: Option<bool>,
+
     /// When true, disables burst-paste detection for typed input entirely.
     /// All characters are inserted as they are received, and no buffering
     /// or placeholder replacement will occur for fast keypress bursts.

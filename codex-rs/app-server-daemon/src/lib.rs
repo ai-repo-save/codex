@@ -17,10 +17,12 @@ use backend::BackendPaths;
 use codex_app_server_protocol::RemoteControlConnectionStatus;
 use codex_app_server_protocol::RemoteControlPairingStartResponse;
 use codex_app_server_transport::app_server_control_socket_path;
+use codex_config::CONFIG_TOML_FILE;
 use codex_utils_home_dir::find_codex_home;
 use managed_install::managed_codex_bin;
 #[cfg(unix)]
 use managed_install::managed_codex_version;
+use serde::Deserialize;
 use serde::Serialize;
 use settings::DaemonSettings;
 use tokio::time::sleep;
@@ -73,6 +75,7 @@ pub struct LifecycleOutput {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BootstrapOptions {
     pub remote_control_enabled: bool,
+    pub auto_update_enabled: bool,
 }
 
 /// Passively probes an existing app-server socket and returns its reported
@@ -198,6 +201,13 @@ pub async fn bootstrap(options: BootstrapOptions) -> Result<BootstrapOutput> {
     Daemon::from_environment()?.bootstrap(options).await
 }
 
+pub async fn app_server_auto_update_enabled() -> Result<bool> {
+    ensure_supported_platform()?;
+    Daemon::from_environment()?
+        .load_app_server_auto_update_enabled()
+        .await
+}
+
 pub async fn ensure_remote_control_started() -> Result<RemoteControlStartOutput> {
     ensure_supported_platform()?;
     Daemon::from_environment()?
@@ -261,7 +271,13 @@ struct Daemon {
     update_pid_file: PathBuf,
     operation_lock_file: PathBuf,
     settings_file: PathBuf,
+    config_file: PathBuf,
     managed_codex_bin: PathBuf,
+}
+
+#[derive(Debug, Deserialize)]
+struct AppServerDaemonConfig {
+    app_server_auto_update: Option<bool>,
 }
 
 impl Daemon {
@@ -277,6 +293,7 @@ impl Daemon {
             update_pid_file: state_dir.join(UPDATE_PID_FILE_NAME),
             operation_lock_file: state_dir.join(OPERATION_LOCK_FILE_NAME),
             settings_file: state_dir.join(SETTINGS_FILE_NAME),
+            config_file: codex_home.as_path().join(CONFIG_TOML_FILE),
             managed_codex_bin: managed_codex_bin(codex_home.as_path()),
         })
     }
@@ -510,6 +527,7 @@ impl Daemon {
         let output = self
             .bootstrap_locked(BootstrapOptions {
                 remote_control_enabled: true,
+                auto_update_enabled: self.load_app_server_auto_update_enabled().await?,
             })
             .await?;
         Ok(RemoteControlStartOutput::Bootstrap(output))
@@ -594,6 +612,7 @@ impl Daemon {
 
         let settings = DaemonSettings {
             remote_control_enabled: options.remote_control_enabled,
+            auto_update_enabled: options.auto_update_enabled,
         };
         if client::probe(&self.socket_path).await.is_ok()
             && self.running_backend(&settings).await?.is_none()
@@ -614,14 +633,16 @@ impl Daemon {
         if updater.is_starting_or_running().await? {
             updater.stop().await?;
         }
-        updater.start().await?;
+        if settings.auto_update_enabled {
+            updater.start().await?;
+        }
 
         let info = self.wait_until_ready().await?;
         let managed_codex_version = self.managed_codex_version_best_effort().await;
         Ok(BootstrapOutput {
             status: BootstrapStatus::Bootstrapped,
             backend: BackendKind::Pid,
-            auto_update_enabled: true,
+            auto_update_enabled: settings.auto_update_enabled,
             remote_control_enabled: settings.remote_control_enabled,
             managed_codex_path: self.managed_codex_bin.clone(),
             managed_codex_version,
@@ -666,7 +687,13 @@ impl Daemon {
 
     async fn is_bootstrapped(&self, settings: &DaemonSettings) -> Result<bool> {
         let updater = backend::pid_update_loop_backend(self.backend_paths(settings));
-        updater.is_starting_or_running().await
+        let updater_running = updater.is_starting_or_running().await?;
+        let app_server_running = self.running_backend_instance(settings).await?.is_some();
+        Ok(is_bootstrapped_from_states(
+            settings,
+            updater_running,
+            app_server_running,
+        ))
     }
 
     fn ensure_managed_codex_bin(&self) -> Result<()> {
@@ -713,6 +740,21 @@ impl Daemon {
 
     async fn load_settings(&self) -> Result<DaemonSettings> {
         DaemonSettings::load(&self.settings_file).await
+    }
+
+    async fn load_app_server_auto_update_enabled(&self) -> Result<bool> {
+        let contents = match tokio::fs::read_to_string(&self.config_file).await {
+            Ok(contents) => contents,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+            Err(err) => {
+                return Err(err).with_context(|| {
+                    format!("failed to read config.toml {}", self.config_file.display())
+                });
+            }
+        };
+        let config: AppServerDaemonConfig = toml::from_str(&contents)
+            .with_context(|| format!("failed to parse config.toml {}", self.config_file.display()))?;
+        Ok(config.app_server_auto_update.unwrap_or(true))
     }
 
     async fn acquire_operation_lock(&self) -> Result<tokio::fs::File> {
@@ -802,6 +844,18 @@ fn already_remote_control_status(mode: RemoteControlMode) -> RemoteControlStatus
     match mode {
         RemoteControlMode::Enabled => RemoteControlStatus::AlreadyEnabled,
         RemoteControlMode::Disabled => RemoteControlStatus::AlreadyDisabled,
+    }
+}
+
+fn is_bootstrapped_from_states(
+    settings: &DaemonSettings,
+    updater_running: bool,
+    app_server_running: bool,
+) -> bool {
+    if settings.auto_update_enabled {
+        updater_running
+    } else {
+        app_server_running
     }
 }
 
@@ -981,7 +1035,7 @@ mod tests {
         let bootstrap_output = BootstrapOutput {
             status: BootstrapStatus::Bootstrapped,
             backend: BackendKind::Pid,
-            auto_update_enabled: true,
+            auto_update_enabled: false,
             remote_control_enabled: true,
             managed_codex_path: "codex".into(),
             managed_codex_version: Some("1.2.3".to_string()),
@@ -996,7 +1050,7 @@ mod tests {
             serde_json::json!({
                 "status": "bootstrapped",
                 "backend": "pid",
-                "autoUpdateEnabled": true,
+                "autoUpdateEnabled": false,
                 "remoteControlEnabled": true,
                 "managedCodexPath": "codex",
                 "managedCodexVersion": "1.2.3",
@@ -1011,17 +1065,73 @@ mod tests {
         );
     }
 
+    #[test]
+    fn disabled_auto_update_bootstrap_depends_on_app_server_backend() {
+        let settings = DaemonSettings {
+            remote_control_enabled: true,
+            auto_update_enabled: false,
+        };
+
+        assert!(is_bootstrapped_from_states(
+            &settings,
+            /*updater_running*/ false,
+            /*app_server_running*/ true,
+        ));
+        assert!(!is_bootstrapped_from_states(
+            &settings,
+            /*updater_running*/ true,
+            /*app_server_running*/ false,
+        ));
+    }
+
+    #[test]
+    fn enabled_auto_update_bootstrap_depends_on_updater_backend() {
+        let settings = DaemonSettings {
+            remote_control_enabled: true,
+            auto_update_enabled: true,
+        };
+
+        assert!(is_bootstrapped_from_states(
+            &settings,
+            /*updater_running*/ true,
+            /*app_server_running*/ false,
+        ));
+        assert!(!is_bootstrapped_from_states(
+            &settings,
+            /*updater_running*/ false,
+            /*app_server_running*/ true,
+        ));
+    }
+
+    #[tokio::test]
+    async fn app_server_auto_update_defaults_to_enabled_without_config() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let daemon = test_daemon(temp_dir.path());
+
+        assert!(daemon
+            .load_app_server_auto_update_enabled()
+            .await
+            .expect("load daemon config"));
+    }
+
+    #[tokio::test]
+    async fn app_server_auto_update_reads_disabled_config() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let daemon = test_daemon(temp_dir.path());
+        tokio::fs::write(&daemon.config_file, "app_server_auto_update = false\n")
+            .await
+            .expect("write config");
+
+        assert!(!daemon
+            .load_app_server_auto_update_enabled()
+            .await
+            .expect("load daemon config"));
+    }
+
     #[tokio::test]
     async fn not_ready_context_reports_daemon_app_server_before_stderr() {
         let temp_dir = TempDir::new().expect("temp dir");
-        let daemon = Daemon {
-            socket_path: temp_dir.path().join("app-server-control.sock"),
-            pid_file: temp_dir.path().join("app-server.pid"),
-            update_pid_file: temp_dir.path().join("app-server-updater.pid"),
-            operation_lock_file: temp_dir.path().join("daemon.lock"),
-            settings_file: temp_dir.path().join("settings.json"),
-            managed_codex_bin: temp_dir.path().join("missing-codex"),
-        };
+        let daemon = test_daemon(temp_dir.path());
         let stderr_log = daemon.pid_file.with_extension("stderr.log");
         tokio::fs::write(&stderr_log, "unexpected argument")
             .await
@@ -1038,5 +1148,17 @@ mod tests {
                 stderr_log.display()
             )
         );
+    }
+
+    fn test_daemon(base: &std::path::Path) -> Daemon {
+        Daemon {
+            socket_path: base.join("app-server-control.sock"),
+            pid_file: base.join("app-server.pid"),
+            update_pid_file: base.join("app-server-updater.pid"),
+            operation_lock_file: base.join("daemon.lock"),
+            settings_file: base.join("settings.json"),
+            config_file: base.join("config.toml"),
+            managed_codex_bin: base.join("missing-codex"),
+        }
     }
 }

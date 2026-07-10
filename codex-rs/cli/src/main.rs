@@ -1155,9 +1155,12 @@ async fn cli_main(
                         print_app_server_daemon_output(AppServerLifecycleCommand::Start).await?;
                     }
                     AppServerDaemonSubcommand::Bootstrap(bootstrap_cli) => {
+                        let auto_update_enabled =
+                            codex_app_server_daemon::app_server_auto_update_enabled().await?;
                         let output =
                             codex_app_server_daemon::bootstrap(AppServerBootstrapOptions {
                                 remote_control_enabled: bootstrap_cli.remote_control,
+                                auto_update_enabled,
                             })
                             .await?;
                         println!("{}", serde_json::to_string(&output)?);

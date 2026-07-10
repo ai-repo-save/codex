@@ -6,10 +6,25 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::fs;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+fn default_auto_update_enabled() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DaemonSettings {
     pub(crate) remote_control_enabled: bool,
+    #[serde(default = "default_auto_update_enabled")]
+    pub(crate) auto_update_enabled: bool,
+}
+
+impl Default for DaemonSettings {
+    fn default() -> Self {
+        Self {
+            remote_control_enabled: false,
+            auto_update_enabled: default_auto_update_enabled(),
+        }
+    }
 }
 
 impl DaemonSettings {
@@ -55,9 +70,22 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&DaemonSettings {
                 remote_control_enabled: true,
+                auto_update_enabled: false,
             })
             .expect("serialize"),
-            r#"{"remoteControlEnabled":true}"#
+            r#"{"remoteControlEnabled":true,"autoUpdateEnabled":false}"#
+        );
+    }
+
+    #[test]
+    fn daemon_settings_default_auto_update_for_legacy_json() {
+        assert_eq!(
+            serde_json::from_str::<DaemonSettings>(r#"{"remoteControlEnabled":true}"#)
+                .expect("deserialize legacy settings"),
+            DaemonSettings {
+                remote_control_enabled: true,
+                auto_update_enabled: true,
+            }
         );
     }
 }

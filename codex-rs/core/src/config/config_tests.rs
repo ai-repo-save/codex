@@ -3571,6 +3571,21 @@ fn tui_theme_defaults_to_none() {
 }
 
 #[test]
+fn app_server_auto_update_deserializes_from_toml() {
+    let cfg = r#"
+app_server_auto_update = false
+"#;
+    let parsed = toml::from_str::<ConfigToml>(cfg).expect("TOML deserialization should succeed");
+
+    assert_eq!(parsed.app_server_auto_update, Some(false));
+}
+
+#[test]
+fn app_server_auto_update_defaults_to_unset() {
+    assert_eq!(ConfigToml::default().app_server_auto_update, None);
+}
+
+#[test]
 fn tui_session_picker_view_deserializes_from_toml() {
     let cfg = r#"
 [tui]
