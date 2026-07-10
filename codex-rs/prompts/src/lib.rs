@@ -24,6 +24,7 @@ pub use goals::continuation_prompt_with_templates;
 pub use goals::objective_updated_prompt;
 pub use goals::objective_updated_prompt_with_templates;
 pub use goals::parse_goal_prompt_template;
+pub use permissions_instructions::ApprovalPromptContext;
 pub use permissions_instructions::PermissionsInstructions;
 pub use realtime::BACKEND_PROMPT;
 pub use realtime::END_INSTRUCTIONS;

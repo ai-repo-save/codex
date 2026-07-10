@@ -315,6 +315,14 @@ Use `just bench-smoke` to dry-run the benchmark for a single iteration to ensure
   // assert using request.function_call_output(call_id) or request.json_body() or other helpers.
   ```
 
+#### app-server integration testing
+
+- Tests should exercise app-server's public JSON-RPC API.
+- Use similar server mocking as for core integration tests.
+- Use `TestAppServer::builder().build()` and `TestAppServer::send_thread_start_request_with_auto_env()`
+  by default to ensure that new tests work with foreign app/exec OSes. See `$remote-tests` for
+  details.
+
 ## App-server API Development Best Practices
 
 These guidelines apply to app-server protocol work in `codex-rs`, especially:
