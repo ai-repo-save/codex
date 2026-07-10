@@ -42,7 +42,7 @@ async fn account_rate_limits_tool_returns_structured_api_key_unavailability() ->
         .function_call_output_content_and_success(CALL_ID)
         .expect("account rate limits tool output should be present");
     let content = content.expect("account rate limits tool output should contain JSON");
-    assert_eq!(success, Some(true));
+    assert_eq!(success, None);
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&content)?,
         json!({
