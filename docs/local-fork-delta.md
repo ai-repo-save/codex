@@ -1,204 +1,309 @@
-# Local Fork Delta
+# Local Fork Capability Contract
 
-This fork carries local Codex Rust changes on top of upstream release tags. Stable release syncs
-derive the fork-owned side from first-parent history and preserve the behavior listed here when
-merging a newer upstream tag.
+This repository carries a maintained Codex Rust fork on top of upstream stable release tags. The
+current integration baseline is `rust-v0.144.1`. Future stable syncs preserve the capabilities in
+this document as behavioral contracts rather than reproducing a historical commit range.
 
-## Baseline
+## Stable Sync Invariants
 
-- Local branch: `main`
-- Fork remote: `origin`
-- Upstream remote: `upstream`
-- Last merged stable tag: `rust-v0.143.0`
-- Upstream tag commit: `c4d748f586a84a3ed5b6aceb82e9a1db4abb1cda`
-- Local merge commit for `rust-v0.143.0`: `722aa36f29136a489ab21885c038f7e67140175c`
-- Completed 0.143 merge-repair boundary:
-  `25742b1a057d0fa7bf2dfffa85f8fc1bc44e1f10`
+- `main` integrates stable upstream tags through merge commits so upstream ancestry remains
+  inspectable.
+- Fork behavior is identified from capability ownership, configuration, schemas, and focused tests;
+  local commit hashes are not part of the contract.
+- Upstream API changes may replace an implementation, but they must not silently remove a fork
+  capability, weaken its gates, or change its persistence and model-visible behavior.
+- Generated config and app-server schemas move with the Rust types that own their wire shapes.
+- CLI or agent-runtime changes are complete only after remote validation and local standalone
+  installation.
 
-`722aa36f29..HEAD` is the full local history after the 0.143 merge commit. It includes
-merge-repair commits that adapted fork behavior to upstream API drift. `25742b1a05..HEAD` is the
-post-repair feature delta and is the most useful range for identifying behavior newly added after
-the completed 0.143 sync.
+## Remote Build, Validation, and Installation
 
-Useful local queries:
+All routine Codex Rust compilation, execution, testing, code generation, and standalone packaging
+run on `192.168.50.8` through `scripts/remote/`. The scripts own repository synchronization,
+sccache, fast-linker configuration, diagnostics, artifact transfer, and local installation.
 
-- Full post-0.143 history:
-  `git log --first-parent --reverse --format='%h%x09%s' 722aa36f29..HEAD`
-- New post-repair local behavior:
-  `git log --first-parent --reverse --format='%h%x09%s' 25742b1a05..HEAD`
-- Touched paths for the next stable conflict plan:
-  `git diff --name-status 722aa36f29..HEAD`
+- `scripts/remote/just.py` is the only supported path for `codex-rs` `just` recipes.
+- `scripts/remote/build_sync.py` performs the remote compile-and-execute smoke workflow.
+- `scripts/remote/install_local_standalone.py` builds remotely, transfers a compressed standalone
+  package, installs it locally, and reports timing and diagnostic information.
+- `scripts/remote/doctor.py` checks the remote Git, network, and toolchain prerequisites.
+- Repository hooks guard against accidental local Rust build, test, and code-generation commands.
+- The local checkout remains the source of truth. Generated files retained from a remote workflow
+  are copied back before review and commit.
 
-For the next stable sync, fetch the target tag before merging so the local checkout records the
-exact upstream tag object and commit being integrated.
+## Skills
 
-## Fork-Owned Behavior
+- `use_skill` is a first-party model tool. A successful load returns the canonical `SKILL.md` body
+  and records the skill load in conversation and rollout history.
+- Skill discovery merges system, user, repository, plugin, orchestrator, and executor sources under
+  their runtime gates.
+- Model-visible skill metadata has a bounded context budget. Skill bodies are loaded on demand
+  rather than injected in full during initial context construction.
+- Skill prompt guidance remains present after upstream prompt and extension refactors.
+- App-server history conversion, analytics, and resume behavior preserve skill-load items.
 
-### Remote build, validation, and install
+## Multi-Agent V2
 
-- Codex Rust builds, tests, code generation, and local standalone installs run through
-  `scripts/remote/` workflows on the remote execution host.
-- Remote workflows own checkout synchronization, sccache, linker setup, and command diagnostics;
-  ad hoc `ssh`, `scp`, and local `just` invocations are outside the supported workflow.
-- Local standalone install supports diagnose and auto-build modes, defaults to the dev-small
-  profile, records timing information, and uses compressed transfer packaging.
-- Local build guard hooks block accidental local Rust build/test/codegen commands while allowing
-  approved remote validation commands.
+`multi_agent_v2` is an under-development feature and remains disabled unless
+`features.multi_agent_v2.enabled` is true. Enabling the feature installs the v2 spawn,
+communication, inspection, follow-up, waiting, and agent-list tools and injects the applicable root
+or subagent usage guidance.
 
-### Skills and tool context
+- The default Responses namespace is `agents`.
+- `collaboration`, `functions`, `mcp`, `mcp__*`, and other Responses-owned namespaces are reserved
+  and rejected by configuration validation. This prevents model-reserved tool schema collisions,
+  including GPT-5.6 rejecting `collaboration.followup_task`.
+- `tool_namespace` may select another validated namespace without changing the underlying agent
+  protocol.
+- `MultiAgentMode` supports `none`, `explicitRequestOnly`, and `proactive`. Explicit config takes
+  precedence over effort-derived defaults; a per-turn app-server override applies only to that
+  turn.
+- Thread and turn app-server settings preserve the effective multi-agent mode across resume and
+  history reconstruction.
+- Root and child sessions receive distinct configurable usage hints. Spawned children inherit the
+  relevant developer context and receive a subagent identity fragment.
+- Completion notifications remain agent messages, including plaintext v2 completions. Encrypted
+  inter-agent messaging follows the same lifecycle when enabled.
+- Concurrency limits count the root thread, and inspect/list results identify the calling agent.
+- In code-mode configurations, `non_code_mode_only` controls whether collaboration tools remain
+  direct model tools instead of being routed through the code executor.
 
-- `use_skill` is a first-party tool and loaded skills are visible in conversation history.
-- Skill prompt rendering and injection are fork-owned behavior, including restored `use_skill`
-  prompt guidance after upstream merges.
-- The Codex Rust architecture skill is repository guidance for internal Codex changes.
+## Goals and Collaboration Modes
 
-### Multi-agent behavior
+Goals are thread state with first-party `create_goal`, `get_goal`, and `update_goal` tools,
+configurable prompts, usage accounting, and app-server representation.
 
-- Multi-agent tools include inspect/list behavior that identifies the calling agent and supports
-  v2 spawn/message/follow-up flows.
-- Subagent identity context, spawn initial task delivery, plaintext completion notifications, and
-  notification tests are fork-owned behavior.
-- `MultiAgentMode` is configurable. `none` keeps tools available without injected mode
-  instructions, `explicitRequestOnly` requires user request, and `proactive` allows delegation
-  when useful.
-- App-server `turn/start.multiAgentMode` accepts `none`, `explicitRequestOnly`, and `proactive`;
-  omission keeps the loaded session mode.
-- Side-thread replay and side-stack repro commits were reverted. Repro-only behavior from those
-  reverted commits is not part of the preserved fork surface.
+- An unfinished goal blocks replacement. Completed goals can be cleared or replaced on a later
+  user turn according to the goal lifecycle.
+- Token and elapsed-time accounting continues through turn completion and is exposed by the goal
+  tools and protocol types.
+- Reset-context and resume flows retain the goal/thread relationship rather than orphaning active
+  state.
+- Collaboration instructions resolve from configured `collaboration_modes` entries before built-in
+  presets.
+- Research is a first-class collaboration mode with wire value `research`, TUI selection and status
+  rendering, app-server listing and settings support, analytics classification, and a built-in
+  read-only investigation prompt.
+- `request_user_input` is available in Research mode. Goal idle turns are permitted there, while
+  Plan-only stream parsing and Default-only plan nudges keep their original mode boundaries.
 
-### Goal state and collaboration prompts
+## Context Lifecycle
 
-- Goal prompts are configurable and exposed through the core API.
-- Completed goals are cleared or replaced according to local turn-state rules.
-- Goal continuation context guidance, paused goal edit tooling, generated goal schemas, and goal
-  thread id sync fixes are fork-owned behavior.
-- Collaboration mode prompts resolve from the configured `collaboration_modes` map before falling
-  back to built-in presets.
-- Config schema generation covers collaboration prompt configuration.
+### Reset Context
 
-### Reset-context and TUI flow
+`thread/reset-context` forks the live thread context without running a preparatory compaction. The
+source thread must be loaded and idle. The app-server response, goal migration, runtime workspace
+roots, permissions, history reconstruction, and TUI state all follow the newly forked thread.
 
-- Reset-context is exposed through app-server protocol types, generated schema, core handlers, and
-  TUI commands.
-- Reset-context forks live context without unnecessary compaction and remains responsive in the TUI.
-- TUI command splitting, remote TUI smoke coverage, source-build snapshot guidance, and state-DB
-  resume discovery are fork-owned behavior.
+### Context Usage and Manual Compaction
 
-### Context compaction, inspection, and anchors
+- `get_context_usage` returns the current known context-window usage without estimating missing
+  usage data.
+- `request_context_compaction` accepts a bounded carry-forward note and requests normal compaction
+  lifecycle processing.
+- Manual compaction preserves its own turn identity and compaction phase, uses the configured local
+  or remote compaction path, and retains the request tool output needed for coherent history.
 
-- Context usage and context compaction request tools are fork-owned behavior.
-- Context anchors can be saved, listed, and rewound from tool calls.
-- Rewind reports approximate benefit, enforces `[context_rewind].min_reclaim_percent`, returns a
-  soft rejection when the threshold is not met, and consumes obsolete anchors after a successful
-  rewind.
-- Anchor save/rewind activity is preserved in app-server history, TUI replay, analytics, and
-  snapshots.
-- Rewind behavior is guarded across collaboration modes, and rewind carry-forward notes are
-  explicit context fragments.
-- Compact inspect, cancellable history compaction, PostCompact supplements, and compaction phase
-  hook input are fork-owned behavior.
-- Mid-turn compaction continuation supplements were reverted. That reverted implementation is not
-  part of the preserved fork surface.
+### Context Anchors
 
-### Scoped memories and context reminders
+- `save_context_anchor` creates a thread-local anchor at committed model context and optionally
+  records a bounded label.
+- `list_context_anchors` flushes persistence before reconstructing the bounded active anchor list.
+- `rewind_context_to_anchor` discards later context, injects a bounded carry-forward note, reports
+  approximate reclaimed items and tokens, and atomically creates a replacement anchor.
+- Successful rewinds consume obsolete anchors. Rewinds below
+  `context_rewind.min_reclaim_percent` return a structured soft rejection instead of mutating
+  history.
+- Rewind eligibility follows collaboration-mode guards, and a rewind call must be the only tool
+  call in its model response.
+- Anchor save and rewind events persist through rollout history, app-server thread items, analytics,
+  TUI replay, and resume.
 
-- Session and project scoped memories are fork-owned behavior.
-- Scoped memories support exact-path deletion through the memories delete tool, local delete
-  backend, and scoped request/response types.
-- Root context reminders and configurable context reminder messages are fork-owned behavior.
-- `ContextReminderConfig` is exported through the core API and used by the thread-manager sample.
+### Session-Control Tool Execution
 
-### Research collaboration mode
+`get_context_usage` completes inside its handler and may run through the code executor. Manual
+compaction and anchor tools depend on turn-level post-processing, so they use
+`ToolExposure::DirectModelOnly` and remain top-level model tools when the effective tool mode is
+`CodeModeOnly`. They must not be nested under the code executor's `functions` namespace.
 
-- `Research` is a collaboration mode with wire value `research` and display name `Research`.
-- TUI exposes `/research`, includes Research in the visible collaboration mode cycle, and renders
-  Research in footer/status surfaces.
-- App-server `collaborationMode/list` returns the Research preset.
-- App-server `thread/settings/update.collaborationMode` and `turn/start.collaborationMode` accept
-  `mode: "research"`.
-- `request_user_input` is available in Research mode.
-- Goal idle turns are allowed in Research mode.
-- Plan stream parsing remains limited to Plan mode, and the Plan nudge is hidden outside Default
-  mode.
-- Research mode uses the default reasoning effort and a built-in read-only investigation prompt
-  unless a client supplies explicit developer instructions.
+The handlers validate arguments and return typed outputs or requests. The session turn loop applies
+the actual compaction, anchor persistence, listing, and rewind side effects after the model response
+has been collected. This separation is required for correct response retention, tool-call ordering,
+history mutation, and event delivery.
 
-### Hooks, approval routing, and auto-review
+### Root Context Reminder
 
-- PostToolUse output rewrite support, blocking hook behavior, and updated PostToolUse fixtures are
-  fork-owned behavior.
-- Approval review route hooks, hook schemas, config schemas, analytics, and shell approval route
-  tests are fork-owned behavior.
-- Auto-review prompt and scope config are fork-owned behavior.
+The configurable context reminder is root-only. After token usage is recorded, crossing the
+configured remaining-context threshold appends a hidden developer update containing the rendered
+`RootContextReminder` fragment. The reminder becomes model-visible on the next inference rather
+than interrupting the response that produced the usage data. Threshold state suppresses repeated
+delivery while usage remains on the same side of the threshold, and non-root agent sessions never
+receive the reminder.
 
-### Tool search and MCP prefixes
+## Scoped Memories
 
-- `tool_search` accepts either a text query or an MCP prefix.
-- MCP prefix expansion can resolve MCP namespace and tool names deterministically.
-- Tool payload logging preserves query-or-prefix behavior for function, tool search, and custom
-  payload shapes.
+The memories extension supports global memories and independent session/project scoped stores.
+Scoped behavior is active only when the memory feature and `memories.use_scoped_memories` are both
+enabled; dedicated tools also require `memories.dedicated_tools`.
 
-### App-server, schema, and merge repair work
+- Session storage is keyed by thread. Project storage is keyed by the canonical project root.
+- Initial context injection is bounded to 10,000 tokens for session memory and 15,000 tokens for
+  project memory.
+- `memories.list`, `memories.read`, and `memories.search` accept explicit scopes. When global
+  memories are disabled, callers must select `session` or `project`.
+- `memories.write_note` writes append-only Markdown notes only to session or project scope and is
+  intended for explicit user requests to remember or update information.
+- `memories.delete` removes one exact memory file. Directories, globs, hidden paths, and path
+  traversal are rejected.
+- Scoped context is contributed as a bounded contextual-user fragment with the write/delete gate
+  stated to the model.
+- Memory tool handlers execute backend reads and writes inside the handler and return the completed
+  result. Unlike session-control tools, their filesystem side effects are not deferred to turn
+  post-processing.
 
-- Local release-sync commits may regenerate app-server schemas, config schemas, Cargo locks, and
-  Bazel locks.
-- Schema generation distinguishes regular and experimental outputs; experimental generation must
-  not overwrite regular fixtures unless the regular fixture change is expected.
-- The 0.143 merge repair set preserved context anchors, reset-context, Research mode,
-  configurable multi-agent mode, app-server schemas, stable schema fixtures, legacy event
-  conversion, compaction code generation, and focused app-server/core/TUI test expectations.
+## Hooks, Approval Routing, and Auto-Review
 
-## Post-0.143 Conflict Hotspots
+- PostToolUse hooks can rewrite tool output. Blocking hook results remain blocking in both direct
+  and code-mode execution.
+- Hook discovery and schemas preserve configured trust behavior and supported metadata.
+- Shell and command approvals carry the selected approval-review route through hook input,
+  analytics, and approval handling.
+- Auto-review prompt, scope, model selection, and configured approval behavior remain fork-owned
+  runtime policy.
+- Review sessions isolate the context they should not inherit, including skills and memories, while
+  preserving the explicit review inputs.
 
-### Core session, tools, and config
+## Tool Search and MCP
 
-- Context anchor behavior is concentrated in `codex-rs/core/src/session/context_anchor.rs`,
-  `codex-rs/core/src/tools/handlers/context_anchor.rs`, and the related integration tests.
-- Rewind carry-forward context is owned by `codex-rs/core/src/context/`.
-- Config resolution for context rewind, multi-agent mode, and collaboration prompts is owned by
-  `codex-rs/core/src/config/mod.rs`, `codex-rs/config/src/config_toml.rs`, and generated
-  `codex-rs/core/config.schema.json`.
-- MCP prefix search behavior is owned by `codex-rs/core/src/tools/handlers/tool_search.rs` and
-  `codex-rs/tools/src/tool_payload.rs`.
+- `tool_search` accepts either a text query or an MCP prefix selector.
+- Prefix expansion resolves MCP namespaces and tool names deterministically and supports calls that
+  contain only the prefix selector.
+- Deferred MCP and extension tools remain registered for discovery while absent from the initial
+  visible tool list.
+- Tool payload logging preserves text-query and prefix forms for function, namespace, search, and
+  custom payloads.
+- MCP runtime selection, status inventory, authentication, turn metadata, and app-server reporting
+  retain their configured provider and environment boundaries.
 
-### App-server protocol and history
+## App Server, Schemas, and TUI
 
-- Thread item variants for context anchor save/rewind are represented in
-  `codex-rs/app-server-protocol/src/protocol/v2/item.rs`.
-- Reset-context and multi-agent mode wire surfaces are represented in
-  `codex-rs/app-server-protocol/src/protocol/v2/thread.rs`.
-- Thread history reconstruction for anchor events is represented in
-  `codex-rs/app-server-protocol/src/protocol/thread_history.rs` and app-server bespoke event
-  handling.
-- App-server schema fixtures under `codex-rs/app-server-protocol/schema/` are expected to move
-  with protocol changes.
+- Fork-owned protocol shapes live in app-server v2 and keep Rust, TypeScript, JSON schema, legacy
+  event conversion, and thread-history reconstruction aligned.
+- Context anchors, reset-context, Research mode, multi-agent mode, goals, permissions, and tool
+  items are represented in the generated regular or experimental schema according to their API
+  gate.
+- Regular schema generation and experimental schema generation are separate workflows; generating
+  experimental fixtures must not replace regular fixtures.
+- TUI replay renders persisted fork items rather than reconstructing behavior from transient state.
+- User-visible anchor, collaboration, goal, approval, or reset-context changes carry focused
+  snapshot coverage.
+- Remote TUI smoke validates compilation and one app-server/TUI RPC path but does not replace
+  behavior-specific tests.
 
-### TUI and visible history
+## Model Provider and Tool Mode
 
-- Context anchor display and replay are represented in `codex-rs/tui/src/context_anchor_display.rs`,
-  `codex-rs/tui/src/thread_transcript.rs`, and `codex-rs/tui/src/chatwidget/replay.rs`.
-- Research mode entry, cycling, and status rendering are represented in
-  `codex-rs/tui/src/collaboration_modes.rs`, `codex-rs/tui/src/slash_command.rs`, TUI slash
-  dispatch, and footer/status modules.
-- Snapshot updates are expected when visible anchor or collaboration mode output changes.
+`model_provider` selects transport, authentication, and provider-specific request behavior from the
+configured provider map. Model availability comes from the provider/catalog path; changing a
+provider can therefore change the model list without changing the compiled fork capability set.
 
-### Remote install script
+The selected model's catalog metadata may provide `tool_mode`. A recognized remote selector
+(`direct`, `code_mode`, or `code_mode_only`) takes precedence over local feature-derived fallback.
+Unknown selectors are ignored. Tool planning must then preserve fork tools according to their
+exposure: `DirectModelOnly` controls remain top-level model tools, while code-routable tools follow
+the effective code-mode plan.
 
-- Local standalone install compression is owned by `scripts/remote/install_local_standalone.py`.
-- Keep the script single-purpose: it builds remotely, transfers the standalone artifact, installs
-  it locally, and reports diagnose/timing data.
+Provider aliases such as a no-WebSocket OpenAI provider may alter transport behavior, but they do
+not define an alternate fork tool registry. A missing tool must be diagnosed through feature gates,
+effective `tool_mode`, auth/model metadata, extension gates, and namespace validation rather than
+attributed to the provider name alone.
+
+## App-Server Daemon Auto-Update
+
+The app-server daemon reads `app_server_auto_update` from config and defaults to enabled when the
+setting is absent. Bootstrap options and daemon settings carry the resolved value. Disabling the
+setting prevents updater startup and stops an existing update loop after settings synchronization;
+re-enabling it permits normal update-loop operation.
+
+## Focused Remote Validation
+
+Run formatting after source changes:
+
+```bash
+uv run --project scripts python scripts/remote/just.py fmt
+```
+
+Validate remote tooling and standalone installation:
+
+```bash
+uv run --project scripts python scripts/remote/doctor.py
+uv run --project scripts python scripts/remote/build_sync.py
+uv run --project scripts python scripts/remote/install_local_standalone.py
+```
+
+Validate skills, multi-agent behavior, goals, and collaboration modes:
+
+```bash
+uv run --project scripts python scripts/remote/just.py test -p codex-core skills
+uv run --project scripts python scripts/remote/just.py test -p codex-core multi_agent_v2
+uv run --project scripts python scripts/remote/just.py test -p codex-core multi_agent_mode
+uv run --project scripts python scripts/remote/just.py test -p codex-core subagent_notifications
+uv run --project scripts python scripts/remote/just.py test -p codex-goal-extension
+uv run --project scripts python scripts/remote/just.py test -p codex-core collaboration_instructions
+```
+
+Validate context lifecycle and scoped memories:
+
+```bash
+uv run --project scripts python scripts/remote/just.py test -p codex-core context_anchor
+uv run --project scripts python scripts/remote/just.py test -p codex-core request_context_compaction
+uv run --project scripts python scripts/remote/just.py test -p codex-core root_context_reminder
+uv run --project scripts python scripts/remote/just.py test -p codex-core compact_remote
+uv run --project scripts python scripts/remote/just.py test -p codex-core tool_harness
+uv run --project scripts python scripts/remote/just.py test -p codex-memories-extension
+uv run --project scripts python scripts/remote/just.py test -p codex-app-server thread_reset_context
+```
+
+Validate hooks, approvals, review, tool search, and MCP:
+
+```bash
+uv run --project scripts python scripts/remote/just.py test -p codex-core approvals
+uv run --project scripts python scripts/remote/just.py test -p codex-core auto_review
+uv run --project scripts python scripts/remote/just.py test -p codex-core tool_search
+uv run --project scripts python scripts/remote/just.py test -p codex-core mcp_turn_metadata
+uv run --project scripts python scripts/remote/just.py test -p codex-core mcp_tool_exposure
+```
+
+Validate provider/tool planning, app-server protocol, daemon updates, and TUI integration:
+
+```bash
+uv run --project scripts python scripts/remote/just.py test -p codex-core model_runtime_selectors
+uv run --project scripts python scripts/remote/just.py test -p codex-core code_mode
+uv run --project scripts python scripts/remote/just.py test -p codex-app-server-protocol
+uv run --project scripts python scripts/remote/just.py test -p codex-app-server turn_start
+uv run --project scripts python scripts/remote/just.py test -p codex-app-server-daemon auto_update
+uv run --project scripts python scripts/remote/tui_smoke.py
+```
+
+Regenerate affected schemas through the remote scripts:
+
+```bash
+uv run --project scripts python scripts/remote/just.py write-config-schema
+uv run --project scripts python scripts/remote/just.py write-app-server-schema
+uv run --project scripts python scripts/remote/just.py write-app-server-schema --experimental
+```
 
 ## Stable Sync Procedure
 
-1. Verify the worktree is clean and create a backup branch before fetching or merging a stable tag.
-2. Fetch the target upstream tag, record its tag object and peeled commit, and merge it into
-   `main` with a merge commit.
-3. Resolve conflicts by preserving the fork-owned behavior above and accepting upstream changes
-   only where they do not remove or silently weaken that behavior.
-4. Regenerate affected app-server schemas, config schemas, Cargo locks, and Bazel locks through
-   the remote scripts.
-5. Run focused remote tests for every conflicted subsystem and every fork-owned behavior touched by
-   the merge.
-6. Run the complete remote test suite for broad stable merges, classify known environment-sensitive
-   failures separately, and fix merge regressions before local install.
-7. Install the validated standalone build locally when CLI or agent behavior changed.
+1. Start from a clean worktree and create a backup branch.
+2. Fetch and verify the target stable tag, then merge it into `main` with a merge commit.
+3. Resolve conflicts against the capability contracts in this document and the current focused
+   tests, not against an obsolete implementation shape.
+4. Regenerate every affected config, protocol, TypeScript, JSON schema, Cargo lock, and Bazel lock
+   artifact through the remote workflows.
+5. Run focused remote validation for every touched capability group. Use the complete remote test
+   suite when the merge crosses shared core or protocol boundaries broadly enough that focused
+   coverage cannot bound the risk.
+6. Review model-visible tool schemas and runtime gates with at least one supported current model,
+   including `CodeModeOnly` planning when session-control tools are affected.
+7. Install the validated standalone build locally and smoke the resulting CLI before declaring the
+   stable sync complete.

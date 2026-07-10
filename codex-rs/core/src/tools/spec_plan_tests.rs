@@ -466,6 +466,10 @@ async fn request_context_compaction_tool_is_available_by_default() {
     let plan = probe(|_| {}).await;
     plan.assert_visible_contains(&["request_context_compaction"]);
     plan.assert_registered_contains(&["request_context_compaction"]);
+    assert_eq!(
+        plan.exposure("request_context_compaction"),
+        ToolExposure::DirectModelOnly
+    );
 }
 
 #[tokio::test]
@@ -481,6 +485,44 @@ async fn context_anchor_tools_are_available_by_default() {
         "list_context_anchors",
         "rewind_context_to_anchor",
     ]);
+    for tool_name in [
+        "save_context_anchor",
+        "list_context_anchors",
+        "rewind_context_to_anchor",
+    ] {
+        assert_eq!(
+            plan.exposure(tool_name),
+            ToolExposure::DirectModelOnly,
+            "{tool_name} must bypass code mode so turn-level side effects run"
+        );
+    }
+}
+
+#[tokio::test]
+async fn session_control_tools_stay_direct_in_code_mode_only() {
+    let plan = probe(|turn| {
+        set_features(turn, &[Feature::CodeMode, Feature::CodeModeOnly]);
+    })
+    .await;
+
+    let session_control_tools = [
+        "request_context_compaction",
+        "save_context_anchor",
+        "list_context_anchors",
+        "rewind_context_to_anchor",
+    ];
+    plan.assert_visible_contains(&session_control_tools);
+    plan.assert_registered_contains(&session_control_tools);
+
+    let ToolSpec::Freeform(exec) = plan.visible_spec(codex_code_mode::PUBLIC_TOOL_NAME) else {
+        panic!("expected code mode exec tool");
+    };
+    for tool_name in session_control_tools {
+        assert!(
+            !exec.description.contains(tool_name),
+            "{tool_name} must not be exposed as a nested code-mode tool"
+        );
+    }
 }
 
 #[tokio::test]

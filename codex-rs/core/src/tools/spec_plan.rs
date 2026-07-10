@@ -713,10 +713,16 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
     let environment_mode = tool_environment_mode(context.step_context);
 
     planned_tools.add(ContextUsageHandler);
-    planned_tools.add(RequestContextCompactionHandler);
-    planned_tools.add(SaveContextAnchorHandler);
-    planned_tools.add(ListContextAnchorsHandler);
-    planned_tools.add(RewindContextToAnchorHandler);
+    planned_tools.add_with_exposure(
+        RequestContextCompactionHandler,
+        ToolExposure::DirectModelOnly,
+    );
+    planned_tools.add_with_exposure(SaveContextAnchorHandler, ToolExposure::DirectModelOnly);
+    planned_tools.add_with_exposure(ListContextAnchorsHandler, ToolExposure::DirectModelOnly);
+    planned_tools.add_with_exposure(
+        RewindContextToAnchorHandler,
+        ToolExposure::DirectModelOnly,
+    );
     planned_tools.add(PlanHandler);
 
     if features.enabled(Feature::DeferredExecutor) {

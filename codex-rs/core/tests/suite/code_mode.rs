@@ -631,6 +631,10 @@ async fn code_mode_only_restricts_prompt_tools() -> Result<()> {
         vec![
             "exec".to_string(),
             "wait".to_string(),
+            "request_context_compaction".to_string(),
+            "save_context_anchor".to_string(),
+            "list_context_anchors".to_string(),
+            "rewind_context_to_anchor".to_string(),
             "request_user_input".to_string(),
             "web_search".to_string()
         ]
