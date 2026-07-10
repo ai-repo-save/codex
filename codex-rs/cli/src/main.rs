@@ -1158,10 +1158,10 @@ async fn cli_main(
                         let auto_update_enabled =
                             codex_app_server_daemon::app_server_auto_update_enabled().await?;
                         let output =
-                            codex_app_server_daemon::bootstrap(AppServerBootstrapOptions {
-                                remote_control_enabled: bootstrap_cli.remote_control,
+                            codex_app_server_daemon::bootstrap(app_server_bootstrap_options(
+                                bootstrap_cli.remote_control,
                                 auto_update_enabled,
-                            })
+                            ))
                             .await?;
                         println!("{}", serde_json::to_string(&output)?);
                     }
@@ -2203,6 +2203,16 @@ async fn print_app_server_daemon_output(command: AppServerLifecycleCommand) -> a
     let output = codex_app_server_daemon::run(command).await?;
     println!("{}", serde_json::to_string(&output)?);
     Ok(())
+}
+
+fn app_server_bootstrap_options(
+    remote_control_enabled: bool,
+    auto_update_enabled: bool,
+) -> AppServerBootstrapOptions {
+    AppServerBootstrapOptions {
+        remote_control_enabled,
+        auto_update_enabled,
+    }
 }
 
 async fn print_app_server_remote_control_output(
@@ -3862,6 +3872,20 @@ mod tests {
                 subcommand: AppServerDaemonSubcommand::Version
             }))
         ));
+    }
+
+    #[test]
+    fn app_server_daemon_bootstrap_options_include_auto_update_config() {
+        assert_eq!(
+            app_server_bootstrap_options(
+                /*remote_control_enabled*/ true,
+                /*auto_update_enabled*/ false,
+            ),
+            AppServerBootstrapOptions {
+                remote_control_enabled: true,
+                auto_update_enabled: false,
+            }
+        );
     }
 
     #[test]
