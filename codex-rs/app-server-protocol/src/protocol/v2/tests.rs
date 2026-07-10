@@ -2755,6 +2755,27 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
 
     let sub_agent_activity_item = TurnItem::SubAgentActivity(SubAgentActivityItem {
         id: "activity-1".to_string(),
+        kind: CoreSubAgentActivityKind::Started,
+        agent_thread_id: receiver_thread_id,
+        agent_path: codex_protocol::AgentPath::root()
+            .join("worker")
+            .expect("worker path"),
+        model: Some("gpt-5.4".to_string()),
+    });
+
+    assert_eq!(
+        ThreadItem::from(sub_agent_activity_item),
+        ThreadItem::SubAgentActivity {
+            id: "activity-1".to_string(),
+            kind: SubAgentActivityKind::Started,
+            agent_thread_id: receiver_thread_id.to_string(),
+            agent_path: "/root/worker".to_string(),
+            model: Some("gpt-5.4".to_string()),
+        }
+    );
+
+    let sub_agent_activity_item = TurnItem::SubAgentActivity(SubAgentActivityItem {
+        id: "activity-2".to_string(),
         kind: CoreSubAgentActivityKind::Interrupted,
         agent_thread_id: receiver_thread_id,
         agent_path: codex_protocol::AgentPath::root()
@@ -2766,11 +2787,11 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
     assert_eq!(
         ThreadItem::from(sub_agent_activity_item),
         ThreadItem::SubAgentActivity {
-            id: "activity-1".to_string(),
+            id: "activity-2".to_string(),
             kind: SubAgentActivityKind::Interrupted,
             agent_thread_id: receiver_thread_id.to_string(),
             agent_path: "/root/worker".to_string(),
-            model: Some("gpt-5.4".to_string()),
+            model: None,
         }
     );
 

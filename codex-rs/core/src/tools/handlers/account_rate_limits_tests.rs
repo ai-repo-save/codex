@@ -6,6 +6,9 @@ use crate::turn_diff_tracker::TurnDiffTracker;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
 use codex_protocol::models::ResponseInputItem;
+use codex_protocol::protocol::CreditsSnapshot;
+use codex_protocol::protocol::RateLimitSnapshot;
+use codex_protocol::protocol::SpendControlLimitSnapshot;
 use core_test_support::responses::start_mock_server;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
@@ -89,6 +92,8 @@ async fn reports_structured_unavailable_reasons() {
             json!({
                 "available": false,
                 "unavailable_reason": unavailable_reason,
+                "total_rate_limit_count": 0,
+                "truncated": false,
                 "rate_limits": [],
             })
         );
@@ -154,6 +159,8 @@ async fn fetches_all_rate_limit_buckets_and_derives_remaining_percent() {
     let expected = json!({
         "available": true,
         "unavailable_reason": null,
+        "total_rate_limit_count": 2,
+        "truncated": false,
         "rate_limits": [
             {
                 "limit_id": "codex",
@@ -199,10 +206,11 @@ async fn fetches_all_rate_limit_buckets_and_derives_remaining_percent() {
 
 #[tokio::test]
 async fn backend_decode_failure_is_a_failed_tool_call() {
+    const BACKEND_BODY: &str = "backend-body-must-not-reach-model";
     let server = start_mock_server().await;
     Mock::given(method("GET"))
         .and(path("/api/codex/usage"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("not-json"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(BACKEND_BODY))
         .expect(1)
         .mount(&server)
         .await;
@@ -223,5 +231,99 @@ async fn backend_decode_failure_is_a_failed_tool_call() {
         Err(error) => error,
     };
 
-    assert!(matches!(error, FunctionCallError::RespondToModel(_)));
+    let FunctionCallError::RespondToModel(message) = error else {
+        panic!("backend decode failure should be reported to the model");
+    };
+    assert_eq!(message, FETCH_ERROR_MESSAGE);
+}
+
+#[test]
+fn bounds_bucket_count_and_backend_strings() {
+    let oversized = "é".repeat(MAX_BACKEND_STRING_BYTES);
+    let snapshots = (0..MAX_RATE_LIMIT_BUCKETS + 1)
+        .map(|_| RateLimitSnapshot {
+            limit_id: Some(oversized.clone()),
+            limit_name: Some(oversized.clone()),
+            primary: None,
+            secondary: None,
+            credits: Some(CreditsSnapshot {
+                has_credits: true,
+                unlimited: false,
+                balance: Some(oversized.clone()),
+            }),
+            individual_limit: Some(SpendControlLimitSnapshot {
+                limit: oversized.clone(),
+                used: oversized.clone(),
+                remaining_percent: 50,
+                resets_at: 1,
+            }),
+            plan_type: None,
+            rate_limit_reached_type: None,
+        })
+        .collect();
+
+    let response = AccountRateLimitsResponse::available(snapshots);
+    let output = AccountRateLimitsOutput::new(response)
+        .expect("bounded account rate limits should serialize");
+    let json = output.code_mode_result(&ToolPayload::Function {
+        arguments: "{}".to_string(),
+    });
+    let expected_truncated = "é".repeat(MAX_BACKEND_STRING_BYTES / "é".len());
+    let expected_bucket = json!({
+        "limit_id": expected_truncated.clone(),
+        "limit_name": expected_truncated.clone(),
+        "primary": null,
+        "secondary": null,
+        "credits": {
+            "has_credits": true,
+            "unlimited": false,
+            "balance": expected_truncated.clone(),
+        },
+        "individual_limit": {
+            "limit": expected_truncated.clone(),
+            "used": expected_truncated,
+            "remaining_percent": 50,
+            "resets_at": 1,
+        },
+        "plan_type": null,
+        "rate_limit_reached_type": null,
+    });
+
+    assert_eq!(
+        json,
+        json!({
+            "available": true,
+            "unavailable_reason": null,
+            "total_rate_limit_count": MAX_RATE_LIMIT_BUCKETS + 1,
+            "truncated": true,
+            "rate_limits": vec![expected_bucket; MAX_RATE_LIMIT_BUCKETS],
+        })
+    );
+}
+
+#[test]
+fn rejects_unexpected_oversized_serialized_output_with_stable_error() {
+    let response = AccountRateLimitsResponse {
+        available: true,
+        unavailable_reason: None,
+        total_rate_limit_count: 1,
+        truncated: false,
+        rate_limits: vec![AccountRateLimitSnapshot {
+            limit_id: Some("x".repeat(MAX_SERIALIZED_OUTPUT_BYTES)),
+            limit_name: None,
+            primary: None,
+            secondary: None,
+            credits: None,
+            individual_limit: None,
+            plan_type: None,
+            rate_limit_reached_type: None,
+        }],
+    };
+
+    let error = AccountRateLimitsOutput::new(response)
+        .expect_err("oversized account rate limits output should be rejected");
+    let FunctionCallError::RespondToModel(message) = error else {
+        panic!("oversized output should be reported to the model");
+    };
+    assert_eq!(message, OUTPUT_TOO_LARGE_ERROR_MESSAGE);
 }

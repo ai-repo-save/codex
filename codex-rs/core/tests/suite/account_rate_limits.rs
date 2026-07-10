@@ -48,6 +48,8 @@ async fn account_rate_limits_tool_returns_structured_api_key_unavailability() ->
         json!({
             "available": false,
             "unavailable_reason": "api_key_auth",
+            "total_rate_limit_count": 0,
+            "truncated": false,
             "rate_limits": [],
         })
     );
