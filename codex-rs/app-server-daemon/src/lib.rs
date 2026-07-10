@@ -1121,12 +1121,10 @@ mod tests {
         };
 
         assert!(should_stop_updater_for_settings(
-            &settings,
-            /*updater_running*/ true
+            &settings, /*updater_running*/ true
         ));
         assert!(!should_stop_updater_for_settings(
-            &settings,
-            /*updater_running*/ false
+            &settings, /*updater_running*/ false
         ));
     }
 
@@ -1138,8 +1136,7 @@ mod tests {
         };
 
         assert!(!should_stop_updater_for_settings(
-            &settings,
-            /*updater_running*/ true
+            &settings, /*updater_running*/ true
         ));
     }
 
