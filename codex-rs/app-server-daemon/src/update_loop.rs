@@ -82,6 +82,7 @@ async fn sleep_or_terminate(duration: Duration, terminate: &mut Signal) -> bool 
 }
 
 #[cfg(unix)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UpdateLoopControl {
     Continue,
     Stop,
@@ -93,8 +94,10 @@ async fn update_once(
     terminate: &mut Signal,
 ) -> Result<UpdateLoopControl> {
     let daemon = Daemon::from_environment()?;
-    if !daemon.load_app_server_auto_update_enabled().await? {
-        return Ok(UpdateLoopControl::Stop);
+    if let Some(control) =
+        update_loop_control_for_auto_update(daemon.load_app_server_auto_update_enabled().await?)
+    {
+        return Ok(control);
     }
 
     install_latest_standalone().await?;
@@ -119,6 +122,15 @@ async fn update_once(
             }
             _ => return Ok(UpdateLoopControl::Continue),
         }
+    }
+}
+
+#[cfg(unix)]
+fn update_loop_control_for_auto_update(auto_update_enabled: bool) -> Option<UpdateLoopControl> {
+    if auto_update_enabled {
+        None
+    } else {
+        Some(UpdateLoopControl::Stop)
     }
 }
 

@@ -191,6 +191,14 @@ enum RestartDecision {
     Restart,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BootstrapUpdaterAction {
+    LeaveStopped,
+    Start,
+    Stop,
+    Restart,
+}
+
 pub async fn run(command: LifecycleCommand) -> Result<LifecycleOutput> {
     ensure_supported_platform()?;
     Daemon::from_environment()?.run(command).await
@@ -637,11 +645,18 @@ impl Daemon {
         let backend = backend::pid_backend(self.backend_paths(&settings));
         backend.start().await?;
         let updater = backend::pid_update_loop_backend(self.backend_paths(&settings));
-        if updater.is_starting_or_running().await? {
-            updater.stop().await?;
-        }
-        if settings.auto_update_enabled {
-            updater.start().await?;
+        match bootstrap_updater_action(&settings, updater.is_starting_or_running().await?) {
+            BootstrapUpdaterAction::LeaveStopped => {}
+            BootstrapUpdaterAction::Start => {
+                updater.start().await?;
+            }
+            BootstrapUpdaterAction::Stop => {
+                updater.stop().await?;
+            }
+            BootstrapUpdaterAction::Restart => {
+                updater.stop().await?;
+                updater.start().await?;
+            }
         }
 
         let info = self.wait_until_ready().await?;
@@ -880,6 +895,18 @@ fn should_stop_updater_for_settings(settings: &DaemonSettings, updater_running: 
     !settings.auto_update_enabled && updater_running
 }
 
+fn bootstrap_updater_action(
+    settings: &DaemonSettings,
+    updater_running: bool,
+) -> BootstrapUpdaterAction {
+    match (settings.auto_update_enabled, updater_running) {
+        (true, true) => BootstrapUpdaterAction::Restart,
+        (true, false) => BootstrapUpdaterAction::Start,
+        (false, true) => BootstrapUpdaterAction::Stop,
+        (false, false) => BootstrapUpdaterAction::LeaveStopped,
+    }
+}
+
 #[cfg(unix)]
 fn restart_decision(
     mode: RestartMode,
@@ -933,6 +960,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::BackendKind;
+    use super::BootstrapUpdaterAction;
     use super::BootstrapOutput;
     use super::BootstrapStatus;
     use super::Daemon;
@@ -945,6 +973,7 @@ mod tests {
     use super::RestartIfRunningOutcome;
     use super::RestartMode;
     use super::UpdaterRefreshMode;
+    use super::bootstrap_updater_action;
     use super::is_bootstrapped_from_states;
     use super::restart_decision;
     use super::should_reexec_updater;
@@ -1144,6 +1173,35 @@ mod tests {
         assert!(!should_stop_updater_for_settings(
             &settings, /*updater_running*/ true
         ));
+    }
+
+    #[test]
+    fn bootstrap_updater_action_matches_auto_update_mode() {
+        let enabled = DaemonSettings {
+            remote_control_enabled: true,
+            auto_update_enabled: true,
+        };
+        let disabled = DaemonSettings {
+            remote_control_enabled: true,
+            auto_update_enabled: false,
+        };
+
+        assert_eq!(
+            bootstrap_updater_action(&enabled, /*updater_running*/ true),
+            BootstrapUpdaterAction::Restart
+        );
+        assert_eq!(
+            bootstrap_updater_action(&enabled, /*updater_running*/ false),
+            BootstrapUpdaterAction::Start
+        );
+        assert_eq!(
+            bootstrap_updater_action(&disabled, /*updater_running*/ true),
+            BootstrapUpdaterAction::Stop
+        );
+        assert_eq!(
+            bootstrap_updater_action(&disabled, /*updater_running*/ false),
+            BootstrapUpdaterAction::LeaveStopped
+        );
     }
 
     #[tokio::test]

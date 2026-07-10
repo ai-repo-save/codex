@@ -1,5 +1,7 @@
 use pretty_assertions::assert_eq;
 
+use super::UpdateLoopControl;
+use super::update_loop_control_for_auto_update;
 use super::update_modes_for_identities;
 use crate::RestartMode;
 use crate::UpdaterRefreshMode;
@@ -27,5 +29,17 @@ fn changed_updater_forces_refresh_even_when_version_may_match() {
             RestartMode::Always,
             UpdaterRefreshMode::ReexecIfManagedBinaryChanged,
         )
+    );
+}
+
+#[test]
+fn disabled_auto_update_stops_update_loop_before_installing() {
+    assert_eq!(
+        update_loop_control_for_auto_update(/*auto_update_enabled*/ false),
+        Some(UpdateLoopControl::Stop)
+    );
+    assert_eq!(
+        update_loop_control_for_auto_update(/*auto_update_enabled*/ true),
+        None
     );
 }
