@@ -113,6 +113,7 @@ fn thread_manager() -> ThreadManager {
 
 async fn make_v2_child_context(
     manager: &ThreadManager,
+    agent_control: crate::agent::AgentControl,
     root_thread_id: ThreadId,
     task_name: &str,
 ) -> (
@@ -129,7 +130,7 @@ async fn make_v2_child_context(
         .expect("test config should allow feature update");
     config.multi_agent_v2.min_wait_timeout_ms = 1;
     set_turn_config(&mut turn, config);
-    session.services.agent_control = manager.agent_control();
+    session.services.agent_control = agent_control;
     let child_path =
         AgentPath::try_from(format!("/root/{task_name}")).expect("child path should be valid");
     let source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
@@ -165,7 +166,7 @@ async fn make_v2_child_context(
 }
 
 async fn make_v2_root_context(
-    manager: &ThreadManager,
+    agent_control: crate::agent::AgentControl,
     root_thread_id: ThreadId,
 ) -> (Arc<crate::session::session::Session>, Arc<TurnContext>) {
     let (mut session, mut turn) = make_session_and_context().await;
@@ -175,7 +176,7 @@ async fn make_v2_root_context(
         .enable(Feature::MultiAgentV2)
         .expect("test config should allow feature update");
     set_turn_config(&mut turn, config);
-    session.services.agent_control = manager.agent_control();
+    session.services.agent_control = agent_control;
     session.thread_id = root_thread_id;
     (Arc::new(session), Arc::new(turn))
 }
@@ -1562,11 +1563,13 @@ async fn multi_agent_v2_ask_parent_correlates_concurrent_replies() {
         .start_thread((*root_turn.config).clone())
         .await
         .expect("root thread should start");
-    let (root_session, root_turn) = make_v2_root_context(&manager, root.thread_id).await;
+    let agent_control = manager.agent_control();
+    let (root_session, root_turn) =
+        make_v2_root_context(agent_control.clone(), root.thread_id).await;
     let (first_session, first_turn, first_thread_id, first_path) =
-        make_v2_child_context(&manager, root.thread_id, "first").await;
+        make_v2_child_context(&manager, agent_control.clone(), root.thread_id, "first").await;
     let (second_session, second_turn, _, second_path) =
-        make_v2_child_context(&manager, root.thread_id, "second").await;
+        make_v2_child_context(&manager, agent_control, root.thread_id, "second").await;
 
     let first_ask = tokio::spawn(async move {
         AskParentHandler
@@ -1682,7 +1685,8 @@ async fn multi_agent_v2_ask_parent_rejects_root_call() {
         .start_thread((*root_turn.config).clone())
         .await
         .expect("root thread should start");
-    let (root_session, root_turn) = make_v2_root_context(&manager, root.thread_id).await;
+    let (root_session, root_turn) =
+        make_v2_root_context(manager.agent_control(), root.thread_id).await;
 
     let err = AskParentHandler
         .handle(invocation(
@@ -1710,9 +1714,11 @@ async fn multi_agent_v2_ask_parent_times_out_and_rejects_late_reply() {
         .start_thread((*root_turn.config).clone())
         .await
         .expect("root thread should start");
-    let (root_session, root_turn) = make_v2_root_context(&manager, root.thread_id).await;
+    let agent_control = manager.agent_control();
+    let (root_session, root_turn) =
+        make_v2_root_context(agent_control.clone(), root.thread_id).await;
     let (child_session, child_turn, _, child_path) =
-        make_v2_child_context(&manager, root.thread_id, "timeout").await;
+        make_v2_child_context(&manager, agent_control, root.thread_id, "timeout").await;
     let min_timeout_ms = child_turn.config.multi_agent_v2.min_wait_timeout_ms;
     let ask = tokio::spawn(async move {
         AskParentHandler
