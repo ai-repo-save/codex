@@ -208,29 +208,24 @@ pub(super) async fn consult_parent(
         ConsultStage::Cancelled => return Ok((ConsultRunOutcome::Cancelled, revision)),
     };
     let cleanup = ConsultResponderCleanup::new(codex);
-    let configured = match wait_for_consult_stage(
-        cleanup.next_event(),
-        cancellation_token,
-        deadline,
-    )
-    .await
-    {
-        ConsultStage::Completed(Ok(configured)) => configured,
-        ConsultStage::Completed(Err(error)) => {
-            cleanup.shutdown().await;
-            return Err(FunctionCallError::RespondToModel(format!(
-                "consult responder failed to configure: {error}"
-            )));
-        }
-        ConsultStage::TimedOut => {
-            cleanup.shutdown().await;
-            return Ok((ConsultRunOutcome::TimedOut, revision));
-        }
-        ConsultStage::Cancelled => {
-            cleanup.shutdown().await;
-            return Ok((ConsultRunOutcome::Cancelled, revision));
-        }
-    };
+    let configured =
+        match wait_for_consult_stage(cleanup.next_event(), cancellation_token, deadline).await {
+            ConsultStage::Completed(Ok(configured)) => configured,
+            ConsultStage::Completed(Err(error)) => {
+                cleanup.shutdown().await;
+                return Err(FunctionCallError::RespondToModel(format!(
+                    "consult responder failed to configure: {error}"
+                )));
+            }
+            ConsultStage::TimedOut => {
+                cleanup.shutdown().await;
+                return Ok((ConsultRunOutcome::TimedOut, revision));
+            }
+            ConsultStage::Cancelled => {
+                cleanup.shutdown().await;
+                return Ok((ConsultRunOutcome::Cancelled, revision));
+            }
+        };
     if !matches!(configured.msg, EventMsg::SessionConfigured(_)) {
         cleanup.shutdown().await;
         return Err(FunctionCallError::RespondToModel(

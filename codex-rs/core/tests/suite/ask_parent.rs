@@ -574,7 +574,9 @@ async fn cancelling_consult_cleans_up_without_consuming_real_agent_capacity() ->
     .await
     .context("consult responder should start within the real-agent execution limit")??;
 
-    child_thread.submit(codex_protocol::protocol::Op::Interrupt).await?;
+    child_thread
+        .submit(codex_protocol::protocol::Op::Interrupt)
+        .await?;
     wait_for_event(child_thread.as_ref(), |event| {
         matches!(event, EventMsg::TurnAborted(_))
     })
