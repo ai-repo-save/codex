@@ -1175,7 +1175,10 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
     assert_eq!(requests.len(), 1);
     let child_request = &requests[0];
     let child_window_id = child_initial_request
-        .single_request()
+        .requests()
+        .into_iter()
+        .find(|request| !request.body_contains_text(CHILD_CONTEXT_REMINDER_MESSAGE))
+        .expect("initial child request should be present")
         .header("x-codex-window-id")
         .expect("initial child request should include a window id");
     assert_eq!(
