@@ -50,8 +50,8 @@ use tracing::warn;
 
 pub(crate) use self::execution::AgentExecutionGuard;
 use self::execution::AgentExecutionLimiter;
-pub(crate) use self::parent_requests::ParentRequestOutcome;
 pub(crate) use self::parent_requests::ParentReplyClaim;
+pub(crate) use self::parent_requests::ParentRequestOutcome;
 use self::residency::V2Residency;
 
 const ROOT_LAST_TASK_MESSAGE: &str = "Main thread";

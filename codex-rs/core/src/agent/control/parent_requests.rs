@@ -26,12 +26,7 @@ impl ParentReplyClaim {
                 answer,
                 acknowledgment,
             })
-            .map_err(|_| {
-                format!(
-                    "parent request `{}` is no longer waiting",
-                    self.request_id
-                )
-            })?;
+            .map_err(|_| format!("parent request `{}` is no longer waiting", self.request_id))?;
         acknowledged.await.map_err(|_| {
             format!(
                 "parent request `{}` did not acknowledge the reply",

@@ -243,9 +243,7 @@ fn parent_wait_result(
             let _ = acknowledgment.send(());
             ParentWaitResult::Answered(answer)
         }
-        Ok(ParentRequestOutcome::ParentUnavailable) | Err(_) => {
-            ParentWaitResult::ParentUnavailable
-        }
+        Ok(ParentRequestOutcome::ParentUnavailable) | Err(_) => ParentWaitResult::ParentUnavailable,
     }
 }
 

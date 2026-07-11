@@ -5,8 +5,7 @@ async fn claimed_parent_reply_wins_over_cancellation() {
     let control = AgentControl::default();
     let child_thread_id = codex_protocol::ThreadId::new();
     let parent_thread_id = codex_protocol::ThreadId::new();
-    let (request_id, receiver) =
-        control.register_parent_request(child_thread_id, parent_thread_id);
+    let (request_id, receiver) = control.register_parent_request(child_thread_id, parent_thread_id);
     let claim = control
         .claim_parent_reply(&request_id, parent_thread_id, child_thread_id)
         .expect("parent should claim pending request");
@@ -32,8 +31,7 @@ async fn claimed_parent_reply_wins_over_timeout() {
     let control = AgentControl::default();
     let child_thread_id = codex_protocol::ThreadId::new();
     let parent_thread_id = codex_protocol::ThreadId::new();
-    let (request_id, receiver) =
-        control.register_parent_request(child_thread_id, parent_thread_id);
+    let (request_id, receiver) = control.register_parent_request(child_thread_id, parent_thread_id);
     let claim = control
         .claim_parent_reply(&request_id, parent_thread_id, child_thread_id)
         .expect("parent should claim pending request");
