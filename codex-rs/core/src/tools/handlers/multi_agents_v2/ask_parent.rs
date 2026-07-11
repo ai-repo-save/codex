@@ -7,6 +7,12 @@ use crate::tools::handlers::multi_agents_spec::create_ask_parent_tool;
 use codex_tools::ToolSpec;
 use std::collections::HashMap;
 use std::time::Duration;
+use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
+
+#[cfg(test)]
+#[path = "ask_parent_tests.rs"]
+mod tests;
 
 #[derive(Default)]
 pub(crate) struct Handler;
@@ -135,11 +141,12 @@ impl Handler {
             return Err(collab_agent_error(parent_thread_id, err));
         }
 
-        let outcome = tokio::select! {
-            result = receiver => Some(result.unwrap_or(ParentRequestOutcome::ParentUnavailable)),
-            () = cancellation_token.cancelled() => None,
-            () = tokio::time::sleep(Duration::from_millis(timeout_ms as u64)) => None,
-        };
+        let outcome = wait_for_parent_outcome(
+            receiver,
+            &cancellation_token,
+            Duration::from_millis(timeout_ms as u64),
+        )
+        .await;
         let (status, answer) = match outcome {
             Some(ParentRequestOutcome::Answered(answer)) => {
                 registration.disarm();
@@ -189,6 +196,19 @@ impl Handler {
             status,
             answer,
         }))
+    }
+}
+
+async fn wait_for_parent_outcome(
+    receiver: oneshot::Receiver<ParentRequestOutcome>,
+    cancellation_token: &CancellationToken,
+    timeout: Duration,
+) -> Option<ParentRequestOutcome> {
+    tokio::select! {
+        biased;
+        result = receiver => Some(result.unwrap_or(ParentRequestOutcome::ParentUnavailable)),
+        () = cancellation_token.cancelled() => None,
+        () = tokio::time::sleep(timeout) => None,
     }
 }
 
