@@ -1207,17 +1207,14 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
         },
     )
     .await?;
-    let child_initial_request = wait_for_matching_request(
-        &child_initial_request,
-        "initial child request",
-        |request| {
+    let child_initial_request =
+        wait_for_matching_request(&child_initial_request, "initial child request", |request| {
             request.body_contains_text(CHILD_PROMPT)
                 && !request.inputs_of_type("agent_message").is_empty()
                 && request.body_json()["client_metadata"]["x-openai-subagent"]
                     == json!("collab_spawn")
-        },
-    )
-    .await?;
+        })
+        .await?;
     let child_thread_id = child_initial_request.body_json()["client_metadata"]["thread_id"]
         .as_str()
         .expect("initial child request should include a thread id")
