@@ -67,7 +67,6 @@ const SUBAGENT_START_CONTEXT: &str = "subagent start context reaches child";
 const SUBAGENT_STOP_CONTINUATION: &str = "continue only the child";
 const INTERNAL_SUBAGENT_PROMPT: &str = "internal subagent: review";
 const CHILD_CONTEXT_REMINDER_MESSAGE: &str = "child context threshold reached";
-const CHILD_AGENT_PATH: &str = "/root/worker";
 
 fn body_contains(req: &wiremock::Request, text: &str) -> bool {
     decoded_body(req)
@@ -1101,7 +1100,7 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
         "message": CHILD_PROMPT,
         "task_name": "worker",
     }))?;
-    mount_sse_once_match(
+    let parent_initial_request = mount_sse_once_match(
         &server,
         |req: &wiremock::Request| body_contains(req, TURN_1_PROMPT),
         sse(vec![
@@ -1116,7 +1115,7 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
         ]),
     )
     .await;
-    mount_sse_once_match(
+    let child_initial_request = mount_sse_once_match(
         &server,
         |req: &wiremock::Request| {
             request_has_input_type(req, "agent_message") && body_contains(req, CHILD_PROMPT)
@@ -1175,25 +1174,17 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
     let requests = wait_for_requests(&child_reminder_request).await?;
     assert_eq!(requests.len(), 1);
     let child_request = &requests[0];
-    let list_agents_output_item = child_request
-        .input()
-        .into_iter()
-        .find(|item| item["call_id"].as_str() == Some("child-list-agents"))
-        .expect("child list_agents output should be present");
-    assert_eq!(list_agents_output_item["output"]["success"], json!(true));
-    let list_agents_output: Value = serde_json::from_str(
-        list_agents_output_item["output"]["content"]
-            .as_str()
-            .expect("child list_agents output should contain JSON content"),
-    )?;
-    let self_agent_names = list_agents_output["agents"]
-        .as_array()
-        .expect("list_agents output should contain an agents array")
-        .iter()
-        .filter(|agent| agent["is_self"].as_bool() == Some(true))
-        .filter_map(|agent| agent["agent_name"].as_str())
-        .collect::<Vec<_>>();
-    assert_eq!(self_agent_names, vec![CHILD_AGENT_PATH]);
+    let child_prompt_cache_key = child_initial_request.single_request().body_json()
+        ["prompt_cache_key"]
+        .clone();
+    assert_eq!(
+        child_request.body_json()["prompt_cache_key"],
+        child_prompt_cache_key
+    );
+    assert_ne!(
+        parent_initial_request.single_request().body_json()["prompt_cache_key"],
+        child_prompt_cache_key
+    );
 
     Ok(())
 }
