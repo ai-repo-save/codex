@@ -1662,12 +1662,12 @@ impl Session {
         let active_turn_id = active_turn_context
             .as_ref()
             .map(|turn_context| turn_context.sub_id.clone());
+        let state = self.state.lock().await;
         let idle_environments = if active_turn_context.is_none() {
             Some(self.services.turn_environments.snapshot().await)
         } else {
             None
         };
-        let state = self.state.lock().await;
         let configuration = &state.session_configuration;
         let (mut config, dynamic_tools, environments) = active_turn_context.as_ref().map_or_else(
             || {
