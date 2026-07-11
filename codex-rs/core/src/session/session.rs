@@ -4,6 +4,7 @@ use crate::agents_md_manager::AgentsMdManager;
 use crate::config::ConstraintError;
 use crate::environment_selection::ThreadEnvironments;
 use crate::environment_selection::TurnEnvironmentSnapshot;
+use crate::session::turn_context::ToolExecutionMode;
 use crate::shell_snapshot::ShellSnapshot;
 use crate::skills::SkillError;
 use crate::state::ActiveTurn;
@@ -28,6 +29,7 @@ use tokio::sync::Semaphore;
 pub(crate) struct Session {
     pub(crate) thread_id: ThreadId,
     pub(crate) installation_id: String,
+    pub(crate) tool_execution_mode: ToolExecutionMode,
     pub(super) tx_event: Sender<Event>,
     pub(super) agent_status: watch::Sender<AgentStatus>,
     pub(super) state: Mutex<SessionState>,
@@ -505,6 +507,8 @@ impl Session {
         attestation_provider: Option<Arc<dyn AttestationProvider>>,
         external_time_provider: Option<Arc<dyn TimeProvider>>,
         multi_agent_version: Option<MultiAgentVersion>,
+        prompt_cache_key_override: Option<String>,
+        tool_execution_mode: ToolExecutionMode,
     ) -> anyhow::Result<Arc<Self>> {
         debug!(
             "Configuring session: model={}; provider={:?}",
@@ -1127,10 +1131,12 @@ impl Session {
                     config.http_client_factory(),
                 )
                 .with_prompt_cache_key_override(
-                    crate::guardian::prompt_cache_key_override_for_review_session(
-                        &session_configuration.session_source,
-                        session_configuration.parent_thread_id,
-                    ),
+                    prompt_cache_key_override.or_else(|| {
+                        crate::guardian::prompt_cache_key_override_for_review_session(
+                            &session_configuration.session_source,
+                            session_configuration.parent_thread_id,
+                        )
+                    }),
                 ),
                 code_mode_service: crate::tools::code_mode::CodeModeService::new(Arc::clone(
                     &code_mode_session_provider,
@@ -1141,6 +1147,7 @@ impl Session {
             let sess = Arc::new(Session {
                 thread_id,
                 installation_id,
+                tool_execution_mode,
                 tx_event: tx_event.clone(),
                 agent_status,
                 state: Mutex::new(state),

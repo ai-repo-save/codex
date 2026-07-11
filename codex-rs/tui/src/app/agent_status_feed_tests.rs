@@ -21,6 +21,8 @@ fn agent_status_describes_pending_parent_decision() {
             prompt: Some("Choose the compatibility policy.".to_string()),
             model: None,
             reasoning_effort: None,
+            mode: None,
+            snapshot_revision: None,
             agents_states: Default::default(),
         },
         thread_id: "thread-child".to_string(),
@@ -60,6 +62,8 @@ fn agent_status_distinguishes_parent_decision_timeout() {
                 prompt: Some("Choose the compatibility policy.".to_string()),
                 model: None,
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: [(
                     "thread-parent".to_string(),
                     codex_app_server_protocol::CollabAgentState {

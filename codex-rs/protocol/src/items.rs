@@ -264,6 +264,17 @@ pub enum CollabAgentToolCallStatus {
     Failed,
 }
 
+/// Delivery semantics for an `ask_parent` request.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, TS, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AskParentMode {
+    Authoritative,
+    Consult,
+}
+
+/// Agent status message used while an authoritative `ask_parent` request is pending.
+pub const ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE: &str = "requires_authoritative_parent";
+
 #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq)]
 pub struct CollabAgentToolCallItem {
     pub id: String,
@@ -283,6 +294,12 @@ pub struct CollabAgentToolCallItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub reasoning_effort: Option<ReasoningEffortConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mode: Option<AskParentMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub snapshot_revision: Option<String>,
     #[serde(default)]
     pub agents_states: HashMap<ThreadId, AgentStatus>,
 }

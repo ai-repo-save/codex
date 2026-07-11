@@ -4,6 +4,7 @@ use crate::exec_policy::ExecPolicyManager;
 use crate::guardian::GUARDIAN_REVIEWER_NAME;
 use crate::sandboxing::SandboxPermissions;
 use crate::session::step_context::StepContext;
+use crate::session::turn_context::ToolExecutionMode;
 use crate::test_support::models_manager_with_provider;
 use crate::tools::context::ToolCallSource;
 use crate::tools::context::ToolOutput;
@@ -718,6 +719,7 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
 
     let CodexSpawnOk { codex, .. } = Codex::spawn(CodexSpawnArgs {
         config,
+        tool_execution_mode: ToolExecutionMode::Normal,
         allow_provider_model_fallback: false,
         user_instructions: Default::default(),
         installation_id: "11111111-1111-4111-8111-111111111111".to_string(),
@@ -754,6 +756,7 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         attestation_provider: None,
         external_time_provider: None,
         inherited_multi_agent_version: None,
+        prompt_cache_key_override: None,
     })
     .await
     .expect("spawn guardian subagent");

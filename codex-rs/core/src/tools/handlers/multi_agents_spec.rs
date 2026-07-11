@@ -214,10 +214,20 @@ pub fn create_ask_parent_tool() -> ToolSpec {
                     .to_string(),
             )),
         ),
+        (
+            "mode".to_string(),
+            JsonSchema::string_enum(
+                vec!["authoritative".into(), "consult".into()],
+                Some(
+                "Delivery mode: authoritative (default) requests a correlated reply from the real parent; consult runs an ephemeral, potentially stale advisory snapshot that cannot make parent commitments."
+                    .to_string(),
+                ),
+            ),
+        ),
     ]);
     ToolSpec::Function(ResponsesApiTool {
         name: "ask_parent".to_string(),
-        description: "Ask the direct parent agent for an authoritative decision and wait for its correlated reply."
+        description: "Ask the direct parent agent for an authoritative decision (the default), or request a non-authoritative consult from an ephemeral snapshot of the direct parent's current in-memory context. Consult replies may be stale and must not be used for commitments that require the real parent's authority."
             .to_string(),
         strict: false,
         defer_loading: None,
@@ -517,14 +527,30 @@ fn ask_parent_output_schema() -> Value {
             },
             "status": {
                 "type": "string",
-                "enum": ["answered", "timed_out", "parent_unavailable"]
+                "enum": ["answered", "timed_out", "parent_unavailable", "requires_authoritative_parent"]
             },
             "answer": {
                 "type": ["string", "null"],
                 "description": "Authoritative parent answer when status is answered."
+            },
+            "mode": {
+                "type": "string",
+                "enum": ["authoritative", "consult"]
+            },
+            "advisory": {
+                "type": ["string", "null"],
+                "description": "Ephemeral consult advisory. A consult status of requires_authoritative_parent means the real parent must decide."
+            },
+            "snapshot_revision": {
+                "type": ["string", "null"],
+                "description": "Opaque revision of the parent snapshot used for a consult."
+            },
+            "snapshot_may_be_stale": {
+                "type": ["boolean", "null"],
+                "description": "True for consult responses because the parent may have advanced after the snapshot was taken."
             }
         },
-        "required": ["request_id", "parent_thread_id", "parent_path", "status", "answer"],
+        "required": ["request_id", "parent_thread_id", "parent_path", "status", "answer", "mode", "advisory", "snapshot_revision", "snapshot_may_be_stale"],
         "additionalProperties": false
     })
 }

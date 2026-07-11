@@ -14,6 +14,7 @@ use crate::config::RolloutBudgetConfig;
 use crate::environment_selection::TurnEnvironmentSnapshot;
 use crate::rollout_budget::RolloutBudget;
 use crate::session::emit_subagent_session_started;
+use crate::session::ConsultSessionSnapshot;
 use crate::session_prefix::format_inter_agent_completion_message;
 use crate::session_prefix::format_subagent_context_line;
 use crate::session_prefix::format_subagent_notification_message;
@@ -89,6 +90,11 @@ pub(crate) struct ListedAgent {
     pub(crate) agent_status: AgentStatus,
     pub(crate) last_task_message: Option<String>,
     pub(crate) is_self: bool,
+}
+
+pub(crate) struct LoadedAgentConsult {
+    pub(crate) session: Arc<crate::session::session::Session>,
+    pub(crate) snapshot: ConsultSessionSnapshot,
 }
 
 /// Control-plane handle for multi-agent operations.
@@ -359,6 +365,18 @@ impl AgentControl {
             return None;
         };
         Some(thread.config_snapshot().await)
+    }
+
+    /// Reads an already-resident agent's consult snapshot without resuming or steering it.
+    pub(crate) async fn loaded_agent_consult_snapshot(
+        &self,
+        agent_id: ThreadId,
+    ) -> CodexResult<LoadedAgentConsult> {
+        let state = self.upgrade()?;
+        let thread = state.get_thread(agent_id).await?;
+        let session = Arc::clone(&thread.codex.session);
+        let snapshot = session.consult_snapshot().await;
+        Ok(LoadedAgentConsult { session, snapshot })
     }
 
     pub(crate) async fn resolve_agent_reference(

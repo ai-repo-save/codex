@@ -225,6 +225,14 @@ pub enum CollabTool {
     CloseAgent,
 }
 
+/// Delivery semantics for an `ask_parent` request.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum AskParentMode {
+    Authoritative,
+    Consult,
+}
+
 /// The status of a collab agent.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "snake_case")]
@@ -252,6 +260,8 @@ pub struct CollabToolCallItem {
     pub sender_thread_id: String,
     pub receiver_thread_ids: Vec<String>,
     pub prompt: Option<String>,
+    pub mode: Option<AskParentMode>,
+    pub snapshot_revision: Option<String>,
     pub agents_states: HashMap<String, CollabAgentState>,
     pub status: CollabToolCallStatus,
 }

@@ -7,12 +7,14 @@
 use crate::history_cell::PlainHistoryCell;
 use crate::render::line_utils::prefix_lines;
 use crate::text_formatting::truncate_text;
+use codex_app_server_protocol::AskParentMode;
 use codex_app_server_protocol::CollabAgentState;
 use codex_app_server_protocol::CollabAgentStatus;
 use codex_app_server_protocol::CollabAgentTool;
 use codex_app_server_protocol::CollabAgentToolCallStatus;
 use codex_app_server_protocol::SubAgentActivityKind;
 use codex_app_server_protocol::ThreadItem;
+use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
 use codex_protocol::ThreadId;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use crossterm::event::KeyCode;
@@ -211,6 +213,8 @@ pub(crate) fn tool_call_history_cell(
         status,
         receiver_thread_ids,
         prompt,
+        mode,
+        snapshot_revision,
         agents_states,
         ..
     } = item
@@ -245,7 +249,13 @@ pub(crate) fn tool_call_history_cell(
                 interaction_end(receiver_thread_id, prompt, &mut agent_metadata)
             })
         }
-        CollabAgentTool::AskParent => Some(parent_decision(prompt, status, agents_states)),
+        CollabAgentTool::AskParent => Some(parent_decision(
+            prompt,
+            status,
+            mode.as_ref(),
+            snapshot_revision.as_deref(),
+            agents_states,
+        )),
         CollabAgentTool::ResumeAgent => first_receiver.map(|receiver_thread_id| {
             if matches!(status, CollabAgentToolCallStatus::InProgress) {
                 resume_begin(receiver_thread_id, &mut agent_metadata)
@@ -397,8 +407,14 @@ fn interaction_end(
 fn parent_decision(
     prompt: &str,
     status: &CollabAgentToolCallStatus,
+    mode: Option<&AskParentMode>,
+    snapshot_revision: Option<&str>,
     agents_states: &HashMap<String, CollabAgentState>,
 ) -> PlainHistoryCell {
+    if matches!(mode, Some(AskParentMode::Consult)) {
+        return parent_consultation(prompt, status, snapshot_revision, agents_states);
+    }
+
     let parent_status = agents_states.values().next().map(|state| &state.status);
     let title = match (status, parent_status) {
         (CollabAgentToolCallStatus::InProgress, _) => "Waiting for parent decision",
@@ -412,6 +428,61 @@ fn parent_decision(
     };
     let details = prompt_line(prompt).into_iter().collect();
     collab_event(title_text(title), details)
+}
+
+fn parent_consultation(
+    prompt: &str,
+    status: &CollabAgentToolCallStatus,
+    snapshot_revision: Option<&str>,
+    agents_states: &HashMap<String, CollabAgentState>,
+) -> PlainHistoryCell {
+    if matches!(status, CollabAgentToolCallStatus::InProgress) {
+        let mut details = prompt_line(prompt).into_iter().collect::<Vec<_>>();
+        details.push("Consulting a snapshot of the parent context".dim().into());
+        return collab_event(title_text("Consulting parent context snapshot"), details);
+    }
+
+    if parent_requires_authoritative_decision(agents_states) {
+        let mut details = prompt_line(prompt).into_iter().collect::<Vec<_>>();
+        details.push(
+            "Use ask_parent with mode: authoritative for a parent decision"
+                .yellow()
+                .into(),
+        );
+        return collab_event(
+            title_text("Parent context requires an authoritative decision"),
+            details,
+        );
+    }
+
+    let parent_status = agents_states.values().next().map(|state| &state.status);
+    let title = match (status, parent_status) {
+        (_, Some(CollabAgentStatus::Interrupted)) => "Parent context consultation timed out",
+        (_, Some(CollabAgentStatus::NotFound | CollabAgentStatus::Shutdown)) => {
+            "Parent context consultation unavailable"
+        }
+        (CollabAgentToolCallStatus::Failed, _) => "Parent context consultation unavailable",
+        _ => "Advisory from parent context snapshot",
+    };
+    let mut details = prompt_line(prompt).into_iter().collect::<Vec<_>>();
+    if matches!(title, "Advisory from parent context snapshot") {
+        let revision = snapshot_revision
+            .map(str::trim)
+            .filter(|revision| !revision.is_empty())
+            .unwrap_or("unavailable");
+        details.push(format!("Snapshot revision: {revision}").dim().into());
+        details.push("May be stale; this is not an authoritative parent decision".yellow().into());
+    }
+    collab_event(title_text(title), details)
+}
+
+fn parent_requires_authoritative_decision(
+    agents_states: &HashMap<String, CollabAgentState>,
+) -> bool {
+    agents_states.values().any(|state| {
+        matches!(state.status, CollabAgentStatus::Completed)
+            && state.message.as_deref() == Some(ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE)
+    })
 }
 
 fn waiting_begin(
@@ -739,6 +810,8 @@ mod tests {
                 prompt: Some("Compute 11! and reply with just the integer result.".to_string()),
                 model: Some("gpt-5".to_string()),
                 reasoning_effort: Some(ReasoningEffortConfig::High),
+                mode: None,
+                snapshot_revision: None,
                 agents_states: HashMap::from([(
                     robie_id.to_string(),
                     agent_state(CollabAgentStatus::PendingInit, /*message*/ None),
@@ -759,6 +832,8 @@ mod tests {
                 prompt: Some("Please continue and return the answer only.".to_string()),
                 model: None,
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: HashMap::from([(
                     robie_id.to_string(),
                     agent_state(CollabAgentStatus::Running, /*message*/ None),
@@ -779,6 +854,8 @@ mod tests {
                 prompt: Some("Should I preserve the existing wire format?".to_string()),
                 model: None,
                 reasoning_effort: None,
+                mode: Some(AskParentMode::Authoritative),
+                snapshot_revision: None,
                 agents_states: HashMap::new(),
             },
             /*cached_spawn_request*/ None,
@@ -796,6 +873,8 @@ mod tests {
                 prompt: Some("Should I preserve the existing wire format?".to_string()),
                 model: None,
                 reasoning_effort: None,
+                mode: Some(AskParentMode::Authoritative),
+                snapshot_revision: None,
                 agents_states: HashMap::from([(
                     sender_thread_id.to_string(),
                     agent_state(CollabAgentStatus::Completed, Some("Yes.")),
@@ -816,6 +895,8 @@ mod tests {
                 prompt: Some("Choose the compatibility policy.".to_string()),
                 model: None,
                 reasoning_effort: None,
+                mode: Some(AskParentMode::Authoritative),
+                snapshot_revision: None,
                 agents_states: HashMap::from([(
                     sender_thread_id.to_string(),
                     agent_state(CollabAgentStatus::Interrupted, /*message*/ None),
@@ -836,6 +917,8 @@ mod tests {
                 prompt: Some("Resolve the ownership conflict.".to_string()),
                 model: None,
                 reasoning_effort: None,
+                mode: Some(AskParentMode::Authoritative),
+                snapshot_revision: None,
                 agents_states: HashMap::from([(
                     sender_thread_id.to_string(),
                     agent_state(CollabAgentStatus::NotFound, /*message*/ None),
@@ -845,6 +928,72 @@ mod tests {
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
         )
         .expect("unavailable ask-parent item renders");
+
+        let consult_parent = tool_call_history_cell(
+            &ThreadItem::CollabAgentToolCall {
+                id: "call-consult-parent".to_string(),
+                tool: CollabAgentTool::AskParent,
+                status: CollabAgentToolCallStatus::InProgress,
+                sender_thread_id: robie_id.to_string(),
+                receiver_thread_ids: vec![sender_thread_id.to_string()],
+                prompt: Some("What constraints did the parent already identify?".to_string()),
+                model: None,
+                reasoning_effort: None,
+                mode: Some(AskParentMode::Consult),
+                snapshot_revision: Some("history-18/items-42".to_string()),
+                agents_states: HashMap::new(),
+            },
+            /*cached_spawn_request*/ None,
+            |thread_id| metadata_for(thread_id, robie_id, bob_id),
+        )
+        .expect("consult-parent item renders");
+
+        let consult_parent_answered = tool_call_history_cell(
+            &ThreadItem::CollabAgentToolCall {
+                id: "call-consult-parent-answered".to_string(),
+                tool: CollabAgentTool::AskParent,
+                status: CollabAgentToolCallStatus::Completed,
+                sender_thread_id: robie_id.to_string(),
+                receiver_thread_ids: vec![sender_thread_id.to_string()],
+                prompt: Some("What constraints did the parent already identify?".to_string()),
+                model: None,
+                reasoning_effort: None,
+                mode: Some(AskParentMode::Consult),
+                snapshot_revision: Some("history-18/items-42".to_string()),
+                agents_states: HashMap::from([(
+                    sender_thread_id.to_string(),
+                    agent_state(CollabAgentStatus::Completed, Some("The parent favors reuse.")),
+                )]),
+            },
+            /*cached_spawn_request*/ None,
+            |thread_id| metadata_for(thread_id, robie_id, bob_id),
+        )
+        .expect("answered consult-parent item renders");
+
+        let consult_parent_requires_authoritative = tool_call_history_cell(
+            &ThreadItem::CollabAgentToolCall {
+                id: "call-consult-parent-requires-authoritative".to_string(),
+                tool: CollabAgentTool::AskParent,
+                status: CollabAgentToolCallStatus::Completed,
+                sender_thread_id: robie_id.to_string(),
+                receiver_thread_ids: vec![sender_thread_id.to_string()],
+                prompt: Some("May I commit the compatibility change?".to_string()),
+                model: None,
+                reasoning_effort: None,
+                mode: Some(AskParentMode::Consult),
+                snapshot_revision: Some("history-18/items-42".to_string()),
+                agents_states: HashMap::from([(
+                    sender_thread_id.to_string(),
+                    agent_state(
+                        CollabAgentStatus::Completed,
+                        Some(ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE),
+                    ),
+                )]),
+            },
+            /*cached_spawn_request*/ None,
+            |thread_id| metadata_for(thread_id, robie_id, bob_id),
+        )
+        .expect("consult-parent requires-authoritative item renders");
 
         let waiting = tool_call_history_cell(
             &ThreadItem::CollabAgentToolCall {
@@ -856,6 +1005,8 @@ mod tests {
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: HashMap::new(),
             },
             /*cached_spawn_request*/ None,
@@ -873,6 +1024,8 @@ mod tests {
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: HashMap::from([
                     (
                         robie_id.to_string(),
@@ -899,6 +1052,8 @@ mod tests {
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: HashMap::from([(
                     robie_id.to_string(),
                     agent_state(CollabAgentStatus::Completed, Some("39916800")),
@@ -916,6 +1071,9 @@ mod tests {
             ask_parent_answered,
             ask_parent_timed_out,
             ask_parent_unavailable,
+            consult_parent,
+            consult_parent_answered,
+            consult_parent_requires_authoritative,
             waiting,
             finished,
             close,
@@ -1047,6 +1205,8 @@ mod tests {
                 prompt: Some(String::new()),
                 model: Some("gpt-5".to_string()),
                 reasoning_effort: Some(ReasoningEffortConfig::High),
+                mode: None,
+                snapshot_revision: None,
                 agents_states: HashMap::from([(
                     robie_id.to_string(),
                     agent_state(CollabAgentStatus::PendingInit, /*message*/ None),
@@ -1086,6 +1246,8 @@ mod tests {
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: HashMap::from([(
                     robie_id.to_string(),
                     agent_state(CollabAgentStatus::Interrupted, /*message*/ None),

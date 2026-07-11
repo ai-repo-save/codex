@@ -887,6 +887,8 @@ impl ThreadHistoryBuilder {
             prompt: Some(payload.prompt.clone()),
             model: Some(payload.model.clone()),
             reasoning_effort: Some(payload.reasoning_effort.clone()),
+            mode: None,
+            snapshot_revision: None,
             agents_states: HashMap::new(),
         };
         self.upsert_item_in_current_turn(item);
@@ -922,6 +924,8 @@ impl ThreadHistoryBuilder {
             prompt: Some(payload.prompt.clone()),
             model: Some(payload.model.clone()),
             reasoning_effort: Some(payload.reasoning_effort.clone()),
+            mode: None,
+            snapshot_revision: None,
             agents_states,
         });
     }
@@ -939,6 +943,8 @@ impl ThreadHistoryBuilder {
             prompt: Some(payload.prompt.clone()),
             model: None,
             reasoning_effort: None,
+            mode: None,
+            snapshot_revision: None,
             agents_states: HashMap::new(),
         };
         self.upsert_item_in_current_turn(item);
@@ -963,6 +969,8 @@ impl ThreadHistoryBuilder {
             prompt: Some(payload.prompt.clone()),
             model: None,
             reasoning_effort: None,
+            mode: None,
+            snapshot_revision: None,
             agents_states: [(receiver_id, received_status)].into_iter().collect(),
         });
     }
@@ -997,6 +1005,8 @@ impl ThreadHistoryBuilder {
             prompt: None,
             model: None,
             reasoning_effort: None,
+            mode: None,
+            snapshot_revision: None,
             agents_states: HashMap::new(),
         };
         self.upsert_item_in_current_turn(item);
@@ -1032,6 +1042,8 @@ impl ThreadHistoryBuilder {
             prompt: None,
             model: None,
             reasoning_effort: None,
+            mode: None,
+            snapshot_revision: None,
             agents_states,
         });
     }
@@ -1049,6 +1061,8 @@ impl ThreadHistoryBuilder {
             prompt: None,
             model: None,
             reasoning_effort: None,
+            mode: None,
+            snapshot_revision: None,
             agents_states: HashMap::new(),
         };
         self.upsert_item_in_current_turn(item);
@@ -1075,6 +1089,8 @@ impl ThreadHistoryBuilder {
             prompt: None,
             model: None,
             reasoning_effort: None,
+            mode: None,
+            snapshot_revision: None,
             agents_states,
         });
     }
@@ -1092,6 +1108,8 @@ impl ThreadHistoryBuilder {
             prompt: None,
             model: None,
             reasoning_effort: None,
+            mode: None,
+            snapshot_revision: None,
             agents_states: HashMap::new(),
         };
         self.upsert_item_in_current_turn(item);
@@ -1121,6 +1139,8 @@ impl ThreadHistoryBuilder {
             prompt: None,
             model: None,
             reasoning_effort: None,
+            mode: None,
+            snapshot_revision: None,
             agents_states,
         });
     }
@@ -3901,6 +3921,8 @@ mod tests {
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: [(
                     "00000000-0000-0000-0000-000000000002".into(),
                     CollabAgentState {
@@ -3961,6 +3983,8 @@ mod tests {
                 prompt: Some("inspect the repo".into()),
                 model: Some("gpt-5.4-mini".into()),
                 reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::Medium),
+                mode: None,
+                snapshot_revision: None,
                 agents_states: [(
                     "00000000-0000-0000-0000-000000000002".into(),
                     CollabAgentState {
@@ -4073,6 +4097,8 @@ mod tests {
                 prompt: Some("new task".into()),
                 model: None,
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: [(
                     receiver.to_string(),
                     CollabAgentState {

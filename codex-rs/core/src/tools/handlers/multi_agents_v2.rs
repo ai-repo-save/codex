@@ -36,6 +36,7 @@ pub(crate) use spawn::Handler as SpawnAgentHandler;
 pub(crate) use wait::Handler as WaitAgentHandler;
 
 mod ask_parent;
+mod consult;
 mod followup_task;
 mod inspect_agent;
 mod interrupt_agent;

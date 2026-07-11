@@ -2725,6 +2725,8 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         prompt: Some("continue".to_string()),
         model: None,
         reasoning_effort: None,
+        mode: None,
+        snapshot_revision: None,
         agents_states: [(receiver_thread_id, CoreAgentStatus::Completed(None))]
             .into_iter()
             .collect(),
@@ -2741,6 +2743,8 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             prompt: Some("continue".to_string()),
             model: None,
             reasoning_effort: None,
+            mode: None,
+            snapshot_revision: None,
             agents_states: [(
                 receiver_thread_id.to_string(),
                 CollabAgentState {

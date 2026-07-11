@@ -74,6 +74,8 @@ async fn handle_resume_agent(
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: Default::default(),
             }),
         )
@@ -137,6 +139,8 @@ async fn handle_resume_agent(
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: [(receiver_thread_id, status.clone())].into_iter().collect(),
             }),
         )

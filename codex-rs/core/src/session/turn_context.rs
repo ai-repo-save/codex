@@ -40,6 +40,17 @@ impl TurnSkillsContext {
 
 pub(crate) type ShellSnapshotTask = Shared<BoxFuture<'static, Option<Arc<ShellSnapshotFile>>>>;
 
+/// Controls whether a turn may invoke locally executed tools.
+///
+/// Consult sessions preserve the normal model-visible tool definitions while
+/// preventing their local handlers from running.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum ToolExecutionMode {
+    #[default]
+    Normal,
+    ConsultNoLocalTools,
+}
+
 #[derive(Clone)]
 pub(crate) struct TurnEnvironment {
     pub(crate) environment_id: String,
@@ -104,6 +115,7 @@ pub struct TurnContext {
     pub(crate) sub_id: String,
     pub(crate) trace_id: Option<String>,
     pub(crate) realtime_active: bool,
+    pub(crate) tool_execution_mode: ToolExecutionMode,
     pub config: Arc<Config>,
     pub(crate) auth_manager: Option<Arc<AuthManager>>,
     pub(crate) model_info: ModelInfo,
@@ -261,6 +273,7 @@ impl TurnContext {
             sub_id: self.sub_id.clone(),
             trace_id: self.trace_id.clone(),
             realtime_active: self.realtime_active,
+            tool_execution_mode: self.tool_execution_mode,
             config: Arc::new(config),
             auth_manager: self.auth_manager.clone(),
             model_info: model_info.clone(),
@@ -544,6 +557,7 @@ impl Session {
             sub_id,
             trace_id: current_span_trace_id(),
             realtime_active: false,
+            tool_execution_mode: ToolExecutionMode::Normal,
             config: per_turn_config,
             auth_manager: auth_manager_for_context,
             model_info,
@@ -777,6 +791,7 @@ impl Session {
             skills_snapshot,
         );
         turn_context.realtime_active = self.conversation.running_state().await.is_some();
+        turn_context.tool_execution_mode = self.tool_execution_mode;
 
         if let Some(final_schema) = final_output_json_schema {
             turn_context.final_output_json_schema = final_schema;

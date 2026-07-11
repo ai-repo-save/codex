@@ -20,6 +20,19 @@ expression: snapshot
 • Parent decision unavailable
   └ Resolve the ownership conflict.
 
+• Consulting parent context snapshot
+  └ What constraints did the parent already identify?
+    Consulting a snapshot of the parent context
+
+• Advisory from parent context snapshot
+  └ What constraints did the parent already identify?
+    Snapshot revision: history-18/items-42
+    May be stale; this is not an authoritative parent decision
+
+• Parent context requires an authoritative decision
+  └ May I commit the compatibility change?
+    Use ask_parent with mode: authoritative for a parent decision
+
 • Waiting for Robie [explorer]
 
 • Finished waiting

@@ -466,7 +466,7 @@ impl ModelClient {
         self
     }
 
-    fn prompt_cache_key(&self) -> String {
+    pub(crate) fn prompt_cache_key(&self) -> String {
         self.prompt_cache_key_override
             .clone()
             .unwrap_or_else(|| self.state.thread_id.to_string())

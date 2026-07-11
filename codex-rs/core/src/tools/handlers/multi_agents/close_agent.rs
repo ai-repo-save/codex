@@ -55,6 +55,8 @@ async fn handle_close_agent(
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: Default::default(),
             }),
         )
@@ -88,6 +90,8 @@ async fn handle_close_agent(
                         prompt: None,
                         model: None,
                         reasoning_effort: None,
+                        mode: None,
+                        snapshot_revision: None,
                         agents_states: [(agent_id, status)].into_iter().collect(),
                     }),
                 )
@@ -116,6 +120,8 @@ async fn handle_close_agent(
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: [(agent_id, status.clone())].into_iter().collect(),
             }),
         )

@@ -5,6 +5,7 @@ use std::sync::atomic::Ordering;
 
 use codex_app_server_protocol::CollabAgentTool;
 use codex_app_server_protocol::CollabAgentToolCallStatus;
+use codex_app_server_protocol::AskParentMode as ApiAskParentMode;
 use codex_app_server_protocol::CommandExecutionStatus;
 use codex_app_server_protocol::McpToolCallStatus;
 use codex_app_server_protocol::PatchApplyStatus;
@@ -22,6 +23,7 @@ pub use crate::event_processor::CodexStatus;
 use crate::event_processor::EventProcessor;
 use crate::event_processor::handle_last_message;
 use crate::exec_events::AgentMessageItem;
+use crate::exec_events::AskParentMode;
 use crate::exec_events::CollabAgentState;
 use crate::exec_events::CollabAgentStatus;
 use crate::exec_events::CollabTool;
@@ -236,6 +238,8 @@ impl EventProcessorWithJsonOutput {
                 sender_thread_id,
                 receiver_thread_ids,
                 prompt,
+                mode,
+                snapshot_revision,
                 agents_states,
                 status,
                 ..
@@ -253,6 +257,11 @@ impl EventProcessorWithJsonOutput {
                     sender_thread_id,
                     receiver_thread_ids,
                     prompt,
+                    mode: mode.map(|mode| match mode {
+                        ApiAskParentMode::Authoritative => AskParentMode::Authoritative,
+                        ApiAskParentMode::Consult => AskParentMode::Consult,
+                    }),
+                    snapshot_revision,
                     agents_states: agents_states
                         .into_iter()
                         .map(|(thread_id, state)| {

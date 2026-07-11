@@ -48,6 +48,7 @@ use crate::mcp_tool_call::lookup_mcp_tool_metadata;
 use crate::mcp_tool_call::mcp_approvals_reviewer;
 use crate::session::Codex;
 use crate::session::CodexSpawnArgs;
+use crate::session::turn_context::ToolExecutionMode;
 use crate::session::CodexSpawnOk;
 use crate::session::SUBMISSION_CHANNEL_CAPACITY;
 use crate::session::emit_subagent_session_started;
@@ -94,6 +95,7 @@ pub(crate) async fn run_codex_thread_interactive(
     };
     let CodexSpawnOk { codex, .. } = Box::pin(Codex::spawn(CodexSpawnArgs {
         config,
+        tool_execution_mode: ToolExecutionMode::Normal,
         allow_provider_model_fallback: false,
         user_instructions,
         installation_id: parent_session.installation_id.clone(),
@@ -134,6 +136,7 @@ pub(crate) async fn run_codex_thread_interactive(
         attestation_provider: parent_session.services.attestation_provider.clone(),
         external_time_provider: Some(Arc::clone(&parent_session.services.time_provider)),
         inherited_multi_agent_version: Some(MultiAgentVersion::Disabled),
+        prompt_cache_key_override: None,
     }))
     .or_cancel(&cancel_token)
     .await??;

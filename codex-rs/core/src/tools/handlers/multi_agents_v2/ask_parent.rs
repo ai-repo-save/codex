@@ -5,6 +5,8 @@ use crate::agent_communication::AgentCommunicationContext;
 use crate::agent_communication::AgentCommunicationKind;
 use crate::tools::handlers::multi_agents_spec::create_ask_parent_tool;
 use codex_tools::ToolSpec;
+use codex_protocol::items::AskParentMode;
+use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::oneshot;
@@ -47,6 +49,7 @@ impl Handler {
         let args: AskParentArgs = parse_arguments(&function_arguments(payload)?)?;
         let question = message_tool::message_content(args.question)?;
         let timeout_ms = validate_timeout(&turn, args.timeout_ms)?;
+        let mode = args.mode.unwrap_or(AskParentMode::Authoritative);
         let parent_thread_id = turn.parent_thread_id.ok_or_else(|| {
             FunctionCallError::RespondToModel(
                 "ask_parent is only available to an agent with a direct parent".to_string(),
@@ -68,6 +71,21 @@ impl Handler {
             agent_nickname: parent.agent_nickname,
             agent_role: parent.agent_role,
         };
+        if mode == AskParentMode::Consult {
+            return self
+                .handle_consult(
+                    session,
+                    turn,
+                    call_id,
+                    cancellation_token,
+                    parent_thread_id,
+                    parent_path,
+                    parent_ref,
+                    question,
+                    timeout_ms,
+                )
+                .await;
+        }
         let resume_config = build_agent_resume_config(turn.as_ref())?;
         emit_ask_parent_item(
             &session,
@@ -78,6 +96,8 @@ impl Handler {
             parent_thread_id,
             parent_ref.clone(),
             &question,
+            AskParentMode::Authoritative,
+            None,
         )
         .await;
         if let Err(err) = session
@@ -95,6 +115,8 @@ impl Handler {
                 parent_thread_id,
                 parent_ref,
                 &question,
+                AskParentMode::Authoritative,
+                None,
             )
             .await;
             return Err(collab_agent_error(parent_thread_id, err));
@@ -136,6 +158,8 @@ impl Handler {
                 parent_thread_id,
                 parent_ref,
                 &question,
+                AskParentMode::Authoritative,
+                None,
             )
             .await;
             return Err(collab_agent_error(parent_thread_id, err));
@@ -169,6 +193,8 @@ impl Handler {
                     parent_thread_id,
                     parent_ref,
                     &question,
+                    AskParentMode::Authoritative,
+                    None,
                 )
                 .await;
                 return Err(FunctionCallError::RespondToModel(
@@ -189,10 +215,13 @@ impl Handler {
                 AskParentStatus::Answered => AgentStatus::Completed(answer.clone()),
                 AskParentStatus::TimedOut => AgentStatus::Interrupted,
                 AskParentStatus::ParentUnavailable => AgentStatus::NotFound,
+                AskParentStatus::RequiresAuthoritativeParent => AgentStatus::Interrupted,
             },
             parent_thread_id,
             parent_ref,
             &question,
+            AskParentMode::Authoritative,
+            None,
         )
         .await;
         Ok(boxed_tool_output(AskParentResult {
@@ -201,6 +230,140 @@ impl Handler {
             parent_path,
             status,
             answer,
+            mode: AskParentMode::Authoritative,
+            advisory: None,
+            snapshot_revision: None,
+            snapshot_may_be_stale: None,
+        }))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn handle_consult(
+        &self,
+        session: std::sync::Arc<crate::session::session::Session>,
+        turn: std::sync::Arc<crate::session::turn_context::TurnContext>,
+        call_id: String,
+        cancellation_token: CancellationToken,
+        parent_thread_id: codex_protocol::ThreadId,
+        parent_path: AgentPath,
+        parent_ref: codex_protocol::protocol::CollabAgentRef,
+        question: String,
+        timeout_ms: i64,
+    ) -> Result<Box<dyn crate::tools::context::ToolOutput>, FunctionCallError> {
+        emit_ask_parent_item(
+            &session,
+            &turn,
+            &call_id,
+            CollabAgentToolCallStatus::InProgress,
+            AgentStatus::Running,
+            parent_thread_id,
+            parent_ref.clone(),
+            &question,
+            AskParentMode::Consult,
+            None,
+        )
+        .await;
+        let loaded_parent = match session
+            .services
+            .agent_control
+            .loaded_agent_consult_snapshot(parent_thread_id)
+            .await
+        {
+            Ok(loaded_parent) => loaded_parent,
+            Err(_) => {
+                emit_ask_parent_item(
+                    &session,
+                    &turn,
+                    &call_id,
+                    CollabAgentToolCallStatus::Completed,
+                    AgentStatus::NotFound,
+                    parent_thread_id,
+                    parent_ref,
+                    &question,
+                    AskParentMode::Consult,
+                    None,
+                )
+                .await;
+                return Ok(boxed_tool_output(AskParentResult {
+                    request_id: call_id,
+                    parent_thread_id,
+                    parent_path,
+                    status: AskParentStatus::ParentUnavailable,
+                    answer: None,
+                    mode: AskParentMode::Consult,
+                    advisory: None,
+                    snapshot_revision: None,
+                    snapshot_may_be_stale: Some(true),
+                }));
+            }
+        };
+        let (outcome, snapshot_revision) = super::consult::consult_parent(
+            loaded_parent,
+            question.clone(),
+            &cancellation_token,
+            Duration::from_millis(timeout_ms as u64),
+        )
+        .await?;
+        let (status, advisory, parent_status) = match outcome {
+            super::consult::ConsultRunOutcome::Completed(response) => match response.kind {
+                super::consult::ConsultResponseKind::Advisory => (
+                    AskParentStatus::Answered,
+                    Some(response.advisory.clone()),
+                    AgentStatus::Completed(Some(response.advisory)),
+                ),
+                super::consult::ConsultResponseKind::RequiresAuthoritativeParent => (
+                    AskParentStatus::RequiresAuthoritativeParent,
+                    Some(response.advisory),
+                    AgentStatus::Completed(Some(
+                        ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE.to_string(),
+                    )),
+                ),
+            },
+            super::consult::ConsultRunOutcome::TimedOut => {
+                (AskParentStatus::TimedOut, None, AgentStatus::Interrupted)
+            }
+            super::consult::ConsultRunOutcome::Cancelled => {
+                emit_ask_parent_item(
+                    &session,
+                    &turn,
+                    &call_id,
+                    CollabAgentToolCallStatus::Failed,
+                    AgentStatus::NotFound,
+                    parent_thread_id,
+                    parent_ref,
+                    &question,
+                    AskParentMode::Consult,
+                    Some(snapshot_revision),
+                )
+                .await;
+                return Err(FunctionCallError::RespondToModel(
+                    "ask_parent consult was cancelled".to_string(),
+                ));
+            }
+        };
+        emit_ask_parent_item(
+            &session,
+            &turn,
+            &call_id,
+            CollabAgentToolCallStatus::Completed,
+            parent_status,
+            parent_thread_id,
+            parent_ref,
+            &question,
+            AskParentMode::Consult,
+            Some(snapshot_revision.clone()),
+        )
+        .await;
+        Ok(boxed_tool_output(AskParentResult {
+            request_id: call_id,
+            parent_thread_id,
+            parent_path,
+            status,
+            answer: None,
+            mode: AskParentMode::Consult,
+            advisory,
+            snapshot_revision: Some(snapshot_revision),
+            snapshot_may_be_stale: Some(true),
         }))
     }
 }
@@ -264,6 +427,8 @@ async fn emit_ask_parent_item(
     parent_thread_id: codex_protocol::ThreadId,
     parent: codex_protocol::protocol::CollabAgentRef,
     question: &str,
+    mode: AskParentMode,
+    snapshot_revision: Option<String>,
 ) {
     let item = CollabAgentToolCallItem {
         id: call_id.to_string(),
@@ -275,6 +440,8 @@ async fn emit_ask_parent_item(
         prompt: Some(question.to_string()),
         model: None,
         reasoning_effort: None,
+        mode: Some(mode),
+        snapshot_revision,
         agents_states: HashMap::from([(parent_thread_id, parent_status)]),
     };
     if status == CollabAgentToolCallStatus::InProgress {
@@ -345,6 +512,7 @@ fn validate_timeout(
 struct AskParentArgs {
     question: String,
     timeout_ms: Option<i64>,
+    mode: Option<AskParentMode>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -353,6 +521,7 @@ pub(crate) enum AskParentStatus {
     Answered,
     TimedOut,
     ParentUnavailable,
+    RequiresAuthoritativeParent,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -362,6 +531,10 @@ pub(crate) struct AskParentResult {
     pub(crate) parent_path: AgentPath,
     pub(crate) status: AskParentStatus,
     pub(crate) answer: Option<String>,
+    pub(crate) mode: AskParentMode,
+    pub(crate) advisory: Option<String>,
+    pub(crate) snapshot_revision: Option<String>,
+    pub(crate) snapshot_may_be_stale: Option<bool>,
 }
 
 impl ToolOutput for AskParentResult {

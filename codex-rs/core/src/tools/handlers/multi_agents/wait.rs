@@ -109,6 +109,8 @@ impl Handler {
                     prompt: None,
                     model: None,
                     reasoning_effort: None,
+                    mode: None,
+                    snapshot_revision: None,
                     agents_states: Default::default(),
                 }),
             )
@@ -144,6 +146,8 @@ impl Handler {
                                 prompt: None,
                                 model: None,
                                 reasoning_effort: None,
+                                mode: None,
+                                snapshot_revision: None,
                                 agents_states: statuses,
                             }),
                         )
@@ -213,6 +217,8 @@ impl Handler {
                     prompt: None,
                     model: None,
                     reasoning_effort: None,
+                    mode: None,
+                    snapshot_revision: None,
                     agents_states: statuses_by_id,
                 }),
             )

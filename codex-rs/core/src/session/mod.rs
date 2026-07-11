@@ -410,6 +410,7 @@ pub struct CodexSpawnOk {
 
 pub(crate) struct CodexSpawnArgs {
     pub(crate) config: Config,
+    pub(crate) tool_execution_mode: turn_context::ToolExecutionMode,
     pub(crate) allow_provider_model_fallback: bool,
     pub(crate) user_instructions: LoadedUserInstructions,
     pub(crate) installation_id: String,
@@ -448,6 +449,20 @@ pub(crate) struct CodexSpawnArgs {
     pub(crate) attestation_provider: Option<Arc<dyn AttestationProvider>>,
     pub(crate) external_time_provider: Option<Arc<dyn TimeProvider>>,
     pub(crate) inherited_multi_agent_version: Option<MultiAgentVersion>,
+    pub(crate) prompt_cache_key_override: Option<String>,
+}
+
+#[derive(Clone)]
+pub(crate) struct ConsultSessionSnapshot {
+    pub(crate) config: Config,
+    pub(crate) history: Vec<RolloutItem>,
+    pub(crate) dynamic_tools: Vec<DynamicToolSpec>,
+    pub(crate) environments: Vec<TurnEnvironmentSelection>,
+    pub(crate) multi_agent_version: Option<MultiAgentVersion>,
+    pub(crate) parent_thread_id: Option<ThreadId>,
+    pub(crate) originator: String,
+    pub(crate) prompt_cache_key: String,
+    pub(crate) revision: String,
 }
 
 pub(crate) fn resolve_multi_agent_version(
@@ -502,6 +517,7 @@ impl Codex {
     async fn spawn_internal(args: CodexSpawnArgs) -> CodexResult<CodexSpawnOk> {
         let CodexSpawnArgs {
             mut config,
+            tool_execution_mode,
             allow_provider_model_fallback,
             user_instructions,
             installation_id,
@@ -536,6 +552,7 @@ impl Codex {
             attestation_provider,
             external_time_provider,
             inherited_multi_agent_version,
+            prompt_cache_key_override,
         } = args;
         let (tx_sub, rx_sub) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
         let (tx_event, rx_event) = async_channel::unbounded();
@@ -716,6 +733,8 @@ impl Codex {
             attestation_provider,
             external_time_provider,
             multi_agent_version,
+            prompt_cache_key_override,
+            tool_execution_mode,
         ))
         .await
         .map_err(|e| {
@@ -1629,6 +1648,70 @@ impl Session {
             .session_configuration
             .original_config_do_not_use
             .clone()
+    }
+
+    /// Atomically captures the parent-owned state used by an ephemeral consult responder.
+    pub(crate) async fn consult_snapshot(&self) -> ConsultSessionSnapshot {
+        let active_turn = self.active_turn.lock().await;
+        let active_turn_id = active_turn
+            .as_ref()
+            .and_then(|active_turn| active_turn.task.as_ref())
+            .map(|task| task.turn_context.sub_id.clone());
+        let state = self.state.lock().await;
+        let configuration = &state.session_configuration;
+        let mut config = configuration.original_config_do_not_use.as_ref().clone();
+        config.model = Some(configuration.collaboration_mode.model().to_string());
+        config.model_reasoning_effort = configuration.collaboration_mode.reasoning_effort();
+        config.model_reasoning_summary = configuration.model_reasoning_summary;
+        config.personality = configuration.personality;
+        config.base_instructions = Some(configuration.base_instructions.clone());
+        config.developer_instructions = configuration.developer_instructions.clone();
+        config.ephemeral = true;
+
+        let history_version = state.history.history_version();
+        let item_count = state.history.raw_items().len();
+        let mut history = state
+            .history
+            .raw_items()
+            .iter()
+            .cloned()
+            .map(RolloutItem::ResponseItem)
+            .collect::<Vec<_>>();
+        if active_turn.is_some() {
+            let multi_agent_version = self
+                .multi_agent_version
+                .get()
+                .copied()
+                .unwrap_or(MultiAgentVersion::V1);
+            if let Some(marker) = crate::tasks::interrupted_turn_history_marker(
+                crate::tasks::InterruptedTurnHistoryMarker::from_config_and_version(
+                    &config,
+                    multi_agent_version,
+                ),
+            ) {
+                history.push(RolloutItem::ResponseItem(marker));
+            }
+            history.push(RolloutItem::EventMsg(EventMsg::TurnAborted(
+                TurnAbortedEvent {
+                    turn_id: active_turn_id,
+                    reason: TurnAbortReason::Interrupted,
+                    completed_at: None,
+                    duration_ms: None,
+                },
+            )));
+        }
+
+        ConsultSessionSnapshot {
+            config,
+            history,
+            dynamic_tools: configuration.dynamic_tools.clone(),
+            environments: configuration.environment_selections().to_vec(),
+            multi_agent_version: self.multi_agent_version.get().copied(),
+            parent_thread_id: configuration.parent_thread_id,
+            originator: configuration.originator.clone(),
+            prompt_cache_key: self.services.model_client.prompt_cache_key(),
+            revision: format!("{history_version}:{item_count}"),
+        }
     }
 
     pub(crate) async fn user_instructions(&self) -> Option<codex_extension_api::UserInstructions> {

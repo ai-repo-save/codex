@@ -13,6 +13,7 @@ use crate::memory_usage::emit_metric_for_tool_read;
 use crate::sandbox_tags::permission_profile_policy_tag;
 use crate::sandbox_tags::permission_profile_sandbox_tag;
 use crate::session::turn_context::TurnContext;
+use crate::session::turn_context::ToolExecutionMode;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
@@ -37,6 +38,9 @@ use serde_json::Value;
 use tracing::instrument;
 
 pub(crate) type ToolTelemetryTags = Vec<(&'static str, String)>;
+
+pub(crate) const CONSULT_LOCAL_TOOLS_DISABLED_MESSAGE: &str =
+    "Local tool calls are disabled in consult sessions.";
 
 pub use codex_tools::ToolExecutor;
 pub use codex_tools::ToolExposure;
@@ -464,6 +468,24 @@ impl ToolRegistry {
                 return Err(err);
             }
         };
+
+        if matches!(invocation.turn.tool_execution_mode, ToolExecutionMode::ConsultNoLocalTools) {
+            let message = CONSULT_LOCAL_TOOLS_DISABLED_MESSAGE.to_string();
+            let log_payload = invocation.payload.log_payload();
+            otel.tool_result_with_tags(
+                tool_name_flat.as_ref(),
+                &call_id_owned,
+                log_payload.as_ref(),
+                Duration::ZERO,
+                /*success*/ false,
+                &message,
+                &base_tool_result_tags,
+                /*extra_trace_fields*/ &[],
+            );
+            let err = FunctionCallError::RespondToModel(message);
+            dispatch_trace.record_failed(&err);
+            return Err(err);
+        }
 
         let telemetry_tags = tool.telemetry_tags(&invocation).await;
         let mut tool_result_tags =

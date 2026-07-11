@@ -20,6 +20,7 @@ use codex_protocol::approvals::GuardianAssessmentAction as CoreGuardianAssessmen
 use codex_protocol::approvals::GuardianAssessmentDecisionSource as CoreGuardianAssessmentDecisionSource;
 use codex_protocol::approvals::GuardianCommandSource as CoreGuardianCommandSource;
 use codex_protocol::items::AgentMessageContent as CoreAgentMessageContent;
+use codex_protocol::items::AskParentMode as CoreAskParentMode;
 use codex_protocol::items::CollabAgentTool as CoreCollabAgentTool;
 use codex_protocol::items::CollabAgentToolCallStatus as CoreCollabAgentToolCallStatus;
 use codex_protocol::items::CommandExecutionStatus as CoreCommandExecutionStatus;
@@ -360,6 +361,10 @@ pub enum ThreadItem {
         model: Option<String>,
         /// Reasoning effort requested for the spawned agent, when applicable.
         reasoning_effort: Option<ReasoningEffort>,
+        /// Delivery semantics for an `ask_parent` request, when applicable.
+        mode: Option<AskParentMode>,
+        /// Opaque revision of the parent snapshot used for an `ask_parent` request.
+        snapshot_revision: Option<String>,
         /// Last known status of the target agents, when available.
         agents_states: HashMap<String, CollabAgentState>,
     },
@@ -921,6 +926,8 @@ impl From<CoreTurnItem> for ThreadItem {
                 prompt: call.prompt,
                 model: call.model,
                 reasoning_effort: call.reasoning_effort,
+                mode: call.mode.map(AskParentMode::from),
+                snapshot_revision: call.snapshot_revision,
                 agents_states: call
                     .agents_states
                     .into_iter()
@@ -1084,6 +1091,23 @@ pub enum CollabAgentTool {
     ResumeAgent,
     Wait,
     CloseAgent,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum AskParentMode {
+    Authoritative,
+    Consult,
+}
+
+impl From<CoreAskParentMode> for AskParentMode {
+    fn from(value: CoreAskParentMode) -> Self {
+        match value {
+            CoreAskParentMode::Authoritative => Self::Authoritative,
+            CoreAskParentMode::Consult => Self::Consult,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

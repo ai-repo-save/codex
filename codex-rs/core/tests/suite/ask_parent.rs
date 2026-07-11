@@ -1,8 +1,11 @@
 use anyhow::Context;
 use anyhow::Result;
 use codex_features::Feature;
+use codex_protocol::protocol::EventMsg;
+use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
+use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_function_call_with_namespace;
 use core_test_support::responses::ev_response_created;
 use core_test_support::responses::sse;
@@ -10,6 +13,7 @@ use core_test_support::responses::sse_response;
 use core_test_support::responses::start_mock_server;
 use core_test_support::skip_if_no_network;
 use core_test_support::test_codex::test_codex;
+use core_test_support::wait_for_event;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
@@ -31,11 +35,136 @@ const SPAWN_CALL_ID: &str = "spawn-worker";
 const WAIT_CALL_ID: &str = "wait-for-worker";
 const ASK_PARENT_CALL_ID: &str = "ask-parent";
 const REPLY_CALL_ID: &str = "reply-to-child";
+const CONSULT_QUESTION: &str = "summarize the parent snapshot without deciding";
+const CONSULT_ADVISORY: &str = "the snapshot records the stable release channel";
+const AUTHORITATIVE_REQUIRED_ADVISORY: &str = "a live parent decision is required";
+const ROOT_SNAPSHOT_MESSAGE: &str = "the parent snapshot records the stable release channel";
+const CONSULT_CALL_ID: &str = "consult-parent";
+const CONSULT_MESSAGE_CALL_ID: &str = "consult-send-message";
+const CONSULT_LOCAL_TOOL_CALL_ID: &str = "consult-local-tool";
+const CONSULT_LOCAL_COMMAND: &str = "touch consult-local-tool-must-not-run";
+const CONSULT_LOCAL_FILENAME: &str = "consult-local-tool-must-not-run";
+const CONSULT_MESSAGE_TARGET: &str = "/root/worker";
+const CONSULT_UNDELIVERED_MESSAGE: &str = "consult must not message the worker";
+
+#[derive(Clone, Copy, Debug)]
+enum ConsultOutcome {
+    Advisory,
+    RequiresAuthoritativeParent,
+}
+
+impl ConsultOutcome {
+    fn kind(self) -> &'static str {
+        match self {
+            Self::Advisory => "advisory",
+            Self::RequiresAuthoritativeParent => "requires_authoritative_parent",
+        }
+    }
+
+    fn advisory(self) -> &'static str {
+        match self {
+            Self::Advisory => CONSULT_ADVISORY,
+            Self::RequiresAuthoritativeParent => AUTHORITATIVE_REQUIRED_ADVISORY,
+        }
+    }
+}
 
 #[derive(Debug, Default)]
 struct AskParentResponder {
     root_started: AtomicBool,
     child_started: AtomicBool,
+}
+
+#[derive(Debug)]
+struct ConsultResponder {
+    outcome: ConsultOutcome,
+    request_local_tool: bool,
+    root_started: AtomicBool,
+    child_started: AtomicBool,
+}
+
+impl ConsultResponder {
+    fn new(outcome: ConsultOutcome, request_local_tool: bool) -> Self {
+        Self {
+            outcome,
+            request_local_tool,
+            root_started: AtomicBool::new(false),
+            child_started: AtomicBool::new(false),
+        }
+    }
+}
+
+impl Respond for ConsultResponder {
+    fn respond(&self, request: &wiremock::Request) -> ResponseTemplate {
+        let body = request_body(request);
+
+        if contains_text(&body, ROOT_PROMPT) && !self.root_started.swap(true, Ordering::SeqCst) {
+            return tool_call_response(
+                "consult-root-spawn-response",
+                SPAWN_CALL_ID,
+                "spawn_agent",
+                json!({
+                    "message": CHILD_PROMPT,
+                    "task_name": "worker",
+                }),
+            );
+        }
+
+        if has_call_output(&body, SPAWN_CALL_ID) {
+            return final_message_response("consult-root-finished", ROOT_SNAPSHOT_MESSAGE);
+        }
+
+        if contains_text(&body, CHILD_PROMPT) && !self.child_started.swap(true, Ordering::SeqCst) {
+            return tool_call_response(
+                "consult-child-question-response",
+                CONSULT_CALL_ID,
+                "ask_parent",
+                json!({
+                    "question": CONSULT_QUESTION,
+                    "mode": "consult",
+                }),
+            );
+        }
+
+        if has_call_output(&body, CONSULT_CALL_ID) {
+            return final_message_response("consult-child-finished", "child finished");
+        }
+
+        if self.request_local_tool && !has_call_output(&body, CONSULT_MESSAGE_CALL_ID) {
+            return tool_call_response(
+                "consult-send-message-response",
+                CONSULT_MESSAGE_CALL_ID,
+                "send_message",
+                json!({
+                    "target": CONSULT_MESSAGE_TARGET,
+                    "message": CONSULT_UNDELIVERED_MESSAGE,
+                }),
+            );
+        }
+
+        if self.request_local_tool && !has_call_output(&body, CONSULT_LOCAL_TOOL_CALL_ID) {
+            let arguments = serde_json::to_string(&json!({ "command": CONSULT_LOCAL_COMMAND }))
+                .expect("consult local tool arguments should serialize");
+            return sse_response(sse(vec![
+                ev_response_created("consult-local-tool-response"),
+                ev_function_call(
+                    CONSULT_LOCAL_TOOL_CALL_ID,
+                    "shell_command",
+                    &arguments,
+                ),
+                ev_completed("consult-local-tool-response"),
+            ]));
+        }
+
+        final_message_response(
+            "consult-responder-finished",
+            &json!({
+                "kind": self.outcome.kind(),
+                "advisory": self.outcome.advisory(),
+            })
+            .to_string(),
+        )
+    }
 }
 
 impl Respond for AskParentResponder {
@@ -154,6 +283,10 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
         ask_parent_result.get("answer"),
         Some(&Value::String(ANSWER.to_string()))
     );
+    assert_eq!(
+        ask_parent_result.get("mode"),
+        Some(&Value::String("authoritative".to_string()))
+    );
 
     let parent_request = requests
         .iter()
@@ -163,6 +296,183 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
     assert!(has_call_output(&parent_request, WAIT_CALL_ID));
 
     Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn consult_uses_a_fixed_parent_snapshot_without_waking_the_parent() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let (test, _server, requests, result) = run_consult(ConsultOutcome::Advisory, true).await?;
+
+    assert_eq!(
+        result.get("status"),
+        Some(&Value::String("answered".to_string()))
+    );
+    assert_eq!(
+        result.get("mode"),
+        Some(&Value::String("consult".to_string()))
+    );
+    assert_eq!(
+        result.get("advisory"),
+        Some(&Value::String(CONSULT_ADVISORY.to_string()))
+    );
+    assert_eq!(result.get("answer"), Some(&Value::Null));
+    assert_eq!(result.get("snapshot_may_be_stale"), Some(&Value::Bool(true)));
+    assert!(
+        result
+            .get("snapshot_revision")
+            .and_then(Value::as_str)
+            .is_some_and(|revision| !revision.is_empty())
+    );
+    let parent_thread_id = test.session_configured.thread_id.to_string();
+    assert_eq!(
+        result.get("parent_thread_id").and_then(Value::as_str),
+        Some(parent_thread_id.as_str())
+    );
+
+    let root_request = requests
+        .iter()
+        .find(|body| contains_text(body, ROOT_PROMPT) && !has_call_output(body, SPAWN_CALL_ID))
+        .expect("parent request should be captured");
+    let consult_request = requests
+        .iter()
+        .find(|body| contains_text(body, CONSULT_QUESTION) && !has_call_output(body, CONSULT_LOCAL_TOOL_CALL_ID))
+        .expect("consult responder request should be captured");
+    assert!(contains_text(consult_request, ROOT_SNAPSHOT_MESSAGE));
+    assert!(!contains_text(consult_request, CONSULT_CALL_ID));
+    assert_eq!(consult_request.get("instructions"), root_request.get("instructions"));
+    assert_eq!(consult_request.get("tools"), root_request.get("tools"));
+    assert_eq!(consult_request.get("tool_choice"), root_request.get("tool_choice"));
+    assert_eq!(
+        consult_request.get("prompt_cache_key"),
+        root_request.get("prompt_cache_key")
+    );
+    assert!(
+        !requests
+            .iter()
+            .any(|body| parent_request_id(body).is_some())
+    );
+    assert!(
+        requests
+            .iter()
+            .any(|body| has_call_output(body, CONSULT_LOCAL_TOOL_CALL_ID))
+    );
+    assert!(requests.iter().any(|body| {
+        call_output_text(body, CONSULT_LOCAL_TOOL_CALL_ID).is_some_and(|output| !output.is_empty())
+    }));
+    assert!(requests.iter().any(|body| {
+        call_output_text(body, CONSULT_MESSAGE_CALL_ID).is_some_and(|output| !output.is_empty())
+    }));
+    assert!(!requests
+        .iter()
+        .any(|body| contains_text(body, CONSULT_UNDELIVERED_MESSAGE)));
+    assert!(!test.workspace_path(CONSULT_LOCAL_FILENAME).exists());
+    assert_eq!(test.thread_manager.list_thread_ids().await.len(), 2);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn consult_requires_authoritative_parent_without_automatic_escalation() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let (_test, _server, requests, result) =
+        run_consult(ConsultOutcome::RequiresAuthoritativeParent, false).await?;
+
+    assert_eq!(
+        result.get("status"),
+        Some(&Value::String(
+            ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE.to_string()
+        ))
+    );
+    assert_eq!(
+        result.get("advisory"),
+        Some(&Value::String(
+            AUTHORITATIVE_REQUIRED_ADVISORY.to_string()
+        ))
+    );
+    assert!(
+        !requests
+            .iter()
+            .any(|body| parent_request_id(body).is_some())
+    );
+    assert!(
+        !requests
+            .iter()
+            .any(|body| has_call_output(body, REPLY_CALL_ID))
+    );
+
+    Ok(())
+}
+
+async fn run_consult(
+    outcome: ConsultOutcome,
+    request_local_tool: bool,
+) -> Result<(
+    core_test_support::test_codex::TestCodex,
+    wiremock::MockServer,
+    Vec<Value>,
+    Value,
+)> {
+    let server = start_mock_server().await;
+    Mock::given(method("POST"))
+        .and(path_regex(".*/responses$"))
+        .respond_with(ConsultResponder::new(outcome, request_local_tool))
+        .mount(&server)
+        .await;
+    let test = test_codex()
+        .with_model("koffing")
+        .with_config(|config| {
+            config
+                .features
+                .enable(Feature::Collab)
+                .expect("test config should allow feature update");
+            config
+                .features
+                .enable(Feature::MultiAgentV2)
+                .expect("test config should allow feature update");
+            config.model_provider.supports_websockets = false;
+        })
+        .build(&server)
+        .await?;
+
+    let mut created_threads = test.thread_manager.subscribe_thread_created();
+    test.submit_turn(ROOT_PROMPT).await?;
+
+    let child_thread_id = tokio::time::timeout(Duration::from_secs(2), created_threads.recv())
+        .await
+        .context("worker should be created")??;
+    let result = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let requests = server.received_requests().await.unwrap_or_default();
+            if let Some(output) = requests
+                .iter()
+                .map(request_body)
+                .find_map(|body| call_output_text(&body, CONSULT_CALL_ID))
+            {
+                let result = serde_json::from_str(&output)
+                    .with_context(|| format!("consult output was {output:?}"))?;
+                return Ok::<_, anyhow::Error>(result);
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .context("child should receive consult output")??;
+    let child_thread = test.thread_manager.get_thread(child_thread_id).await?;
+    wait_for_event(child_thread.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+    let requests = server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|request| request_body(&request))
+        .collect();
+
+    Ok((test, server, requests, result))
 }
 
 fn tool_call_response(
@@ -175,6 +485,14 @@ fn tool_call_response(
     sse_response(sse(vec![
         ev_response_created(response_id),
         ev_function_call_with_namespace(call_id, MULTI_AGENT_V2_NAMESPACE, tool_name, &args),
+        ev_completed(response_id),
+    ]))
+}
+
+fn final_message_response(response_id: &str, message: &str) -> ResponseTemplate {
+    sse_response(sse(vec![
+        ev_response_created(response_id),
+        ev_assistant_message(&format!("{response_id}-message"), message),
         ev_completed(response_id),
     ]))
 }

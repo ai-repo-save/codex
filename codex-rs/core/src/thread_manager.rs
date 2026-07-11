@@ -11,6 +11,7 @@ use crate::mcp::McpManager;
 use crate::rollout::truncation;
 use crate::session::Codex;
 use crate::session::CodexSpawnArgs;
+use crate::session::turn_context::ToolExecutionMode;
 use crate::session::CodexSpawnOk;
 use crate::session::INITIAL_SUBMIT_ID;
 use crate::session::resolve_multi_agent_version;
@@ -1592,6 +1593,7 @@ impl ThreadManagerState {
             codex, thread_id, ..
         } = Box::pin(Codex::spawn(CodexSpawnArgs {
             config,
+            tool_execution_mode: ToolExecutionMode::Normal,
             allow_provider_model_fallback,
             user_instructions,
             installation_id: self.installation_id.clone(),
@@ -1626,6 +1628,7 @@ impl ThreadManagerState {
             attestation_provider: self.attestation_provider.clone(),
             external_time_provider: self.external_time_provider.clone(),
             inherited_multi_agent_version: multi_agent_version,
+            prompt_cache_key_override: None,
         }))
         .await?;
         let new_thread = self

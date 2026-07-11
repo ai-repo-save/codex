@@ -722,6 +722,8 @@ fn collab_spawn_begin_and_end_emit_item_events() {
                 prompt: Some("draft a plan".to_string()),
                 model: Some("gpt-5".to_string()),
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: std::collections::HashMap::new(),
             },
             thread_id: "thread-parent".to_string(),
@@ -739,6 +741,8 @@ fn collab_spawn_begin_and_end_emit_item_events() {
                 prompt: Some("draft a plan".to_string()),
                 model: Some("gpt-5".to_string()),
                 reasoning_effort: None,
+                mode: None,
+                snapshot_revision: None,
                 agents_states: std::collections::HashMap::from([(
                     "thread-child".to_string(),
                     ApiCollabAgentState {

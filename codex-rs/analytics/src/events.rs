@@ -708,6 +708,7 @@ pub(crate) struct CodexCollabAgentToolCallEventParams {
     pub(crate) receiver_thread_ids: Option<Vec<String>>,
     pub(crate) requested_model: Option<String>,
     pub(crate) requested_reasoning_effort: Option<String>,
+    pub(crate) ask_parent_mode: Option<String>,
     pub(crate) agent_state_count: Option<u64>,
     pub(crate) completed_agent_count: Option<u64>,
     pub(crate) failed_agent_count: Option<u64>,
