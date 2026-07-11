@@ -26,8 +26,7 @@ const DELETE_TOOL: &str = "delete";
 const SESSION_PROACTIVE_POLICY: &str = "no explicit user request is required";
 const PROJECT_POLICY_AUTHORITY: &str = "project AGENTS.md instructions authorize";
 const GLOBAL_EXPLICIT_POLICY: &str = "only when the user explicitly asks Codex";
-const OLD_SCOPED_EXPLICIT_POLICY: &str =
-    "after the user explicitly asks Codex to remember, forget, or update something for this session or project";
+const OLD_SCOPED_EXPLICIT_POLICY: &str = "after the user explicitly asks Codex to remember, forget, or update something for this session or project";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn scoped_memory_policy_reaches_responses_lite_as_developer_tools() -> Result<()> {
