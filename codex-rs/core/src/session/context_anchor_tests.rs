@@ -234,11 +234,12 @@ fn count_user_turns_since_anchor_uses_post_compaction_anchor() {
 #[test]
 fn list_context_anchors_returns_active_anchors_newest_first() {
     let rollout_items = vec![
-        saved_anchor(
+        saved_anchor_with_mode(
             "a",
             Some("early"),
             /*boundary*/ 1,
             /*created_at*/ 10,
+            Some(ModeKind::Plan),
         ),
         user_message(),
         saved_anchor(
@@ -282,6 +283,11 @@ fn list_context_anchors_returns_active_anchors_newest_first() {
     assert_eq!(result.anchors[1].anchor_id, "a");
     assert_eq!(result.anchors[1].response_items_since_anchor, 3);
     assert_eq!(result.anchors[1].user_turns_since_anchor, 2);
+    assert_eq!(
+        result.anchors[1].collaboration_mode_kind,
+        Some(ModeKind::Plan)
+    );
+    assert_eq!(result.anchors[1].compatible_with_current_mode, Some(false));
 }
 
 #[test]
@@ -620,36 +626,6 @@ fn min_reclaim_percent_marks_unknown_context_window_rejected() {
             None,
             None
         ))
-    );
-}
-
-#[test]
-fn collaboration_mode_guard_allows_same_mode() {
-    let result =
-        validate_anchor_collaboration_mode(ANCHOR_ID, Some(ModeKind::Default), ModeKind::Default);
-
-    assert!(result.is_ok());
-}
-
-#[test]
-fn collaboration_mode_guard_allows_unknown_legacy_anchor_mode() {
-    let result = validate_anchor_collaboration_mode(
-        ANCHOR_ID,
-        /*anchor_collaboration_mode_kind*/ None,
-        ModeKind::Default,
-    );
-
-    assert!(result.is_ok());
-}
-
-#[test]
-fn collaboration_mode_guard_rejects_cross_mode_rewind() {
-    let result =
-        validate_anchor_collaboration_mode(ANCHOR_ID, Some(ModeKind::Plan), ModeKind::Default);
-
-    assert_eq!(
-        result.unwrap_err().to_string(),
-        "context rewind to anchor `anchor` rejected: anchor was saved in Plan mode, but current mode is Default"
     );
 }
 

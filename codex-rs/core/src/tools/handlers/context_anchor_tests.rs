@@ -177,6 +177,8 @@ fn rewind_context_to_anchor_response_serializes_rejected_status() {
         min_reclaim_percent: Some(10),
         min_reclaim_threshold_tokens: Some(50),
         model_context_window: Some(500),
+        anchor_collaboration_mode: None,
+        current_collaboration_mode: None,
     };
 
     assert_eq!(
@@ -194,6 +196,37 @@ fn rewind_context_to_anchor_response_serializes_rejected_status() {
             "min_reclaim_percent": 10,
             "min_reclaim_threshold_tokens": 50,
             "model_context_window": 500,
+        })
+    );
+}
+
+#[test]
+fn rewind_context_to_anchor_response_serializes_incompatible_mode_rejection() {
+    let response = RewindContextToAnchorResponse::Rejected {
+        anchor_id: "anchor-1".to_string(),
+        replacement_anchor_id: None,
+        dropped_turns: None,
+        response_items_reclaimed: None,
+        approx_tokens_reclaimed: None,
+        reclaim_threshold_percent: None,
+        reclaim_threshold_tokens: None,
+        reclaim_threshold_met: None,
+        reason: RewindContextToAnchorRejectionReason::IncompatibleCollaborationMode,
+        min_reclaim_percent: None,
+        min_reclaim_threshold_tokens: None,
+        model_context_window: None,
+        anchor_collaboration_mode: Some(codex_protocol::config_types::ModeKind::Plan),
+        current_collaboration_mode: Some(codex_protocol::config_types::ModeKind::Default),
+    };
+
+    assert_eq!(
+        serde_json::to_value(response).expect("response should serialize"),
+        json!({
+            "status": "rejected",
+            "anchor_id": "anchor-1",
+            "reason": "incompatible_collaboration_mode",
+            "anchor_collaboration_mode": "plan",
+            "current_collaboration_mode": "default",
         })
     );
 }

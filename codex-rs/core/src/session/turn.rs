@@ -2168,6 +2168,28 @@ async fn drain_in_flight(
                                 min_reclaim_percent: None,
                                 min_reclaim_threshold_tokens: None,
                                 model_context_window: None,
+                                anchor_collaboration_mode: None,
+                                current_collaboration_mode: None,
+                            },
+                            crate::session::context_anchor::ContextRewindRejected::IncompatibleCollaborationMode {
+                                anchor_id,
+                                anchor_collaboration_mode,
+                                current_collaboration_mode,
+                            } => RewindContextToAnchorResponse::Rejected {
+                                anchor_id,
+                                replacement_anchor_id: None,
+                                dropped_turns: None,
+                                response_items_reclaimed: None,
+                                approx_tokens_reclaimed: None,
+                                reclaim_threshold_percent: None,
+                                reclaim_threshold_tokens: None,
+                                reclaim_threshold_met: None,
+                                reason: RewindContextToAnchorRejectionReason::IncompatibleCollaborationMode,
+                                min_reclaim_percent: None,
+                                min_reclaim_threshold_tokens: None,
+                                model_context_window: None,
+                                anchor_collaboration_mode: Some(anchor_collaboration_mode),
+                                current_collaboration_mode: Some(current_collaboration_mode),
                             },
                             crate::session::context_anchor::ContextRewindRejected::BelowThreshold(
                                 rejection,
@@ -2200,6 +2222,8 @@ async fn drain_in_flight(
                                     min_reclaim_threshold_tokens: rejection
                                         .min_reclaim_threshold_tokens,
                                     model_context_window: rejection.model_context_window,
+                                    anchor_collaboration_mode: None,
+                                    current_collaboration_mode: None,
                                 }
                             }
                         };

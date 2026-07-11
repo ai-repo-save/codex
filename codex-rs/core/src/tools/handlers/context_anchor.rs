@@ -13,6 +13,7 @@ use crate::tools::handlers::parse_arguments;
 use crate::tools::registry::CoreToolRuntime;
 use crate::tools::registry::ToolExecutor;
 use crate::turn_timing::now_unix_timestamp_ms;
+use codex_protocol::config_types::ModeKind;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ResponseInputItem;
 use codex_tools::ToolName;
@@ -103,6 +104,10 @@ pub(crate) enum RewindContextToAnchorResponse {
         min_reclaim_threshold_tokens: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         model_context_window: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        anchor_collaboration_mode: Option<ModeKind>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current_collaboration_mode: Option<ModeKind>,
     },
 }
 
@@ -110,6 +115,7 @@ pub(crate) enum RewindContextToAnchorResponse {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RewindContextToAnchorRejectionReason {
     UnknownContextAnchor,
+    IncompatibleCollaborationMode,
     BelowMinReclaimPercent,
     UnknownContextWindowForMinReclaimPercent,
 }

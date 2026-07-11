@@ -1,6 +1,12 @@
 use anyhow::Result;
+use codex_protocol::config_types::CollaborationMode;
+use codex_protocol::config_types::ModeKind;
+use codex_protocol::config_types::Settings;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::protocol::AskForApproval;
+use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::Op;
+use codex_protocol::user_input::UserInput;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
@@ -10,6 +16,9 @@ use core_test_support::responses::sse;
 use core_test_support::responses::start_mock_server;
 use core_test_support::skip_if_no_network;
 use core_test_support::test_codex::test_codex;
+use core_test_support::test_codex::turn_permission_fields;
+use core_test_support::test_codex::TestCodex;
+use core_test_support::wait_for_event;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
@@ -18,6 +27,38 @@ const SAVE_CONTEXT_ANCHOR_TOOL_NAME: &str = "save_context_anchor";
 const LIST_CONTEXT_ANCHORS_TOOL_NAME: &str = "list_context_anchors";
 const REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME: &str = "rewind_context_to_anchor";
 const TEST_MODEL: &str = "gpt-5.4";
+
+async fn submit_turn_with_mode(test: &TestCodex, prompt: &str, mode: ModeKind) -> Result<()> {
+    let (sandbox_policy, permission_profile) =
+        turn_permission_fields(PermissionProfile::Disabled, test.cwd.path());
+    test.codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: prompt.to_string(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
+                approval_policy: Some(AskForApproval::Never),
+                sandbox_policy: Some(sandbox_policy),
+                permission_profile,
+                collaboration_mode: Some(CollaborationMode {
+                    mode,
+                    settings: Settings {
+                        model: test.session_configured.model.clone(),
+                        reasoning_effort: None,
+                        developer_instructions: None,
+                    },
+                }),
+                ..Default::default()
+            },
+        })
+        .await?;
+    wait_for_event(&test.codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+    Ok(())
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn list_context_anchors_returns_saved_anchor_metadata() -> Result<()> {
@@ -382,6 +423,117 @@ async fn low_benefit_context_rewind_returns_rejected_output_without_ending_turn(
         .expect("list output should be text JSON");
     let list_json: Value = serde_json::from_str(&list_text)?;
 
+    assert_eq!(list_json["active_anchor_count"], json!(1));
+    assert_eq!(list_json["invalidated_anchor_count"], json!(0));
+    assert_eq!(list_json["anchors"][0]["anchor_id"], json!(anchor_id));
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn incompatible_mode_context_rewind_returns_rejected_output_without_consuming_anchor()
+-> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let save_call_id = "save-plan-anchor-call";
+    let first_mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-1"),
+                ev_function_call(
+                    save_call_id,
+                    SAVE_CONTEXT_ANCHOR_TOOL_NAME,
+                    &json!({ "label": "before mode transition" }).to_string(),
+                ),
+                ev_completed("resp-1"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-2"),
+                ev_assistant_message("msg-1", "anchor saved in plan mode"),
+                ev_completed("resp-2"),
+            ]),
+        ],
+    )
+    .await;
+
+    let mut builder = test_codex();
+    let test = builder.build(&server).await?;
+    submit_turn_with_mode(&test, "save a plan mode anchor", ModeKind::Plan).await?;
+
+    let first_requests = first_mock.requests();
+    assert_eq!(first_requests.len(), 2);
+    let save_text = first_requests[1]
+        .function_call_output_text(save_call_id)
+        .expect("save output should be text JSON");
+    let save_json: Value = serde_json::from_str(&save_text)?;
+    let anchor_id = save_json
+        .get("anchor_id")
+        .and_then(Value::as_str)
+        .expect("save output should include anchor id");
+
+    let rewind_call_id = "rewind-default-mode-call";
+    let list_call_id = "list-after-mode-rejection-call";
+    let second_mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-3"),
+                ev_function_call(
+                    rewind_call_id,
+                    REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME,
+                    &json!({
+                        "anchor_id": anchor_id,
+                        "note": "try to rewind after switching modes"
+                    })
+                    .to_string(),
+                ),
+                ev_completed("resp-3"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-4"),
+                ev_function_call(
+                    list_call_id,
+                    LIST_CONTEXT_ANCHORS_TOOL_NAME,
+                    &json!({ "limit": 10 }).to_string(),
+                ),
+                ev_completed("resp-4"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-5"),
+                ev_assistant_message("msg-2", "continued after mode rejection"),
+                ev_completed("resp-5"),
+            ]),
+        ],
+    )
+    .await;
+    submit_turn_with_mode(&test, "rewind after switching to default mode", ModeKind::Default).await?;
+
+    let requests = second_mock.requests();
+    assert_eq!(requests.len(), 3);
+    let (rewind_text, rewind_success) = requests[1]
+        .function_call_output_content_and_success(rewind_call_id)
+        .expect("rewind output should be present");
+    assert_eq!(rewind_success, Some(true));
+    let rewind_json: Value = serde_json::from_str(
+        &rewind_text.expect("rewind output should contain text JSON"),
+    )?;
+    assert_eq!(
+        rewind_json,
+        json!({
+            "status": "rejected",
+            "anchor_id": anchor_id,
+            "reason": "incompatible_collaboration_mode",
+            "anchor_collaboration_mode": "plan",
+            "current_collaboration_mode": "default",
+        })
+    );
+
+    let list_text = requests[2]
+        .function_call_output_text(list_call_id)
+        .expect("list output should be text JSON");
+    let list_json: Value = serde_json::from_str(&list_text)?;
     assert_eq!(list_json["active_anchor_count"], json!(1));
     assert_eq!(list_json["invalidated_anchor_count"], json!(0));
     assert_eq!(list_json["anchors"][0]["anchor_id"], json!(anchor_id));

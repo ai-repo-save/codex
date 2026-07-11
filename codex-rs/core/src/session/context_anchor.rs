@@ -70,6 +70,11 @@ pub(crate) enum ContextRewindRejected {
         anchor_id: String,
         replacement_anchor_id: Option<String>,
     },
+    IncompatibleCollaborationMode {
+        anchor_id: String,
+        anchor_collaboration_mode: ModeKind,
+        current_collaboration_mode: ModeKind,
+    },
     BelowThreshold(ContextRewindThresholdRejected),
 }
 
@@ -434,25 +439,6 @@ fn evaluate_min_reclaim_percent(
     Ok(None)
 }
 
-fn validate_anchor_collaboration_mode(
-    anchor_id: &str,
-    anchor_collaboration_mode_kind: Option<ModeKind>,
-    current_collaboration_mode_kind: ModeKind,
-) -> CodexResult<()> {
-    let Some(anchor_collaboration_mode_kind) = anchor_collaboration_mode_kind else {
-        return Ok(());
-    };
-    if anchor_collaboration_mode_kind == current_collaboration_mode_kind {
-        return Ok(());
-    }
-
-    Err(CodexErr::InvalidRequest(format!(
-        "context rewind to anchor `{anchor_id}` rejected: anchor was saved in {} mode, but current mode is {}",
-        anchor_collaboration_mode_kind.display_name(),
-        current_collaboration_mode_kind.display_name()
-    )))
-}
-
 impl Session {
     pub(crate) async fn save_context_anchor(
         &self,
@@ -517,6 +503,17 @@ impl Session {
                 },
             ));
         };
+        if let Some(anchor_collaboration_mode) = active_anchor.collaboration_mode_kind
+            && anchor_collaboration_mode != turn_context.collaboration_mode.mode
+        {
+            return Ok(RewindContextToAnchorResult::Rejected(
+                ContextRewindRejected::IncompatibleCollaborationMode {
+                    anchor_id,
+                    anchor_collaboration_mode,
+                    current_collaboration_mode: turn_context.collaboration_mode.mode,
+                },
+            ));
+        }
         let dropped_turns = count_user_turns_since_anchor(&stored_history.items, &anchor_id)?;
         let current_history = self.clone_history().await;
         let benefit = rewind_benefit_since_anchor(
@@ -525,11 +522,6 @@ impl Session {
             current_rewind_call_id,
             turn_context.model_context_window(),
         );
-        validate_anchor_collaboration_mode(
-            &anchor_id,
-            active_anchor.collaboration_mode_kind,
-            turn_context.collaboration_mode.mode,
-        )?;
         let min_reclaim_percent = turn_context.config.context_rewind.min_reclaim_percent;
         if let Some((reason, min_reclaim_threshold_tokens, model_context_window)) =
             evaluate_min_reclaim_percent(
