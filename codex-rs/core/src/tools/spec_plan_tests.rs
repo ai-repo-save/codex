@@ -1436,8 +1436,10 @@ async fn ask_parent_is_only_visible_to_agents_with_a_direct_parent() {
 
     let child = probe(|turn| {
         set_feature(turn, Feature::MultiAgentV2, /*enabled*/ true);
+        let parent_thread_id = ThreadId::new();
+        turn.parent_thread_id = Some(parent_thread_id);
         turn.session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
-            parent_thread_id: ThreadId::new(),
+            parent_thread_id,
             depth: 1,
             agent_path: Some(AgentPath::try_from("/root/child").expect("valid agent path")),
             agent_nickname: None,

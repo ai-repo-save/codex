@@ -41,7 +41,7 @@ impl Handler {
         let args: AskParentArgs = parse_arguments(&function_arguments(payload)?)?;
         let question = message_tool::message_content(args.question)?;
         let timeout_ms = validate_timeout(&turn, args.timeout_ms)?;
-        let parent_thread_id = turn.session_source.parent_thread_id().ok_or_else(|| {
+        let parent_thread_id = turn.parent_thread_id.ok_or_else(|| {
             FunctionCallError::RespondToModel(
                 "ask_parent is only available to an agent with a direct parent".to_string(),
             )

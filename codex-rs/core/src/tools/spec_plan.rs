@@ -865,7 +865,7 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mu
                 ),
                 exposure,
             ));
-            if turn_context.session_source.parent_thread_id().is_some() {
+            if turn_context.parent_thread_id.is_some() {
                 planned_tools.add_arc(override_tool_exposure(
                     multi_agent_v2_handler(AskParentHandler, tool_namespace),
                     exposure,
