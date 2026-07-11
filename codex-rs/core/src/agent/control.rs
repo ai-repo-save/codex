@@ -49,8 +49,8 @@ use tokio::sync::watch;
 use tracing::warn;
 
 pub(crate) use self::execution::AgentExecutionGuard;
-pub(crate) use self::parent_requests::ParentRequestOutcome;
 use self::execution::AgentExecutionLimiter;
+pub(crate) use self::parent_requests::ParentRequestOutcome;
 use self::residency::V2Residency;
 
 const ROOT_LAST_TASK_MESSAGE: &str = "Main thread";

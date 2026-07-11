@@ -100,12 +100,7 @@ pub(crate) async fn handle_message_string_tool(
         session
             .services
             .agent_control
-            .answer_parent_request(
-                &request_id,
-                session.thread_id,
-                receiver_thread_id,
-                message,
-            )
+            .answer_parent_request(&request_id, session.thread_id, receiver_thread_id, message)
             .map_err(FunctionCallError::RespondToModel)?;
         crate::agent_communication::emit_parent_reply(
             &request_id,

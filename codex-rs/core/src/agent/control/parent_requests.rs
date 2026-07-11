@@ -29,14 +29,17 @@ impl ParentRequestBroker {
     ) -> (String, oneshot::Receiver<ParentRequestOutcome>) {
         let request_id = Uuid::now_v7().to_string();
         let (sender, receiver) = oneshot::channel();
-        self.pending.lock().unwrap_or_else(|err| err.into_inner()).insert(
-            request_id.clone(),
-            PendingParentRequest {
-                child_thread_id,
-                parent_thread_id,
-                sender,
-            },
-        );
+        self.pending
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .insert(
+                request_id.clone(),
+                PendingParentRequest {
+                    child_thread_id,
+                    parent_thread_id,
+                    sender,
+                },
+            );
         (request_id, receiver)
     }
 
@@ -48,9 +51,9 @@ impl ParentRequestBroker {
         answer: String,
     ) -> Result<(), String> {
         let mut pending = self.pending.lock().unwrap_or_else(|err| err.into_inner());
-        let request = pending
-            .get(request_id)
-            .ok_or_else(|| format!("parent request `{request_id}` is unknown, expired, or already answered"))?;
+        let request = pending.get(request_id).ok_or_else(|| {
+            format!("parent request `{request_id}` is unknown, expired, or already answered")
+        })?;
         if request.parent_thread_id != parent_thread_id {
             return Err(format!(
                 "only parent thread {} may answer parent request `{request_id}`",

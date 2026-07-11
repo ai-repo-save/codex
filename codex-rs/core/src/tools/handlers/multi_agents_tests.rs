@@ -11,10 +11,10 @@ use crate::session::turn_context::TurnContext;
 use crate::session_prefix::format_inter_agent_completion_message;
 use crate::thread_manager::thread_store_from_config;
 use crate::tools::context::ToolOutput;
-use crate::tools::handlers::multi_agents_v2::FollowupTaskHandler as FollowupTaskHandlerV2;
 use crate::tools::handlers::multi_agents_v2::AskParentHandler;
 use crate::tools::handlers::multi_agents_v2::AskParentResult;
 use crate::tools::handlers::multi_agents_v2::AskParentStatus;
+use crate::tools::handlers::multi_agents_v2::FollowupTaskHandler as FollowupTaskHandlerV2;
 use crate::tools::handlers::multi_agents_v2::InspectAgentHandlerV2;
 use crate::tools::handlers::multi_agents_v2::InterruptAgentHandler;
 use crate::tools::handlers::multi_agents_v2::ListAgentsHandler as ListAgentsHandlerV2;
@@ -130,8 +130,8 @@ async fn make_v2_child_context(
     config.multi_agent_v2.min_wait_timeout_ms = 1;
     set_turn_config(&mut turn, config);
     session.services.agent_control = manager.agent_control();
-    let child_path = AgentPath::try_from(format!("/root/{task_name}"))
-        .expect("child path should be valid");
+    let child_path =
+        AgentPath::try_from(format!("/root/{task_name}")).expect("child path should be valid");
     let source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
         parent_thread_id: root_thread_id,
         depth: 1,
@@ -167,10 +167,7 @@ async fn make_v2_child_context(
 async fn make_v2_root_context(
     manager: &ThreadManager,
     root_thread_id: ThreadId,
-) -> (
-    Arc<crate::session::session::Session>,
-    Arc<TurnContext>,
-) {
+) -> (Arc<crate::session::session::Session>, Arc<TurnContext>) {
     let (mut session, mut turn) = make_session_and_context().await;
     let mut config = (*turn.config).clone();
     config
@@ -190,18 +187,21 @@ async fn wait_for_parent_request_id(
 ) -> String {
     timeout(Duration::from_secs(2), async {
         loop {
-            if let Some(content) = manager.captured_ops().iter().find_map(|(thread_id, op)| {
-                match op {
-                    Op::InterAgentCommunication { communication }
-                        if *thread_id == root_thread_id
-                            && communication.author == *child_path
-                            && communication.recipient == AgentPath::root() =>
-                    {
-                        Some(communication.content.as_str())
-                    }
-                    _ => None,
-                }
-            }) {
+            if let Some(content) =
+                manager
+                    .captured_ops()
+                    .iter()
+                    .find_map(|(thread_id, op)| match op {
+                        Op::InterAgentCommunication { communication }
+                            if *thread_id == root_thread_id
+                                && communication.author == *child_path
+                                && communication.recipient == AgentPath::root() =>
+                        {
+                            Some(communication.content.as_str())
+                        }
+                        _ => None,
+                    })
+            {
                 let request_id = content
                     .split('`')
                     .nth(1)
@@ -1588,8 +1588,7 @@ async fn multi_agent_v2_ask_parent_correlates_concurrent_replies() {
             ))
             .await
     });
-    let first_request_id =
-        wait_for_parent_request_id(&manager, root.thread_id, &first_path).await;
+    let first_request_id = wait_for_parent_request_id(&manager, root.thread_id, &first_path).await;
     let second_request_id =
         wait_for_parent_request_id(&manager, root.thread_id, &second_path).await;
 
