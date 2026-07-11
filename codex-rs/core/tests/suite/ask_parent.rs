@@ -15,6 +15,7 @@ use serde_json::Value;
 use serde_json::json;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 use wiremock::Mock;
 use wiremock::Respond;
 use wiremock::ResponseTemplate;
@@ -128,12 +129,21 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
 
     test.submit_turn(ROOT_PROMPT).await?;
 
-    let requests = server.received_requests().await.unwrap_or_default();
-    let ask_parent_output = requests
-        .iter()
-        .map(request_body)
-        .find_map(|body| call_output_text(&body, ASK_PARENT_CALL_ID))
-        .expect("child should receive ask_parent output");
+    let (requests, ask_parent_output) = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let requests = server.received_requests().await.unwrap_or_default();
+            if let Some(output) = requests
+                .iter()
+                .map(request_body)
+                .find_map(|body| call_output_text(&body, ASK_PARENT_CALL_ID))
+            {
+                break (requests, output);
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .context("child should receive ask_parent output")?;
     let ask_parent_result: Value = serde_json::from_str(&ask_parent_output)
         .with_context(|| format!("ask_parent output was {ask_parent_output:?}"))?;
     assert_eq!(
