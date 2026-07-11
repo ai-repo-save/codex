@@ -35,12 +35,13 @@ async fn scoped_memory_policy_reaches_responses_lite_as_developer_tools() -> Res
     skip_if_no_network!(Ok(()));
 
     let responses_server = responses::start_mock_server().await;
-    let response_mock = responses::mount_sse_once(
+    let response_body = responses::sse(vec![
+        responses::ev_response_created("resp-1"),
+        responses::ev_completed("resp-1"),
+    ]);
+    let response_mock = responses::mount_sse_sequence(
         &responses_server,
-        responses::sse(vec![
-            responses::ev_response_created("resp-1"),
-            responses::ev_completed("resp-1"),
-        ]),
+        vec![response_body.clone(), response_body],
     )
     .await;
     let codex_home = TempDir::new()?;
@@ -88,7 +89,11 @@ async fn scoped_memory_policy_reaches_responses_lite_as_developer_tools() -> Res
     )
     .await??;
 
-    let request_body = response_mock.single_request().body_json();
+    let request_body = response_mock
+        .requests()
+        .last()
+        .context("Responses request log should include the user turn")?
+        .body_json();
     assert!(request_body.get("tools").is_none());
     let input = request_body["input"]
         .as_array()
