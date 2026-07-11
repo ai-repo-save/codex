@@ -1,9 +1,9 @@
 use super::*;
 use crate::session::step_context::StepContext;
 use crate::session::tests::make_session_and_context;
-use crate::tools::context::ToolCallSource;
 use crate::tools::TELEMETRY_PREVIEW_MAX_BYTES;
 use crate::tools::TELEMETRY_PREVIEW_TRUNCATION_NOTICE;
+use crate::tools::context::ToolCallSource;
 use crate::turn_diff_tracker::TurnDiffTracker;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
