@@ -1174,9 +1174,8 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
     let requests = wait_for_requests(&child_reminder_request).await?;
     assert_eq!(requests.len(), 1);
     let child_request = &requests[0];
-    let child_prompt_cache_key = child_initial_request.single_request().body_json()
-        ["prompt_cache_key"]
-        .clone();
+    let child_prompt_cache_key =
+        child_initial_request.single_request().body_json()["prompt_cache_key"].clone();
     assert_eq!(
         child_request.body_json()["prompt_cache_key"],
         child_prompt_cache_key
