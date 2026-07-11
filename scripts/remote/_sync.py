@@ -147,7 +147,7 @@ def sync_remote_checkout_from_bundle(
     remote_bundle = f"/tmp/{bundle_name}"
     try:
         run(
-            ("git", "bundle", "create", str(local_bundle), expected_head),
+            local_bundle_create_command(config, local_bundle),
             cwd=repo_root,
         )
         run(("rsync", "--archive", str(local_bundle), f"{config.host}:{remote_bundle}"))
@@ -161,6 +161,18 @@ def sync_remote_checkout_from_bundle(
         local_bundle.unlink(missing_ok=True)
 
 
+def local_bundle_create_command(
+    config: RemoteWorkflow, local_bundle: Path
+) -> tuple[str, ...]:
+    return (
+        "git",
+        "bundle",
+        "create",
+        str(local_bundle),
+        f"refs/heads/{config.branch}",
+    )
+
+
 def remote_bundle_sync_command(
     config: RemoteWorkflow, expected_head: str, remote_bundle: str
 ) -> str:
@@ -168,7 +180,9 @@ def remote_bundle_sync_command(
         "set -euo pipefail; "
         f"trap 'rm -f {shell_quote(remote_bundle)}' EXIT; "
         f"cd {shell_quote(config.remote_path)}; "
-        f"git fetch {shell_quote(remote_bundle)} {shell_quote(expected_head)}; "
+        f"git fetch {shell_quote(remote_bundle)} "
+        f"{shell_quote(f'refs/heads/{config.branch}')}; "
+        f'test "$(git rev-parse FETCH_HEAD)" = {shell_quote(expected_head)}; '
         f"git checkout {shell_quote(config.branch)}; "
         "git reset --hard FETCH_HEAD; "
         "git clean -fd"

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import sys
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -69,6 +71,54 @@ class RemoteSyncTest(unittest.TestCase):
         self.assertIn("reusing matching clean checkout", command)
         self.assertIn("git clean -fd", command)
 
+    def test_local_bundle_advertises_the_requested_branch_head(self) -> None:
+        config = _sync.RemoteWorkflow(
+            host="builder",
+            branch="main",
+            remote_path="/root/codex",
+            command=(),
+        )
+        with tempfile.TemporaryDirectory(dir="/tmp") as temp_dir:
+            repo = Path(temp_dir) / "repo"
+            repo.mkdir()
+            subprocess.run(("git", "init", "-b", "main"), cwd=repo, check=True)
+            subprocess.run(
+                ("git", "config", "user.email", "codex@example.invalid"),
+                cwd=repo,
+                check=True,
+            )
+            subprocess.run(
+                ("git", "config", "user.name", "Codex Test"),
+                cwd=repo,
+                check=True,
+            )
+            (repo / "tracked.txt").write_text("content\n", encoding="utf-8")
+            subprocess.run(("git", "add", "tracked.txt"), cwd=repo, check=True)
+            subprocess.run(("git", "commit", "-m", "fixture"), cwd=repo, check=True)
+            expected_head = subprocess.run(
+                ("git", "rev-parse", "HEAD"),
+                cwd=repo,
+                check=True,
+                stdout=subprocess.PIPE,
+                text=True,
+            ).stdout.strip()
+            bundle = Path(temp_dir) / "sync.bundle"
+
+            subprocess.run(
+                _sync.local_bundle_create_command(config, bundle),
+                cwd=repo,
+                check=True,
+            )
+            advertised = subprocess.run(
+                ("git", "bundle", "list-heads", str(bundle)),
+                cwd=repo,
+                check=True,
+                stdout=subprocess.PIPE,
+                text=True,
+            ).stdout.strip()
+
+            self.assertEqual(advertised, f"{expected_head} refs/heads/main")
+
     def test_remote_bundle_sync_command_resets_to_the_requested_head(self) -> None:
         config = _sync.RemoteWorkflow(
             host="builder",
@@ -82,7 +132,8 @@ class RemoteSyncTest(unittest.TestCase):
         )
 
         self.assertIn("trap 'rm -f '/tmp/codex-sync.bundle'' EXIT", command)
-        self.assertIn("git fetch '/tmp/codex-sync.bundle' 'abc123'", command)
+        self.assertIn("git fetch '/tmp/codex-sync.bundle' 'refs/heads/main'", command)
+        self.assertIn("test \"$(git rev-parse FETCH_HEAD)\" = 'abc123'", command)
         self.assertIn("git checkout 'main'", command)
         self.assertIn("git reset --hard FETCH_HEAD", command)
         self.assertIn("git clean -fd", command)
