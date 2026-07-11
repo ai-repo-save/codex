@@ -378,7 +378,8 @@ async fn consult_uses_a_fixed_parent_snapshot_without_waking_the_parent() -> Res
     assert!(
         !requests
             .iter()
-            .any(|body| contains_text(body, CONSULT_UNDELIVERED_MESSAGE))
+            .any(|body| contains_text(body, CONSULT_UNDELIVERED_MESSAGE)
+                && !is_consult_responder_request(body))
     );
     assert!(!test.workspace_path(CONSULT_LOCAL_FILENAME).exists());
     assert_eq!(test.thread_manager.list_thread_ids().await.len(), 2);

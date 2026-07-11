@@ -1664,7 +1664,7 @@ impl Session {
         let state = self.state.lock().await;
         let configuration = &state.session_configuration;
         let mut config = active_turn_context.as_ref().map_or_else(
-            || configuration.original_config_do_not_use.as_ref().clone(),
+            || Self::build_effective_session_config(configuration),
             |turn_context| turn_context.config.as_ref().clone(),
         );
         if active_turn_context.is_none() {
