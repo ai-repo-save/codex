@@ -91,9 +91,18 @@ async fn scoped_memory_policy_reaches_responses_lite_as_developer_tools() -> Res
 
     let request_body = response_mock
         .requests()
-        .last()
-        .context("Responses request log should include the user turn")?
-        .body_json();
+        .iter()
+        .find_map(|request| {
+            let body = request.body_json();
+            let additional_tools = body["input"].as_array()?.first()?;
+            let developer_tools = serde_json::to_string(&additional_tools["tools"]).ok()?;
+            (additional_tools["type"] == "additional_tools"
+                && additional_tools["role"] == "developer"
+                && developer_tools.contains(WRITE_NOTE_TOOL)
+                && developer_tools.contains(SESSION_PROACTIVE_POLICY))
+            .then_some(body)
+        })
+        .context("Responses request log should include scoped memory developer tools")?;
     assert!(request_body.get("tools").is_none());
     let input = request_body["input"]
         .as_array()
