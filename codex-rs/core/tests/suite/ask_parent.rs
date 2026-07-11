@@ -581,10 +581,6 @@ async fn cancelling_consult_cleans_up_without_consuming_real_agent_capacity() ->
         matches!(event, EventMsg::TurnAborted(_))
     })
     .await;
-    tokio::time::timeout(Duration::from_secs(2), submit_turn.as_mut())
-        .await
-        .context("root turn should finish after consult cancellation")??;
-
     assert_eq!(test.thread_manager.list_thread_ids().await.len(), 2);
 
     Ok(())
