@@ -24,6 +24,7 @@ use crossterm::event::KeyModifiers;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 const COLLAB_PROMPT_PREVIEW_GRAPHEMES: usize = 160;
@@ -244,7 +245,7 @@ pub(crate) fn tool_call_history_cell(
                 interaction_end(receiver_thread_id, prompt, &mut agent_metadata)
             })
         }
-        CollabAgentTool::AskParent => Some(parent_decision(prompt, status)),
+        CollabAgentTool::AskParent => Some(parent_decision(prompt, status, agents_states)),
         CollabAgentTool::ResumeAgent => first_receiver.map(|receiver_thread_id| {
             if matches!(status, CollabAgentToolCallStatus::InProgress) {
                 resume_begin(receiver_thread_id, &mut agent_metadata)
@@ -393,11 +394,21 @@ fn interaction_end(
     collab_event(title, details)
 }
 
-fn parent_decision(prompt: &str, status: &CollabAgentToolCallStatus) -> PlainHistoryCell {
-    let title = match status {
-        CollabAgentToolCallStatus::InProgress => "Waiting for parent decision",
-        CollabAgentToolCallStatus::Completed => "Received parent decision",
-        CollabAgentToolCallStatus::Failed => "Parent decision unavailable",
+fn parent_decision(
+    prompt: &str,
+    status: &CollabAgentToolCallStatus,
+    agents_states: &HashMap<String, CollabAgentState>,
+) -> PlainHistoryCell {
+    let parent_status = agents_states.values().next().map(|state| &state.status);
+    let title = match (status, parent_status) {
+        (CollabAgentToolCallStatus::InProgress, _) => "Waiting for parent decision",
+        (_, Some(CollabAgentStatus::Completed)) => "Received parent decision",
+        (_, Some(CollabAgentStatus::Interrupted)) => "Parent decision timed out",
+        (_, Some(CollabAgentStatus::NotFound | CollabAgentStatus::Shutdown)) => {
+            "Parent decision unavailable"
+        }
+        (CollabAgentToolCallStatus::Completed, _) => "Received parent decision",
+        (CollabAgentToolCallStatus::Failed, _) => "Parent decision unavailable",
     };
     let details = prompt_line(prompt).into_iter().collect();
     collab_event(title_text(title), details)
@@ -775,6 +786,66 @@ mod tests {
         )
         .expect("ask-parent item renders");
 
+        let ask_parent_answered = tool_call_history_cell(
+            &ThreadItem::CollabAgentToolCall {
+                id: "call-ask-parent-answered".to_string(),
+                tool: CollabAgentTool::AskParent,
+                status: CollabAgentToolCallStatus::Completed,
+                sender_thread_id: robie_id.to_string(),
+                receiver_thread_ids: vec![sender_thread_id.to_string()],
+                prompt: Some("Should I preserve the existing wire format?".to_string()),
+                model: None,
+                reasoning_effort: None,
+                agents_states: HashMap::from([(
+                    sender_thread_id.to_string(),
+                    agent_state(CollabAgentStatus::Completed, Some("Yes.")),
+                )]),
+            },
+            /*cached_spawn_request*/ None,
+            |thread_id| metadata_for(thread_id, robie_id, bob_id),
+        )
+        .expect("answered ask-parent item renders");
+
+        let ask_parent_timed_out = tool_call_history_cell(
+            &ThreadItem::CollabAgentToolCall {
+                id: "call-ask-parent-timed-out".to_string(),
+                tool: CollabAgentTool::AskParent,
+                status: CollabAgentToolCallStatus::Completed,
+                sender_thread_id: robie_id.to_string(),
+                receiver_thread_ids: vec![sender_thread_id.to_string()],
+                prompt: Some("Choose the compatibility policy.".to_string()),
+                model: None,
+                reasoning_effort: None,
+                agents_states: HashMap::from([(
+                    sender_thread_id.to_string(),
+                    agent_state(CollabAgentStatus::Interrupted, /*message*/ None),
+                )]),
+            },
+            /*cached_spawn_request*/ None,
+            |thread_id| metadata_for(thread_id, robie_id, bob_id),
+        )
+        .expect("timed-out ask-parent item renders");
+
+        let ask_parent_unavailable = tool_call_history_cell(
+            &ThreadItem::CollabAgentToolCall {
+                id: "call-ask-parent-unavailable".to_string(),
+                tool: CollabAgentTool::AskParent,
+                status: CollabAgentToolCallStatus::Completed,
+                sender_thread_id: robie_id.to_string(),
+                receiver_thread_ids: vec![sender_thread_id.to_string()],
+                prompt: Some("Resolve the ownership conflict.".to_string()),
+                model: None,
+                reasoning_effort: None,
+                agents_states: HashMap::from([(
+                    sender_thread_id.to_string(),
+                    agent_state(CollabAgentStatus::NotFound, /*message*/ None),
+                )]),
+            },
+            /*cached_spawn_request*/ None,
+            |thread_id| metadata_for(thread_id, robie_id, bob_id),
+        )
+        .expect("unavailable ask-parent item renders");
+
         let waiting = tool_call_history_cell(
             &ThreadItem::CollabAgentToolCall {
                 id: "call-wait".to_string(),
@@ -838,7 +909,17 @@ mod tests {
         )
         .expect("close item renders");
 
-        let snapshot = [spawn, send, ask_parent, waiting, finished, close]
+        let snapshot = [
+            spawn,
+            send,
+            ask_parent,
+            ask_parent_answered,
+            ask_parent_timed_out,
+            ask_parent_unavailable,
+            waiting,
+            finished,
+            close,
+        ]
             .iter()
             .map(cell_to_text)
             .collect::<Vec<_>>()

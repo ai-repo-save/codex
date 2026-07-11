@@ -165,18 +165,35 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
                 .unwrap_or_else(|| tool.clone());
             return bounded_summary(&format!("Tool {tool}"));
         }
-        ThreadItem::CollabAgentToolCall { tool, status, .. } => {
+        ThreadItem::CollabAgentToolCall {
+            tool,
+            status,
+            agents_states,
+            ..
+        } => {
             let action = match tool {
                 CollabAgentTool::SpawnAgent => "Spawned an agent",
                 CollabAgentTool::SendInput => "Sent input to an agent",
-                CollabAgentTool::AskParent => match status {
-                    codex_app_server_protocol::CollabAgentToolCallStatus::InProgress => {
+                CollabAgentTool::AskParent => match (
+                    status,
+                    agents_states.values().next().map(|state| &state.status),
+                ) {
+                    (codex_app_server_protocol::CollabAgentToolCallStatus::InProgress, _) => {
                         "Waiting for parent agent decision"
                     }
-                    codex_app_server_protocol::CollabAgentToolCallStatus::Completed => {
+                    (_, Some(codex_app_server_protocol::CollabAgentStatus::Completed)) => {
                         "Received parent agent decision"
                     }
-                    codex_app_server_protocol::CollabAgentToolCallStatus::Failed => {
+                    (_, Some(codex_app_server_protocol::CollabAgentStatus::Interrupted)) => {
+                        "Parent agent decision timed out"
+                    }
+                    (_, Some(codex_app_server_protocol::CollabAgentStatus::NotFound | codex_app_server_protocol::CollabAgentStatus::Shutdown)) => {
+                        "Parent agent decision unavailable"
+                    }
+                    (codex_app_server_protocol::CollabAgentToolCallStatus::Completed, _) => {
+                        "Received parent agent decision"
+                    }
+                    (codex_app_server_protocol::CollabAgentToolCallStatus::Failed, _) => {
                         "Parent agent decision unavailable"
                     }
                 },

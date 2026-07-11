@@ -36,6 +36,7 @@ mod agent_jobs;
 mod agent_websocket;
 mod agents_md;
 mod apply_patch_cli;
+mod ask_parent;
 #[cfg(not(target_os = "windows"))]
 mod approvals;
 mod auto_review;

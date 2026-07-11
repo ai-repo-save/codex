@@ -7282,6 +7282,23 @@ async fn shutdown_complete_does_not_append_to_thread_store_after_shutdown() {
 }
 
 #[tokio::test]
+async fn shutdown_cancels_pending_parent_requests_for_the_thread() {
+    let (session, _turn_context) = make_session_and_context().await;
+    let session = Arc::new(session);
+    let (_request_id, receiver) = session.services.agent_control.register_parent_request(
+        session.thread_id,
+        ThreadId::new(),
+    );
+
+    assert!(handlers::shutdown(&session, "sub-1".to_string()).await);
+
+    assert!(matches!(
+        receiver.await.expect("parent request outcome"),
+        crate::agent::control::ParentRequestOutcome::ParentUnavailable
+    ));
+}
+
+#[tokio::test]
 async fn submission_loop_channel_close_runs_full_thread_teardown() {
     struct SessionStopMarker;
     struct ThreadStopMarker;

@@ -170,6 +170,10 @@ impl AgentControl {
         self.parent_requests.cancel(request_id);
     }
 
+    pub(crate) fn cancel_parent_requests_for_thread(&self, thread_id: ThreadId) {
+        self.parent_requests.cancel_for_thread(thread_id);
+    }
+
     /// Send rich user input items to an existing agent thread.
     pub(crate) async fn send_input(
         &self,
@@ -295,6 +299,7 @@ impl AgentControl {
         result: CodexResult<String>,
     ) -> CodexResult<String> {
         if matches!(result, Err(CodexErr::InternalAgentDied)) {
+            self.parent_requests.cancel_for_thread(agent_id);
             let _ = state.remove_thread(&agent_id).await;
             self.forget_v2_residency(agent_id);
             self.state.release_spawned_thread(agent_id);

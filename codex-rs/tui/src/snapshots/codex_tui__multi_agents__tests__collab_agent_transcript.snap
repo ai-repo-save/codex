@@ -11,6 +11,15 @@ expression: snapshot
 • Waiting for parent decision
   └ Should I preserve the existing wire format?
 
+• Received parent decision
+  └ Should I preserve the existing wire format?
+
+• Parent decision timed out
+  └ Choose the compatibility policy.
+
+• Parent decision unavailable
+  └ Resolve the ownership conflict.
+
 • Waiting for Robie [explorer]
 
 • Finished waiting

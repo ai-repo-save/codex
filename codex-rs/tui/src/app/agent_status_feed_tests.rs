@@ -47,6 +47,54 @@ fn agent_status_describes_pending_parent_decision() {
 }
 
 #[test]
+fn agent_status_distinguishes_parent_decision_timeout() {
+    let mut store = ThreadEventStore::new(/*capacity*/ 8);
+    store.push_notification(ServerNotification::ItemCompleted(
+        ItemCompletedNotification {
+            item: ThreadItem::CollabAgentToolCall {
+                id: "call-ask-parent".to_string(),
+                tool: CollabAgentTool::AskParent,
+                status: CollabAgentToolCallStatus::Completed,
+                sender_thread_id: "thread-child".to_string(),
+                receiver_thread_ids: vec!["thread-parent".to_string()],
+                prompt: Some("Choose the compatibility policy.".to_string()),
+                model: None,
+                reasoning_effort: None,
+                agents_states: [(
+                    "thread-parent".to_string(),
+                    codex_app_server_protocol::CollabAgentState {
+                        status: codex_app_server_protocol::CollabAgentStatus::Interrupted,
+                        message: None,
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            },
+            thread_id: "thread-child".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 1,
+        },
+    ));
+
+    let preview = AgentStatusThreadPreview::from_store("/root/worker".to_string(), &store);
+    let cell = AgentStatusHistoryCell::new(vec![preview]);
+    let rendered = cell
+        .display_lines(/*width*/ 80)
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    insta::assert_snapshot!(rendered, @r###"
+    /agent
+    Sub-agents running
+
+      • `/root/worker`
+        Parent agent decision timed out
+    "###);
+}
+
+#[test]
 fn agent_status_uses_bounded_buffered_activity() {
     let mut store = ThreadEventStore::new(/*capacity*/ 8);
     store.push_notification(ServerNotification::ItemCompleted(
