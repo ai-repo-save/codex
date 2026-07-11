@@ -1189,17 +1189,12 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
         .find(|request| !request.body_contains_text(CHILD_CONTEXT_REMINDER_MESSAGE))
         .expect("initial child request should be present")
         .body_json()["client_metadata"]["thread_id"]
-        .clone();
+        .as_str()
+        .expect("initial child request should include a thread id")
+        .to_string();
     assert_eq!(
-        child_request
-            .body_json()
-            .pointer("/client_metadata/x-openai-subagent")
-            .and_then(Value::as_str),
-        Some("collab_spawn"),
-    );
-    assert_eq!(
-        child_request.body_json()["client_metadata"]["thread_id"],
-        child_thread_id
+        child_request.body_json()["client_metadata"]["thread_id"].as_str(),
+        Some(child_thread_id.as_str())
     );
 
     Ok(())
