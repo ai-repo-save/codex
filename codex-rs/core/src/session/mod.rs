@@ -42,7 +42,6 @@ use crate::image_preparation::prepare_response_items;
 use crate::parse_turn_item;
 use crate::realtime_conversation::RealtimeConversationManager;
 use crate::session::step_context::StepContext;
-use crate::session::turn_context::TurnEnvironment;
 use crate::session_prefix::format_inter_agent_completion_message;
 use crate::skills::SkillRenderSideEffects;
 use crate::skills_load_input_from_config;
@@ -458,7 +457,7 @@ pub(crate) struct ConsultSessionSnapshot {
     pub(crate) config: Config,
     pub(crate) history: Vec<RolloutItem>,
     pub(crate) dynamic_tools: Vec<DynamicToolSpec>,
-    pub(crate) environments: Vec<TurnEnvironmentSelection>,
+    pub(crate) environments: TurnEnvironmentSnapshot,
     pub(crate) multi_agent_version: Option<MultiAgentVersion>,
     pub(crate) parent_thread_id: Option<ThreadId>,
     pub(crate) originator: String,
@@ -1662,6 +1661,11 @@ impl Session {
         let active_turn_id = active_turn_context
             .as_ref()
             .map(|turn_context| turn_context.sub_id.clone());
+        let idle_environments = if active_turn_context.is_none() {
+            Some(self.services.turn_environments.snapshot().await)
+        } else {
+            None
+        };
         let state = self.state.lock().await;
         let configuration = &state.session_configuration;
         let (mut config, dynamic_tools, environments) = active_turn_context.as_ref().map_or_else(
@@ -1669,7 +1673,7 @@ impl Session {
                 (
                     Self::build_effective_session_config(configuration),
                     configuration.dynamic_tools.clone(),
-                    configuration.environment_selections().to_vec(),
+                    idle_environments.expect("idle environment snapshot is captured"),
                 )
             },
             |turn_context| {
@@ -1680,20 +1684,11 @@ impl Session {
                 config.personality = turn_context.personality.clone();
                 config.base_instructions = Some(configuration.base_instructions.clone());
                 config.developer_instructions = turn_context.developer_instructions.clone();
-                let environments = turn_context
-                    .environments
-                    .turn_environments
-                    .iter()
-                    .map(TurnEnvironment::selection)
-                    .chain(
-                        turn_context
-                            .environments
-                            .starting
-                            .iter()
-                            .map(|environment| environment.selection.clone()),
-                    )
-                    .collect();
-                (config, turn_context.dynamic_tools.clone(), environments)
+                (
+                    config,
+                    turn_context.dynamic_tools.clone(),
+                    turn_context.environments.clone(),
+                )
             },
         );
         config.ephemeral = true;

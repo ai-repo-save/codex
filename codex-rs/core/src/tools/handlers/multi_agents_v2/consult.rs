@@ -138,6 +138,20 @@ pub(super) async fn consult_parent(
         instructions,
         warnings: Vec::new(),
     };
+    let environment_selections = snapshot
+        .environments
+        .turn_environments
+        .iter()
+        .map(crate::session::turn_context::TurnEnvironment::selection)
+        .chain(
+            snapshot
+                .environments
+                .starting
+                .iter()
+                .map(|environment| environment.selection.clone()),
+        )
+        .collect();
+    let inherited_environments = snapshot.environments.clone();
     let spawned = wait_for_consult_stage(
         Codex::spawn(CodexSpawnArgs {
             config: snapshot.config,
@@ -176,11 +190,11 @@ pub(super) async fn consult_parent(
             dynamic_tools: snapshot.dynamic_tools,
             metrics_service_name: None,
             inherited_exec_policy: None,
-            inherited_environments: None,
+            inherited_environments: Some(inherited_environments),
             parent_rollout_thread_trace: codex_rollout_trace::ThreadTraceContext::disabled(),
             user_shell_override: None,
             parent_trace: None,
-            environment_selections: snapshot.environments,
+            environment_selections,
             thread_extension_init: ExtensionDataInit::default(),
             supports_openai_form_elicitation: parent_session
                 .services
