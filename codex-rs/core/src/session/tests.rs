@@ -6144,7 +6144,7 @@ async fn consult_snapshot_without_a_running_task_does_not_mark_history_interrupt
 
     let snapshot = session.consult_snapshot().await;
 
-    assert_eq!(snapshot.history, Vec::new());
+    assert!(snapshot.history.is_empty());
 }
 
 #[tokio::test]
