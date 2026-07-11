@@ -211,7 +211,12 @@ impl Respond for AskParentResponder {
         }
 
         if has_call_output(&body, SPAWN_CALL_ID) && !has_call_output(&body, WAIT_CALL_ID) {
-            return tool_call_response("root-wait-response", WAIT_CALL_ID, "wait_agent", json!({}));
+            return tool_call_response(
+                "root-wait-response",
+                WAIT_CALL_ID,
+                "wait_agent",
+                json!({"timeout_ms": 5_000}),
+            );
         }
 
         if contains_text(&body, CHILD_PROMPT) && !self.child_started.swap(true, Ordering::SeqCst) {
