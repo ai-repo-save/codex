@@ -112,7 +112,6 @@ fn thread_manager() -> ThreadManager {
 }
 
 async fn make_v2_child_context(
-    manager: &ThreadManager,
     agent_control: crate::agent::AgentControl,
     root_thread_id: ThreadId,
     task_name: &str,
@@ -1567,9 +1566,9 @@ async fn multi_agent_v2_ask_parent_correlates_concurrent_replies() {
     let (root_session, root_turn) =
         make_v2_root_context(agent_control.clone(), root.thread_id).await;
     let (first_session, first_turn, first_thread_id, first_path) =
-        make_v2_child_context(&manager, agent_control.clone(), root.thread_id, "first").await;
+        make_v2_child_context(agent_control.clone(), root.thread_id, "first").await;
     let (second_session, second_turn, _, second_path) =
-        make_v2_child_context(&manager, agent_control, root.thread_id, "second").await;
+        make_v2_child_context(agent_control, root.thread_id, "second").await;
 
     let first_ask = tokio::spawn(async move {
         AskParentHandler
@@ -1718,7 +1717,7 @@ async fn multi_agent_v2_ask_parent_times_out_and_rejects_late_reply() {
     let (root_session, root_turn) =
         make_v2_root_context(agent_control.clone(), root.thread_id).await;
     let (child_session, child_turn, _, child_path) =
-        make_v2_child_context(&manager, agent_control, root.thread_id, "timeout").await;
+        make_v2_child_context(agent_control, root.thread_id, "timeout").await;
     let min_timeout_ms = child_turn.config.multi_agent_v2.min_wait_timeout_ms;
     let ask = tokio::spawn(async move {
         AskParentHandler
