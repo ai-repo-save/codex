@@ -21,9 +21,9 @@ use serde_json::json;
 
 use crate::extension::MemoriesExtension;
 use crate::extension::MemoriesExtensionConfig;
+use crate::scoped::GLOBAL_MEMORY_MAINTENANCE_POLICY;
 use crate::scoped::MemoryScope;
 use crate::scoped::MemoryToolBackends;
-use crate::scoped::GLOBAL_MEMORY_MAINTENANCE_POLICY;
 use crate::scoped::PROJECT_MEMORY_MAINTENANCE_POLICY;
 use crate::scoped::SESSION_MEMORY_MAINTENANCE_POLICY;
 
@@ -215,10 +215,9 @@ fn scoped_tool_definitions_expose_scope_specific_maintenance_policy() {
         memory_tool_from_backends(backends.clone(), crate::WRITE_NOTE_TOOL_NAME).spec(),
     )
     .expect("serialize write tool spec");
-    let delete_spec = serde_json::to_value(
-        memory_tool_from_backends(backends, crate::DELETE_TOOL_NAME).spec(),
-    )
-    .expect("serialize delete tool spec");
+    let delete_spec =
+        serde_json::to_value(memory_tool_from_backends(backends, crate::DELETE_TOOL_NAME).spec())
+            .expect("serialize delete tool spec");
     let write_description = write_spec
         .pointer("/tools/0/description")
         .and_then(serde_json::Value::as_str)
