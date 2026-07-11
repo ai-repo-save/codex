@@ -12,8 +12,8 @@ use crate::hook_runtime::run_pre_tool_use_hooks;
 use crate::memory_usage::emit_metric_for_tool_read;
 use crate::sandbox_tags::permission_profile_policy_tag;
 use crate::sandbox_tags::permission_profile_sandbox_tag;
-use crate::session::turn_context::TurnContext;
 use crate::session::turn_context::ToolExecutionMode;
+use crate::session::turn_context::TurnContext;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
@@ -469,7 +469,10 @@ impl ToolRegistry {
             }
         };
 
-        if matches!(invocation.turn.tool_execution_mode, ToolExecutionMode::ConsultNoLocalTools) {
+        if matches!(
+            invocation.turn.tool_execution_mode,
+            ToolExecutionMode::ConsultNoLocalTools
+        ) {
             let message = CONSULT_LOCAL_TOOLS_DISABLED_MESSAGE.to_string();
             let log_payload = invocation.payload.log_payload();
             otel.tool_result_with_tags(

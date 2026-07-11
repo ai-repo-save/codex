@@ -1,8 +1,8 @@
 use anyhow::Context;
 use anyhow::Result;
 use codex_features::Feature;
-use codex_protocol::protocol::EventMsg;
 use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
+use codex_protocol::protocol::EventMsg;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
@@ -147,11 +147,7 @@ impl Respond for ConsultResponder {
                 .expect("consult local tool arguments should serialize");
             return sse_response(sse(vec![
                 ev_response_created("consult-local-tool-response"),
-                ev_function_call(
-                    CONSULT_LOCAL_TOOL_CALL_ID,
-                    "shell_command",
-                    &arguments,
-                ),
+                ev_function_call(CONSULT_LOCAL_TOOL_CALL_ID, "shell_command", &arguments),
                 ev_completed("consult-local-tool-response"),
             ]));
         }
@@ -317,7 +313,10 @@ async fn consult_uses_a_fixed_parent_snapshot_without_waking_the_parent() -> Res
         Some(&Value::String(CONSULT_ADVISORY.to_string()))
     );
     assert_eq!(result.get("answer"), Some(&Value::Null));
-    assert_eq!(result.get("snapshot_may_be_stale"), Some(&Value::Bool(true)));
+    assert_eq!(
+        result.get("snapshot_may_be_stale"),
+        Some(&Value::Bool(true))
+    );
     assert!(
         result
             .get("snapshot_revision")
@@ -336,13 +335,22 @@ async fn consult_uses_a_fixed_parent_snapshot_without_waking_the_parent() -> Res
         .expect("parent request should be captured");
     let consult_request = requests
         .iter()
-        .find(|body| contains_text(body, CONSULT_QUESTION) && !has_call_output(body, CONSULT_LOCAL_TOOL_CALL_ID))
+        .find(|body| {
+            contains_text(body, CONSULT_QUESTION)
+                && !has_call_output(body, CONSULT_LOCAL_TOOL_CALL_ID)
+        })
         .expect("consult responder request should be captured");
     assert!(contains_text(consult_request, ROOT_SNAPSHOT_MESSAGE));
     assert!(!contains_text(consult_request, CONSULT_CALL_ID));
-    assert_eq!(consult_request.get("instructions"), root_request.get("instructions"));
+    assert_eq!(
+        consult_request.get("instructions"),
+        root_request.get("instructions")
+    );
     assert_eq!(consult_request.get("tools"), root_request.get("tools"));
-    assert_eq!(consult_request.get("tool_choice"), root_request.get("tool_choice"));
+    assert_eq!(
+        consult_request.get("tool_choice"),
+        root_request.get("tool_choice")
+    );
     assert_eq!(
         consult_request.get("prompt_cache_key"),
         root_request.get("prompt_cache_key")
@@ -363,9 +371,11 @@ async fn consult_uses_a_fixed_parent_snapshot_without_waking_the_parent() -> Res
     assert!(requests.iter().any(|body| {
         call_output_text(body, CONSULT_MESSAGE_CALL_ID).is_some_and(|output| !output.is_empty())
     }));
-    assert!(!requests
-        .iter()
-        .any(|body| contains_text(body, CONSULT_UNDELIVERED_MESSAGE)));
+    assert!(
+        !requests
+            .iter()
+            .any(|body| contains_text(body, CONSULT_UNDELIVERED_MESSAGE))
+    );
     assert!(!test.workspace_path(CONSULT_LOCAL_FILENAME).exists());
     assert_eq!(test.thread_manager.list_thread_ids().await.len(), 2);
 
@@ -387,9 +397,7 @@ async fn consult_requires_authoritative_parent_without_automatic_escalation() ->
     );
     assert_eq!(
         result.get("advisory"),
-        Some(&Value::String(
-            AUTHORITATIVE_REQUIRED_ADVISORY.to_string()
-        ))
+        Some(&Value::String(AUTHORITATIVE_REQUIRED_ADVISORY.to_string()))
     );
     assert!(
         !requests

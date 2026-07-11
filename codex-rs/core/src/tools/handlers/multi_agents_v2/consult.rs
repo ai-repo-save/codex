@@ -87,9 +87,11 @@ pub(super) async fn consult_parent(
     } = loaded_parent;
     let revision = snapshot.revision.clone();
     let deadline = Instant::now() + timeout;
-    snapshot.history.push(RolloutItem::ResponseItem(
-        ContextualUserFragment::into(ConsultParentContext),
-    ));
+    snapshot
+        .history
+        .push(RolloutItem::ResponseItem(ContextualUserFragment::into(
+            ConsultParentContext,
+        )));
     let instructions = match wait_for_consult_stage(
         parent_session.user_instructions(),
         cancellation_token,
@@ -121,7 +123,10 @@ pub(super) async fn consult_parent(
             skills_service: Arc::clone(&parent_session.services.skills_service),
             plugins_manager: Arc::clone(&parent_session.services.plugins_manager),
             mcp_manager: Arc::clone(&parent_session.services.mcp_manager),
-            code_mode_session_provider: parent_session.services.code_mode_service.session_provider(),
+            code_mode_session_provider: parent_session
+                .services
+                .code_mode_service
+                .session_provider(),
             extensions: Arc::clone(&parent_session.services.extensions),
             conversation_history: InitialHistory::Forked(snapshot.history),
             requested_history_mode: None,
@@ -283,7 +288,9 @@ async fn wait_for_consult_response(
 ) -> Result<ConsultResponse, FunctionCallError> {
     loop {
         let event = codex.next_event().await.map_err(|error| {
-            FunctionCallError::RespondToModel(format!("consult responder ended unexpectedly: {error}"))
+            FunctionCallError::RespondToModel(format!(
+                "consult responder ended unexpectedly: {error}"
+            ))
         })?;
         if event.id != expected_turn_id {
             continue;

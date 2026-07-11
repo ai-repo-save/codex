@@ -14,8 +14,8 @@ use codex_app_server_protocol::CollabAgentTool;
 use codex_app_server_protocol::CollabAgentToolCallStatus;
 use codex_app_server_protocol::SubAgentActivityKind;
 use codex_app_server_protocol::ThreadItem;
-use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
 use codex_protocol::ThreadId;
+use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
@@ -471,7 +471,11 @@ fn parent_consultation(
             .filter(|revision| !revision.is_empty())
             .unwrap_or("unavailable");
         details.push(format!("Snapshot revision: {revision}").dim().into());
-        details.push("May be stale; this is not an authoritative parent decision".yellow().into());
+        details.push(
+            "May be stale; this is not an authoritative parent decision"
+                .yellow()
+                .into(),
+        );
     }
     collab_event(title_text(title), details)
 }
@@ -962,7 +966,10 @@ mod tests {
                 snapshot_revision: Some("history-18/items-42".to_string()),
                 agents_states: HashMap::from([(
                     sender_thread_id.to_string(),
-                    agent_state(CollabAgentStatus::Completed, Some("The parent favors reuse.")),
+                    agent_state(
+                        CollabAgentStatus::Completed,
+                        Some("The parent favors reuse."),
+                    ),
                 )]),
             },
             /*cached_spawn_request*/ None,
