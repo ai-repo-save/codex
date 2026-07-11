@@ -6,8 +6,39 @@ use uuid::Uuid;
 
 #[derive(Debug)]
 pub(crate) enum ParentRequestOutcome {
-    Answered(String),
+    Answered {
+        answer: String,
+        acknowledgment: oneshot::Sender<()>,
+    },
     ParentUnavailable,
+}
+
+pub(crate) struct ParentReplyClaim {
+    request_id: String,
+    sender: oneshot::Sender<ParentRequestOutcome>,
+}
+
+impl ParentReplyClaim {
+    pub(crate) async fn deliver(self, answer: String) -> Result<(), String> {
+        let (acknowledgment, acknowledged) = oneshot::channel();
+        self.sender
+            .send(ParentRequestOutcome::Answered {
+                answer,
+                acknowledgment,
+            })
+            .map_err(|_| {
+                format!(
+                    "parent request `{}` is no longer waiting",
+                    self.request_id
+                )
+            })?;
+        acknowledged.await.map_err(|_| {
+            format!(
+                "parent request `{}` did not acknowledge the reply",
+                self.request_id
+            )
+        })
+    }
 }
 
 struct PendingParentRequest {
@@ -43,13 +74,12 @@ impl ParentRequestBroker {
         (request_id, receiver)
     }
 
-    pub(super) fn answer(
+    pub(super) fn claim_reply(
         &self,
         request_id: &str,
         parent_thread_id: ThreadId,
         child_thread_id: ThreadId,
-        answer: String,
-    ) -> Result<(), String> {
+    ) -> Result<ParentReplyClaim, String> {
         let mut pending = self.pending.lock().unwrap_or_else(|err| err.into_inner());
         let request = pending.get(request_id).ok_or_else(|| {
             format!("parent request `{request_id}` is unknown, expired, or already answered")
@@ -67,18 +97,18 @@ impl ParentRequestBroker {
             ));
         }
         let request = pending.remove(request_id).expect("request exists");
-        drop(pending);
-        request
-            .sender
-            .send(ParentRequestOutcome::Answered(answer))
-            .map_err(|_| format!("parent request `{request_id}` is no longer waiting"))
+        Ok(ParentReplyClaim {
+            request_id: request_id.to_string(),
+            sender: request.sender,
+        })
     }
 
-    pub(super) fn cancel(&self, request_id: &str) {
+    pub(super) fn cancel(&self, request_id: &str) -> bool {
         self.pending
             .lock()
             .unwrap_or_else(|err| err.into_inner())
-            .remove(request_id);
+            .remove(request_id)
+            .is_some()
     }
 
     pub(super) fn cancel_for_thread(&self, thread_id: ThreadId) {

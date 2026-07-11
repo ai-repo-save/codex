@@ -51,6 +51,7 @@ use tracing::warn;
 pub(crate) use self::execution::AgentExecutionGuard;
 use self::execution::AgentExecutionLimiter;
 pub(crate) use self::parent_requests::ParentRequestOutcome;
+pub(crate) use self::parent_requests::ParentReplyClaim;
 use self::residency::V2Residency;
 
 const ROOT_LAST_TASK_MESSAGE: &str = "Main thread";
@@ -155,19 +156,18 @@ impl AgentControl {
             .register(child_thread_id, parent_thread_id)
     }
 
-    pub(crate) fn answer_parent_request(
+    pub(crate) fn claim_parent_reply(
         &self,
         request_id: &str,
         parent_thread_id: ThreadId,
         child_thread_id: ThreadId,
-        answer: String,
-    ) -> Result<(), String> {
+    ) -> Result<ParentReplyClaim, String> {
         self.parent_requests
-            .answer(request_id, parent_thread_id, child_thread_id, answer)
+            .claim_reply(request_id, parent_thread_id, child_thread_id)
     }
 
-    pub(crate) fn cancel_parent_request(&self, request_id: &str) {
-        self.parent_requests.cancel(request_id);
+    pub(crate) fn cancel_parent_request(&self, request_id: &str) -> bool {
+        self.parent_requests.cancel(request_id)
     }
 
     pub(crate) fn cancel_parent_requests_for_thread(&self, thread_id: ThreadId) {

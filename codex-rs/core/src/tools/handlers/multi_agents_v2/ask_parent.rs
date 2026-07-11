@@ -145,18 +145,21 @@ impl Handler {
             receiver,
             &cancellation_token,
             Duration::from_millis(timeout_ms as u64),
+            &session.services.agent_control,
+            &request_id,
         )
         .await;
         let (status, answer) = match outcome {
-            Some(ParentRequestOutcome::Answered(answer)) => {
+            ParentWaitResult::Answered(answer) => {
                 registration.disarm();
                 (AskParentStatus::Answered, Some(answer))
             }
-            Some(ParentRequestOutcome::ParentUnavailable) => {
+            ParentWaitResult::ParentUnavailable => {
                 registration.disarm();
                 (AskParentStatus::ParentUnavailable, None)
             }
-            None if cancellation_token.is_cancelled() => {
+            ParentWaitResult::Cancelled => {
+                registration.disarm();
                 emit_ask_parent_item(
                     &session,
                     &turn,
@@ -172,7 +175,10 @@ impl Handler {
                     "ask_parent was cancelled".to_string(),
                 ));
             }
-            None => (AskParentStatus::TimedOut, None),
+            ParentWaitResult::TimedOut => {
+                registration.disarm();
+                (AskParentStatus::TimedOut, None)
+            }
         };
         emit_ask_parent_item(
             &session,
@@ -200,16 +206,55 @@ impl Handler {
 }
 
 async fn wait_for_parent_outcome(
-    receiver: oneshot::Receiver<ParentRequestOutcome>,
+    mut receiver: oneshot::Receiver<ParentRequestOutcome>,
     cancellation_token: &CancellationToken,
     timeout: Duration,
-) -> Option<ParentRequestOutcome> {
+    control: &AgentControl,
+    request_id: &str,
+) -> ParentWaitResult {
     tokio::select! {
         biased;
-        result = receiver => Some(result.unwrap_or(ParentRequestOutcome::ParentUnavailable)),
-        () = cancellation_token.cancelled() => None,
-        () = tokio::time::sleep(timeout) => None,
+        result = &mut receiver => parent_wait_result(result),
+        () = cancellation_token.cancelled() => {
+            if control.cancel_parent_request(request_id) {
+                ParentWaitResult::Cancelled
+            } else {
+                parent_wait_result(receiver.await)
+            }
+        },
+        () = tokio::time::sleep(timeout) => {
+            if control.cancel_parent_request(request_id) {
+                ParentWaitResult::TimedOut
+            } else {
+                parent_wait_result(receiver.await)
+            }
+        },
     }
+}
+
+fn parent_wait_result(
+    outcome: Result<ParentRequestOutcome, oneshot::error::RecvError>,
+) -> ParentWaitResult {
+    match outcome {
+        Ok(ParentRequestOutcome::Answered {
+            answer,
+            acknowledgment,
+        }) => {
+            let _ = acknowledgment.send(());
+            ParentWaitResult::Answered(answer)
+        }
+        Ok(ParentRequestOutcome::ParentUnavailable) | Err(_) => {
+            ParentWaitResult::ParentUnavailable
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ParentWaitResult {
+    Answered(String),
+    TimedOut,
+    Cancelled,
+    ParentUnavailable,
 }
 
 async fn emit_ask_parent_item(
