@@ -20,13 +20,9 @@ use codex_tools::ToolSpec;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 
-const MAX_RATE_LIMIT_BUCKETS: usize = 4;
-const MAX_BACKEND_STRING_BYTES: usize = 256;
-const MAX_SERIALIZED_OUTPUT_BYTES: usize = 8 * 1024;
 const CLIENT_ERROR_MESSAGE: &str = "failed to construct account rate limits client";
 const FETCH_ERROR_MESSAGE: &str = "failed to fetch account rate limits";
 const SERIALIZATION_ERROR_MESSAGE: &str = "failed to serialize account rate limits response";
-const OUTPUT_TOO_LARGE_ERROR_MESSAGE: &str = "account rate limits response exceeded size limit";
 
 pub struct AccountRateLimitsHandler;
 
@@ -42,8 +38,6 @@ enum AccountRateLimitsUnavailableReason {
 struct AccountRateLimitsResponse {
     available: bool,
     unavailable_reason: Option<AccountRateLimitsUnavailableReason>,
-    total_rate_limit_count: usize,
-    truncated: bool,
     rate_limits: Vec<AccountRateLimitSnapshot>,
 }
 
@@ -52,25 +46,18 @@ impl AccountRateLimitsResponse {
         Self {
             available: false,
             unavailable_reason: Some(reason),
-            total_rate_limit_count: 0,
-            truncated: false,
             rate_limits: Vec::new(),
         }
     }
 
     fn available(rate_limits: Vec<RateLimitSnapshot>) -> Self {
-        let total_rate_limit_count = rate_limits.len();
-        let mut truncated = total_rate_limit_count > MAX_RATE_LIMIT_BUCKETS;
         let rate_limits = rate_limits
             .into_iter()
-            .take(MAX_RATE_LIMIT_BUCKETS)
-            .map(|snapshot| AccountRateLimitSnapshot::from_backend(snapshot, &mut truncated))
+            .map(AccountRateLimitSnapshot::from)
             .collect();
         Self {
             available: true,
             unavailable_reason: None,
-            total_rate_limit_count,
-            truncated,
             rate_limits,
         }
     }
@@ -88,22 +75,22 @@ struct AccountRateLimitSnapshot {
     rate_limit_reached_type: Option<RateLimitReachedType>,
 }
 
-impl AccountRateLimitSnapshot {
-    fn from_backend(snapshot: RateLimitSnapshot, truncated: &mut bool) -> Self {
+impl From<RateLimitSnapshot> for AccountRateLimitSnapshot {
+    fn from(snapshot: RateLimitSnapshot) -> Self {
         Self {
-            limit_id: truncate_optional_backend_string(snapshot.limit_id, truncated),
-            limit_name: truncate_optional_backend_string(snapshot.limit_name, truncated),
+            limit_id: snapshot.limit_id,
+            limit_name: snapshot.limit_name,
             primary: snapshot.primary.map(AccountRateLimitWindow::from),
             secondary: snapshot.secondary.map(AccountRateLimitWindow::from),
             credits: snapshot.credits.map(|credits| AccountCreditsSnapshot {
                 has_credits: credits.has_credits,
                 unlimited: credits.unlimited,
-                balance: truncate_optional_backend_string(credits.balance, truncated),
+                balance: credits.balance,
             }),
             individual_limit: snapshot.individual_limit.map(|limit| {
                 AccountSpendControlLimitSnapshot {
-                    limit: truncate_backend_string(limit.limit, truncated),
-                    used: truncate_backend_string(limit.used, truncated),
+                    limit: limit.limit,
+                    used: limit.used,
                     remaining_percent: limit.remaining_percent,
                     resets_at: limit.resets_at,
                 }
@@ -127,22 +114,6 @@ struct AccountSpendControlLimitSnapshot {
     used: String,
     remaining_percent: i32,
     resets_at: i64,
-}
-
-fn truncate_optional_backend_string(value: Option<String>, truncated: &mut bool) -> Option<String> {
-    value.map(|value| truncate_backend_string(value, truncated))
-}
-
-fn truncate_backend_string(mut value: String, truncated: &mut bool) -> String {
-    if value.len() > MAX_BACKEND_STRING_BYTES {
-        let mut boundary = MAX_BACKEND_STRING_BYTES;
-        while !value.is_char_boundary(boundary) {
-            boundary -= 1;
-        }
-        value.truncate(boundary);
-        *truncated = true;
-    }
-    value
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -176,16 +147,6 @@ impl AccountRateLimitsOutput {
             tracing::warn!(%err, "failed to serialize account rate limits response");
             FunctionCallError::RespondToModel(SERIALIZATION_ERROR_MESSAGE.to_string())
         })?;
-        if text.len() > MAX_SERIALIZED_OUTPUT_BYTES {
-            tracing::warn!(
-                serialized_bytes = text.len(),
-                max_serialized_bytes = MAX_SERIALIZED_OUTPUT_BYTES,
-                "account rate limits response exceeded size limit"
-            );
-            return Err(FunctionCallError::RespondToModel(
-                OUTPUT_TOO_LARGE_ERROR_MESSAGE.to_string(),
-            ));
-        }
         let response = serde_json::from_str(&text).map_err(|err| {
             tracing::warn!(%err, "failed to parse serialized account rate limits response");
             FunctionCallError::RespondToModel(SERIALIZATION_ERROR_MESSAGE.to_string())

@@ -92,8 +92,6 @@ async fn reports_structured_unavailable_reasons() {
             json!({
                 "available": false,
                 "unavailable_reason": unavailable_reason,
-                "total_rate_limit_count": 0,
-                "truncated": false,
                 "rate_limits": [],
             })
         );
@@ -159,8 +157,6 @@ async fn fetches_all_rate_limit_buckets_and_derives_remaining_percent() {
     let expected = json!({
         "available": true,
         "unavailable_reason": null,
-        "total_rate_limit_count": 2,
-        "truncated": false,
         "rate_limits": [
             {
                 "limit_id": "codex",
@@ -238,22 +234,23 @@ async fn backend_decode_failure_is_a_failed_tool_call() {
 }
 
 #[test]
-fn bounds_bucket_count_and_backend_strings() {
-    let oversized = "é".repeat(MAX_BACKEND_STRING_BYTES);
-    let snapshots = (0..MAX_RATE_LIMIT_BUCKETS + 1)
+fn preserves_all_buckets_and_backend_strings() {
+    let long_value = "é".repeat(8 * 1024);
+    let bucket_count = 6;
+    let snapshots = (0..bucket_count)
         .map(|_| RateLimitSnapshot {
-            limit_id: Some(oversized.clone()),
-            limit_name: Some(oversized.clone()),
+            limit_id: Some(long_value.clone()),
+            limit_name: Some(long_value.clone()),
             primary: None,
             secondary: None,
             credits: Some(CreditsSnapshot {
                 has_credits: true,
                 unlimited: false,
-                balance: Some(oversized.clone()),
+                balance: Some(long_value.clone()),
             }),
             individual_limit: Some(SpendControlLimitSnapshot {
-                limit: oversized.clone(),
-                used: oversized.clone(),
+                limit: long_value.clone(),
+                used: long_value.clone(),
                 remaining_percent: 50,
                 resets_at: 1,
             }),
@@ -264,24 +261,23 @@ fn bounds_bucket_count_and_backend_strings() {
 
     let response = AccountRateLimitsResponse::available(snapshots);
     let output = AccountRateLimitsOutput::new(response)
-        .expect("bounded account rate limits should serialize");
-    let json = output.code_mode_result(&ToolPayload::Function {
+        .expect("account rate limits should serialize without truncation");
+    let payload = ToolPayload::Function {
         arguments: "{}".to_string(),
-    });
-    let expected_truncated = "é".repeat(MAX_BACKEND_STRING_BYTES / "é".len());
+    };
     let expected_bucket = json!({
-        "limit_id": expected_truncated.clone(),
-        "limit_name": expected_truncated.clone(),
+        "limit_id": long_value.clone(),
+        "limit_name": long_value.clone(),
         "primary": null,
         "secondary": null,
         "credits": {
             "has_credits": true,
             "unlimited": false,
-            "balance": expected_truncated.clone(),
+            "balance": long_value.clone(),
         },
         "individual_limit": {
-            "limit": expected_truncated.clone(),
-            "used": expected_truncated,
+            "limit": long_value.clone(),
+            "used": long_value,
             "remaining_percent": 50,
             "resets_at": 1,
         },
@@ -289,42 +285,15 @@ fn bounds_bucket_count_and_backend_strings() {
         "rate_limit_reached_type": null,
     });
 
-    assert_eq!(
-        json,
-        json!({
-            "available": true,
-            "unavailable_reason": null,
-            "total_rate_limit_count": MAX_RATE_LIMIT_BUCKETS + 1,
-            "truncated": true,
-            "rate_limits": vec![expected_bucket; MAX_RATE_LIMIT_BUCKETS],
-        })
-    );
-    assert!(json.to_string().len() <= MAX_SERIALIZED_OUTPUT_BYTES);
-}
+    let expected = json!({
+        "available": true,
+        "unavailable_reason": null,
+        "rate_limits": vec![expected_bucket; bucket_count],
+    });
+    let function_output = output_json(&output, &payload);
+    let code_mode_result = output.code_mode_result(&payload);
 
-#[test]
-fn rejects_unexpected_oversized_serialized_output_with_stable_error() {
-    let response = AccountRateLimitsResponse {
-        available: true,
-        unavailable_reason: None,
-        total_rate_limit_count: 1,
-        truncated: false,
-        rate_limits: vec![AccountRateLimitSnapshot {
-            limit_id: Some("x".repeat(MAX_SERIALIZED_OUTPUT_BYTES)),
-            limit_name: None,
-            primary: None,
-            secondary: None,
-            credits: None,
-            individual_limit: None,
-            plan_type: None,
-            rate_limit_reached_type: None,
-        }],
-    };
-
-    let error = AccountRateLimitsOutput::new(response)
-        .expect_err("oversized account rate limits output should be rejected");
-    let FunctionCallError::RespondToModel(message) = error else {
-        panic!("oversized output should be reported to the model");
-    };
-    assert_eq!(message, OUTPUT_TOO_LARGE_ERROR_MESSAGE);
+    assert_eq!(function_output, expected);
+    assert_eq!(code_mode_result, expected);
+    assert_eq!(function_output, code_mode_result);
 }
