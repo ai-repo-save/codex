@@ -1658,23 +1658,44 @@ impl Session {
             .as_ref()
             .and_then(|active_turn| active_turn.task.as_ref())
             .map(|task| Arc::clone(&task.turn_context));
+        let has_active_task = active_turn_context.is_some();
         let active_turn_id = active_turn_context
             .as_ref()
             .map(|turn_context| turn_context.sub_id.clone());
         let state = self.state.lock().await;
         let configuration = &state.session_configuration;
-        let mut config = active_turn_context.as_ref().map_or_else(
-            || Self::build_effective_session_config(configuration),
-            |turn_context| turn_context.config.as_ref().clone(),
+        let (mut config, dynamic_tools, environments) = active_turn_context.as_ref().map_or_else(
+            || {
+                (
+                    Self::build_effective_session_config(configuration),
+                    configuration.dynamic_tools.clone(),
+                    configuration.environment_selections().to_vec(),
+                )
+            },
+            |turn_context| {
+                let mut config = turn_context.config.as_ref().clone();
+                config.model = Some(turn_context.model_info.slug.clone());
+                config.model_reasoning_effort = turn_context.reasoning_effort.clone();
+                config.model_reasoning_summary = Some(turn_context.reasoning_summary.clone());
+                config.personality = turn_context.personality.clone();
+                config.base_instructions = Some(configuration.base_instructions.clone());
+                config.developer_instructions = turn_context.developer_instructions.clone();
+                let environments = turn_context
+                    .environments
+                    .turn_environments
+                    .iter()
+                    .map(TurnEnvironment::selection)
+                    .chain(
+                        turn_context
+                            .environments
+                            .starting
+                            .iter()
+                            .map(|environment| environment.selection.clone()),
+                    )
+                    .collect();
+                (config, turn_context.dynamic_tools.clone(), environments)
+            },
         );
-        if active_turn_context.is_none() {
-            config.model = Some(configuration.collaboration_mode.model().to_string());
-            config.model_reasoning_effort = configuration.collaboration_mode.reasoning_effort();
-            config.model_reasoning_summary = configuration.model_reasoning_summary;
-            config.personality = configuration.personality;
-            config.base_instructions = Some(configuration.base_instructions.clone());
-            config.developer_instructions = configuration.developer_instructions.clone();
-        }
         config.ephemeral = true;
 
         let history_version = state.history.history_version();
@@ -1686,7 +1707,7 @@ impl Session {
             .cloned()
             .map(RolloutItem::ResponseItem)
             .collect::<Vec<_>>();
-        if active_turn.is_some() {
+        if has_active_task {
             let multi_agent_version = self
                 .multi_agent_version
                 .get()
@@ -1713,11 +1734,8 @@ impl Session {
         ConsultSessionSnapshot {
             config,
             history,
-            dynamic_tools: active_turn_context.as_ref().map_or_else(
-                || configuration.dynamic_tools.clone(),
-                |turn_context| turn_context.dynamic_tools.clone(),
-            ),
-            environments: configuration.environment_selections().to_vec(),
+            dynamic_tools,
+            environments,
             multi_agent_version: self.multi_agent_version.get().copied(),
             parent_thread_id: configuration.parent_thread_id,
             originator: configuration.originator.clone(),

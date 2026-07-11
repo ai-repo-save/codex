@@ -2,6 +2,10 @@ use anyhow::Context;
 use anyhow::Result;
 use codex_features::Feature;
 use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
+use codex_protocol::items::CollabAgentTool;
+use codex_protocol::items::CollabAgentToolCallStatus;
+use codex_protocol::items::TurnItem;
+use codex_protocol::protocol::ENVIRONMENT_CONTEXT_OPEN_TAG;
 use codex_protocol::protocol::EventMsg;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
@@ -51,6 +55,7 @@ const CONSULT_UNDELIVERED_MESSAGE: &str = "consult must not message the worker";
 enum ConsultOutcome {
     Advisory,
     RequiresAuthoritativeParent,
+    Invalid,
 }
 
 impl ConsultOutcome {
@@ -58,6 +63,7 @@ impl ConsultOutcome {
         match self {
             Self::Advisory => "advisory",
             Self::RequiresAuthoritativeParent => "requires_authoritative_parent",
+            Self::Invalid => unreachable!("invalid consult responses have no kind"),
         }
     }
 
@@ -65,6 +71,18 @@ impl ConsultOutcome {
         match self {
             Self::Advisory => CONSULT_ADVISORY,
             Self::RequiresAuthoritativeParent => AUTHORITATIVE_REQUIRED_ADVISORY,
+            Self::Invalid => "invalid consult response",
+        }
+    }
+
+    fn response_text(self) -> String {
+        match self {
+            Self::Invalid => self.advisory().to_string(),
+            Self::Advisory | Self::RequiresAuthoritativeParent => json!({
+                "kind": self.kind(),
+                "advisory": self.advisory(),
+            })
+            .to_string(),
         }
     }
 }
@@ -79,6 +97,7 @@ struct AskParentResponder {
 struct ConsultResponder {
     outcome: ConsultOutcome,
     request_local_tool: bool,
+    consult_response_delay: Duration,
     root_started: AtomicBool,
     child_started: AtomicBool,
 }
@@ -88,9 +107,15 @@ impl ConsultResponder {
         Self {
             outcome,
             request_local_tool,
+            consult_response_delay: Duration::ZERO,
             root_started: AtomicBool::new(false),
             child_started: AtomicBool::new(false),
         }
+    }
+
+    fn with_consult_response_delay(mut self, delay: Duration) -> Self {
+        self.consult_response_delay = delay;
+        self
     }
 }
 
@@ -123,12 +148,9 @@ impl Respond for ConsultResponder {
 
             return final_message_response(
                 "consult-responder-finished",
-                &json!({
-                    "kind": self.outcome.kind(),
-                    "advisory": self.outcome.advisory(),
-                })
-                .to_string(),
-            );
+                &self.outcome.response_text(),
+            )
+            .set_delay(self.consult_response_delay);
         }
 
         if contains_text(&body, ROOT_PROMPT) && !self.root_started.swap(true, Ordering::SeqCst) {
@@ -143,7 +165,16 @@ impl Respond for ConsultResponder {
             );
         }
 
-        if has_call_output(&body, SPAWN_CALL_ID) {
+        if has_call_output(&body, SPAWN_CALL_ID) && !has_call_output(&body, WAIT_CALL_ID) {
+            return tool_call_response(
+                "consult-root-wait-response",
+                WAIT_CALL_ID,
+                "wait_agent",
+                json!({}),
+            );
+        }
+
+        if has_call_output(&body, WAIT_CALL_ID) {
             return final_message_response("consult-root-finished", ROOT_SNAPSHOT_MESSAGE);
         }
 
@@ -350,6 +381,7 @@ async fn consult_uses_a_fixed_parent_snapshot_without_waking_the_parent() -> Res
         consult_request.get("instructions"),
         root_request.get("instructions")
     );
+    assert_eq!(consult_request.get("model"), root_request.get("model"));
     assert_eq!(consult_request.get("tools"), root_request.get("tools"));
     assert_eq!(
         consult_request.get("tool_choice"),
@@ -358,6 +390,10 @@ async fn consult_uses_a_fixed_parent_snapshot_without_waking_the_parent() -> Res
     assert_eq!(
         consult_request.get("prompt_cache_key"),
         root_request.get("prompt_cache_key")
+    );
+    assert_eq!(
+        text_containing(consult_request, ENVIRONMENT_CONTEXT_OPEN_TAG),
+        text_containing(root_request, ENVIRONMENT_CONTEXT_OPEN_TAG)
     );
     assert!(
         !requests
@@ -414,6 +450,140 @@ async fn consult_requires_authoritative_parent_without_automatic_escalation() ->
             .iter()
             .any(|body| has_call_output(body, REPLY_CALL_ID))
     );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn consult_failure_completes_the_collab_item_with_failed_status() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    Mock::given(method("POST"))
+        .and(path_regex(".*/responses$"))
+        .respond_with(ConsultResponder::new(ConsultOutcome::Invalid, false))
+        .mount(&server)
+        .await;
+    let test = test_codex()
+        .with_model("koffing")
+        .with_config(|config| {
+            config
+                .features
+                .enable(Feature::Collab)
+                .expect("test config should allow feature update");
+            config
+                .features
+                .enable(Feature::MultiAgentV2)
+                .expect("test config should allow feature update");
+            config.model_provider.supports_websockets = false;
+        })
+        .build(&server)
+        .await?;
+
+    let mut created_threads = test.thread_manager.subscribe_thread_created();
+    test.submit_turn(ROOT_PROMPT).await?;
+    let child_thread_id = tokio::time::timeout(Duration::from_secs(2), created_threads.recv())
+        .await
+        .context("worker should be created")??;
+    let child_thread = test.thread_manager.get_thread(child_thread_id).await?;
+    let (saw_in_progress, terminal_item) = tokio::time::timeout(Duration::from_secs(2), async {
+        let mut saw_in_progress = false;
+        loop {
+            let event = child_thread.next_event().await?;
+            let item = match event.msg {
+                EventMsg::ItemStarted(event) => match event.item {
+                    TurnItem::CollabAgentToolCall(item) if item.id == CONSULT_CALL_ID => {
+                        saw_in_progress = true;
+                        continue;
+                    }
+                    _ => continue,
+                },
+                EventMsg::ItemCompleted(event) => match event.item {
+                    TurnItem::CollabAgentToolCall(item) if item.id == CONSULT_CALL_ID => item,
+                    _ => continue,
+                },
+                _ => continue,
+            };
+            return Ok::<_, anyhow::Error>((saw_in_progress, item));
+        }
+    })
+    .await
+    .context("consult collab item should reach a terminal state")??;
+
+    assert!(saw_in_progress);
+    assert_eq!(terminal_item.tool, CollabAgentTool::AskParent);
+    assert_eq!(terminal_item.status, CollabAgentToolCallStatus::Failed);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelling_consult_cleans_up_without_consuming_real_agent_capacity() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    Mock::given(method("POST"))
+        .and(path_regex(".*/responses$"))
+        .respond_with(
+            ConsultResponder::new(ConsultOutcome::Advisory, false)
+                .with_consult_response_delay(Duration::from_secs(30)),
+        )
+        .mount(&server)
+        .await;
+    let test = test_codex()
+        .with_model("koffing")
+        .with_config(|config| {
+            config
+                .features
+                .enable(Feature::Collab)
+                .expect("test config should allow feature update");
+            config
+                .features
+                .enable(Feature::MultiAgentV2)
+                .expect("test config should allow feature update");
+            config.multi_agent_v2.max_concurrent_threads_per_session = 2;
+            config.model_provider.supports_websockets = false;
+        })
+        .build(&server)
+        .await?;
+
+    let mut created_threads = test.thread_manager.subscribe_thread_created();
+    let submit_turn = test.submit_turn(ROOT_PROMPT);
+    tokio::pin!(submit_turn);
+    let child_thread_id = tokio::select! {
+        child_thread_id = created_threads.recv() => child_thread_id?,
+        result = &mut submit_turn => {
+            result?;
+            return Err(anyhow::anyhow!("root turn completed before consult started"));
+        }
+    };
+    let child_thread = test.thread_manager.get_thread(child_thread_id).await?;
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let requests = server.received_requests().await.unwrap_or_default();
+            if requests
+                .iter()
+                .map(request_body)
+                .any(|body| is_consult_responder_request(&body))
+            {
+                return Ok::<_, anyhow::Error>(());
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .context("consult responder should start within the real-agent execution limit")??;
+
+    child_thread.submit(codex_protocol::protocol::Op::Interrupt).await?;
+    wait_for_event(child_thread.as_ref(), |event| {
+        matches!(event, EventMsg::TurnAborted(_))
+    })
+    .await;
+    tokio::time::timeout(Duration::from_secs(2), submit_turn.as_mut())
+        .await
+        .context("root turn should finish after consult cancellation")??;
+
+    assert_eq!(test.thread_manager.list_thread_ids().await.len(), 2);
 
     Ok(())
 }
@@ -530,6 +700,19 @@ fn contains_text(value: &Value, expected: &str) -> bool {
         Value::Array(items) => items.iter().any(|item| contains_text(item, expected)),
         Value::Object(fields) => fields.values().any(|item| contains_text(item, expected)),
         Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
+}
+
+fn text_containing(value: &Value, expected: &str) -> Option<String> {
+    match value {
+        Value::String(text) if text.contains(expected) => Some(text.clone()),
+        Value::Array(items) => items
+            .iter()
+            .find_map(|item| text_containing(item, expected)),
+        Value::Object(fields) => fields
+            .values()
+            .find_map(|item| text_containing(item, expected)),
+        Value::String(_) | Value::Null | Value::Bool(_) | Value::Number(_) => None,
     }
 }
 

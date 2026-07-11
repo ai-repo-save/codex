@@ -6138,6 +6138,16 @@ async fn resumed_subagent_session_restores_persisted_session_id() {
 }
 
 #[tokio::test]
+async fn consult_snapshot_without_a_running_task_does_not_mark_history_interrupted() {
+    let (session, _turn_context) = make_session_and_context().await;
+    *session.active_turn.lock().await = Some(ActiveTurn::default());
+
+    let snapshot = session.consult_snapshot().await;
+
+    assert_eq!(snapshot.history, Vec::new());
+}
+
+#[tokio::test]
 async fn notify_request_permissions_response_ignores_unmatched_call_id() {
     let (session, _turn_context) = make_session_and_context().await;
     *session.active_turn.lock().await = Some(ActiveTurn::default());

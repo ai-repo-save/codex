@@ -142,6 +142,13 @@ impl AgentControl {
         self
     }
 
+    /// Returns a control-plane clone whose active-turn limiter is private to an
+    /// ephemeral responder rather than counted with real subagents.
+    pub(crate) fn with_independent_execution_limiter(mut self) -> Self {
+        self.agent_execution_limiter = Arc::default();
+        self
+    }
+
     pub(crate) fn session_id(&self) -> SessionId {
         self.session_id
     }

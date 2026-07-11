@@ -297,13 +297,33 @@ impl Handler {
                 }));
             }
         };
-        let (outcome, snapshot_revision) = super::consult::consult_parent(
+        let (outcome, snapshot_revision) = match super::consult::consult_parent(
             loaded_parent,
             question.clone(),
             &cancellation_token,
             Duration::from_millis(timeout_ms as u64),
         )
-        .await?;
+        .await
+        {
+            Ok(result) => result,
+            Err(error) => {
+                let error_message = error.to_string();
+                emit_ask_parent_item(
+                    &session,
+                    &turn,
+                    &call_id,
+                    CollabAgentToolCallStatus::Failed,
+                    AgentStatus::Errored(error_message),
+                    parent_thread_id,
+                    parent_ref,
+                    &question,
+                    AskParentMode::Consult,
+                    None,
+                )
+                .await;
+                return Err(error);
+            }
+        };
         let (status, advisory, parent_status) = match outcome {
             super::consult::ConsultRunOutcome::Completed(response) => match response.kind {
                 super::consult::ConsultResponseKind::Advisory => (
@@ -328,7 +348,7 @@ impl Handler {
                     &turn,
                     &call_id,
                     CollabAgentToolCallStatus::Failed,
-                    AgentStatus::NotFound,
+                    AgentStatus::Errored("ask_parent consult was cancelled".to_string()),
                     parent_thread_id,
                     parent_ref,
                     &question,

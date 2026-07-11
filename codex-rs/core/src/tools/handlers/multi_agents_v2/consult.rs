@@ -21,6 +21,7 @@ use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
+use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
@@ -46,32 +47,62 @@ pub(super) enum ConsultRunOutcome {
 }
 
 struct ConsultResponderCleanup {
-    codex: Option<Codex>,
+    codex: Arc<tokio::sync::Mutex<Option<Codex>>>,
+    shutdown_token: CancellationToken,
+    cleanup_task: Option<JoinHandle<()>>,
 }
 
 impl ConsultResponderCleanup {
     fn new(codex: Codex) -> Self {
-        Self { codex: Some(codex) }
+        let codex = Arc::new(tokio::sync::Mutex::new(Some(codex)));
+        let shutdown_token = CancellationToken::new();
+        let cleanup_codex = Arc::clone(&codex);
+        let cleanup_token = shutdown_token.clone();
+        let cleanup_task = tokio::spawn(async move {
+            cleanup_token.cancelled().await;
+            let mut codex = cleanup_codex.lock().await;
+            if let Some(codex) = codex.take() {
+                let _ = codex.shutdown_and_wait().await;
+            }
+        });
+        Self {
+            codex,
+            shutdown_token,
+            cleanup_task: Some(cleanup_task),
+        }
     }
 
-    async fn shutdown(&mut self) {
-        if let Some(codex) = self.codex.take() {
-            let _ = codex.shutdown_and_wait().await;
+    async fn next_event(&self) -> codex_protocol::error::Result<codex_protocol::protocol::Event> {
+        self.codex
+            .lock()
+            .await
+            .as_ref()
+            .expect("consult responder is available until shutdown")
+            .next_event()
+            .await
+    }
+
+    async fn submit(&self, op: Op) -> codex_protocol::error::Result<String> {
+        self.codex
+            .lock()
+            .await
+            .as_ref()
+            .expect("consult responder is available until shutdown")
+            .submit(op)
+            .await
+    }
+
+    async fn shutdown(mut self) {
+        self.shutdown_token.cancel();
+        if let Some(cleanup_task) = self.cleanup_task.take() {
+            let _ = cleanup_task.await;
         }
     }
 }
 
 impl Drop for ConsultResponderCleanup {
     fn drop(&mut self) {
-        if !std::thread::panicking() {
-            return;
-        }
-        let Some(codex) = self.codex.take() else {
-            return;
-        };
-        drop(tokio::spawn(async move {
-            let _ = codex.shutdown_and_wait().await;
-        }));
+        self.shutdown_token.cancel();
     }
 }
 
@@ -137,7 +168,11 @@ pub(super) async fn consult_parent(
             parent_thread_id: snapshot.parent_thread_id,
             thread_source: None,
             originator: snapshot.originator,
-            agent_control: parent_session.services.agent_control.clone(),
+            agent_control: parent_session
+                .services
+                .agent_control
+                .clone()
+                .with_independent_execution_limiter(),
             dynamic_tools: snapshot.dynamic_tools,
             metrics_service_name: None,
             inherited_exec_policy: None,
@@ -172,13 +207,9 @@ pub(super) async fn consult_parent(
         ConsultStage::TimedOut => return Ok((ConsultRunOutcome::TimedOut, revision)),
         ConsultStage::Cancelled => return Ok((ConsultRunOutcome::Cancelled, revision)),
     };
-    let mut cleanup = ConsultResponderCleanup::new(codex);
+    let cleanup = ConsultResponderCleanup::new(codex);
     let configured = match wait_for_consult_stage(
-        cleanup
-            .codex
-            .as_ref()
-            .expect("consult responder exists until cleanup")
-            .next_event(),
+        cleanup.next_event(),
         cancellation_token,
         deadline,
     )
@@ -207,12 +238,8 @@ pub(super) async fn consult_parent(
         ));
     }
 
-    let codex = cleanup
-        .codex
-        .as_ref()
-        .expect("consult responder exists until cleanup");
     let submitted = wait_for_consult_stage(
-        codex.submit(Op::UserInput {
+        cleanup.submit(Op::UserInput {
             items: vec![UserInput::Text {
                 text: question,
                 text_elements: Vec::new(),
@@ -245,7 +272,7 @@ pub(super) async fn consult_parent(
     };
 
     let outcome = match wait_for_consult_stage(
-        wait_for_consult_response(codex, &expected_turn_id),
+        wait_for_consult_response(&cleanup, &expected_turn_id),
         cancellation_token,
         deadline,
     )
@@ -283,11 +310,11 @@ async fn wait_for_consult_stage<T>(
 }
 
 async fn wait_for_consult_response(
-    codex: &Codex,
+    responder: &ConsultResponderCleanup,
     expected_turn_id: &str,
 ) -> Result<ConsultResponse, FunctionCallError> {
     loop {
-        let event = codex.next_event().await.map_err(|error| {
+        let event = responder.next_event().await.map_err(|error| {
             FunctionCallError::RespondToModel(format!(
                 "consult responder ended unexpectedly: {error}"
             ))
