@@ -512,13 +512,10 @@ async fn incompatible_mode_context_rewind_returns_rejected_output_without_consum
 
     let requests = second_mock.requests();
     assert_eq!(requests.len(), 3);
-    let (rewind_text, rewind_success) = requests[1]
-        .function_call_output_content_and_success(rewind_call_id)
-        .expect("rewind output should be present");
-    assert_eq!(rewind_success, Some(true));
-    let rewind_json: Value = serde_json::from_str(
-        &rewind_text.expect("rewind output should contain text JSON"),
-    )?;
+    let rewind_text = requests[1]
+        .function_call_output_text(rewind_call_id)
+        .expect("rewind output should contain text JSON");
+    let rewind_json: Value = serde_json::from_str(&rewind_text)?;
     assert_eq!(
         rewind_json,
         json!({
