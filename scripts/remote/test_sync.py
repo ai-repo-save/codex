@@ -69,6 +69,24 @@ class RemoteSyncTest(unittest.TestCase):
         self.assertIn("reusing matching clean checkout", command)
         self.assertIn("git clean -fd", command)
 
+    def test_remote_bundle_sync_command_resets_to_the_requested_head(self) -> None:
+        config = _sync.RemoteWorkflow(
+            host="builder",
+            branch="main",
+            remote_path="/root/codex",
+            command=(),
+        )
+
+        command = _sync.remote_bundle_sync_command(
+            config, "abc123", "/tmp/codex-sync.bundle"
+        )
+
+        self.assertIn("trap 'rm -f '/tmp/codex-sync.bundle'' EXIT", command)
+        self.assertIn("git fetch '/tmp/codex-sync.bundle' 'abc123'", command)
+        self.assertIn("git checkout 'main'", command)
+        self.assertIn("git reset --hard FETCH_HEAD", command)
+        self.assertIn("git clean -fd", command)
+
 
 if __name__ == "__main__":
     unittest.main()

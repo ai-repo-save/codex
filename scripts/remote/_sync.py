@@ -1,5 +1,4 @@
 #!/usr/bin/env -S uv run python
-from __future__ import annotations
 
 import logging
 import os
@@ -58,7 +57,7 @@ def run_remote_workflow(config: RemoteWorkflow) -> int:
     LOGGER.info("pushing %s to origin/%s", local_head[:12], config.branch)
     run(("git", "push", "origin", config.branch), cwd=repo_root)
 
-    sync_remote_checkout(config, local_head)
+    sync_remote_checkout(repo_root, config, local_head)
     run_remote_command(config)
 
     ensure_clean_local_worktree(repo_root)
@@ -129,9 +128,51 @@ def ensure_local_head(repo_root: Path, expected_head: str) -> None:
         )
 
 
-def sync_remote_checkout(config: RemoteWorkflow, expected_head: str) -> None:
+def sync_remote_checkout(
+    repo_root: Path, config: RemoteWorkflow, expected_head: str
+) -> None:
     LOGGER.info("updating remote checkout %s:%s", config.host, config.remote_path)
-    run(ssh_command(config, remote_checkout_sync_command(config, expected_head)))
+    try:
+        run(ssh_command(config, remote_checkout_sync_command(config, expected_head)))
+    except subprocess.CalledProcessError:
+        LOGGER.warning("remote Git sync failed; falling back to a local Git bundle")
+        sync_remote_checkout_from_bundle(repo_root, config, expected_head)
+
+
+def sync_remote_checkout_from_bundle(
+    repo_root: Path, config: RemoteWorkflow, expected_head: str
+) -> None:
+    bundle_name = f"codex-sync-{os.getpid()}-{expected_head[:12]}.bundle"
+    local_bundle = Path("/tmp") / bundle_name
+    remote_bundle = f"/tmp/{bundle_name}"
+    try:
+        run(
+            ("git", "bundle", "create", str(local_bundle), expected_head),
+            cwd=repo_root,
+        )
+        run(("rsync", "--archive", str(local_bundle), f"{config.host}:{remote_bundle}"))
+        run(
+            ssh_command(
+                config,
+                remote_bundle_sync_command(config, expected_head, remote_bundle),
+            )
+        )
+    finally:
+        local_bundle.unlink(missing_ok=True)
+
+
+def remote_bundle_sync_command(
+    config: RemoteWorkflow, expected_head: str, remote_bundle: str
+) -> str:
+    return (
+        "set -euo pipefail; "
+        f"trap 'rm -f {shell_quote(remote_bundle)}' EXIT; "
+        f"cd {shell_quote(config.remote_path)}; "
+        f"git fetch {shell_quote(remote_bundle)} {shell_quote(expected_head)}; "
+        f"git checkout {shell_quote(config.branch)}; "
+        "git reset --hard FETCH_HEAD; "
+        "git clean -fd"
+    )
 
 
 def remote_checkout_sync_command(config: RemoteWorkflow, expected_head: str) -> str:
