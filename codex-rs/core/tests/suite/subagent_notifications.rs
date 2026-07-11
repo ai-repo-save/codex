@@ -1136,11 +1136,13 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
         &server,
         |req: &wiremock::Request| {
             body_contains(req, CHILD_CONTEXT_REMINDER_MESSAGE)
-                && req
-                    .headers
-                    .get("x-openai-subagent")
-                    .and_then(|value| value.to_str().ok())
-                    == Some("collab_spawn")
+                && decoded_body(req)
+                    .and_then(|body| serde_json::from_slice::<Value>(&body).ok())
+                    .is_some_and(|body| {
+                        body.pointer("/client_metadata/x-openai-subagent")
+                            .and_then(Value::as_str)
+                            == Some("collab_spawn")
+                    })
         },
         sse(vec![
             ev_response_created("resp-child-reminder-2"),
@@ -1181,20 +1183,23 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
     let requests = wait_for_requests(&child_reminder_request).await?;
     assert_eq!(requests.len(), 1);
     let child_request = &requests[0];
-    let child_window_id = child_initial_request
+    let child_thread_id = child_initial_request
         .requests()
         .into_iter()
         .find(|request| !request.body_contains_text(CHILD_CONTEXT_REMINDER_MESSAGE))
         .expect("initial child request should be present")
-        .header("x-codex-window-id")
-        .expect("initial child request should include a window id");
+        .body_json()["client_metadata"]["thread_id"]
+        .clone();
     assert_eq!(
-        child_request.header("x-openai-subagent").as_deref(),
-        Some("collab_spawn")
+        child_request
+            .body_json()
+            .pointer("/client_metadata/x-openai-subagent")
+            .and_then(Value::as_str),
+        Some("collab_spawn"),
     );
     assert_eq!(
-        child_request.header("x-codex-window-id"),
-        Some(child_window_id)
+        child_request.body_json()["client_metadata"]["thread_id"],
+        child_thread_id
     );
 
     Ok(())
