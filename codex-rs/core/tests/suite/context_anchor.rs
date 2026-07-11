@@ -15,9 +15,9 @@ use core_test_support::responses::mount_sse_sequence;
 use core_test_support::responses::sse;
 use core_test_support::responses::start_mock_server;
 use core_test_support::skip_if_no_network;
+use core_test_support::test_codex::TestCodex;
 use core_test_support::test_codex::test_codex;
 use core_test_support::test_codex::turn_permission_fields;
-use core_test_support::test_codex::TestCodex;
 use core_test_support::wait_for_event;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
@@ -56,7 +56,10 @@ async fn submit_turn_with_mode(test: &TestCodex, prompt: &str, mode: ModeKind) -
             },
         })
         .await?;
-    wait_for_event(&test.codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+    wait_for_event(&test.codex, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
     Ok(())
 }
 
@@ -508,7 +511,12 @@ async fn incompatible_mode_context_rewind_returns_rejected_output_without_consum
         ],
     )
     .await;
-    submit_turn_with_mode(&test, "rewind after switching to default mode", ModeKind::Default).await?;
+    submit_turn_with_mode(
+        &test,
+        "rewind after switching to default mode",
+        ModeKind::Default,
+    )
+    .await?;
 
     let requests = second_mock.requests();
     assert_eq!(requests.len(), 3);
