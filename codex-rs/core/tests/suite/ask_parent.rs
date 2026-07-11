@@ -344,7 +344,7 @@ async fn consult_uses_a_fixed_parent_snapshot_without_waking_the_parent() -> Res
                 && !has_call_output(body, CONSULT_LOCAL_TOOL_CALL_ID)
         })
         .expect("consult responder request should be captured");
-    assert!(contains_text(consult_request, ROOT_SNAPSHOT_MESSAGE));
+    assert!(contains_text(consult_request, ROOT_PROMPT));
     assert!(!contains_text(consult_request, CONSULT_CALL_ID));
     assert_eq!(
         consult_request.get("instructions"),
