@@ -1175,10 +1175,14 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
     let requests = wait_for_requests(&child_reminder_request).await?;
     assert_eq!(requests.len(), 1);
     let child_request = &requests[0];
+    let (list_agents_content, list_agents_success) = child_request
+        .function_call_output_content_and_success("child-list-agents")
+        .expect("child list_agents output should be present");
+    assert_eq!(list_agents_success, Some(true));
     let list_agents_output: Value = serde_json::from_str(
-        &child_request
-            .function_call_output_text("child-list-agents")
-            .expect("child list_agents output should be present"),
+        list_agents_content
+            .as_deref()
+            .expect("child list_agents output should contain JSON content"),
     )?;
     let self_agent_names = list_agents_output["agents"]
         .as_array()
