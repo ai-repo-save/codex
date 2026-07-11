@@ -8,6 +8,9 @@ expression: snapshot
 • Sent input to Robie [explorer]
   └ Please continue and return the answer only.
 
+• Waiting for parent decision
+  └ Should I preserve the existing wire format?
+
 • Waiting for Robie [explorer]
 
 • Finished waiting

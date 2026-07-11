@@ -45,6 +45,7 @@ impl Handler {
             MessageDeliveryMode::QueueOnly,
             args.target,
             args.message,
+            args.in_reply_to,
         )
         .await
         .map(boxed_tool_output)

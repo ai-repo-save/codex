@@ -245,6 +245,7 @@ impl EventProcessorWithJsonOutput {
                     tool: match tool {
                         CollabAgentTool::SpawnAgent => CollabTool::SpawnAgent,
                         CollabAgentTool::SendInput => CollabTool::SendInput,
+                        CollabAgentTool::AskParent => CollabTool::AskParent,
                         CollabAgentTool::ResumeAgent => CollabTool::Wait,
                         CollabAgentTool::Wait => CollabTool::Wait,
                         CollabAgentTool::CloseAgent => CollabTool::CloseAgent,

@@ -174,6 +174,13 @@ pub fn create_send_message_tool(options: MessageToolOptions) -> ToolSpec {
                 options.encrypt_messages,
             ),
         ),
+        (
+            "in_reply_to".to_string(),
+            JsonSchema::string(Some(
+                "Parent request ID when answering an ask_parent call. Omit for ordinary messages."
+                    .to_string(),
+            )),
+        ),
     ]);
 
     ToolSpec::Function(ResponsesApiTool {
@@ -188,6 +195,38 @@ pub fn create_send_message_tool(options: MessageToolOptions) -> ToolSpec {
             Some(false.into()),
         ),
         output_schema: None,
+    })
+}
+
+pub fn create_ask_parent_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "question".to_string(),
+            JsonSchema::string(Some(
+                "Decision, authorization, tradeoff, conflict, or commitment to ask the direct parent agent about."
+                    .to_string(),
+            )),
+        ),
+        (
+            "timeout_ms".to_string(),
+            JsonSchema::number(Some(
+                "Maximum time to wait for the parent reply. Uses the configured wait timeout when omitted."
+                    .to_string(),
+            )),
+        ),
+    ]);
+    ToolSpec::Function(ResponsesApiTool {
+        name: "ask_parent".to_string(),
+        description: "Ask the direct parent agent for an authoritative decision and wait for its correlated reply."
+            .to_string(),
+        strict: false,
+        defer_loading: None,
+        parameters: JsonSchema::object(
+            properties,
+            Some(vec!["question".to_string()]),
+            Some(false.into()),
+        ),
+        output_schema: Some(ask_parent_output_schema()),
     })
 }
 
@@ -456,6 +495,36 @@ fn send_input_output_schema() -> Value {
             }
         },
         "required": ["submission_id"],
+        "additionalProperties": false
+    })
+}
+
+fn ask_parent_output_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "request_id": {
+                "type": "string",
+                "description": "Identifier used to correlate the authoritative parent reply."
+            },
+            "parent_thread_id": {
+                "type": "string",
+                "description": "Thread identifier of the direct parent agent."
+            },
+            "parent_path": {
+                "type": "string",
+                "description": "Canonical path of the direct parent agent."
+            },
+            "status": {
+                "type": "string",
+                "enum": ["answered", "timed_out", "parent_unavailable"]
+            },
+            "answer": {
+                "type": ["string", "null"],
+                "description": "Authoritative parent answer when status is answered."
+            }
+        },
+        "required": ["request_id", "parent_thread_id", "parent_path", "status", "answer"],
         "additionalProperties": false
     })
 }

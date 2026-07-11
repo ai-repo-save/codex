@@ -220,6 +220,7 @@ pub enum CollabToolCallStatus {
 pub enum CollabTool {
     SpawnAgent,
     SendInput,
+    AskParent,
     Wait,
     CloseAgent,
 }

@@ -4,6 +4,7 @@ impl AgentControl {
     /// Submit a shutdown request for a live agent without marking it explicitly closed in
     /// persisted spawn-edge state.
     pub(crate) async fn shutdown_live_agent(&self, agent_id: ThreadId) -> CodexResult<String> {
+        self.parent_requests.cancel_for_thread(agent_id);
         let state = self.upgrade()?;
         let result = if let Ok(thread) = state.get_thread(agent_id).await {
             thread.codex.session.ensure_rollout_materialized().await;

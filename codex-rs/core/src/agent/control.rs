@@ -49,6 +49,7 @@ use tokio::sync::watch;
 use tracing::warn;
 
 pub(crate) use self::execution::AgentExecutionGuard;
+pub(crate) use self::parent_requests::ParentRequestOutcome;
 use self::execution::AgentExecutionLimiter;
 use self::residency::V2Residency;
 
@@ -56,6 +57,7 @@ const ROOT_LAST_TASK_MESSAGE: &str = "Main thread";
 
 mod execution;
 mod legacy;
+mod parent_requests;
 mod residency;
 mod spawn;
 
@@ -108,6 +110,7 @@ pub(crate) struct AgentControl {
     agent_execution_limiter: Arc<AgentExecutionLimiter>,
     /// Session-scoped state shared by the root thread and every cloned sub-agent control handle.
     rollout_budget: Arc<RolloutBudget>,
+    parent_requests: Arc<parent_requests::ParentRequestBroker>,
 }
 
 impl AgentControl {
@@ -138,6 +141,33 @@ impl AgentControl {
 
     pub(crate) fn rollout_budget(&self) -> &RolloutBudget {
         self.rollout_budget.as_ref()
+    }
+
+    pub(crate) fn register_parent_request(
+        &self,
+        child_thread_id: ThreadId,
+        parent_thread_id: ThreadId,
+    ) -> (
+        String,
+        tokio::sync::oneshot::Receiver<parent_requests::ParentRequestOutcome>,
+    ) {
+        self.parent_requests
+            .register(child_thread_id, parent_thread_id)
+    }
+
+    pub(crate) fn answer_parent_request(
+        &self,
+        request_id: &str,
+        parent_thread_id: ThreadId,
+        child_thread_id: ThreadId,
+        answer: String,
+    ) -> Result<(), String> {
+        self.parent_requests
+            .answer(request_id, parent_thread_id, child_thread_id, answer)
+    }
+
+    pub(crate) fn cancel_parent_request(&self, request_id: &str) {
+        self.parent_requests.cancel(request_id);
     }
 
     /// Send rich user input items to an existing agent thread.

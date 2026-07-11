@@ -8,6 +8,8 @@ pub(crate) enum AgentCommunicationKind {
     Spawn,
     Message,
     Followup,
+    ParentRequest,
+    ParentReply,
     Result,
 }
 
@@ -17,6 +19,8 @@ impl AgentCommunicationKind {
             Self::Spawn => "spawn",
             Self::Message => "message",
             Self::Followup => "followup",
+            Self::ParentRequest => "parent_request",
+            Self::ParentReply => "parent_reply",
             Self::Result => "result",
         }
     }
@@ -73,6 +77,25 @@ pub(crate) fn emit_agent_communication_receive(communication_id: &str) {
             event.name = "codex.agent_communication",
             communication_id,
             state = "receive",
+        },
+        "agent communication"
+    );
+}
+
+pub(crate) fn emit_parent_reply(
+    request_id: &str,
+    sender_thread_id: ThreadId,
+    receiver_thread_id: ThreadId,
+) {
+    tracing::info!(
+        target: AGENT_COMMUNICATION_TARGET,
+        {
+            event.name = "codex.agent_communication",
+            communication_id = request_id,
+            kind = AgentCommunicationKind::ParentReply.as_str(),
+            state = "send",
+            sender_thread_id = %sender_thread_id,
+            receiver_thread_id = %receiver_thread_id,
         },
         "agent communication"
     );

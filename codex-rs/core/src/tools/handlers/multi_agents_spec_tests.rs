@@ -271,6 +271,7 @@ fn send_message_tool_requires_message_and_has_no_output_schema() {
         .expect("send_message should use object params");
     assert!(properties.contains_key("target"));
     assert!(properties.contains_key("message"));
+    assert!(properties.contains_key("in_reply_to"));
     assert_eq!(
         properties
             .get("message")
@@ -290,6 +291,46 @@ fn send_message_tool_requires_message_and_has_no_output_schema() {
         Some(&vec!["target".to_string(), "message".to_string()])
     );
     assert_eq!(output_schema, None);
+}
+
+#[test]
+fn ask_parent_tool_requires_question_and_accepts_timeout() {
+    let ToolSpec::Function(ResponsesApiTool {
+        name,
+        parameters,
+        output_schema,
+        ..
+    }) = create_ask_parent_tool()
+    else {
+        panic!("ask_parent should be a function tool");
+    };
+    assert_eq!(name, "ask_parent");
+    assert_eq!(
+        parameters.schema_type,
+        Some(JsonSchemaType::Single(JsonSchemaPrimitiveType::Object))
+    );
+    let properties = parameters
+        .properties
+        .as_ref()
+        .expect("ask_parent should use object params");
+    assert_eq!(
+        properties.keys().cloned().collect::<Vec<_>>(),
+        vec!["question".to_string(), "timeout_ms".to_string()]
+    );
+    assert_eq!(
+        parameters.required.as_ref(),
+        Some(&vec!["question".to_string()])
+    );
+    assert_eq!(
+        output_schema.expect("ask_parent output schema")["required"],
+        json!([
+            "request_id",
+            "parent_thread_id",
+            "parent_path",
+            "status",
+            "answer"
+        ])
+    );
 }
 
 #[test]

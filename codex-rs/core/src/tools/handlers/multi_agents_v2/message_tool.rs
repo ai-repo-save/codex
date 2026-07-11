@@ -37,6 +37,7 @@ impl MessageDeliveryMode {
 pub(crate) struct SendMessageArgs {
     pub(crate) target: String,
     pub(crate) message: String,
+    pub(crate) in_reply_to: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,6 +63,7 @@ pub(crate) async fn handle_message_string_tool(
     mode: MessageDeliveryMode,
     target: String,
     message: String,
+    in_reply_to: Option<String>,
 ) -> Result<FunctionToolOutput, FunctionCallError> {
     let message = message_content(message)?;
     let ToolInvocation {
@@ -89,6 +91,29 @@ pub(crate) async fn handle_message_string_tool(
     let receiver_agent_path = receiver_agent.agent_path.clone().ok_or_else(|| {
         FunctionCallError::RespondToModel("target agent is missing an agent_path".to_string())
     })?;
+    if let Some(request_id) = in_reply_to {
+        if mode != MessageDeliveryMode::QueueOnly {
+            return Err(FunctionCallError::RespondToModel(
+                "in_reply_to is only supported by send_message".to_string(),
+            ));
+        }
+        session
+            .services
+            .agent_control
+            .answer_parent_request(
+                &request_id,
+                session.thread_id,
+                receiver_thread_id,
+                message,
+            )
+            .map_err(FunctionCallError::RespondToModel)?;
+        crate::agent_communication::emit_parent_reply(
+            &request_id,
+            session.thread_id,
+            receiver_thread_id,
+        );
+        return Ok(FunctionToolOutput::from_text(String::new(), Some(true)));
+    }
     let resume_config = build_agent_resume_config(turn.as_ref())?;
     session
         .services

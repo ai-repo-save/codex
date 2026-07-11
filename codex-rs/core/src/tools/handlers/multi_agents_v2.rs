@@ -26,6 +26,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 
+pub(crate) use ask_parent::Handler as AskParentHandler;
+pub(crate) use ask_parent::AskParentResult;
+pub(crate) use ask_parent::AskParentStatus;
 pub(crate) use followup_task::Handler as FollowupTaskHandler;
 pub(crate) use inspect_agent::Handler as InspectAgentHandlerV2;
 pub(crate) use interrupt_agent::Handler as InterruptAgentHandler;
@@ -34,6 +37,7 @@ pub(crate) use send_message::Handler as SendMessageHandler;
 pub(crate) use spawn::Handler as SpawnAgentHandler;
 pub(crate) use wait::Handler as WaitAgentHandler;
 
+mod ask_parent;
 mod followup_task;
 mod inspect_agent;
 mod interrupt_agent;

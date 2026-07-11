@@ -10,6 +10,8 @@ use codex_model_provider::create_model_provider;
 use codex_model_provider_info::AMAZON_BEDROCK_PROVIDER_ID;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_protocol::config_types::WebSearchMode;
+use codex_protocol::AgentPath;
+use codex_protocol::ThreadId;
 use codex_protocol::dynamic_tools::DynamicToolSpec;
 use codex_protocol::openai_models::ApplyPatchToolType;
 use codex_protocol::openai_models::ConfigShellToolType;
@@ -1416,6 +1418,38 @@ async fn multi_agent_feature_selects_one_agent_tool_family() {
         direct_model_only
             .exposure(&ToolName::namespaced(MULTI_AGENT_V2_NAMESPACE, "spawn_agent").to_string()),
         ToolExposure::DirectModelOnly
+    );
+}
+
+#[tokio::test]
+async fn ask_parent_is_only_visible_to_agents_with_a_direct_parent() {
+    let root = probe(|turn| {
+        set_feature(turn, Feature::MultiAgentV2, /*enabled*/ true);
+    })
+    .await;
+    assert!(
+        !root
+            .namespace_function_names(MULTI_AGENT_V2_NAMESPACE)
+            .iter()
+            .any(|name| name == "ask_parent")
+    );
+
+    let child = probe(|turn| {
+        set_feature(turn, Feature::MultiAgentV2, /*enabled*/ true);
+        turn.session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+            parent_thread_id: ThreadId::new(),
+            depth: 1,
+            agent_path: Some(AgentPath::try_from("/root/child").expect("valid agent path")),
+            agent_nickname: None,
+            agent_role: None,
+        });
+    })
+    .await;
+    assert!(
+        child
+            .namespace_function_names(MULTI_AGENT_V2_NAMESPACE)
+            .iter()
+            .any(|name| name == "ask_parent")
     );
 }
 

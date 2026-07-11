@@ -1,9 +1,50 @@
 use super::*;
 use codex_app_server_protocol::CommandExecutionSource;
 use codex_app_server_protocol::CommandExecutionStatus;
+use codex_app_server_protocol::CollabAgentTool;
+use codex_app_server_protocol::CollabAgentToolCallStatus;
 use codex_app_server_protocol::ItemCompletedNotification;
+use codex_app_server_protocol::ItemStartedNotification;
 use codex_app_server_protocol::SkillLoadStatus;
 use codex_utils_absolute_path::AbsolutePathBuf;
+
+#[test]
+fn agent_status_describes_pending_parent_decision() {
+    let mut store = ThreadEventStore::new(/*capacity*/ 8);
+    store.push_notification(ServerNotification::ItemStarted(ItemStartedNotification {
+        item: ThreadItem::CollabAgentToolCall {
+            id: "call-ask-parent".to_string(),
+            tool: CollabAgentTool::AskParent,
+            status: CollabAgentToolCallStatus::InProgress,
+            sender_thread_id: "thread-child".to_string(),
+            receiver_thread_ids: vec!["thread-parent".to_string()],
+            prompt: Some("Choose the compatibility policy.".to_string()),
+            model: None,
+            reasoning_effort: None,
+            agents_states: Default::default(),
+        },
+        thread_id: "thread-child".to_string(),
+        turn_id: "turn-1".to_string(),
+        started_at_ms: 1,
+    }));
+
+    let preview = AgentStatusThreadPreview::from_store("/root/worker".to_string(), &store);
+    let cell = AgentStatusHistoryCell::new(vec![preview]);
+    let rendered = cell
+        .display_lines(/*width*/ 80)
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    insta::assert_snapshot!(rendered, @r###"
+    /agent
+    Sub-agents running
+
+      • `/root/worker`
+        Waiting for parent agent decision
+    "###);
+}
 
 #[test]
 fn agent_status_uses_bounded_buffered_activity() {

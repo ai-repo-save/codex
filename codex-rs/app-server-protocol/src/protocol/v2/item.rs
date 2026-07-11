@@ -1080,6 +1080,7 @@ v2_enum_from_core! {
 pub enum CollabAgentTool {
     SpawnAgent,
     SendInput,
+    AskParent,
     ResumeAgent,
     Wait,
     CloseAgent,
@@ -1199,6 +1200,7 @@ impl From<CoreCollabAgentTool> for CollabAgentTool {
         match value {
             CoreCollabAgentTool::SpawnAgent => Self::SpawnAgent,
             CoreCollabAgentTool::SendInput => Self::SendInput,
+            CoreCollabAgentTool::AskParent => Self::AskParent,
             CoreCollabAgentTool::ResumeAgent => Self::ResumeAgent,
             CoreCollabAgentTool::Wait => Self::Wait,
             CoreCollabAgentTool::CloseAgent => Self::CloseAgent,

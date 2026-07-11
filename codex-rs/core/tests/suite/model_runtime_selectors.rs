@@ -359,6 +359,7 @@ async fn remote_multi_agent_selector_overrides_feature_flags() -> Result<()> {
         "multi_agent_v1"
             | MULTI_AGENT_V2_NAMESPACE
             | "spawn_agent"
+            | "ask_parent"
             | "send_message"
             | "wait_agent"
             | "list_agents"

@@ -12,6 +12,9 @@ use crate::session_prefix::format_inter_agent_completion_message;
 use crate::thread_manager::thread_store_from_config;
 use crate::tools::context::ToolOutput;
 use crate::tools::handlers::multi_agents_v2::FollowupTaskHandler as FollowupTaskHandlerV2;
+use crate::tools::handlers::multi_agents_v2::AskParentHandler;
+use crate::tools::handlers::multi_agents_v2::AskParentResult;
+use crate::tools::handlers::multi_agents_v2::AskParentStatus;
 use crate::tools::handlers::multi_agents_v2::InspectAgentHandlerV2;
 use crate::tools::handlers::multi_agents_v2::InterruptAgentHandler;
 use crate::tools::handlers::multi_agents_v2::ListAgentsHandler as ListAgentsHandlerV2;
@@ -106,6 +109,110 @@ fn thread_manager() -> ThreadManager {
         CodexAuth::from_api_key("dummy"),
         built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone(),
     )
+}
+
+async fn make_v2_child_context(
+    manager: &ThreadManager,
+    root_thread_id: ThreadId,
+    task_name: &str,
+) -> (
+    Arc<crate::session::session::Session>,
+    Arc<TurnContext>,
+    ThreadId,
+    AgentPath,
+) {
+    let (mut session, mut turn) = make_session_and_context().await;
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .enable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    config.multi_agent_v2.min_wait_timeout_ms = 1;
+    set_turn_config(&mut turn, config);
+    session.services.agent_control = manager.agent_control();
+    let child_path = AgentPath::try_from(format!("/root/{task_name}"))
+        .expect("child path should be valid");
+    let source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+        parent_thread_id: root_thread_id,
+        depth: 1,
+        agent_path: Some(child_path.clone()),
+        agent_nickname: None,
+        agent_role: None,
+    });
+    let child_thread_id = session
+        .services
+        .agent_control
+        .spawn_agent_with_metadata(
+            (*turn.config).clone(),
+            vec![UserInput::Text {
+                text: "child task".to_string(),
+                text_elements: Vec::new(),
+            }],
+            Some(source.clone()),
+            crate::agent::control::SpawnAgentOptions::default(),
+        )
+        .await
+        .expect("child spawn should succeed")
+        .thread_id;
+    session.thread_id = child_thread_id;
+    turn.session_source = source;
+    (
+        Arc::new(session),
+        Arc::new(turn),
+        child_thread_id,
+        child_path,
+    )
+}
+
+async fn make_v2_root_context(
+    manager: &ThreadManager,
+    root_thread_id: ThreadId,
+) -> (
+    Arc<crate::session::session::Session>,
+    Arc<TurnContext>,
+) {
+    let (mut session, mut turn) = make_session_and_context().await;
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .enable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    set_turn_config(&mut turn, config);
+    session.services.agent_control = manager.agent_control();
+    session.thread_id = root_thread_id;
+    (Arc::new(session), Arc::new(turn))
+}
+
+async fn wait_for_parent_request_id(
+    manager: &ThreadManager,
+    root_thread_id: ThreadId,
+    child_path: &AgentPath,
+) -> String {
+    timeout(Duration::from_secs(2), async {
+        loop {
+            if let Some(content) = manager.captured_ops().iter().find_map(|(thread_id, op)| {
+                match op {
+                    Op::InterAgentCommunication { communication }
+                        if *thread_id == root_thread_id
+                            && communication.author == *child_path
+                            && communication.recipient == AgentPath::root() =>
+                    {
+                        Some(communication.content.as_str())
+                    }
+                    _ => None,
+                }
+            }) {
+                let request_id = content
+                    .split('`')
+                    .nth(1)
+                    .expect("parent request should expose its correlation id");
+                return request_id.to_string();
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("parent request should be delivered")
 }
 
 async fn install_role_with_model_override(turn: &mut TurnContext) -> String {
@@ -1445,6 +1552,219 @@ async fn multi_agent_v2_send_message_accepts_root_target_from_child() {
                         && !communication.trigger_turn
             )
     }));
+}
+
+#[tokio::test]
+async fn multi_agent_v2_ask_parent_correlates_concurrent_replies() {
+    let manager = thread_manager();
+    let (_, root_turn) = make_session_and_context().await;
+    let root = manager
+        .start_thread((*root_turn.config).clone())
+        .await
+        .expect("root thread should start");
+    let (root_session, root_turn) = make_v2_root_context(&manager, root.thread_id).await;
+    let (first_session, first_turn, first_thread_id, first_path) =
+        make_v2_child_context(&manager, root.thread_id, "first").await;
+    let (second_session, second_turn, _, second_path) =
+        make_v2_child_context(&manager, root.thread_id, "second").await;
+
+    let first_ask = tokio::spawn(async move {
+        AskParentHandler
+            .handle(invocation(
+                first_session,
+                first_turn,
+                "ask_parent",
+                function_payload(json!({"question": "first decision"})),
+            ))
+            .await
+    });
+    let second_ask = tokio::spawn(async move {
+        AskParentHandler
+            .handle(invocation(
+                second_session,
+                second_turn,
+                "ask_parent",
+                function_payload(json!({"question": "second decision"})),
+            ))
+            .await
+    });
+    let first_request_id =
+        wait_for_parent_request_id(&manager, root.thread_id, &first_path).await;
+    let second_request_id =
+        wait_for_parent_request_id(&manager, root.thread_id, &second_path).await;
+
+    let wrong_target_err = SendMessageHandlerV2::default()
+        .handle(invocation(
+            root_session.clone(),
+            root_turn.clone(),
+            "send_message",
+            function_payload(json!({
+                "target": second_path.as_str(),
+                "message": "misrouted answer",
+                "in_reply_to": first_request_id.clone(),
+            })),
+        ))
+        .await
+        .err()
+        .expect("replying to the wrong child should fail");
+    let FunctionCallError::RespondToModel(message) = wrong_target_err else {
+        panic!("wrong-target reply should surface as a model-facing error");
+    };
+    assert!(message.contains(&first_thread_id.to_string()));
+
+    SendMessageHandlerV2::default()
+        .handle(invocation(
+            root_session.clone(),
+            root_turn.clone(),
+            "send_message",
+            function_payload(json!({
+                "target": second_path.as_str(),
+                "message": "second answer",
+                "in_reply_to": second_request_id.clone(),
+            })),
+        ))
+        .await
+        .expect("second reply should resolve its request");
+    SendMessageHandlerV2::default()
+        .handle(invocation(
+            root_session,
+            root_turn,
+            "send_message",
+            function_payload(json!({
+                "target": first_path.as_str(),
+                "message": "first answer",
+                "in_reply_to": first_request_id.clone(),
+            })),
+        ))
+        .await
+        .expect("first reply should resolve its request");
+
+    let first_output = first_ask
+        .await
+        .expect("first ask task should join")
+        .expect("first ask should succeed");
+    let second_output = second_ask
+        .await
+        .expect("second ask task should join")
+        .expect("second ask should succeed");
+    let (first_content, _) = expect_text_output(first_output);
+    let (second_content, _) = expect_text_output(second_output);
+    let first_result: AskParentResult =
+        serde_json::from_str(&first_content).expect("first result should parse");
+    let second_result: AskParentResult =
+        serde_json::from_str(&second_content).expect("second result should parse");
+    assert_eq!(
+        first_result,
+        AskParentResult {
+            request_id: first_request_id,
+            parent_thread_id: root.thread_id,
+            parent_path: AgentPath::root(),
+            status: AskParentStatus::Answered,
+            answer: Some("first answer".to_string()),
+        }
+    );
+    assert_eq!(
+        second_result,
+        AskParentResult {
+            request_id: second_request_id,
+            parent_thread_id: root.thread_id,
+            parent_path: AgentPath::root(),
+            status: AskParentStatus::Answered,
+            answer: Some("second answer".to_string()),
+        }
+    );
+}
+
+#[tokio::test]
+async fn multi_agent_v2_ask_parent_rejects_root_call() {
+    let manager = thread_manager();
+    let (_, root_turn) = make_session_and_context().await;
+    let root = manager
+        .start_thread((*root_turn.config).clone())
+        .await
+        .expect("root thread should start");
+    let (root_session, root_turn) = make_v2_root_context(&manager, root.thread_id).await;
+
+    let err = AskParentHandler
+        .handle(invocation(
+            root_session,
+            root_turn,
+            "ask_parent",
+            function_payload(json!({"question": "root has no parent"})),
+        ))
+        .await
+        .err()
+        .expect("root ask_parent should fail");
+    assert_eq!(
+        err,
+        FunctionCallError::RespondToModel(
+            "ask_parent is only available to an agent with a direct parent".to_string()
+        )
+    );
+}
+
+#[tokio::test]
+async fn multi_agent_v2_ask_parent_times_out_and_rejects_late_reply() {
+    let manager = thread_manager();
+    let (_, root_turn) = make_session_and_context().await;
+    let root = manager
+        .start_thread((*root_turn.config).clone())
+        .await
+        .expect("root thread should start");
+    let (root_session, root_turn) = make_v2_root_context(&manager, root.thread_id).await;
+    let (child_session, child_turn, _, child_path) =
+        make_v2_child_context(&manager, root.thread_id, "timeout").await;
+    let min_timeout_ms = child_turn.config.multi_agent_v2.min_wait_timeout_ms;
+    let ask = tokio::spawn(async move {
+        AskParentHandler
+            .handle(invocation(
+                child_session,
+                child_turn,
+                "ask_parent",
+                function_payload(json!({
+                    "question": "time-sensitive decision",
+                    "timeout_ms": min_timeout_ms,
+                })),
+            ))
+            .await
+    });
+    let request_id = wait_for_parent_request_id(&manager, root.thread_id, &child_path).await;
+    let output = ask
+        .await
+        .expect("ask task should join")
+        .expect("timeout is a successful tool result");
+    let (content, _) = expect_text_output(output);
+    let result: AskParentResult =
+        serde_json::from_str(&content).expect("timeout result should parse");
+    assert_eq!(
+        result,
+        AskParentResult {
+            request_id: request_id.clone(),
+            parent_thread_id: root.thread_id,
+            parent_path: AgentPath::root(),
+            status: AskParentStatus::TimedOut,
+            answer: None,
+        }
+    );
+
+    let err = SendMessageHandlerV2::default()
+        .handle(invocation(
+            root_session,
+            root_turn,
+            "send_message",
+            function_payload(json!({
+                "target": child_path.as_str(),
+                "message": "late answer",
+                "in_reply_to": request_id,
+            })),
+        ))
+        .await
+        .err()
+        .expect("late reply should be rejected");
+    let FunctionCallError::RespondToModel(message) = err else {
+        panic!("late reply should surface as a model-facing error");
+    };
+    assert!(message.contains("unknown, expired, or already answered"));
 }
 
 #[tokio::test]

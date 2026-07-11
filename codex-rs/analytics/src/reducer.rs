@@ -2471,6 +2471,7 @@ fn collab_agent_tool_name(tool: &CollabAgentTool) -> &'static str {
     match tool {
         CollabAgentTool::SpawnAgent => "spawn_agent",
         CollabAgentTool::SendInput => "send_input",
+        CollabAgentTool::AskParent => "ask_parent",
         CollabAgentTool::ResumeAgent => "resume_agent",
         CollabAgentTool::Wait => "wait_agent",
         CollabAgentTool::CloseAgent => "close_agent",

@@ -250,6 +250,7 @@ pub struct DynamicToolCallItem {
 pub enum CollabAgentTool {
     SpawnAgent,
     SendInput,
+    AskParent,
     ResumeAgent,
     Wait,
     CloseAgent,

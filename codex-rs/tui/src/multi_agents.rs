@@ -244,6 +244,12 @@ pub(crate) fn tool_call_history_cell(
                 interaction_end(receiver_thread_id, prompt, &mut agent_metadata)
             })
         }
+        CollabAgentTool::AskParent => Some(parent_decision(
+            first_receiver,
+            prompt,
+            status,
+            &mut agent_metadata,
+        )),
         CollabAgentTool::ResumeAgent => first_receiver.map(|receiver_thread_id| {
             if matches!(status, CollabAgentToolCallStatus::InProgress) {
                 resume_begin(receiver_thread_id, &mut agent_metadata)
@@ -389,6 +395,31 @@ fn interaction_end(
     if let Some(line) = prompt_line(prompt) {
         details.push(line);
     }
+    collab_event(title, details)
+}
+
+fn parent_decision(
+    parent_thread_id: Option<ThreadId>,
+    prompt: &str,
+    status: &CollabAgentToolCallStatus,
+    agent_metadata: &mut impl FnMut(ThreadId) -> AgentMetadata,
+) -> PlainHistoryCell {
+    let action = match status {
+        CollabAgentToolCallStatus::InProgress => "Waiting for parent decision from",
+        CollabAgentToolCallStatus::Completed => "Received parent decision from",
+        CollabAgentToolCallStatus::Failed => "Parent decision unavailable from",
+    };
+    let title = parent_thread_id.map_or_else(
+        || title_text(action.trim_end_matches(" from")),
+        |thread_id| {
+            title_with_agent(
+                action,
+                agent_label(thread_id, &agent_metadata(thread_id)),
+                /*spawn_request*/ None,
+            )
+        },
+    );
+    let details = prompt_line(prompt).into_iter().collect();
     collab_event(title, details)
 }
 
@@ -747,6 +778,23 @@ mod tests {
         )
         .expect("send-input item renders");
 
+        let ask_parent = tool_call_history_cell(
+            &ThreadItem::CollabAgentToolCall {
+                id: "call-ask-parent".to_string(),
+                tool: CollabAgentTool::AskParent,
+                status: CollabAgentToolCallStatus::InProgress,
+                sender_thread_id: robie_id.to_string(),
+                receiver_thread_ids: vec![sender_thread_id.to_string()],
+                prompt: Some("Should I preserve the existing wire format?".to_string()),
+                model: None,
+                reasoning_effort: None,
+                agents_states: HashMap::new(),
+            },
+            /*cached_spawn_request*/ None,
+            |thread_id| metadata_for(thread_id, robie_id, bob_id),
+        )
+        .expect("ask-parent item renders");
+
         let waiting = tool_call_history_cell(
             &ThreadItem::CollabAgentToolCall {
                 id: "call-wait".to_string(),
@@ -810,7 +858,7 @@ mod tests {
         )
         .expect("close item renders");
 
-        let snapshot = [spawn, send, waiting, finished, close]
+        let snapshot = [spawn, send, ask_parent, waiting, finished, close]
             .iter()
             .map(cell_to_text)
             .collect::<Vec<_>>()

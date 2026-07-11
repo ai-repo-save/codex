@@ -260,6 +260,7 @@ impl CollabAgentToolCallItem {
                     prompt: self.prompt.clone().unwrap_or_default(),
                 })
             }),
+            CollabAgentTool::AskParent => None,
             CollabAgentTool::ResumeAgent => receiver_thread_id.map(|receiver_thread_id| {
                 let (receiver_agent_nickname, receiver_agent_role) =
                     self.receiver_agent_identity(receiver_thread_id);
@@ -329,6 +330,7 @@ impl CollabAgentToolCallItem {
                     status: self.agent_status(receiver_thread_id),
                 })
             }),
+            CollabAgentTool::AskParent => None,
             CollabAgentTool::ResumeAgent => receiver_thread_id.map(|receiver_thread_id| {
                 let (receiver_agent_nickname, receiver_agent_role) =
                     self.receiver_agent_identity(receiver_thread_id);

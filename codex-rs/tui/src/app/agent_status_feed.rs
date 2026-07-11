@@ -165,10 +165,21 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
                 .unwrap_or_else(|| tool.clone());
             return bounded_summary(&format!("Tool {tool}"));
         }
-        ThreadItem::CollabAgentToolCall { tool, .. } => {
+        ThreadItem::CollabAgentToolCall { tool, status, .. } => {
             let action = match tool {
                 CollabAgentTool::SpawnAgent => "Spawned an agent",
                 CollabAgentTool::SendInput => "Sent input to an agent",
+                CollabAgentTool::AskParent => match status {
+                    codex_app_server_protocol::CollabAgentToolCallStatus::InProgress => {
+                        "Waiting for parent agent decision"
+                    }
+                    codex_app_server_protocol::CollabAgentToolCallStatus::Completed => {
+                        "Received parent agent decision"
+                    }
+                    codex_app_server_protocol::CollabAgentToolCallStatus::Failed => {
+                        "Parent agent decision unavailable"
+                    }
+                },
                 CollabAgentTool::ResumeAgent => "Resumed an agent",
                 CollabAgentTool::Wait => "Waited for an agent",
                 CollabAgentTool::CloseAgent => "Closed an agent",

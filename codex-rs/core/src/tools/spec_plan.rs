@@ -52,6 +52,7 @@ use crate::tools::handlers::multi_agents_common::MIN_WAIT_TIMEOUT_MS;
 use crate::tools::handlers::multi_agents_spec::SpawnAgentToolOptions;
 use crate::tools::handlers::multi_agents_spec::WaitAgentTimeoutOptions;
 use crate::tools::handlers::multi_agents_v2::FollowupTaskHandler as FollowupTaskHandlerV2;
+use crate::tools::handlers::multi_agents_v2::AskParentHandler;
 use crate::tools::handlers::multi_agents_v2::InspectAgentHandlerV2;
 use crate::tools::handlers::multi_agents_v2::InterruptAgentHandler;
 use crate::tools::handlers::multi_agents_v2::ListAgentsHandler as ListAgentsHandlerV2;
@@ -864,6 +865,12 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mu
                 ),
                 exposure,
             ));
+            if turn_context.session_source.parent_thread_id().is_some() {
+                planned_tools.add_arc(override_tool_exposure(
+                    multi_agent_v2_handler(AskParentHandler, tool_namespace),
+                    exposure,
+                ));
+            }
             planned_tools.add_arc(override_tool_exposure(
                 multi_agent_v2_handler(
                     WaitAgentHandlerV2::new(context.wait_agent_timeouts),
