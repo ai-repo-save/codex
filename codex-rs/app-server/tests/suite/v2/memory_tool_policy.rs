@@ -5,6 +5,7 @@ use anyhow::Context;
 use anyhow::Result;
 use app_test_support::TestAppServer;
 use app_test_support::to_response;
+use app_test_support::write_models_cache_with_models;
 use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ThreadStartParams;
@@ -12,17 +13,18 @@ use codex_app_server_protocol::ThreadStartResponse;
 use codex_app_server_protocol::TurnStartParams;
 use codex_app_server_protocol::TurnStartResponse;
 use codex_app_server_protocol::UserInput;
+use codex_models_manager::model_info::model_info_from_slug;
+use codex_protocol::openai_models::ToolMode;
 use core_test_support::responses;
 use core_test_support::skip_if_no_network;
 use pretty_assertions::assert_eq;
-use serde_json::Value;
 use tempfile::TempDir;
 use tokio::time::timeout;
 
 const READ_TIMEOUT: Duration = Duration::from_secs(10);
-const MEMORIES_NAMESPACE: &str = "memories";
-const WRITE_NOTE_TOOL: &str = "write_note";
-const DELETE_TOOL: &str = "delete";
+const MODEL: &str = "gpt-5.6-terra";
+const WRITE_NOTE_TOOL: &str = "memories__write_note";
+const DELETE_TOOL: &str = "memories__delete";
 const SESSION_PROACTIVE_POLICY: &str = "no explicit user request is required";
 const PROJECT_POLICY_AUTHORITY: &str = "project AGENTS.md instructions authorize";
 const GLOBAL_EXPLICIT_POLICY: &str = "only when the user explicitly asks Codex";
@@ -43,6 +45,10 @@ async fn scoped_memory_policy_reaches_responses_lite_as_developer_tools() -> Res
     .await;
     let codex_home = TempDir::new()?;
     create_config_toml(codex_home.path(), &responses_server.uri())?;
+    let mut model_info = model_info_from_slug(MODEL);
+    model_info.use_responses_lite = true;
+    model_info.tool_mode = Some(ToolMode::CodeMode);
+    write_models_cache_with_models(codex_home.path(), vec![model_info])?;
 
     let mut app_server = TestAppServer::builder()
         .with_codex_home(codex_home.path())
@@ -93,38 +99,15 @@ async fn scoped_memory_policy_reaches_responses_lite_as_developer_tools() -> Res
     assert_eq!(additional_tools["type"], "additional_tools");
     assert_eq!(additional_tools["role"], "developer");
 
-    let namespace = additional_tools["tools"]
-        .as_array()
-        .context("additional_tools.tools should be an array")?
-        .iter()
-        .find(|tool| {
-            tool["type"] == "namespace" && tool["name"].as_str() == Some(MEMORIES_NAMESPACE)
-        })
-        .context("Responses Lite should include the memories namespace")?;
-    let memory_tools = namespace["tools"]
-        .as_array()
-        .context("memories namespace tools should be an array")?;
-    let write_description = tool_description(memory_tools, WRITE_NOTE_TOOL)?;
-    let delete_description = tool_description(memory_tools, DELETE_TOOL)?;
-
-    assert!(write_description.contains(SESSION_PROACTIVE_POLICY));
-    assert!(write_description.contains(PROJECT_POLICY_AUTHORITY));
-    assert!(delete_description.contains(SESSION_PROACTIVE_POLICY));
-    assert!(delete_description.contains(PROJECT_POLICY_AUTHORITY));
-    assert!(delete_description.contains(GLOBAL_EXPLICIT_POLICY));
-    assert!(!write_description.contains(OLD_SCOPED_EXPLICIT_POLICY));
-    assert!(!delete_description.contains(OLD_SCOPED_EXPLICIT_POLICY));
+    let developer_tools = serde_json::to_string(&additional_tools["tools"])?;
+    assert!(developer_tools.contains(WRITE_NOTE_TOOL));
+    assert!(developer_tools.contains(DELETE_TOOL));
+    assert!(developer_tools.contains(SESSION_PROACTIVE_POLICY));
+    assert!(developer_tools.contains(PROJECT_POLICY_AUTHORITY));
+    assert!(developer_tools.contains(GLOBAL_EXPLICIT_POLICY));
+    assert!(!developer_tools.contains(OLD_SCOPED_EXPLICIT_POLICY));
 
     Ok(())
-}
-
-fn tool_description<'a>(tools: &'a [Value], name: &str) -> Result<&'a str> {
-    tools
-        .iter()
-        .find(|tool| tool["name"].as_str() == Some(name))
-        .with_context(|| format!("memories namespace should include {name}"))?["description"]
-        .as_str()
-        .with_context(|| format!("{name} should include a description"))
 }
 
 fn create_config_toml(codex_home: &Path, server_uri: &str) -> std::io::Result<()> {
@@ -132,7 +115,7 @@ fn create_config_toml(codex_home: &Path, server_uri: &str) -> std::io::Result<()
         codex_home.join("config.toml"),
         format!(
             r#"
-model = "gpt-5.6-terra"
+model = "{MODEL}"
 approval_policy = "never"
 sandbox_mode = "read-only"
 model_provider = "mock_provider"
