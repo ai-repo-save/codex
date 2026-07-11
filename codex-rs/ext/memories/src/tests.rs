@@ -23,6 +23,9 @@ use crate::extension::MemoriesExtension;
 use crate::extension::MemoriesExtensionConfig;
 use crate::scoped::MemoryScope;
 use crate::scoped::MemoryToolBackends;
+use crate::scoped::GLOBAL_MEMORY_MAINTENANCE_POLICY;
+use crate::scoped::PROJECT_MEMORY_MAINTENANCE_POLICY;
+use crate::scoped::SESSION_MEMORY_MAINTENANCE_POLICY;
 
 #[test]
 fn memory_tool_namespace_matches_responses_api_identifier() {
@@ -199,6 +202,39 @@ fn ad_hoc_tool_definition_includes_filename_contract() {
     );
 }
 
+#[test]
+fn scoped_tool_definitions_expose_scope_specific_maintenance_policy() {
+    let backends = MemoryToolBackends::new(
+        &test_path_buf("/tmp/codex-home").abs(),
+        /*global_enabled*/ true,
+        /*scoped_enabled*/ true,
+        "thread-1",
+        &test_path_buf("/tmp/project").abs(),
+    );
+    let write_spec = serde_json::to_value(
+        memory_tool_from_backends(backends.clone(), crate::WRITE_NOTE_TOOL_NAME).spec(),
+    )
+    .expect("serialize write tool spec");
+    let delete_spec = serde_json::to_value(
+        memory_tool_from_backends(backends, crate::DELETE_TOOL_NAME).spec(),
+    )
+    .expect("serialize delete tool spec");
+    let write_description = write_spec
+        .pointer("/tools/0/description")
+        .and_then(serde_json::Value::as_str)
+        .expect("write tool description");
+    let delete_description = delete_spec
+        .pointer("/tools/0/description")
+        .and_then(serde_json::Value::as_str)
+        .expect("delete tool description");
+
+    assert!(write_description.contains(SESSION_MEMORY_MAINTENANCE_POLICY));
+    assert!(write_description.contains(PROJECT_MEMORY_MAINTENANCE_POLICY));
+    assert!(delete_description.contains(SESSION_MEMORY_MAINTENANCE_POLICY));
+    assert!(delete_description.contains(PROJECT_MEMORY_MAINTENANCE_POLICY));
+    assert!(delete_description.contains(GLOBAL_MEMORY_MAINTENANCE_POLICY));
+}
+
 #[tokio::test]
 async fn prompt_contribution_uses_memory_summary_when_enabled() {
     let tempdir = tempfile::tempdir().expect("tempdir");
@@ -273,6 +309,16 @@ async fn prompt_contribution_includes_scoped_memory_when_global_memories_are_dis
     assert_eq!(fragments.len(), 1);
     assert_eq!(fragments[0].slot(), PromptSlot::ContextualUser);
     assert!(fragments[0].text().contains("<scoped_memory_context>"));
+    assert!(
+        fragments[0]
+            .text()
+            .contains(SESSION_MEMORY_MAINTENANCE_POLICY)
+    );
+    assert!(
+        fragments[0]
+            .text()
+            .contains(PROJECT_MEMORY_MAINTENANCE_POLICY)
+    );
     assert!(
         fragments[0]
             .text()
@@ -474,7 +520,15 @@ async fn delete_tool_removes_global_file_from_memory_reads() {
 }
 
 #[tokio::test]
-async fn delete_tool_removes_scoped_note_from_context() {
+async fn replacing_scoped_notes_removes_obsolete_notes_from_context() {
+    assert_replacing_scoped_note_removes_obsolete_note_from_context(MemoryScope::Session).await;
+    assert_replacing_scoped_note_removes_obsolete_note_from_context(MemoryScope::Project).await;
+}
+
+async fn assert_replacing_scoped_note_removes_obsolete_note_from_context(scope: MemoryScope) {
+    const OBSOLETE_NOTE: &str = "Forget this after the delete tool runs.";
+    const REPLACEMENT_NOTE: &str = "Keep this corrected preference.";
+
     let tempdir = tempfile::tempdir().expect("tempdir");
     let project_root = tempfile::tempdir().expect("project root");
     let backends = MemoryToolBackends::new(
@@ -487,9 +541,9 @@ async fn delete_tool_removes_scoped_note_from_context() {
     let write_tool = memory_tool_from_backends(backends.clone(), crate::WRITE_NOTE_TOOL_NAME);
     let write_payload = ToolPayload::Function {
         arguments: json!({
-            "scope": "session",
+            "scope": scope.as_str(),
             "title": "Temporary Preference",
-            "note": "Forget this after the delete tool runs.",
+            "note": OBSOLETE_NOTE,
         })
         .to_string(),
     };
@@ -510,13 +564,30 @@ async fn delete_tool_removes_scoped_note_from_context() {
         backends
             .scoped_context_fragment()
             .await
-            .is_some_and(|context| context.contains("Forget this after the delete tool runs."))
+            .is_some_and(|context| context.contains(OBSOLETE_NOTE))
     );
+
+    let replacement_payload = ToolPayload::Function {
+        arguments: json!({
+            "scope": scope.as_str(),
+            "title": "Corrected Preference",
+            "note": REPLACEMENT_NOTE,
+        })
+        .to_string(),
+    };
+    run_memory_tool(
+        &write_tool,
+        crate::WRITE_NOTE_TOOL_NAME,
+        "call-2",
+        replacement_payload,
+    )
+    .await
+    .expect("replacement write should succeed");
 
     let delete_tool = memory_tool_from_backends(backends.clone(), crate::DELETE_TOOL_NAME);
     let delete_payload = ToolPayload::Function {
         arguments: json!({
-            "scope": "session",
+            "scope": scope.as_str(),
             "path": path,
         })
         .to_string(),
@@ -524,7 +595,7 @@ async fn delete_tool_removes_scoped_note_from_context() {
     let delete_response = run_memory_tool(
         &delete_tool,
         crate::DELETE_TOOL_NAME,
-        "call-2",
+        "call-3",
         delete_payload,
     )
     .await
@@ -533,12 +604,17 @@ async fn delete_tool_removes_scoped_note_from_context() {
     assert_eq!(
         delete_response,
         Some(json!({
-            "scope": "session",
+            "scope": scope.as_str(),
             "path": path,
             "deleted": true
         }))
     );
-    assert_eq!(backends.scoped_context_fragment().await, None);
+    let context = backends
+        .scoped_context_fragment()
+        .await
+        .expect("replacement note should remain in context");
+    assert!(!context.contains(OBSOLETE_NOTE));
+    assert!(context.contains(REPLACEMENT_NOTE));
 }
 
 #[tokio::test]

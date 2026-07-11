@@ -34,6 +34,13 @@ const PROJECT_METADATA_FILENAME: &str = "metadata.toml";
 const SESSION_CONTEXT_TOKEN_LIMIT: usize = 10_000;
 const PROJECT_CONTEXT_TOKEN_LIMIT: usize = 15_000;
 
+pub(crate) const SESSION_MEMORY_MAINTENANCE_POLICY: &str =
+    "Session memory is working memory for the current thread. Codex may proactively create, update, or delete session notes when doing so helps complete the current task; no explicit user request is required.";
+pub(crate) const PROJECT_MEMORY_MAINTENANCE_POLICY: &str =
+    "Project memory is shared across sessions for the current project. Codex may proactively create, update, or delete project notes when applicable user instructions or project AGENTS.md instructions authorize maintaining project memory.";
+pub(crate) const GLOBAL_MEMORY_MAINTENANCE_POLICY: &str =
+    "Global memory applies across projects. Create, update, or delete global memory only when the user explicitly asks Codex to remember, update, forget, or remove it.";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum MemoryScope {
@@ -192,8 +199,10 @@ impl MemoryToolBackends {
         }
 
         let body = format!(
-            "\n## Scoped Memory\n{}\n\nUse `memories.write_note` with `scope: \"session\"` or `scope: \"project\"` when the user explicitly asks Codex to remember or update something for the current session or project. Use `memories.delete` with the matching scope when the user explicitly asks Codex to forget or remove an existing memory file.\n",
-            sections.join("\n\n")
+            "\n## Scoped Memory\n{}\n\n{}\n\n{}\n\nUse `memories.write_note` and `memories.delete` to maintain scoped memory under these rules. To replace a note, write the corrected note, then delete the obsolete file.\n",
+            sections.join("\n\n"),
+            SESSION_MEMORY_MAINTENANCE_POLICY,
+            PROJECT_MEMORY_MAINTENANCE_POLICY,
         );
         Some(ScopedMemoryContextFragment::new(body).render())
     }

@@ -13,8 +13,11 @@ use crate::backend::DeleteMemoryRequest;
 use crate::metrics::record_tool_call;
 use crate::metrics::scope_from_path;
 use crate::scoped::DeleteMemoryResponse;
+use crate::scoped::GLOBAL_MEMORY_MAINTENANCE_POLICY;
 use crate::scoped::MemoryScope;
 use crate::scoped::MemoryToolBackends;
+use crate::scoped::PROJECT_MEMORY_MAINTENANCE_POLICY;
+use crate::scoped::SESSION_MEMORY_MAINTENANCE_POLICY;
 
 use super::backend_error_to_function_call;
 use super::memory_function_tool;
@@ -44,7 +47,9 @@ impl ToolExecutor<ToolCall> for DeleteTool {
     fn spec(&self) -> ToolSpec {
         memory_function_tool::<DeleteArgs, DeleteMemoryResponse>(
             DELETE_TOOL_NAME,
-            "Delete an exact Codex memory file by relative path. Optional scope may be global, session, or project; when global memories are disabled, scope must be session or project. Directories, globs, hidden paths, and path traversal are rejected.",
+            &format!(
+                "Delete an exact Codex memory file by relative path. {SESSION_MEMORY_MAINTENANCE_POLICY} {PROJECT_MEMORY_MAINTENANCE_POLICY} {GLOBAL_MEMORY_MAINTENANCE_POLICY} Optional scope may be global, session, or project; when global memories are disabled, scope must be session or project. Directories, globs, hidden paths, and path traversal are rejected."
+            ),
         )
     }
 

@@ -13,6 +13,8 @@ use crate::WRITE_NOTE_TOOL_NAME;
 use crate::metrics::record_tool_call;
 use crate::scoped::MemoryScope;
 use crate::scoped::MemoryToolBackends;
+use crate::scoped::PROJECT_MEMORY_MAINTENANCE_POLICY;
+use crate::scoped::SESSION_MEMORY_MAINTENANCE_POLICY;
 use crate::scoped::WriteScopedMemoryNoteResponse;
 
 use super::backend_error_to_function_call;
@@ -63,7 +65,9 @@ impl ToolExecutor<ToolCall> for WriteNoteTool {
     fn spec(&self) -> ToolSpec {
         memory_function_tool::<WriteNoteArgs, WriteScopedMemoryNoteResponse>(
             WRITE_NOTE_TOOL_NAME,
-            "Create one append-only session or project scoped memory note after the user explicitly asks Codex to remember, forget, or update something for this session or project.",
+            &format!(
+                "Create one append-only session or project scoped memory note. {SESSION_MEMORY_MAINTENANCE_POLICY} {PROJECT_MEMORY_MAINTENANCE_POLICY} To replace an existing note, write the corrected note before deleting the obsolete file."
+            ),
         )
     }
 

@@ -162,12 +162,20 @@ enabled; dedicated tools also require `memories.dedicated_tools`.
   project memory.
 - `memories.list`, `memories.read`, and `memories.search` accept explicit scopes. When global
   memories are disabled, callers must select `session` or `project`.
-- `memories.write_note` writes append-only Markdown notes only to session or project scope and is
-  intended for explicit user requests to remember or update information.
-- `memories.delete` removes one exact memory file. Directories, globs, hidden paths, and path
-  traversal are rejected.
-- Scoped context is contributed as a bounded contextual-user fragment with the write/delete gate
-  stated to the model.
+- Session memory is working memory for the current thread. The agent may create, replace, and remove
+  session notes as part of task execution without a separate user request for each mutation.
+- Project memory contains knowledge that remains useful across sessions. The agent may create,
+  replace, and remove project notes when the applicable user instructions or project `AGENTS.md`
+  authorize maintaining project memory.
+- `memories.write_note` creates append-only Markdown notes in session or project scope. Replacing a
+  note consists of writing its successor and deleting the superseded exact file.
+- Global memory mutations retain their explicit-user-authorization policy. Global notes use the
+  existing global memory mechanism rather than `memories.write_note`; `memories.delete` can remove
+  a global note when that authorization is present.
+- `memories.delete` accepts one exact file in the selected scope. It rejects directories, globs,
+  hidden paths, symbolic links, and path traversal.
+- Scoped context is contributed as a bounded contextual-user fragment and states the same
+  scope-specific mutation policy exposed by the dedicated tools.
 - Memory tool handlers execute backend reads and writes inside the handler and return the completed
   result. Unlike session-control tools, their filesystem side effects are not deferred to turn
   post-processing.
