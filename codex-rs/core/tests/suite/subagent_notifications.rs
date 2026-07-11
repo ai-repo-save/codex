@@ -372,6 +372,23 @@ async fn wait_for_requests(
     }
 }
 
+async fn wait_for_matching_request(
+    mock: &core_test_support::responses::ResponseMock,
+    description: &str,
+    predicate: impl Fn(&ResponsesRequest) -> bool,
+) -> Result<ResponsesRequest> {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        if let Some(request) = mock.requests().into_iter().find(&predicate) {
+            return Ok(request);
+        }
+        if Instant::now() >= deadline {
+            anyhow::bail!("timed out waiting for {description}");
+        }
+        sleep(Duration::from_millis(10)).await;
+    }
+}
+
 async fn setup_turn_one_with_spawned_child(
     server: &MockServer,
     child_response_delay: Option<Duration>,
@@ -1180,15 +1197,28 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
 
     test.submit_turn(TURN_1_PROMPT).await?;
 
-    let requests = wait_for_requests(&child_reminder_request).await?;
-    assert_eq!(requests.len(), 1);
-    let child_request = &requests[0];
-    let child_thread_id = child_initial_request
-        .requests()
-        .into_iter()
-        .find(|request| !request.body_contains_text(CHILD_CONTEXT_REMINDER_MESSAGE))
-        .expect("initial child request should be present")
-        .body_json()["client_metadata"]["thread_id"]
+    let child_request = wait_for_matching_request(
+        &child_reminder_request,
+        "child context reminder request",
+        |request| {
+            request.body_contains_text(CHILD_CONTEXT_REMINDER_MESSAGE)
+                && request.body_json()["client_metadata"]["x-openai-subagent"]
+                    == json!("collab_spawn")
+        },
+    )
+    .await?;
+    let child_initial_request = wait_for_matching_request(
+        &child_initial_request,
+        "initial child request",
+        |request| {
+            request.body_contains_text(CHILD_PROMPT)
+                && !request.inputs_of_type("agent_message").is_empty()
+                && request.body_json()["client_metadata"]["x-openai-subagent"]
+                    == json!("collab_spawn")
+        },
+    )
+    .await?;
+    let child_thread_id = child_initial_request.body_json()["client_metadata"]["thread_id"]
         .as_str()
         .expect("initial child request should include a thread id")
         .to_string();
@@ -1269,22 +1299,12 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
 
     test.submit_turn(TURN_1_PROMPT).await?;
 
-    // The response mock records candidate requests before its request matcher runs, so wait for
-    // the child request instead of assuming the latest recorded request is already it.
-    let deadline = Instant::now() + Duration::from_secs(2);
-    let child_request = loop {
-        if let Some(request) = child_request_log
-            .requests()
-            .into_iter()
-            .find(|request| !request.inputs_of_type("agent_message").is_empty())
-        {
-            break request;
-        }
-        if Instant::now() >= deadline {
-            anyhow::bail!("timed out waiting for child agent message request");
-        }
-        sleep(Duration::from_millis(10)).await;
-    };
+    let child_request = wait_for_matching_request(
+        &child_request_log,
+        "child agent message request",
+        |request| !request.inputs_of_type("agent_message").is_empty(),
+    )
+    .await?;
     assert_eq!(
         strip_metadata_from_json(Value::Array(child_request.inputs_of_type("agent_message"))),
         Value::Array(vec![json!({
