@@ -1100,7 +1100,7 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
         "message": CHILD_PROMPT,
         "task_name": "worker",
     }))?;
-    let parent_initial_request = mount_sse_once_match(
+    mount_sse_once_match(
         &server,
         |req: &wiremock::Request| body_contains(req, TURN_1_PROMPT),
         sse(vec![
@@ -1174,16 +1174,15 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
     let requests = wait_for_requests(&child_reminder_request).await?;
     assert_eq!(requests.len(), 1);
     let child_request = &requests[0];
-    let child_prompt_cache_key =
-        child_initial_request.single_request().body_json()["prompt_cache_key"].clone();
+    let child_window_id = child_initial_request
+        .single_request()
+        .header("x-codex-window-id")
+        .expect("initial child request should include a window id");
     assert_eq!(
-        child_request.body_json()["prompt_cache_key"],
-        child_prompt_cache_key
+        child_request.header("x-openai-subagent").as_deref(),
+        Some("collab_spawn")
     );
-    assert_ne!(
-        parent_initial_request.single_request().body_json()["prompt_cache_key"],
-        child_prompt_cache_key
-    );
+    assert_eq!(child_request.header("x-codex-window-id"), Some(child_window_id));
 
     Ok(())
 }
