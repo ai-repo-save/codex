@@ -282,6 +282,8 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
                 .features
                 .enable(Feature::MultiAgentV2)
                 .expect("test config should allow feature update");
+            config.multi_agent_v2.default_wait_timeout_ms = 1;
+            config.multi_agent_v2.min_wait_timeout_ms = 1;
             config.model_provider.supports_websockets = false;
         })
         .build(&server)

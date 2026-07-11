@@ -4,10 +4,11 @@ use super::*;
 fn default_timeout_depends_on_parent_mode() {
     assert_eq!(
         (
-            default_timeout_ms(AskParentMode::Authoritative, 30_000),
-            default_timeout_ms(AskParentMode::Consult, 30_000),
+            default_timeout_ms(AskParentMode::Authoritative, 30_000, 1, 300_000),
+            default_timeout_ms(AskParentMode::Authoritative, 30_000, 1, 120_000),
+            default_timeout_ms(AskParentMode::Consult, 30_000, 1, 300_000),
         ),
-        (240_000, 30_000),
+        (240_000, 120_000, 30_000),
     );
 }
 

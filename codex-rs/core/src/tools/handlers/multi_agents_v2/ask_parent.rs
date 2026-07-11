@@ -514,11 +514,16 @@ fn validate_timeout(
     timeout_ms: Option<i64>,
     mode: AskParentMode,
 ) -> Result<i64, FunctionCallError> {
-    let timeout_ms = timeout_ms.unwrap_or_else(|| {
-        default_timeout_ms(mode, turn.config.multi_agent_v2.default_wait_timeout_ms)
-    });
     let min = turn.config.multi_agent_v2.min_wait_timeout_ms;
     let max = turn.config.multi_agent_v2.max_wait_timeout_ms;
+    let Some(timeout_ms) = timeout_ms else {
+        return Ok(default_timeout_ms(
+            mode,
+            turn.config.multi_agent_v2.default_wait_timeout_ms,
+            min,
+            max,
+        ));
+    };
     if timeout_ms < min {
         return Err(FunctionCallError::RespondToModel(format!(
             "timeout_ms must be at least {min}"
@@ -532,11 +537,17 @@ fn validate_timeout(
     Ok(timeout_ms)
 }
 
-fn default_timeout_ms(mode: AskParentMode, configured_wait_timeout_ms: i64) -> i64 {
-    match mode {
+fn default_timeout_ms(
+    mode: AskParentMode,
+    configured_wait_timeout_ms: i64,
+    min_timeout_ms: i64,
+    max_timeout_ms: i64,
+) -> i64 {
+    let timeout_ms = match mode {
         AskParentMode::Authoritative => DEFAULT_AUTHORITATIVE_TIMEOUT_MS,
         AskParentMode::Consult => configured_wait_timeout_ms,
-    }
+    };
+    timeout_ms.clamp(min_timeout_ms, max_timeout_ms)
 }
 
 #[derive(Debug, Deserialize)]
