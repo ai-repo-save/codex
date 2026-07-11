@@ -198,6 +198,7 @@
       "enum": [
         "spawnAgent",
         "sendInput",
+        "askParent",
         "resumeAgent",
         "wait",
         "closeAgent"
