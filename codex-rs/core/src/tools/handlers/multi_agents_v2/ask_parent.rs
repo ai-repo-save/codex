@@ -12,6 +12,8 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
+const DEFAULT_AUTHORITATIVE_TIMEOUT_MS: i64 = 240_000;
+
 #[cfg(test)]
 #[path = "ask_parent_tests.rs"]
 mod tests;
@@ -48,8 +50,8 @@ impl Handler {
         } = invocation;
         let args: AskParentArgs = parse_arguments(&function_arguments(payload)?)?;
         let question = message_tool::message_content(args.question)?;
-        let timeout_ms = validate_timeout(&turn, args.timeout_ms)?;
         let mode = args.mode.unwrap_or(AskParentMode::Authoritative);
+        let timeout_ms = validate_timeout(&turn, args.timeout_ms, mode)?;
         let parent_thread_id = turn.parent_thread_id.ok_or_else(|| {
             FunctionCallError::RespondToModel(
                 "ask_parent is only available to an agent with a direct parent".to_string(),
@@ -510,8 +512,11 @@ impl Drop for ParentRequestRegistration {
 fn validate_timeout(
     turn: &crate::session::turn_context::TurnContext,
     timeout_ms: Option<i64>,
+    mode: AskParentMode,
 ) -> Result<i64, FunctionCallError> {
-    let timeout_ms = timeout_ms.unwrap_or(turn.config.multi_agent_v2.default_wait_timeout_ms);
+    let timeout_ms = timeout_ms.unwrap_or_else(|| {
+        default_timeout_ms(mode, turn.config.multi_agent_v2.default_wait_timeout_ms)
+    });
     let min = turn.config.multi_agent_v2.min_wait_timeout_ms;
     let max = turn.config.multi_agent_v2.max_wait_timeout_ms;
     if timeout_ms < min {
@@ -525,6 +530,13 @@ fn validate_timeout(
         )));
     }
     Ok(timeout_ms)
+}
+
+fn default_timeout_ms(mode: AskParentMode, configured_wait_timeout_ms: i64) -> i64 {
+    match mode {
+        AskParentMode::Authoritative => DEFAULT_AUTHORITATIVE_TIMEOUT_MS,
+        AskParentMode::Consult => configured_wait_timeout_ms,
+    }
 }
 
 #[derive(Debug, Deserialize)]

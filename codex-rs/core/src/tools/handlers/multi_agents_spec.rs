@@ -210,7 +210,7 @@ pub fn create_ask_parent_tool() -> ToolSpec {
         (
             "timeout_ms".to_string(),
             JsonSchema::number(Some(
-                "Maximum time to wait for the parent reply. Uses the configured wait timeout when omitted."
+                "Maximum time to wait. Defaults to 240000 ms in authoritative mode and the configured wait timeout in consult mode."
                     .to_string(),
             )),
         ),

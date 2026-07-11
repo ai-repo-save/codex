@@ -1,5 +1,16 @@
 use super::*;
 
+#[test]
+fn default_timeout_depends_on_parent_mode() {
+    assert_eq!(
+        (
+            default_timeout_ms(AskParentMode::Authoritative, 30_000),
+            default_timeout_ms(AskParentMode::Consult, 30_000),
+        ),
+        (240_000, 30_000),
+    );
+}
+
 #[tokio::test]
 async fn claimed_parent_reply_wins_over_cancellation() {
     let control = AgentControl::default();
