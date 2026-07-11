@@ -124,10 +124,17 @@ async fn scoped_memory_policy_reaches_responses_lite_as_developer_tools() -> Res
     assert!(developer_tools.contains(PROJECT_POLICY_AUTHORITY));
     assert!(developer_tools.contains(GLOBAL_EXPLICIT_POLICY));
     assert!(!developer_tools.contains(OLD_SCOPED_EXPLICIT_POLICY));
-    let request_input = serde_json::to_string(&request_body["input"])?;
-    assert!(request_input.contains(GLOBAL_UPDATE_HEADING));
-    assert!(request_input.contains(GLOBAL_DELETE_SCOPE));
-    assert!(!request_input.contains(OLD_UNSCOPED_UPDATE_GATE));
+    let developer_messages = input
+        .iter()
+        .filter(|item| item["role"] == "developer")
+        .filter_map(|item| item["content"].as_array())
+        .flatten()
+        .filter_map(|content| content["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(developer_messages.contains(GLOBAL_UPDATE_HEADING));
+    assert!(developer_messages.contains(GLOBAL_DELETE_SCOPE));
+    assert!(!developer_messages.contains(OLD_UNSCOPED_UPDATE_GATE));
 
     Ok(())
 }
