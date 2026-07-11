@@ -2,6 +2,8 @@ use super::*;
 use crate::session::step_context::StepContext;
 use crate::session::tests::make_session_and_context;
 use crate::tools::context::ToolCallSource;
+use crate::tools::TELEMETRY_PREVIEW_MAX_BYTES;
+use crate::tools::TELEMETRY_PREVIEW_TRUNCATION_NOTICE;
 use crate::turn_diff_tracker::TurnDiffTracker;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
@@ -292,8 +294,14 @@ fn preserves_all_buckets_and_backend_strings() {
     });
     let function_output = output_json(&output, &payload);
     let code_mode_result = output.code_mode_result(&payload);
+    let log_preview = output.log_preview();
 
     assert_eq!(function_output, expected);
     assert_eq!(code_mode_result, expected);
     assert_eq!(function_output, code_mode_result);
+    assert!(
+        log_preview.len()
+            <= TELEMETRY_PREVIEW_MAX_BYTES + TELEMETRY_PREVIEW_TRUNCATION_NOTICE.len() + 1
+    );
+    assert!(log_preview.ends_with(TELEMETRY_PREVIEW_TRUNCATION_NOTICE));
 }

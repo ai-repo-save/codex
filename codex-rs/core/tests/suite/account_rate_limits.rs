@@ -1,6 +1,5 @@
 use anyhow::Result;
 use codex_login::CodexAuth;
-use codex_protocol::openai_models::TruncationPolicyConfig;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
@@ -62,7 +61,7 @@ async fn account_rate_limits_tool_returns_structured_api_key_unavailability() ->
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn account_rate_limits_output_uses_model_truncation_policy() -> Result<()> {
+async fn account_rate_limits_output_uses_configured_tool_output_limit() -> Result<()> {
     let server = start_mock_server().await;
     let additional_rate_limits = (0..12)
         .map(|index| {
@@ -126,9 +125,7 @@ async fn account_rate_limits_output_uses_model_truncation_policy() -> Result<()>
     let chatgpt_base_url = server.uri();
     let test = test_codex()
         .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
-        .with_model_info_override("gpt-5.4", |model_info| {
-            model_info.truncation_policy = TruncationPolicyConfig::tokens(40);
-        })
+        .with_model("gpt-5.4")
         .with_config(move |config| {
             config.chatgpt_base_url = chatgpt_base_url;
             config.tool_output_token_limit = Some(40);
@@ -147,7 +144,7 @@ async fn account_rate_limits_output_uses_model_truncation_policy() -> Result<()>
     assert_eq!(success, None);
     assert!(
         content.contains("tokens truncated"),
-        "account rate limits output should use the model truncation policy: {content}"
+        "account rate limits output should use the configured tool output limit: {content}"
     );
     assert!(!content.contains("total_rate_limit_count"));
     assert!(!content.contains("\"truncated\":"));

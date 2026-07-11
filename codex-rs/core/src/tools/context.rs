@@ -479,7 +479,7 @@ fn function_tool_response(
     }
 }
 
-fn telemetry_preview(content: &str) -> String {
+pub(crate) fn telemetry_preview(content: &str) -> String {
     let truncated_slice = take_bytes_at_char_boundary(content, TELEMETRY_PREVIEW_MAX_BYTES);
     let truncated_by_bytes = truncated_slice.len() < content.len();
 

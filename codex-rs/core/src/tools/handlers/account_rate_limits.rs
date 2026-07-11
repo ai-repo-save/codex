@@ -3,6 +3,7 @@ use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
 use crate::tools::context::boxed_tool_output;
+use crate::tools::context::telemetry_preview;
 use crate::tools::handlers::account_rate_limits_spec::GET_ACCOUNT_RATE_LIMITS_TOOL_NAME;
 use crate::tools::handlers::account_rate_limits_spec::create_get_account_rate_limits_tool;
 use crate::tools::registry::CoreToolRuntime;
@@ -157,7 +158,7 @@ impl AccountRateLimitsOutput {
 
 impl ToolOutput for AccountRateLimitsOutput {
     fn log_preview(&self) -> String {
-        self.text.clone()
+        telemetry_preview(&self.text)
     }
 
     fn success_for_logging(&self) -> bool {
