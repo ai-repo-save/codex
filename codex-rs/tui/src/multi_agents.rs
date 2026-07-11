@@ -393,10 +393,7 @@ fn interaction_end(
     collab_event(title, details)
 }
 
-fn parent_decision(
-    prompt: &str,
-    status: &CollabAgentToolCallStatus,
-) -> PlainHistoryCell {
+fn parent_decision(prompt: &str, status: &CollabAgentToolCallStatus) -> PlainHistoryCell {
     let title = match status {
         CollabAgentToolCallStatus::InProgress => "Waiting for parent decision",
         CollabAgentToolCallStatus::Completed => "Received parent decision",
