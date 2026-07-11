@@ -58,7 +58,7 @@ def run_remote_workflow(config: RemoteWorkflow) -> int:
     LOGGER.info("pushing %s to origin/%s", local_head[:12], config.branch)
     run(("git", "push", "origin", config.branch), cwd=repo_root)
 
-    sync_remote_checkout(config)
+    sync_remote_checkout(config, local_head)
     run_remote_command(config)
 
     ensure_clean_local_worktree(repo_root)
@@ -129,23 +129,36 @@ def ensure_local_head(repo_root: Path, expected_head: str) -> None:
         )
 
 
-def sync_remote_checkout(config: RemoteWorkflow) -> None:
+def sync_remote_checkout(config: RemoteWorkflow, expected_head: str) -> None:
     LOGGER.info("updating remote checkout %s:%s", config.host, config.remote_path)
-    run(ssh_command(config, remote_checkout_sync_command(config)))
+    run(ssh_command(config, remote_checkout_sync_command(config, expected_head)))
 
 
-def remote_checkout_sync_command(config: RemoteWorkflow) -> str:
+def remote_checkout_sync_command(config: RemoteWorkflow, expected_head: str) -> str:
     return (
         "set -euo pipefail; "
         f"cd {shell_quote(config.remote_path)}; "
+        "fetched=false; "
         f"for attempt in $(seq 1 {REMOTE_FETCH_ATTEMPTS}); do "
-        "if git fetch origin; then break; fi; "
-        f'if [ "$attempt" -eq {REMOTE_FETCH_ATTEMPTS} ]; then exit 1; fi; '
+        "if git fetch origin; then fetched=true; break; fi; "
+        f'if [ "$attempt" -eq {REMOTE_FETCH_ATTEMPTS} ]; then break; fi; '
         'echo "remote sync: git fetch failed; retrying" >&2; '
         "sleep $((attempt * 2)); "
         "done; "
+        'if [ "$fetched" = true ]; then '
         f"git checkout {shell_quote(config.branch)}; "
         f"git reset --hard origin/{shell_quote(config.branch)}; "
+        "else "
+        "current_branch=$(git branch --show-current); "
+        "current_head=$(git rev-parse HEAD); "
+        f'if [ "$current_branch" != {shell_quote(config.branch)} ] '
+        f'|| [ "$current_head" != {shell_quote(expected_head)} ] '
+        "|| ! git diff --quiet || ! git diff --cached --quiet; then "
+        'echo "remote sync: fetch failed and checkout does not match the requested clean HEAD" >&2; '
+        "exit 1; "
+        "fi; "
+        'echo "remote sync: fetch failed; reusing matching clean checkout" >&2; '
+        "fi; "
         "git clean -fd"
     )
 

@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-
 import sys
 import unittest
 from pathlib import Path
@@ -60,12 +58,15 @@ class RemoteSyncTest(unittest.TestCase):
             command=(),
         )
 
-        command = _sync.remote_checkout_sync_command(config)
+        command = _sync.remote_checkout_sync_command(config, "abc123")
 
         self.assertIn("for attempt in $(seq 1 3)", command)
-        self.assertIn("if git fetch origin; then break; fi", command)
+        self.assertIn("if git fetch origin; then fetched=true; break; fi", command)
         self.assertIn("remote sync: git fetch failed; retrying", command)
         self.assertIn("git reset --hard origin/'main'", command)
+        self.assertIn("current_branch=$(git branch --show-current)", command)
+        self.assertIn("[ \"$current_head\" != 'abc123' ]", command)
+        self.assertIn("reusing matching clean checkout", command)
         self.assertIn("git clean -fd", command)
 
 
