@@ -1654,19 +1654,29 @@ impl Session {
     /// Atomically captures the parent-owned state used by an ephemeral consult responder.
     pub(crate) async fn consult_snapshot(&self) -> ConsultSessionSnapshot {
         let active_turn = self.active_turn.lock().await;
-        let active_turn_id = active_turn
+        let active_turn_context = active_turn
             .as_ref()
             .and_then(|active_turn| active_turn.task.as_ref())
-            .map(|task| task.turn_context.sub_id.clone());
+            .map(|task| Arc::clone(&task.turn_context));
+        let active_turn_id = active_turn_context
+            .as_ref()
+            .map(|turn_context| turn_context.sub_id.clone());
         let state = self.state.lock().await;
         let configuration = &state.session_configuration;
-        let mut config = configuration.original_config_do_not_use.as_ref().clone();
-        config.model = Some(configuration.collaboration_mode.model().to_string());
-        config.model_reasoning_effort = configuration.collaboration_mode.reasoning_effort();
-        config.model_reasoning_summary = configuration.model_reasoning_summary;
-        config.personality = configuration.personality;
-        config.base_instructions = Some(configuration.base_instructions.clone());
-        config.developer_instructions = configuration.developer_instructions.clone();
+        let mut config = active_turn_context
+            .as_ref()
+            .map_or_else(
+                || configuration.original_config_do_not_use.as_ref().clone(),
+                |turn_context| turn_context.config.as_ref().clone(),
+            );
+        if active_turn_context.is_none() {
+            config.model = Some(configuration.collaboration_mode.model().to_string());
+            config.model_reasoning_effort = configuration.collaboration_mode.reasoning_effort();
+            config.model_reasoning_summary = configuration.model_reasoning_summary;
+            config.personality = configuration.personality;
+            config.base_instructions = Some(configuration.base_instructions.clone());
+            config.developer_instructions = configuration.developer_instructions.clone();
+        }
         config.ephemeral = true;
 
         let history_version = state.history.history_version();
@@ -1705,7 +1715,10 @@ impl Session {
         ConsultSessionSnapshot {
             config,
             history,
-            dynamic_tools: configuration.dynamic_tools.clone(),
+            dynamic_tools: active_turn_context.as_ref().map_or_else(
+                || configuration.dynamic_tools.clone(),
+                |turn_context| turn_context.dynamic_tools.clone(),
+            ),
             environments: configuration.environment_selections().to_vec(),
             multi_agent_version: self.multi_agent_version.get().copied(),
             parent_thread_id: configuration.parent_thread_id,
