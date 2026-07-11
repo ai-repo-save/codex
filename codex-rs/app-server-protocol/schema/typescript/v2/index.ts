@@ -33,6 +33,7 @@ export type { AppsDefaultConfig } from "./AppsDefaultConfig";
 export type { AppsListParams } from "./AppsListParams";
 export type { AppsListResponse } from "./AppsListResponse";
 export type { AskForApproval } from "./AskForApproval";
+export type { AskParentMode } from "./AskParentMode";
 export type { AttestationGenerateParams } from "./AttestationGenerateParams";
 export type { AttestationGenerateResponse } from "./AttestationGenerateResponse";
 export type { AutoReviewDecisionSource } from "./AutoReviewDecisionSource";

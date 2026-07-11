@@ -8,6 +8,7 @@ import type { MessagePhase } from "../MessagePhase";
 import type { ReasoningEffort } from "../ReasoningEffort";
 import type { WebSearchItem } from "../WebSearchItem";
 import type { JsonValue } from "../serde_json/JsonValue";
+import type { AskParentMode } from "./AskParentMode";
 import type { CollabAgentState } from "./CollabAgentState";
 import type { CollabAgentTool } from "./CollabAgentTool";
 import type { CollabAgentToolCallStatus } from "./CollabAgentToolCallStatus";
@@ -104,6 +105,14 @@ model: string | null,
  * Reasoning effort requested for the spawned agent, when applicable.
  */
 reasoningEffort: ReasoningEffort | null,
+/**
+ * Delivery semantics for an `ask_parent` request, when applicable.
+ */
+mode: AskParentMode | null,
+/**
+ * Opaque revision of the parent snapshot used for an `ask_parent` request.
+ */
+snapshotRevision: string | null,
 /**
  * Last known status of the target agents, when available.
  */

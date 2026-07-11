@@ -8,6 +8,13 @@
     "AgentPath": {
       "type": "string"
     },
+    "AskParentMode": {
+      "enum": [
+        "authoritative",
+        "consult"
+      ],
+      "type": "string"
+    },
     "ByteRange": {
       "properties": {
         "end": {
@@ -1496,6 +1503,17 @@
               "description": "Unique identifier for this collab tool call.",
               "type": "string"
             },
+            "mode": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AskParentMode"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Delivery semantics for an `ask_parent` request, when applicable."
+            },
             "model": {
               "description": "Model requested for the spawned agent, when applicable.",
               "type": [
@@ -1531,6 +1549,13 @@
             "senderThreadId": {
               "description": "Thread ID of the agent issuing the collab request.",
               "type": "string"
+            },
+            "snapshotRevision": {
+              "description": "Opaque revision of the parent snapshot used for an `ask_parent` request.",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "status": {
               "allOf": [
