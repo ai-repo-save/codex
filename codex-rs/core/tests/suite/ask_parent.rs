@@ -49,6 +49,10 @@ impl Respond for AskParentResponder {
             return tool_call_response("root-spawn-response", SPAWN_CALL_ID, "spawn_agent", args);
         }
 
+        if has_call_output(&body, SPAWN_CALL_ID) && !has_call_output(&body, WAIT_CALL_ID) {
+            return tool_call_response("root-wait-response", WAIT_CALL_ID, "wait_agent", json!({}));
+        }
+
         if contains_text(&body, CHILD_PROMPT) && !self.child_started.swap(true, Ordering::SeqCst) {
             return tool_call_response(
                 "child-question-response",
@@ -85,10 +89,6 @@ impl Respond for AskParentResponder {
                     "in_reply_to": request_id,
                 }),
             );
-        }
-
-        if has_call_output(&body, SPAWN_CALL_ID) {
-            return tool_call_response("root-wait-response", WAIT_CALL_ID, "wait_agent", json!({}));
         }
 
         sse_response(sse(vec![
