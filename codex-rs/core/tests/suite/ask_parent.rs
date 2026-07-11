@@ -1,4 +1,5 @@
 use anyhow::Result;
+use anyhow::Context;
 use codex_features::Feature;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
@@ -133,7 +134,8 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
         .map(request_body)
         .find_map(|body| call_output_text(&body, ASK_PARENT_CALL_ID))
         .expect("child should receive ask_parent output");
-    let ask_parent_result: Value = serde_json::from_str(&ask_parent_output)?;
+    let ask_parent_result: Value = serde_json::from_str(&ask_parent_output)
+        .with_context(|| format!("ask_parent output was {ask_parent_output:?}"))?;
     assert_eq!(
         ask_parent_result.get("status"),
         Some(&Value::String("answered".to_string()))
