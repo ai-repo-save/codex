@@ -1663,12 +1663,10 @@ impl Session {
             .map(|turn_context| turn_context.sub_id.clone());
         let state = self.state.lock().await;
         let configuration = &state.session_configuration;
-        let mut config = active_turn_context
-            .as_ref()
-            .map_or_else(
-                || configuration.original_config_do_not_use.as_ref().clone(),
-                |turn_context| turn_context.config.as_ref().clone(),
-            );
+        let mut config = active_turn_context.as_ref().map_or_else(
+            || configuration.original_config_do_not_use.as_ref().clone(),
+            |turn_context| turn_context.config.as_ref().clone(),
+        );
         if active_turn_context.is_none() {
             config.model = Some(configuration.collaboration_mode.model().to_string());
             config.model_reasoning_effort = configuration.collaboration_mode.reasoning_effort();
