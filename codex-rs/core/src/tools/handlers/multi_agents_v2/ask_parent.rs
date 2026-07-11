@@ -1,6 +1,6 @@
 use super::*;
 use crate::agent::AgentControl;
-use crate::agent::ParentRequestOutcome;
+use crate::agent::control::ParentRequestOutcome;
 use crate::agent_communication::AgentCommunicationContext;
 use crate::agent_communication::AgentCommunicationKind;
 use crate::tools::handlers::multi_agents_spec::create_ask_parent_tool;
