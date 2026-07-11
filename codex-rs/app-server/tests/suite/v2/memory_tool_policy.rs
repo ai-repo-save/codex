@@ -29,6 +29,9 @@ const SESSION_PROACTIVE_POLICY: &str = "no explicit user request is required";
 const PROJECT_POLICY_AUTHORITY: &str = "project AGENTS.md instructions authorize";
 const GLOBAL_EXPLICIT_POLICY: &str = "only when the user explicitly asks Codex";
 const OLD_SCOPED_EXPLICIT_POLICY: &str = "after the user explicitly asks Codex to remember, forget, or update something for this session or project";
+const GLOBAL_UPDATE_HEADING: &str = "Updating global memories:";
+const GLOBAL_DELETE_SCOPE: &str = "with `scope: \"global\"`";
+const OLD_UNSCOPED_UPDATE_GATE: &str = "You can update the memories **only**";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn scoped_memory_policy_reaches_responses_lite_as_developer_tools() -> Result<()> {
@@ -46,6 +49,7 @@ async fn scoped_memory_policy_reaches_responses_lite_as_developer_tools() -> Res
     .await;
     let codex_home = TempDir::new()?;
     create_config_toml(codex_home.path(), &responses_server.uri())?;
+    create_global_memory_summary(codex_home.path())?;
     let mut model_info = model_info_from_slug(MODEL);
     model_info.use_responses_lite = true;
     model_info.tool_mode = Some(ToolMode::CodeMode);
@@ -120,8 +124,21 @@ async fn scoped_memory_policy_reaches_responses_lite_as_developer_tools() -> Res
     assert!(developer_tools.contains(PROJECT_POLICY_AUTHORITY));
     assert!(developer_tools.contains(GLOBAL_EXPLICIT_POLICY));
     assert!(!developer_tools.contains(OLD_SCOPED_EXPLICIT_POLICY));
+    let request_input = serde_json::to_string(&request_body["input"])?;
+    assert!(request_input.contains(GLOBAL_UPDATE_HEADING));
+    assert!(request_input.contains(GLOBAL_DELETE_SCOPE));
+    assert!(!request_input.contains(OLD_UNSCOPED_UPDATE_GATE));
 
     Ok(())
+}
+
+fn create_global_memory_summary(codex_home: &Path) -> std::io::Result<()> {
+    let memories_dir = codex_home.join("memories");
+    std::fs::create_dir_all(&memories_dir)?;
+    std::fs::write(
+        memories_dir.join("memory_summary.md"),
+        "Global memory summary for scoped policy integration.",
+    )
 }
 
 fn create_config_toml(codex_home: &Path, server_uri: &str) -> std::io::Result<()> {
@@ -139,7 +156,7 @@ memories = true
 
 [memories]
 generate_memories = false
-use_memories = false
+use_memories = true
 use_scoped_memories = true
 dedicated_tools = true
 

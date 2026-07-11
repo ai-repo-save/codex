@@ -4,6 +4,10 @@ use pretty_assertions::assert_eq;
 use tempfile::tempdir;
 use tokio::fs as tokio_fs;
 
+const GLOBAL_UPDATE_HEADING: &str = "Updating global memories:";
+const GLOBAL_DELETE_SCOPE: &str = "with `scope: \"global\"`";
+const OLD_UNSCOPED_UPDATE_GATE: &str = "You can update the memories **only**";
+
 #[tokio::test]
 async fn build_memory_tool_developer_instructions_renders_embedded_template() {
     let temp = tempdir().unwrap();
@@ -26,6 +30,9 @@ async fn build_memory_tool_developer_instructions_renders_embedded_template() {
         memories_dir.display()
     )));
     assert!(instructions.contains("Short memory summary for tests."));
+    assert!(instructions.contains(GLOBAL_UPDATE_HEADING));
+    assert!(instructions.contains(GLOBAL_DELETE_SCOPE));
+    assert!(!instructions.contains(OLD_UNSCOPED_UPDATE_GATE));
     assert_eq!(
         instructions
             .matches("========= MEMORY_SUMMARY BEGINS =========")
