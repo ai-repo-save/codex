@@ -1182,7 +1182,10 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
         child_request.header("x-openai-subagent").as_deref(),
         Some("collab_spawn")
     );
-    assert_eq!(child_request.header("x-codex-window-id"), Some(child_window_id));
+    assert_eq!(
+        child_request.header("x-codex-window-id"),
+        Some(child_window_id)
+    );
 
     Ok(())
 }
