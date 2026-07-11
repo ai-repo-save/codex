@@ -98,6 +98,40 @@ impl Respond for ConsultResponder {
     fn respond(&self, request: &wiremock::Request) -> ResponseTemplate {
         let body = request_body(request);
 
+        if is_consult_responder_request(&body) {
+            if self.request_local_tool && !has_call_output(&body, CONSULT_MESSAGE_CALL_ID) {
+                return tool_call_response(
+                    "consult-send-message-response",
+                    CONSULT_MESSAGE_CALL_ID,
+                    "send_message",
+                    json!({
+                        "target": CONSULT_MESSAGE_TARGET,
+                        "message": CONSULT_UNDELIVERED_MESSAGE,
+                    }),
+                );
+            }
+
+            if self.request_local_tool && !has_call_output(&body, CONSULT_LOCAL_TOOL_CALL_ID) {
+                let arguments =
+                    serde_json::to_string(&json!({ "command": CONSULT_LOCAL_COMMAND }))
+                        .expect("consult local tool arguments should serialize");
+                return sse_response(sse(vec![
+                    ev_response_created("consult-local-tool-response"),
+                    ev_function_call(CONSULT_LOCAL_TOOL_CALL_ID, "shell_command", &arguments),
+                    ev_completed("consult-local-tool-response"),
+                ]));
+            }
+
+            return final_message_response(
+                "consult-responder-finished",
+                &json!({
+                    "kind": self.outcome.kind(),
+                    "advisory": self.outcome.advisory(),
+                })
+                .to_string(),
+            );
+        }
+
         if contains_text(&body, ROOT_PROMPT) && !self.root_started.swap(true, Ordering::SeqCst) {
             return tool_call_response(
                 "consult-root-spawn-response",
@@ -130,36 +164,7 @@ impl Respond for ConsultResponder {
             return final_message_response("consult-child-finished", "child finished");
         }
 
-        if self.request_local_tool && !has_call_output(&body, CONSULT_MESSAGE_CALL_ID) {
-            return tool_call_response(
-                "consult-send-message-response",
-                CONSULT_MESSAGE_CALL_ID,
-                "send_message",
-                json!({
-                    "target": CONSULT_MESSAGE_TARGET,
-                    "message": CONSULT_UNDELIVERED_MESSAGE,
-                }),
-            );
-        }
-
-        if self.request_local_tool && !has_call_output(&body, CONSULT_LOCAL_TOOL_CALL_ID) {
-            let arguments = serde_json::to_string(&json!({ "command": CONSULT_LOCAL_COMMAND }))
-                .expect("consult local tool arguments should serialize");
-            return sse_response(sse(vec![
-                ev_response_created("consult-local-tool-response"),
-                ev_function_call(CONSULT_LOCAL_TOOL_CALL_ID, "shell_command", &arguments),
-                ev_completed("consult-local-tool-response"),
-            ]));
-        }
-
-        final_message_response(
-            "consult-responder-finished",
-            &json!({
-                "kind": self.outcome.kind(),
-                "advisory": self.outcome.advisory(),
-            })
-            .to_string(),
-        )
+        final_message_response("consult-fallback-finished", "unexpected request")
     }
 }
 
@@ -526,6 +531,15 @@ fn contains_text(value: &Value, expected: &str) -> bool {
         Value::Object(fields) => fields.values().any(|item| contains_text(item, expected)),
         Value::Null | Value::Bool(_) | Value::Number(_) => false,
     }
+}
+
+fn is_consult_responder_request(body: &Value) -> bool {
+    body.pointer("/text/format/schema/properties/kind/enum")
+        .and_then(Value::as_array)
+        .is_some_and(|values| {
+            values
+                == &[json!("advisory"), json!("requires_authoritative_parent")]
+        })
 }
 
 fn has_call_output(body: &Value, call_id: &str) -> bool {

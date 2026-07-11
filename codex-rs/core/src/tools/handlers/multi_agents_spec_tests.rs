@@ -294,7 +294,7 @@ fn send_message_tool_requires_message_and_has_no_output_schema() {
 }
 
 #[test]
-fn ask_parent_tool_requires_question_and_accepts_timeout() {
+fn ask_parent_tool_requires_question_and_accepts_optional_mode_and_timeout() {
     let ToolSpec::Function(ResponsesApiTool {
         name,
         parameters,
@@ -315,7 +315,20 @@ fn ask_parent_tool_requires_question_and_accepts_timeout() {
         .expect("ask_parent should use object params");
     assert_eq!(
         properties.keys().cloned().collect::<Vec<_>>(),
-        vec!["question".to_string(), "timeout_ms".to_string()]
+        vec![
+            "mode".to_string(),
+            "question".to_string(),
+            "timeout_ms".to_string()
+        ]
+    );
+    let mode = properties.get("mode").expect("ask_parent mode parameter");
+    assert_eq!(
+        mode.schema_type,
+        Some(JsonSchemaType::Single(JsonSchemaPrimitiveType::String))
+    );
+    assert_eq!(
+        mode.enum_values,
+        Some(vec![json!("authoritative"), json!("consult")])
     );
     assert_eq!(
         parameters.required.as_ref(),
@@ -328,7 +341,11 @@ fn ask_parent_tool_requires_question_and_accepts_timeout() {
             "parent_thread_id",
             "parent_path",
             "status",
-            "answer"
+            "answer",
+            "mode",
+            "advisory",
+            "snapshot_revision",
+            "snapshot_may_be_stale"
         ])
     );
 }
