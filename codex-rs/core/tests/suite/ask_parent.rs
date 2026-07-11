@@ -40,24 +40,15 @@ impl Respond for AskParentResponder {
     fn respond(&self, request: &wiremock::Request) -> ResponseTemplate {
         let body = request_body(request);
 
-        if contains_text(&body, ROOT_PROMPT)
-            && !self.root_started.swap(true, Ordering::SeqCst)
-        {
+        if contains_text(&body, ROOT_PROMPT) && !self.root_started.swap(true, Ordering::SeqCst) {
             let args = json!({
                 "message": CHILD_PROMPT,
                 "task_name": "worker",
             });
-            return tool_call_response(
-                "root-spawn-response",
-                SPAWN_CALL_ID,
-                "spawn_agent",
-                args,
-            );
+            return tool_call_response("root-spawn-response", SPAWN_CALL_ID, "spawn_agent", args);
         }
 
-        if contains_text(&body, CHILD_PROMPT)
-            && !self.child_started.swap(true, Ordering::SeqCst)
-        {
+        if contains_text(&body, CHILD_PROMPT) && !self.child_started.swap(true, Ordering::SeqCst) {
             return tool_call_response(
                 "child-question-response",
                 ASK_PARENT_CALL_ID,
@@ -96,12 +87,7 @@ impl Respond for AskParentResponder {
         }
 
         if has_call_output(&body, SPAWN_CALL_ID) {
-            return tool_call_response(
-                "root-wait-response",
-                WAIT_CALL_ID,
-                "wait_agent",
-                json!({}),
-            );
+            return tool_call_response("root-wait-response", WAIT_CALL_ID, "wait_agent", json!({}));
         }
 
         sse_response(sse(vec![
@@ -176,12 +162,7 @@ fn tool_call_response(
     let args = serde_json::to_string(&args).expect("tool arguments should serialize");
     sse_response(sse(vec![
         ev_response_created(response_id),
-        ev_function_call_with_namespace(
-            call_id,
-            MULTI_AGENT_V2_NAMESPACE,
-            tool_name,
-            &args,
-        ),
+        ev_function_call_with_namespace(call_id, MULTI_AGENT_V2_NAMESPACE, tool_name, &args),
         ev_completed(response_id),
     ]))
 }

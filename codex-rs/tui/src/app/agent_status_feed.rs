@@ -187,9 +187,13 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
                     (_, Some(codex_app_server_protocol::CollabAgentStatus::Interrupted)) => {
                         "Parent agent decision timed out"
                     }
-                    (_, Some(codex_app_server_protocol::CollabAgentStatus::NotFound | codex_app_server_protocol::CollabAgentStatus::Shutdown)) => {
-                        "Parent agent decision unavailable"
-                    }
+                    (
+                        _,
+                        Some(
+                            codex_app_server_protocol::CollabAgentStatus::NotFound
+                            | codex_app_server_protocol::CollabAgentStatus::Shutdown,
+                        ),
+                    ) => "Parent agent decision unavailable",
                     (codex_app_server_protocol::CollabAgentToolCallStatus::Completed, _) => {
                         "Received parent agent decision"
                     }

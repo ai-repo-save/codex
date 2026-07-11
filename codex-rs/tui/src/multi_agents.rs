@@ -920,10 +920,10 @@ mod tests {
             finished,
             close,
         ]
-            .iter()
-            .map(cell_to_text)
-            .collect::<Vec<_>>()
-            .join("\n\n");
+        .iter()
+        .map(cell_to_text)
+        .collect::<Vec<_>>()
+        .join("\n\n");
         assert_snapshot!("collab_agent_transcript", snapshot);
     }
 
