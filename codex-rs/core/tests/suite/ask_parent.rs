@@ -112,9 +112,8 @@ impl Respond for ConsultResponder {
             }
 
             if self.request_local_tool && !has_call_output(&body, CONSULT_LOCAL_TOOL_CALL_ID) {
-                let arguments =
-                    serde_json::to_string(&json!({ "command": CONSULT_LOCAL_COMMAND }))
-                        .expect("consult local tool arguments should serialize");
+                let arguments = serde_json::to_string(&json!({ "command": CONSULT_LOCAL_COMMAND }))
+                    .expect("consult local tool arguments should serialize");
                 return sse_response(sse(vec![
                     ev_response_created("consult-local-tool-response"),
                     ev_function_call(CONSULT_LOCAL_TOOL_CALL_ID, "shell_command", &arguments),
@@ -537,8 +536,7 @@ fn is_consult_responder_request(body: &Value) -> bool {
     body.pointer("/text/format/schema/properties/kind/enum")
         .and_then(Value::as_array)
         .is_some_and(|values| {
-            values
-                == &[json!("advisory"), json!("requires_authoritative_parent")]
+            values == &[json!("advisory"), json!("requires_authoritative_parent")]
         })
 }
 
