@@ -18,6 +18,11 @@ const EXTERNAL_AGENT_HOOKS_SUBDIR: &str = "hooks";
 const EXTERNAL_AGENT_MIGRATED_HOOKS_SUBDIR: &str = "hooks";
 const COMMAND_SKILL_PREFIX: &str = "source-command";
 const MAX_SKILL_NAME_LEN: usize = 64;
+const PROMPT_HOOK_EVENT_NAMES: [&str; 3] = [
+    "PreToolUse",
+    "PermissionRequest",
+    "ApprovalReviewRoute",
+];
 
 #[derive(Debug)]
 struct ParsedDocument {
@@ -567,7 +572,7 @@ fn append_convertible_hook_groups(
                         .get("type")
                         .and_then(JsonValue::as_str)
                         .unwrap_or("command");
-                    if hook_type == "prompt" && event_name == "PreToolUse" {
+                    if hook_type == "prompt" && PROMPT_HOOK_EVENT_NAMES.contains(&event_name) {
                         if let Some(prompt_payload) = migrate_prompt_hook(hook_object) {
                             migrated_handlers.push(JsonValue::Object(prompt_payload));
                         }
@@ -1957,7 +1962,7 @@ Review carefully."""
     }
 
     #[test]
-    fn hook_migration_preserves_pre_tool_prompt_and_ignores_unsupported_handlers() {
+    fn hook_migration_preserves_supported_prompt_events_except_source_models() {
         let settings = serde_json::json!({
             "hooks": {
                 "PreToolUse": [{
@@ -1997,9 +2002,31 @@ Review carefully."""
                 }],
                 "PermissionRequest": [{
                     "matcher": "Bash",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": source_hook_command("approve.py")
+                        },
+                        {
+                            "type": "prompt",
+                            "prompt": "Decide $ARGUMENTS",
+                            "model": "claude-sonnet-4-5",
+                            "reasoningEffort": "medium",
+                            "timeout": 12,
+                            "failClosed": false,
+                            "statusMessage": "asking Claude for permission"
+                        }
+                    ]
+                }],
+                "ApprovalReviewRoute": [{
                     "hooks": [{
-                        "type": "command",
-                        "command": source_hook_command("approve.py")
+                        "type": "prompt",
+                        "prompt": "Route $ARGUMENTS",
+                        "model": "claude-haiku-4-5",
+                        "reasoningEffort": "low",
+                        "timeoutSec": 24,
+                        "failClosed": true,
+                        "statusMessage": "asking Claude to route review"
                     }]
                 }],
                 "SubagentStart": [{
@@ -2033,9 +2060,29 @@ Review carefully."""
                 }],
                 "PermissionRequest": [{
                     "matcher": "Bash",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": migrated_hook_command("approve.py")
+                        },
+                        {
+                            "type": "prompt",
+                            "prompt": "Decide $$ARGUMENTS",
+                            "reasoningEffort": "medium",
+                            "timeout": 12,
+                            "failClosed": false,
+                            "statusMessage": "asking Codex for permission"
+                        }
+                    ]
+                }],
+                "ApprovalReviewRoute": [{
                     "hooks": [{
-                        "type": "command",
-                        "command": migrated_hook_command("approve.py")
+                        "type": "prompt",
+                        "prompt": "Route $$ARGUMENTS",
+                        "reasoningEffort": "low",
+                        "timeout": 24,
+                        "failClosed": true,
+                        "statusMessage": "asking Codex to route review"
                     }]
                 }]
             })
