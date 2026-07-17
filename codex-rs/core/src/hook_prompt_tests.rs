@@ -82,8 +82,10 @@ fn pre_tool_use_schema_is_strict_and_accepts_safe_and_deny_outputs() {
 
     assert_strict_schema(&schema);
     assert_eq!(schema.get("$schema"), None);
+    assert!(schema.get("$defs").is_some());
+    assert_eq!(schema.get("definitions"), None);
     assert_eq!(
-        schema.pointer("/definitions/PreToolUseHookSpecificOutputWire/properties/updatedInput"),
+        schema.pointer("/$defs/PreToolUseHookSpecificOutputWire/properties/updatedInput"),
         Some(&json!({"type": "null"}))
     );
     assert_schema_accepts(
@@ -301,7 +303,6 @@ fn assert_strict_schema(schema: &serde_json::Value) {
         "additionalProperties",
         "anyOf",
         "const",
-        "definitions",
         "description",
         "enum",
         "items",
@@ -314,6 +315,12 @@ fn assert_strict_schema(schema: &serde_json::Value) {
         assert!(
             SUPPORTED_KEYWORDS.contains(&key.as_str()),
             "unsupported strict schema keyword {key} in {schema:?}"
+        );
+    }
+    if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
+        assert!(
+            reference.starts_with("#/$defs/"),
+            "strict schema reference should use the $defs dialect: {reference}"
         );
     }
     assert!(
@@ -343,11 +350,9 @@ fn assert_strict_schema(schema: &serde_json::Value) {
             assert_strict_schema(property);
         }
     }
-    for key in ["definitions", "$defs"] {
-        if let Some(definitions) = schema.get(key).and_then(serde_json::Value::as_object) {
-            for definition in definitions.values() {
-                assert_strict_schema(definition);
-            }
+    if let Some(definitions) = schema.get("$defs").and_then(serde_json::Value::as_object) {
+        for definition in definitions.values() {
+            assert_strict_schema(definition);
         }
     }
     if let Some(variants) = schema.get("anyOf").and_then(serde_json::Value::as_array) {
@@ -370,8 +375,8 @@ fn assert_schema_accepts(
         .expect("test schema nodes should be objects");
     if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
         let definition = reference
-            .strip_prefix("#/definitions/")
-            .and_then(|name| root.pointer(&format!("/definitions/{name}")))
+            .strip_prefix("#/$defs/")
+            .and_then(|name| root.pointer(&format!("/$defs/{name}")))
             .expect("test schema reference should resolve");
         assert_schema_accepts(definition, value, root);
     }

@@ -198,8 +198,41 @@ fn prompt_for_request(request: PromptHookRequest) -> Prompt {
 }
 
 fn strict_output_schema(mut schema: Value) -> Value {
+    normalize_schema_dialect(&mut schema);
     normalize_strict_schema(&mut schema);
     schema
+}
+
+fn normalize_schema_dialect(schema: &mut Value) {
+    if let Value::Object(root) = schema {
+        if root.contains_key("$defs") {
+            root.remove("definitions");
+        } else if let Some(definitions) = root.remove("definitions") {
+            root.insert("$defs".to_string(), definitions);
+        }
+    }
+    rewrite_definition_refs(schema);
+}
+
+fn rewrite_definition_refs(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            if let Some(Value::String(reference)) = object.get_mut("$ref")
+                && let Some(suffix) = reference.strip_prefix("#/definitions/")
+            {
+                *reference = format!("#/$defs/{suffix}");
+            }
+            for value in object.values_mut() {
+                rewrite_definition_refs(value);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                rewrite_definition_refs(value);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
 }
 
 fn normalize_strict_schema(schema: &mut Value) {
