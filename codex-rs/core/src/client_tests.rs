@@ -505,7 +505,9 @@ async fn isolated_stream_uses_independent_telemetry_and_preserves_completed_usag
 
     let events = events.lock().unwrap();
     let isolated_request = telemetry_event(&events, "codex.api_request", |event| {
-        event.get("endpoint").is_some_and(|value| value == "responses")
+        event
+            .get("endpoint")
+            .is_some_and(|value| value == "/responses")
     });
     let completed_response = telemetry_event(&events, "codex.sse_event", |event| {
         event.contains_key("input_token_count")
