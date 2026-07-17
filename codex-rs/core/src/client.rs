@@ -1510,7 +1510,12 @@ impl ModelClientSession {
                 session_mode,
                 responses_metadata,
             )?;
-            if session_mode == ModelClientSessionMode::IsolatedOneShot {
+            if session_mode == ModelClientSessionMode::IsolatedOneShot
+                && !client_setup
+                    .auth
+                    .as_ref()
+                    .is_some_and(CodexAuth::uses_codex_backend)
+            {
                 request.max_output_tokens = Some(ISOLATED_ONE_SHOT_MAX_OUTPUT_TOKENS);
             }
             let store = request.store;
