@@ -30,6 +30,7 @@ use tempfile::tempdir;
 
 use super::ClaudeHooksEngine;
 use super::CommandShell;
+use super::ConfiguredHandler;
 use crate::events::pre_tool_use::PreToolUseRequest;
 
 fn cwd() -> AbsolutePathBuf {
