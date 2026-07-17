@@ -23,7 +23,7 @@ const VALID_OUTPUT: &str = r#"{"continue":true}"#;
 const FENCED_OUTPUT: &str = "```json\n{\"continue\":true}\n```";
 
 #[test]
-fn prompt_request_uses_strict_schema_without_titles_or_tools() {
+fn prompt_request_uses_strict_schema_without_titles_constants_or_tools() {
     let output_schema = json!({
         "title": "PromptHookOutput",
         "type": "object",
@@ -33,6 +33,7 @@ fn prompt_request_uses_strict_schema_without_titles_or_tools() {
                 "title": "Continue",
                 "type": "boolean"
             },
+            "hookEventName": {"const": "PreToolUse"},
             "reason": {"default": null, "type": "string"}
         }
     });
@@ -58,6 +59,7 @@ fn prompt_request_uses_strict_schema_without_titles_or_tools() {
                 "type": "object",
                 "properties": {
                     "continue": {"type": "boolean"},
+                    "hookEventName": {"enum": ["PreToolUse"]},
                     "reason": {
                         "anyOf": [
                             {"type": "string"},
@@ -65,7 +67,7 @@ fn prompt_request_uses_strict_schema_without_titles_or_tools() {
                         ]
                     }
                 },
-                "required": ["continue", "reason"],
+                "required": ["continue", "hookEventName", "reason"],
                 "additionalProperties": false
             })),
             true,
@@ -307,7 +309,6 @@ fn assert_strict_schema(schema: &serde_json::Value) {
         "$defs",
         "additionalProperties",
         "anyOf",
-        "const",
         "description",
         "enum",
         "items",
@@ -328,7 +329,7 @@ fn assert_strict_schema(schema: &serde_json::Value) {
         );
     }
     assert!(
-        ["type", "$ref", "anyOf", "enum", "const"]
+        ["type", "$ref", "anyOf", "enum"]
             .into_iter()
             .any(|key| schema.contains_key(key)),
         "strict schema node has no supported value constraint: {schema:?}"

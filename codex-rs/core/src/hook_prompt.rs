@@ -245,6 +245,11 @@ fn normalize_strict_schema(schema: &mut Value) {
     }
     schema.remove("$schema");
     schema.remove("title");
+    if let Some(constant) = schema.remove("const")
+        && !schema.contains_key("enum")
+    {
+        schema.insert("enum".to_string(), Value::Array(vec![constant]));
+    }
 
     for key in ["definitions", "$defs"] {
         if let Some(Value::Object(definitions)) = schema.get_mut(key) {
