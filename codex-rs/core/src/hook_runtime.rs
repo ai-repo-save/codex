@@ -176,7 +176,12 @@ pub(crate) async fn run_pending_session_start_hooks(
                 .unwrap_or_else(|| "subagent start prompt hook failed".to_string())
         });
         emit_hook_completed_events(sess, turn_context, outcome.hook_events).await;
-        record_additional_contexts(sess, turn_context, outcome.additional_contexts).await;
+        let should_stop = HookRuntimeOutcome {
+            should_stop: outcome.should_stop,
+            additional_contexts: outcome.additional_contexts,
+        }
+        .record_additional_contexts(sess, turn_context)
+        .await;
 
         if let Some(message) = failed_prompt_reason {
             sess.send_event(
@@ -189,7 +194,7 @@ pub(crate) async fn run_pending_session_start_hooks(
             .await;
             return true;
         }
-        if outcome.should_stop {
+        if should_stop {
             return true;
         }
     }

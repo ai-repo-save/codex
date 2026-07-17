@@ -75,7 +75,7 @@ fn write_prompt_hook(
     Ok(())
 }
 
-fn model_sse(id: &str, output: &str) -> Value {
+fn model_sse(id: &str, output: &str) -> String {
     sse(vec![
         ev_response_created(id),
         ev_assistant_message(&format!("{id}-message"), output),
