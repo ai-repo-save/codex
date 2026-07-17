@@ -375,7 +375,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_and_notifies_p
     }))?;
     mount_sse_once_match(
         &server,
-        |request| request_contains(request, SPAWN_PROMPT),
+        |request: &wiremock::Request| request_contains(request, SPAWN_PROMPT),
         sse(vec![
             ev_response_created("subagent-parent-spawn"),
             ev_function_call_with_namespace(
@@ -390,7 +390,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_and_notifies_p
     .await;
     mount_sse_once_match(
         &server,
-        |request| {
+        |request: &wiremock::Request| {
             request_body(request).is_some_and(|body| body["model"] == json!(EVALUATOR_MODEL))
         },
         model_sse("subagent-start-evaluator", "not json"),
@@ -398,7 +398,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_and_notifies_p
     .await;
     mount_sse_once_match(
         &server,
-        |request| {
+        |request: &wiremock::Request| {
             request_body(request).is_some_and(|body| {
                 body["model"] == json!(MAIN_MODEL)
                     && body["client_metadata"]["x-openai-subagent"] == json!("collab_spawn")
@@ -409,7 +409,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_and_notifies_p
     .await;
     mount_sse_once_match(
         &server,
-        |request| request_contains(request, SPAWN_CALL_ID),
+        |request: &wiremock::Request| request_contains(request, SPAWN_CALL_ID),
         model_sse("subagent-parent-followup", FIRST_REPLY),
     )
     .await;
@@ -483,7 +483,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_and_notifies_p
         &server,
         {
             let error = child_error.message.clone();
-            move |request| {
+            move |request: &wiremock::Request| {
                 request_body(request).is_some_and(|body| {
                     body["model"] == json!(MAIN_MODEL)
                         && request_contains(request, OBSERVE_PROMPT)
