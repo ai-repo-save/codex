@@ -2564,7 +2564,10 @@ async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result
         "explicit prompt hook model should take precedence"
     );
     assert_eq!(hook_body["tools"], serde_json::json!([]));
-    assert_eq!(hook_body["reasoning"]["effort"], "low");
+    assert!(
+        hook_body["reasoning"]["effort"].is_null(),
+        "models without Low support should use their default effort"
+    );
     assert_eq!(hook_body["text"]["format"]["type"], "json_schema");
     assert_eq!(hook_body["text"]["format"]["strict"], true);
     assert_eq!(hook_request.message_input_texts("developer"), Vec::<String>::new());
