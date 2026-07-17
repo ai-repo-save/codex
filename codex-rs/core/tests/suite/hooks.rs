@@ -2270,7 +2270,7 @@ async fn approval_review_route_prompt_runs_only_for_needs_approval() -> Result<(
     assert_eq!(route_input["approval_policy"], "on_request");
     assert_eq!(route_input["strict_auto_review"], false);
     assert_eq!(route_input["static_auto_review_enabled"], false);
-    assert!(route_input["retry_reason"].is_string());
+    assert!(route_input.get("retry_reason").is_none());
     requests[3].function_call_output(approval_call_id);
     requests[5].function_call_output(skip_call_id);
     assert!(
