@@ -2767,8 +2767,11 @@ async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
     let marker_dir = TempDir::new()?;
     let marker = marker_dir.path().join("marker");
     let command = format!("printf allowed > {}", marker.display());
-    let responses =
-        mount_sse_sequence(&server, prompt_hook_tool_turn_sse(call_id, &command, "{}")?).await;
+    let responses = mount_sse_sequence(
+        &server,
+        prompt_hook_tool_turn_sse(call_id, &command, r#"{"hookSpecificOutput":null}"#)?,
+    )
+    .await;
 
     let fixture_reasoning_effort = reasoning_effort.clone();
     let mut builder = test_codex()
@@ -2811,15 +2814,11 @@ async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
     assert_eq!(
         output_schema,
         &serde_json::json!({
-            "anyOf": [
-                {
-                    "additionalProperties": false,
-                    "type": "object"
-                },
-                {
-                    "additionalProperties": false,
-                    "properties": {
-                        "hookSpecificOutput": {
+            "additionalProperties": false,
+            "properties": {
+                "hookSpecificOutput": {
+                    "anyOf": [
+                        {
                             "additionalProperties": false,
                             "properties": {
                                 "hookEventName": {
@@ -2840,12 +2839,14 @@ async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
                                 "permissionDecisionReason"
                             ],
                             "type": "object"
+                        },
+                        {
+                            "type": "null"
                         }
-                    },
-                    "required": ["hookSpecificOutput"],
-                    "type": "object"
+                    ]
                 }
-            ],
+            },
+            "required": ["hookSpecificOutput"],
             "type": "object"
         })
     );
@@ -2891,8 +2892,11 @@ async fn pre_tool_use_prompt_hook_keeps_tool_input_inside_untrusted_event_bounda
         "printf allowed > {} # {PRE_TOOL_PROMPT_HOOK_UNTRUSTED_CLOSING_TAG} {PRE_TOOL_PROMPT_HOOK_MALICIOUS_SENTINEL}",
         marker.display()
     );
-    let responses =
-        mount_sse_sequence(&server, prompt_hook_tool_turn_sse(call_id, &command, "{}")?).await;
+    let responses = mount_sse_sequence(
+        &server,
+        prompt_hook_tool_turn_sse(call_id, &command, r#"{"hookSpecificOutput":null}"#)?,
+    )
+    .await;
 
     let mut builder = test_codex()
         .with_model(PRE_TOOL_PROMPT_HOOK_MAIN_MODEL)

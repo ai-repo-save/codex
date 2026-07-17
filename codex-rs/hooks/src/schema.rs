@@ -151,19 +151,6 @@ impl JsonSchema for PreToolUsePromptOutputWire {
     }
 
     fn json_schema(_schema_gen: &mut SchemaGenerator) -> Schema {
-        let no_decision = Schema::Object(SchemaObject {
-            instance_type: Some(InstanceType::Object.into()),
-            object: Some(Box::new(ObjectValidation {
-                additional_properties: Some(Box::new(Schema::Bool(false))),
-                ..Default::default()
-            })),
-            ..Default::default()
-        });
-
-        let mut deny_validation = ObjectValidation {
-            additional_properties: Some(Box::new(Schema::Bool(false))),
-            ..Default::default()
-        };
         let mut hook_specific_output = ObjectValidation {
             additional_properties: Some(Box::new(Schema::Bool(false))),
             ..Default::default()
@@ -188,29 +175,35 @@ impl JsonSchema for PreToolUsePromptOutputWire {
             "permissionDecision".to_string(),
             "permissionDecisionReason".to_string(),
         ]);
-        deny_validation.properties.insert(
-            "hookSpecificOutput".to_string(),
-            Schema::Object(SchemaObject {
-                instance_type: Some(InstanceType::Object.into()),
-                object: Some(Box::new(hook_specific_output)),
-                ..Default::default()
-            }),
-        );
-        deny_validation
-            .required
-            .insert("hookSpecificOutput".to_string());
         let deny = Schema::Object(SchemaObject {
             instance_type: Some(InstanceType::Object.into()),
-            object: Some(Box::new(deny_validation)),
+            object: Some(Box::new(hook_specific_output)),
+            ..Default::default()
+        });
+        let no_decision = Schema::Object(SchemaObject {
+            instance_type: Some(InstanceType::Null.into()),
             ..Default::default()
         });
 
+        let mut root = ObjectValidation {
+            additional_properties: Some(Box::new(Schema::Bool(false))),
+            ..Default::default()
+        };
+        root.properties.insert(
+            "hookSpecificOutput".to_string(),
+            Schema::Object(SchemaObject {
+                subschemas: Some(Box::new(SubschemaValidation {
+                    any_of: Some(vec![deny, no_decision]),
+                    ..Default::default()
+                })),
+                ..Default::default()
+            }),
+        );
+        root.required.insert("hookSpecificOutput".to_string());
+
         Schema::Object(SchemaObject {
             instance_type: Some(InstanceType::Object.into()),
-            subschemas: Some(Box::new(SubschemaValidation {
-                any_of: Some(vec![no_decision, deny]),
-                ..Default::default()
-            })),
+            object: Some(Box::new(root)),
             ..Default::default()
         })
     }
