@@ -71,6 +71,7 @@ const PRE_TOOL_PROMPT_HOOK_SENTINEL: &str = "Block commands that violate the con
 const PRE_TOOL_PROMPT_HOOK_INSTRUCTIONS: &str =
     "Block commands that violate the configured policy. $$ARGUMENTS";
 const PRE_TOOL_PROMPT_HOOK_MAIN_MODEL: &str = "test-gpt-5.1-codex";
+const PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL: &str = "prompt-hook-test-model";
 const PRE_TOOL_PROMPT_HOOK_BLOCK_REASON: &str = "blocked by prompt hook";
 
 fn restrictive_workspace_write_profile() -> PermissionProfile {
@@ -139,6 +140,7 @@ fn write_pre_tool_use_prompt_hook(
     home: &Path,
     fail_closed: bool,
     timeout_sec: Option<u64>,
+    model: Option<&str>,
 ) -> Result<()> {
     let hooks = serde_json::json!({
         "hooks": {
@@ -147,6 +149,7 @@ fn write_pre_tool_use_prompt_hook(
                 "hooks": [{
                     "type": "prompt",
                     "prompt": PRE_TOOL_PROMPT_HOOK_INSTRUCTIONS,
+                    "model": model,
                     "timeout": timeout_sec,
                     "failClosed": fail_closed,
                     "statusMessage": "checking command policy",
@@ -2494,6 +2497,26 @@ fn prompt_hook_tool_turn_sse(
     ])
 }
 
+fn prompt_hook_tool_turn_without_evaluator_sse(call_id: &str, command: &str) -> Result<Vec<String>> {
+    let args = serde_json::json!({ "command": command });
+    Ok(vec![
+        sse(vec![
+            ev_response_created("prompt-hook-main-1"),
+            ev_function_call(
+                call_id,
+                "shell_command",
+                &serde_json::to_string(&args)?,
+            ),
+            ev_completed("prompt-hook-main-1"),
+        ]),
+        sse(vec![
+            ev_response_created("prompt-hook-main-2"),
+            ev_assistant_message("prompt-hook-main-result", "tool handling complete"),
+            ev_completed("prompt-hook-main-2"),
+        ]),
+    ])
+}
+
 #[tokio::test]
 async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result<()> {
     skip_if_no_network!(Ok(()));
@@ -2512,8 +2535,13 @@ async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result
     let mut builder = test_codex()
         .with_model(PRE_TOOL_PROMPT_HOOK_MAIN_MODEL)
         .with_pre_build_hook(|home| {
-            write_pre_tool_use_prompt_hook(home, /*fail_closed*/ false, /*timeout_sec*/ None)
-                .expect("write prompt hook fixture");
+            write_pre_tool_use_prompt_hook(
+                home,
+                /*fail_closed*/ false,
+                /*timeout_sec*/ None,
+                Some(PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL),
+            )
+            .expect("write prompt hook fixture");
         })
         .with_config(trust_discovered_hooks);
     let test = builder.build(&server).await?;
@@ -2532,8 +2560,8 @@ async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result
     let hook_body = hook_request.body_json();
     assert_eq!(
         hook_body["model"],
-        PRE_TOOL_PROMPT_HOOK_MAIN_MODEL,
-        "missing preferred model should fall back to the current model"
+        PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL,
+        "explicit prompt hook model should take precedence"
     );
     assert_eq!(hook_body["tools"], serde_json::json!([]));
     assert_eq!(hook_body["reasoning"]["effort"], "low");
@@ -2571,8 +2599,13 @@ async fn pre_tool_use_prompt_hook_deny_blocks_tool_and_turn_continues() -> Resul
 
     let mut builder = test_codex()
         .with_pre_build_hook(|home| {
-            write_pre_tool_use_prompt_hook(home, /*fail_closed*/ false, /*timeout_sec*/ None)
-                .expect("write prompt hook fixture");
+            write_pre_tool_use_prompt_hook(
+                home,
+                /*fail_closed*/ false,
+                /*timeout_sec*/ None,
+                Some(PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL),
+            )
+            .expect("write prompt hook fixture");
         })
         .with_config(trust_discovered_hooks);
     let test = builder.build(&server).await?;
@@ -2615,8 +2648,13 @@ async fn assert_prompt_hook_failure_is_fail_open(
     .await;
     let mut builder = test_codex()
         .with_pre_build_hook(move |home| {
-            write_pre_tool_use_prompt_hook(home, /*fail_closed*/ false, timeout_sec)
-                .expect("write prompt hook fixture");
+            write_pre_tool_use_prompt_hook(
+                home,
+                /*fail_closed*/ false,
+                timeout_sec,
+                Some(PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL),
+            )
+            .expect("write prompt hook fixture");
         })
         .with_config(trust_discovered_hooks);
     let test = builder.build(&server).await?;
@@ -2669,6 +2707,84 @@ async fn pre_tool_use_prompt_hook_timeout_fails_open() -> Result<()> {
     .await
 }
 
+async fn assert_missing_preferred_prompt_hook_model_respects_failure_mode(
+    fail_closed: bool,
+) -> Result<()> {
+    let server = start_mock_server().await;
+    let call_id = "pretooluse-prompt-missing-preferred-model";
+    let marker_dir = TempDir::new()?;
+    let marker = marker_dir.path().join("marker");
+    let command = format!("printf allowed > {}", marker.display());
+    let responses = mount_sse_sequence(
+        &server,
+        prompt_hook_tool_turn_without_evaluator_sse(call_id, &command)?,
+    )
+    .await;
+    let mut builder = test_codex()
+        .with_model(PRE_TOOL_PROMPT_HOOK_MAIN_MODEL)
+        .with_pre_build_hook(move |home| {
+            write_pre_tool_use_prompt_hook(
+                home,
+                fail_closed,
+                /*timeout_sec*/ None,
+                /*model*/ None,
+            )
+            .expect("write prompt hook fixture");
+        })
+        .with_config(trust_discovered_hooks);
+    let test = builder.build(&server).await?;
+
+    let (_, completed) = submit_turn_and_capture_prompt_hook_lifecycle(
+        &test,
+        "run prompt hook without an available preferred model",
+    )
+    .await?;
+    assert_eq!(completed.run.status, HookRunStatus::Failed);
+    assert_eq!(marker.exists(), !fail_closed);
+    assert!(
+        completed
+            .run
+            .entries
+            .iter()
+            .all(|entry| !entry.text.contains(PRE_TOOL_PROMPT_HOOK_SENTINEL)),
+        "model selection errors must not expose the rendered hook prompt",
+    );
+
+    let requests = responses.requests();
+    assert_eq!(requests.len(), 2, "model selection must fail before a prompt POST");
+    assert!(
+        requests
+            .iter()
+            .all(|request| !request.body_contains_text(PRE_TOOL_PROMPT_HOOK_SENTINEL)),
+        "missing preferred model must not issue a prompt evaluator request",
+    );
+    if fail_closed {
+        assert!(
+            requests[1]
+                .function_call_output(call_id)
+                .get("output")
+                .and_then(Value::as_str)
+                .is_some_and(|output| output.contains("blocked by PreToolUse hook"))
+        );
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn missing_preferred_prompt_hook_model_fails_open_without_prompt_request() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    assert_missing_preferred_prompt_hook_model_respects_failure_mode(/*fail_closed*/ false).await
+}
+
+#[tokio::test]
+async fn missing_preferred_prompt_hook_model_fails_closed_without_prompt_request() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    assert_missing_preferred_prompt_hook_model_respects_failure_mode(/*fail_closed*/ true).await
+}
+
 #[tokio::test]
 async fn pre_tool_use_prompt_hook_failure_fails_closed_and_turn_continues() -> Result<()> {
     skip_if_no_network!(Ok(()));
@@ -2685,8 +2801,13 @@ async fn pre_tool_use_prompt_hook_failure_fails_closed_and_turn_continues() -> R
     .await;
     let mut builder = test_codex()
         .with_pre_build_hook(|home| {
-            write_pre_tool_use_prompt_hook(home, /*fail_closed*/ true, /*timeout_sec*/ None)
-                .expect("write prompt hook fixture");
+            write_pre_tool_use_prompt_hook(
+                home,
+                /*fail_closed*/ true,
+                /*timeout_sec*/ None,
+                Some(PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL),
+            )
+            .expect("write prompt hook fixture");
         })
         .with_config(trust_discovered_hooks);
     let test = builder.build(&server).await?;

@@ -1039,7 +1039,6 @@ impl Session {
                 model_client.clone(),
                 Arc::clone(&models_manager),
                 config.as_ref(),
-                session_configuration.collaboration_mode.model().to_string(),
                 session_telemetry.clone(),
                 session_configuration.service_tier.clone(),
             );

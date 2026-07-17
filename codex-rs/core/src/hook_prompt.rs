@@ -44,6 +44,8 @@ static PROMPT_HOOK_LIMITER: OnceLock<Arc<Semaphore>> = OnceLock::new();
 enum PromptHookEvaluationError {
     #[error("prompt hook evaluator is unavailable")]
     ConcurrencyClosed,
+    #[error("prompt hook preferred model is unavailable")]
+    PreferredModelUnavailable,
     #[error("prompt hook model request failed")]
     Request,
     #[error("prompt hook response stream failed")]
@@ -69,7 +71,6 @@ struct PromptHookEvaluator {
     models_manager: SharedModelsManager,
     models_manager_config: ModelsManagerConfig,
     http_client_factory: HttpClientFactory,
-    current_model: String,
     session_telemetry: SessionTelemetry,
     service_tier: Option<String>,
     limiter: Arc<Semaphore>,
@@ -79,7 +80,6 @@ pub(crate) fn build_prompt_hook_runner(
     model_client: ModelClient,
     models_manager: SharedModelsManager,
     config: &Config,
-    current_model: String,
     session_telemetry: SessionTelemetry,
     service_tier: Option<String>,
 ) -> Arc<dyn PromptHookRunner> {
@@ -93,7 +93,6 @@ pub(crate) fn build_prompt_hook_runner(
             models_manager,
             models_manager_config: config.to_models_manager_config(),
             http_client_factory: config.http_client_factory(),
-            current_model,
             session_telemetry,
             service_tier,
             limiter,
@@ -114,7 +113,7 @@ impl PromptHookRunner for CorePromptHookRunner {
 impl PromptHookEvaluator {
     async fn run(&self, request: PromptHookRequest) -> anyhow::Result<String> {
         let _permit = acquire_prompt_hook_permit(&self.limiter).await?;
-        let (model_info, reasoning_effort) = self.resolve_model(request.model.as_deref()).await;
+        let (model_info, reasoning_effort) = self.resolve_model(request.model.as_deref()).await?;
         let prompt = prompt_for_request(request);
 
         let responses_metadata = self.model_client.isolated_responses_metadata();
@@ -137,14 +136,17 @@ impl PromptHookEvaluator {
             .map_err(anyhow::Error::new)
     }
 
-    async fn resolve_model(&self, model_override: Option<&str>) -> (ModelInfo, Option<ReasoningEffort>) {
+    async fn resolve_model(
+        &self,
+        model_override: Option<&str>,
+    ) -> Result<(ModelInfo, Option<ReasoningEffort>), PromptHookEvaluationError> {
         if let Some(model_override) = model_override {
             let model_info = self
                 .models_manager
                 .get_model_info(model_override, &self.models_manager_config)
                 .await;
             let effort = preferred_reasoning_effort(&model_info);
-            return (model_info, effort);
+            return Ok((model_info, effort));
         }
 
         let preferred_model = self.model_client.approval_review_preferred_model();
@@ -172,15 +174,10 @@ impl PromptHookEvaluator {
             } else {
                 Some(preset.default_reasoning_effort.clone())
             };
-            return (model_info, effort);
+            return Ok((model_info, effort));
         }
 
-        let model_info = self
-            .models_manager
-            .get_model_info(&self.current_model, &self.models_manager_config)
-            .await;
-        let effort = preferred_reasoning_effort(&model_info);
-        (model_info, effort)
+        Err(PromptHookEvaluationError::PreferredModelUnavailable)
     }
 }
 

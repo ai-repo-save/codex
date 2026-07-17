@@ -1755,15 +1755,10 @@ impl Session {
         // layers such as request/session overrides that were present when this session
         // was created.
         let notify_config_contributors = !self.services.extensions.config_contributors().is_empty();
-        let (previous_config, new_config, config, current_model, service_tier) = {
+        let (previous_config, new_config, config, service_tier) = {
             let mut state = self.state.lock().await;
             let previous_config = notify_config_contributors
                 .then(|| Self::build_effective_session_config(&state.session_configuration));
-            let current_model = state
-                .session_configuration
-                .collaboration_mode
-                .model()
-                .to_string();
             let service_tier = state.session_configuration.service_tier.clone();
             let mut config = (*state.session_configuration.original_config_do_not_use).clone();
             config.config_layer_stack = config
@@ -1775,13 +1770,7 @@ impl Session {
             state.session_configuration.original_config_do_not_use = Arc::clone(&config);
             let new_config = notify_config_contributors
                 .then(|| Self::build_effective_session_config(&state.session_configuration));
-            (
-                previous_config,
-                new_config,
-                config,
-                current_model,
-                service_tier,
-            )
+            (previous_config, new_config, config, service_tier)
         };
         self.emit_config_changed_contributors(previous_config.as_ref(), new_config.as_ref());
         self.services.skills_service.clear_cache();
@@ -1791,7 +1780,6 @@ impl Session {
             self.services.model_client.clone(),
             Arc::clone(&self.services.models_manager),
             config.as_ref(),
-            current_model,
             self.services.session_telemetry.clone(),
             service_tier,
         );
