@@ -161,7 +161,6 @@ const RESPONSES_COMPACT_ENDPOINT: &str = "/responses/compact";
 // period between stream events.
 const COMPACT_REQUEST_TIMEOUT_IDLE_MULTIPLIER: u32 = 4;
 const MEMORIES_SUMMARIZE_ENDPOINT: &str = "/memories/trace_summarize";
-const ISOLATED_ONE_SHOT_MAX_OUTPUT_TOKENS: u32 = 4096;
 #[cfg(test)]
 pub(crate) const WEBSOCKET_CONNECT_TIMEOUT: Duration =
     Duration::from_millis(DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS);
@@ -1510,14 +1509,6 @@ impl ModelClientSession {
                 session_mode,
                 responses_metadata,
             )?;
-            if session_mode == ModelClientSessionMode::IsolatedOneShot
-                && !client_setup
-                    .auth
-                    .as_ref()
-                    .is_some_and(CodexAuth::uses_codex_backend)
-            {
-                request.max_output_tokens = Some(ISOLATED_ONE_SHOT_MAX_OUTPUT_TOKENS);
-            }
             let store = request.store;
             self.client
                 .prepare_response_items_for_request(&mut request.input, store);
