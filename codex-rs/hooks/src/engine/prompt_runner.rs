@@ -67,14 +67,37 @@ pub(crate) async fn run_prompt(
         Ok(rendered_prompt) => rendered_prompt,
         Err(error) => return failed_prompt_run(started_at, started, error),
     };
+    let schemas = super::schema_loader::generated_hook_schemas();
+    let output_schema = match handler.event_name {
+        HookEventName::PreToolUse => schemas.pre_tool_use_command_output.clone(),
+        HookEventName::PermissionRequest => schemas.permission_request_command_output.clone(),
+        HookEventName::ApprovalReviewRoute => {
+            schemas.approval_review_route_command_output.clone()
+        }
+        HookEventName::PostToolUse
+        | HookEventName::SessionStart
+        | HookEventName::SubagentStart
+        | HookEventName::SubagentStop
+        | HookEventName::PreCompact
+        | HookEventName::PostCompact
+        | HookEventName::UserPromptSubmit
+        | HookEventName::Stop => {
+            return failed_prompt_run(
+                started_at,
+                started,
+                format!(
+                    "prompt hooks are not supported for {}",
+                    super::dispatcher::hook_event_name_label(handler.event_name)
+                ),
+            );
+        }
+    };
     let request = PromptHookRequest {
         rendered_prompt,
         model: model.clone(),
         reasoning_effort: reasoning_effort.clone(),
         event_name: handler.event_name,
-        output_schema: super::schema_loader::generated_hook_schemas()
-            .pre_tool_use_command_output
-            .clone(),
+        output_schema,
     };
 
     match timeout(Duration::from_secs(*timeout_sec), runner.run(request)).await {

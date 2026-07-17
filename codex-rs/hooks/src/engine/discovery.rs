@@ -560,7 +560,12 @@ fn append_matcher_groups(
                     status_message,
                     fail_closed,
                 } => {
-                    if event_name != HookEventName::PreToolUse {
+                    if !matches!(
+                        event_name,
+                        HookEventName::PreToolUse
+                            | HookEventName::PermissionRequest
+                            | HookEventName::ApprovalReviewRoute
+                    ) {
                         warnings.push(format!(
                             "skipping prompt hook in {}: prompt hooks are not supported for {}",
                             source.path.display(),
@@ -886,7 +891,7 @@ mod tests {
     }
 
     #[test]
-    fn pre_tool_use_prompt_hook_enters_runtime_and_list_metadata() {
+    fn supported_prompt_hooks_enter_runtime_and_list_metadata() {
         let mut handlers = Vec::new();
         let mut hook_entries = Vec::new();
         let mut warnings = Vec::new();
@@ -894,45 +899,51 @@ mod tests {
         let source_path = source_path();
         let hook_states = std::collections::HashMap::new();
 
-        append_matcher_groups(
-            &mut handlers,
-            &mut hook_entries,
-            &mut warnings,
-            &mut display_order,
-            &hook_handler_source(&source_path, &hook_states),
+        for event_name in [
             HookEventName::PreToolUse,
-            vec![MatcherGroup {
-                matcher: Some("^Bash$".to_string()),
-                hooks: vec![prompt_handler(/*fail_closed*/ true)],
-            }],
-        );
+            HookEventName::PermissionRequest,
+            HookEventName::ApprovalReviewRoute,
+        ] {
+            append_matcher_groups(
+                &mut handlers,
+                &mut hook_entries,
+                &mut warnings,
+                &mut display_order,
+                &hook_handler_source(&source_path, &hook_states),
+                event_name,
+                vec![MatcherGroup {
+                    matcher: Some("^Bash$".to_string()),
+                    hooks: vec![prompt_handler(/*fail_closed*/ true)],
+                }],
+            );
+        }
 
         assert_eq!(warnings, Vec::<String>::new());
-        assert_eq!(handlers.len(), 1);
-        assert_eq!(
-            handlers[0].kind,
-            ConfiguredHandlerKind::Prompt {
-                prompt: "Review $$ARGUMENTS".to_string(),
-                model: Some("gpt-test".to_string()),
-                reasoning_effort: Some(ReasoningEffort::High),
-                timeout_sec: 30,
-                fail_closed: true,
-            }
-        );
-        assert_eq!(hook_entries.len(), 1);
-        assert_eq!(hook_entries[0].handler_type, HookHandlerType::Prompt);
-        assert_eq!(hook_entries[0].command, None);
-        assert_eq!(
-            hook_entries[0].prompt.as_deref(),
-            Some("Review $$ARGUMENTS")
-        );
-        assert_eq!(hook_entries[0].model.as_deref(), Some("gpt-test"));
-        assert_eq!(
-            hook_entries[0].reasoning_effort,
-            Some(ReasoningEffort::High)
-        );
-        assert_eq!(hook_entries[0].timeout_sec, 30);
-        assert_eq!(hook_entries[0].fail_closed, Some(true));
+        assert_eq!(handlers.len(), 3);
+        assert_eq!(hook_entries.len(), 3);
+        for (handler, hook_entry) in handlers.iter().zip(&hook_entries) {
+            assert_eq!(handler.event_name, hook_entry.event_name);
+            assert_eq!(
+                handler.kind,
+                ConfiguredHandlerKind::Prompt {
+                    prompt: "Review $$ARGUMENTS".to_string(),
+                    model: Some("gpt-test".to_string()),
+                    reasoning_effort: Some(ReasoningEffort::High),
+                    timeout_sec: 30,
+                    fail_closed: true,
+                }
+            );
+            assert_eq!(hook_entry.handler_type, HookHandlerType::Prompt);
+            assert_eq!(hook_entry.command, None);
+            assert_eq!(hook_entry.prompt.as_deref(), Some("Review $$ARGUMENTS"));
+            assert_eq!(hook_entry.model.as_deref(), Some("gpt-test"));
+            assert_eq!(hook_entry.reasoning_effort, Some(ReasoningEffort::High));
+            assert_eq!(hook_entry.timeout_sec, 30);
+            assert_eq!(hook_entry.fail_closed, Some(true));
+            assert_eq!(hook_entry.trust_status, HookTrustStatus::Managed);
+        }
+        assert_ne!(hook_entries[0].current_hash, hook_entries[1].current_hash);
+        assert_ne!(hook_entries[1].current_hash, hook_entries[2].current_hash);
     }
 
     #[test]

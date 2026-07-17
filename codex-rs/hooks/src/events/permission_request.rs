@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
+use crate::engine::PromptHookRunner;
 use crate::engine::command_runner::CommandRunResult;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
@@ -26,6 +27,7 @@ use crate::schema::SubagentCommandInputFields;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::HookCompletedEvent;
 use codex_protocol::protocol::HookEventName;
+use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookOutputEntry;
 use codex_protocol::protocol::HookOutputEntryKind;
 use codex_protocol::protocol::HookRunStatus;
@@ -87,6 +89,7 @@ pub(crate) fn preview(
 pub(crate) async fn run(
     handlers: &[ConfiguredHandler],
     shell: &CommandShell,
+    prompt_runner: Option<&dyn PromptHookRunner>,
     request: PermissionRequestRequest,
 ) -> PermissionRequestOutcome {
     let matcher_inputs = common::matcher_inputs(&request.tool_name, &request.matcher_aliases);
@@ -123,7 +126,7 @@ pub(crate) async fn run(
         input_json,
         dispatcher::HandlerExecutionContext {
             shell,
-            prompt_runner: None,
+            prompt_runner,
             cwd: request.cwd.as_path(),
             turn_id: Some(request.turn_id.clone()),
         },
@@ -210,6 +213,13 @@ fn parse_completed(
             Some(0) => {
                 let trimmed_stdout = run_result.stdout.trim();
                 if trimmed_stdout.is_empty() {
+                    if handler.handler_type() == HookHandlerType::Prompt {
+                        status = HookRunStatus::Failed;
+                        entries.push(HookOutputEntry {
+                            kind: HookOutputEntryKind::Error,
+                            text: "prompt hook returned empty output".to_string(),
+                        });
+                    }
                 } else if let Some(parsed) =
                     output_parser::parse_permission_request(&run_result.stdout)
                 {
@@ -240,7 +250,9 @@ fn parse_completed(
                             }
                         }
                     }
-                } else if output_parser::looks_like_json(&run_result.stdout) {
+                } else if handler.handler_type() == HookHandlerType::Prompt
+                    || output_parser::looks_like_json(&run_result.stdout)
+                {
                     status = HookRunStatus::Failed;
                     entries.push(HookOutputEntry {
                         kind: HookOutputEntryKind::Error,
@@ -281,6 +293,15 @@ fn parse_completed(
         },
     }
 
+    if matches!(status, HookRunStatus::Failed) && handler.fail_closed() {
+        let message = entries
+            .iter()
+            .find(|entry| matches!(entry.kind, HookOutputEntryKind::Error))
+            .map(|entry| entry.text.clone())
+            .unwrap_or_else(|| "permission request prompt hook failed".to_string());
+        decision = Some(PermissionRequestDecision::Deny { message });
+    }
+
     let completed = HookCompletedEvent {
         turn_id,
         run: dispatcher::completed_summary(handler, &run_result, status, entries),
@@ -294,46 +315,5 @@ fn parse_completed(
 }
 
 #[cfg(test)]
-mod tests {
-    use pretty_assertions::assert_eq;
-
-    use super::PermissionRequestDecision;
-    use super::resolve_permission_request_decision;
-
-    #[test]
-    fn permission_request_deny_overrides_earlier_allow() {
-        let decisions = [
-            PermissionRequestDecision::Allow,
-            PermissionRequestDecision::Deny {
-                message: "repo deny".to_string(),
-            },
-        ];
-
-        assert_eq!(
-            resolve_permission_request_decision(decisions.iter()),
-            Some(PermissionRequestDecision::Deny {
-                message: "repo deny".to_string(),
-            })
-        );
-    }
-
-    #[test]
-    fn permission_request_returns_allow_when_no_handler_denies() {
-        let decisions = [
-            PermissionRequestDecision::Allow,
-            PermissionRequestDecision::Allow,
-        ];
-
-        assert_eq!(
-            resolve_permission_request_decision(decisions.iter()),
-            Some(PermissionRequestDecision::Allow)
-        );
-    }
-
-    #[test]
-    fn permission_request_returns_none_when_no_handler_decides() {
-        let decisions = Vec::<PermissionRequestDecision>::new();
-
-        assert_eq!(resolve_permission_request_decision(decisions.iter()), None);
-    }
-}
+#[path = "permission_request_tests.rs"]
+mod tests;

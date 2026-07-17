@@ -49,36 +49,58 @@ fn prompt_rendering_rejects_oversized_event_and_total_input() {
 }
 
 #[tokio::test]
-async fn prompt_runner_receives_raw_override_event_and_pre_tool_schema() {
+async fn prompt_runner_receives_raw_event_and_event_output_schema() {
     let requests = Arc::new(Mutex::new(Vec::new()));
     let runner = RecordingRunner {
         requests: requests.clone(),
         output: "{}".to_string(),
     };
-    let handler = prompt_handler(/*fail_closed*/ false);
+    let schemas = super::super::schema_loader::generated_hook_schemas();
+    for event_name in [
+        HookEventName::PreToolUse,
+        HookEventName::PermissionRequest,
+        HookEventName::ApprovalReviewRoute,
+    ] {
+        let handler = prompt_handler(event_name, /*fail_closed*/ false);
 
-    let result = run_prompt(Some(&runner), &handler, "{}").await;
+        let result = run_prompt(Some(&runner), &handler, "{}").await;
 
-    assert_eq!(result.exit_code, Some(0));
-    assert_eq!(result.stdout, "{}");
+        assert_eq!(result.exit_code, Some(0));
+        assert_eq!(result.stdout, "{}");
+    }
     let requests = requests.lock().expect("request lock");
     assert_eq!(
         requests.as_slice(),
-        &[PromptHookRequest {
-            rendered_prompt: "Review {}".to_string(),
-            model: Some("gpt-override".to_string()),
-            reasoning_effort: Some(ReasoningEffort::High),
-            event_name: HookEventName::PreToolUse,
-            output_schema: super::super::schema_loader::generated_hook_schemas()
-                .pre_tool_use_command_output
-                .clone(),
-        }]
+        &[
+            prompt_request(
+                HookEventName::PreToolUse,
+                schemas.pre_tool_use_command_output.clone(),
+            ),
+            prompt_request(
+                HookEventName::PermissionRequest,
+                schemas.permission_request_command_output.clone(),
+            ),
+            prompt_request(
+                HookEventName::ApprovalReviewRoute,
+                schemas.approval_review_route_command_output.clone(),
+            ),
+        ]
     );
 }
 
-fn prompt_handler(fail_closed: bool) -> ConfiguredHandler {
+fn prompt_request(event_name: HookEventName, output_schema: Value) -> PromptHookRequest {
+    PromptHookRequest {
+        rendered_prompt: "Review {}".to_string(),
+        model: Some("gpt-override".to_string()),
+        reasoning_effort: Some(ReasoningEffort::High),
+        event_name,
+        output_schema,
+    }
+}
+
+fn prompt_handler(event_name: HookEventName, fail_closed: bool) -> ConfiguredHandler {
     ConfiguredHandler {
-        event_name: HookEventName::PreToolUse,
+        event_name,
         matcher: None,
         kind: ConfiguredHandlerKind::Prompt {
             prompt: "Review $$ARGUMENTS".to_string(),

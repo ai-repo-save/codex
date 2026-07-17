@@ -286,14 +286,26 @@ impl ClaudeHooksEngine {
         &self,
         request: PermissionRequestRequest,
     ) -> PermissionRequestOutcome {
-        crate::events::permission_request::run(&self.handlers, &self.shell, request).await
+        crate::events::permission_request::run(
+            &self.handlers,
+            &self.shell,
+            self.prompt_hook_runner.as_deref(),
+            request,
+        )
+        .await
     }
 
     pub(crate) async fn run_approval_review_route(
         &self,
         request: ApprovalReviewRouteRequest,
     ) -> ApprovalReviewRouteOutcome {
-        crate::events::approval_review_route::run(&self.handlers, &self.shell, request).await
+        crate::events::approval_review_route::run(
+            &self.handlers,
+            &self.shell,
+            self.prompt_hook_runner.as_deref(),
+            request,
+        )
+        .await
     }
 
     pub(crate) async fn run_post_tool_use(

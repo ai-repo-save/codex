@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
+use crate::engine::PromptHookRunner;
 use crate::engine::command_runner::CommandRunResult;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
@@ -18,6 +19,7 @@ use crate::schema::SubagentCommandInputFields;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::HookCompletedEvent;
 use codex_protocol::protocol::HookEventName;
+use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookOutputEntry;
 use codex_protocol::protocol::HookOutputEntryKind;
 use codex_protocol::protocol::HookRunStatus;
@@ -56,9 +58,10 @@ pub struct ApprovalReviewRouteOutcome {
     pub decision: Option<ApprovalReviewRouteDecision>,
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct ApprovalReviewRouteHandlerData {
     decision: Option<ApprovalReviewRouteDecision>,
+    force_user: bool,
 }
 
 pub(crate) fn preview(
@@ -84,6 +87,7 @@ pub(crate) fn preview(
 pub(crate) async fn run(
     handlers: &[ConfiguredHandler],
     shell: &CommandShell,
+    prompt_runner: Option<&dyn PromptHookRunner>,
     request: ApprovalReviewRouteRequest,
 ) -> ApprovalReviewRouteOutcome {
     let matcher_inputs = common::matcher_inputs(&request.tool_name, &request.matcher_aliases);
@@ -120,15 +124,14 @@ pub(crate) async fn run(
         input_json,
         dispatcher::HandlerExecutionContext {
             shell,
-            prompt_runner: None,
+            prompt_runner,
             cwd: request.cwd.as_path(),
             turn_id: Some(request.turn_id.clone()),
         },
         parse_completed,
     )
     .await;
-    let decision =
-        resolve_approval_review_route_decision(results.iter().map(|result| result.data.decision));
+    let decision = resolve_approval_review_route_decision(results.iter().map(|result| result.data));
 
     ApprovalReviewRouteOutcome {
         hook_events: results
@@ -142,9 +145,18 @@ pub(crate) async fn run(
 }
 
 fn resolve_approval_review_route_decision(
-    decisions: impl IntoIterator<Item = Option<ApprovalReviewRouteDecision>>,
+    handler_data: impl IntoIterator<Item = ApprovalReviewRouteHandlerData>,
 ) -> Option<ApprovalReviewRouteDecision> {
-    decisions.into_iter().flatten().last()
+    let mut decision = None;
+    for data in handler_data {
+        if data.force_user {
+            return Some(ApprovalReviewRouteDecision::User);
+        }
+        if data.decision.is_some() {
+            decision = data.decision;
+        }
+    }
+    decision
 }
 
 fn build_command_input(request: &ApprovalReviewRouteRequest) -> ApprovalReviewRouteCommandInput {
@@ -190,6 +202,13 @@ fn parse_completed(
             Some(0) => {
                 let trimmed_stdout = run_result.stdout.trim();
                 if trimmed_stdout.is_empty() {
+                    if handler.handler_type() == HookHandlerType::Prompt {
+                        status = HookRunStatus::Failed;
+                        entries.push(HookOutputEntry {
+                            kind: HookOutputEntryKind::Error,
+                            text: "prompt hook returned empty output".to_string(),
+                        });
+                    }
                 } else if let Some(parsed) =
                     output_parser::parse_approval_review_route(&run_result.stdout)
                 {
@@ -215,7 +234,9 @@ fn parse_completed(
                             }
                         });
                     }
-                } else if output_parser::looks_like_json(&run_result.stdout) {
+                } else if handler.handler_type() == HookHandlerType::Prompt
+                    || output_parser::looks_like_json(&run_result.stdout)
+                {
                     status = HookRunStatus::Failed;
                     entries.push(HookOutputEntry {
                         kind: HookOutputEntryKind::Error,
@@ -240,41 +261,21 @@ fn parse_completed(
         },
     }
 
+    let force_user = status == HookRunStatus::Failed && handler.fail_closed();
+
     dispatcher::ParsedHandler {
         completed: HookCompletedEvent {
             turn_id,
             run: dispatcher::completed_summary(handler, &run_result, status, entries),
         },
-        data: ApprovalReviewRouteHandlerData { decision },
+        data: ApprovalReviewRouteHandlerData {
+            decision,
+            force_user,
+        },
         completion_order: 0,
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use pretty_assertions::assert_eq;
-
-    use super::ApprovalReviewRouteDecision;
-    use super::resolve_approval_review_route_decision;
-
-    #[test]
-    fn approval_review_route_uses_last_non_continue_reviewer() {
-        let decisions = [
-            Some(ApprovalReviewRouteDecision::AutoReview),
-            None,
-            Some(ApprovalReviewRouteDecision::User),
-        ];
-
-        assert_eq!(
-            resolve_approval_review_route_decision(decisions),
-            Some(ApprovalReviewRouteDecision::User)
-        );
-    }
-
-    #[test]
-    fn approval_review_route_returns_none_when_handlers_continue() {
-        let decisions = [None, None];
-
-        assert_eq!(resolve_approval_review_route_decision(decisions), None);
-    }
-}
+#[path = "approval_review_route_tests.rs"]
+mod tests;
