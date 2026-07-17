@@ -2132,8 +2132,8 @@ async fn permission_request_prompt_hook_denies_tool_and_turn_continues() -> Resu
             .context("permission request prompt input")?,
     )?;
     assert_permission_request_hook_input(&hook_input, "Bash", &command, /*description*/ None);
-    let output = requests[2]
-        .function_call_output(call_id)
+    let function_call_output = requests[2].function_call_output(call_id);
+    let output = function_call_output
         .get("output")
         .and_then(Value::as_str)
         .context("denied permission request tool output")?;
