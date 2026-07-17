@@ -2805,6 +2805,15 @@ async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
         "explicit prompt hook model should take precedence"
     );
     assert_prompt_hook_request_is_isolated(hook_request);
+    let output_schema = &hook_body["text"]["format"]["schema"];
+    assert!(
+        output_schema.get("$defs").is_some(),
+        "wire output schema should use the current definitions keyword"
+    );
+    assert_eq!(output_schema.get("definitions"), None);
+    let output_schema_json = serde_json::to_string(output_schema)?;
+    assert!(output_schema_json.contains("#/$defs/"));
+    assert!(!output_schema_json.contains("#/definitions/"));
     match reasoning_effort {
         Some(reasoning_effort) => assert_eq!(
             hook_body["reasoning"]["effort"],
