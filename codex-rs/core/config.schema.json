@@ -1367,6 +1367,27 @@
         },
         {
           "properties": {
+            "failClosed": {
+              "default": false,
+              "type": "boolean"
+            },
+            "model": {
+              "default": null,
+              "type": "string"
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "statusMessage": {
+              "default": null,
+              "type": "string"
+            },
+            "timeout": {
+              "default": null,
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
+            },
             "type": {
               "enum": [
                 "prompt"
@@ -1375,6 +1396,7 @@
             }
           },
           "required": [
+            "prompt",
             "type"
           ],
           "type": "object"
