@@ -35,7 +35,8 @@ fn prompt_request_uses_strict_schema_without_titles_constants_or_tools() {
             },
             "hookEventName": {"const": "PreToolUse"},
             "reason": {"default": null, "type": "string"}
-        }
+        },
+        "required": ["hookEventName"]
     });
     let prompt = prompt_for_request(PromptHookRequest {
         rendered_prompt: "evaluate this input".to_string(),
