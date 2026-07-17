@@ -101,6 +101,16 @@
             "null"
           ]
         },
+        "reasoningEffort": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReasoningEffort"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "source": {
           "$ref": "#/definitions/HookSource"
         },
@@ -194,6 +204,11 @@
         "warnings"
       ],
       "type": "object"
+    },
+    "ReasoningEffort": {
+      "description": "A non-empty reasoning effort value advertised by the model.",
+      "minLength": 1,
+      "type": "string"
     }
   },
   "properties": {

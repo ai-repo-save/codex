@@ -243,6 +243,16 @@
             "prompt": {
               "type": "string"
             },
+            "reasoningEffort": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ReasoningEffort"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "statusMessage": {
               "type": [
                 "string",

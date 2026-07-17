@@ -8653,6 +8653,16 @@
               "prompt": {
                 "type": "string"
               },
+              "reasoningEffort": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/v2/ReasoningEffort"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "statusMessage": {
                 "type": [
                   "string",
@@ -10944,6 +10954,16 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "reasoningEffort": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/ReasoningEffort"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "source": {
