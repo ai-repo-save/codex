@@ -67,10 +67,9 @@ fn prompt_rendering_escapes_event_json_envelope_delimiters() {
             .split_once(UNTRUSTED_EVENT_JSON_SUFFIX)
             .expect("untrusted event suffix");
         assert_eq!(trailing, "");
-        assert_eq!(
-            serde_json::from_str::<serde_json::Value>(escaped_event_json),
-            Ok(event.clone())
-        );
+        let parsed_event = serde_json::from_str::<serde_json::Value>(escaped_event_json)
+            .expect("parse escaped event JSON");
+        assert_eq!(parsed_event, event);
     }
 }
 
