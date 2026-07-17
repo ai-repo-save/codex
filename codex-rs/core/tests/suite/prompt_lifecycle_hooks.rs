@@ -224,9 +224,11 @@ async fn pre_compact_invalid_prompt_output_fails_open_and_compacts() -> Result<(
 
     assert!(failed_prompt_hook(&events, HookEventName::PreCompact));
     assert!(matches!(events.last(), Some(EventMsg::TurnComplete(_))));
-    assert!(!events
-        .iter()
-        .any(|event| matches!(event, EventMsg::TurnAborted(_))));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, EventMsg::TurnAborted(_)))
+    );
     let requests = responses.requests();
     assert_eq!(requests.len(), 2);
     assert!(request_uses_model(&requests[0], MAIN_MODEL));
@@ -366,7 +368,11 @@ async fn user_prompt_submit_fail_closed_rejects_only_the_failed_input() -> Resul
     let events = submit_turn_and_collect(&test, FIRST_PROMPT).await?;
     assert!(failed_prompt_hook(&events, HookEventName::UserPromptSubmit));
     assert!(completed_without_message(&events));
-    assert!(!events.iter().any(|event| matches!(event, EventMsg::UserMessage(_))));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, EventMsg::UserMessage(_)))
+    );
     test.submit_turn(NEXT_PROMPT).await?;
 
     let requests = responses.requests();
@@ -393,12 +399,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling() -> Result<()
         |request: &wiremock::Request| request_contains(request, SPAWN_PROMPT),
         sse(vec![
             ev_response_created("subagent-parent-spawn"),
-            ev_function_call_with_namespace(
-                SPAWN_CALL_ID,
-                "agents",
-                "spawn_agent",
-                &spawn_args,
-            ),
+            ev_function_call_with_namespace(SPAWN_CALL_ID, "agents", "spawn_agent", &spawn_args),
             ev_completed("subagent-parent-spawn"),
         ]),
     )
@@ -457,7 +458,10 @@ async fn subagent_start_fail_closed_errors_child_without_sampling() -> Result<()
     })
     .await;
     assert_eq!(child_error.codex_error_info, Some(CodexErrorInfo::Other));
-    assert!(matches!(child.agent_status().await, AgentStatus::Errored(_)));
+    assert!(matches!(
+        child.agent_status().await,
+        AgentStatus::Errored(_)
+    ));
     let requests = server
         .received_requests()
         .await

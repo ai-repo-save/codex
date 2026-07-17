@@ -1119,9 +1119,8 @@ mod tests {
             assert_eq!(
                 warnings
                     .iter()
-                    .filter(|warning| warning.contains(&format!(
-                        "prompt hooks are not supported for {event_name}"
-                    )))
+                    .filter(|warning| warning
+                        .contains(&format!("prompt hooks are not supported for {event_name}")))
                     .count(),
                 2
             );
@@ -1154,8 +1153,11 @@ mod tests {
         assert_eq!(hook_entries, Vec::<HookListEntry>::new());
         assert_eq!(display_order, 0);
         assert_eq!(warnings.len(), 2);
-        assert!(warnings.iter().all(|warning| warning
-            .contains("agent hooks are not supported yet")));
+        assert!(
+            warnings
+                .iter()
+                .all(|warning| warning.contains("agent hooks are not supported yet"))
+        );
     }
 
     #[test]
