@@ -374,8 +374,7 @@ async fn isolated_session_omits_max_output_tokens_for_codex_backend_auth() {
         .expect(/*requests*/ 1)
         .mount(&server)
         .await;
-    let provider =
-        ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    let provider = ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
     let client = ModelClient::new(
         Some(AuthManager::from_auth_for_testing(
             CodexAuth::create_dummy_chatgpt_auth_for_testing(),
