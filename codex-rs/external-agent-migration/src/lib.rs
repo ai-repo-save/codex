@@ -676,6 +676,7 @@ fn migrate_prompt_hook(
             "type"
                 | "prompt"
                 | "model"
+                | "reasoningEffort"
                 | "timeout"
                 | "timeoutSec"
                 | "failClosed"
@@ -708,6 +709,16 @@ fn migrate_prompt_hook(
         "prompt".to_string(),
         JsonValue::String(rewritten_prompt),
     );
+    if let Some(reasoning_effort) = hook_object
+        .get("reasoningEffort")
+        .and_then(JsonValue::as_str)
+        .filter(|reasoning_effort| !reasoning_effort.is_empty())
+    {
+        prompt_payload.insert(
+            "reasoningEffort".to_string(),
+            JsonValue::String(reasoning_effort.to_string()),
+        );
+    }
     if let Some(timeout) = hook_object
         .get("timeout")
         .or_else(|| hook_object.get("timeoutSec"))
@@ -1978,6 +1989,7 @@ Review carefully."""
                         "type": "prompt",
                         "prompt": "  Review $ARGUMENTS carefully.  ",
                         "model": "claude-opus-4-1",
+                        "reasoningEffort": "high",
                         "timeoutSec": 42,
                         "failClosed": true,
                         "statusMessage": "asking Claude to review"
@@ -2011,6 +2023,7 @@ Review carefully."""
                         {
                             "type": "prompt",
                             "prompt": "  Review $$ARGUMENTS carefully.  ",
+                            "reasoningEffort": "high",
                             "timeout": 42,
                             "failClosed": true,
                             "statusMessage": "asking Codex to review"

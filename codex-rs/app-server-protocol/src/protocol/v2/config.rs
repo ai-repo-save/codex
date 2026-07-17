@@ -487,6 +487,9 @@ pub enum ConfiguredHookHandler {
     Prompt {
         prompt: String,
         model: Option<String>,
+        #[serde(rename = "reasoningEffort")]
+        #[ts(rename = "reasoningEffort")]
+        reasoning_effort: Option<ReasoningEffort>,
         #[serde(rename = "timeoutSec")]
         #[ts(rename = "timeoutSec")]
         timeout_sec: Option<u64>,

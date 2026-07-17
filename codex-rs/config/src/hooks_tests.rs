@@ -2,6 +2,8 @@ use pretty_assertions::assert_eq;
 
 use std::collections::BTreeMap;
 
+use codex_protocol::openai_models::ReasoningEffort;
+
 use super::HookEventsToml;
 use super::HookHandlerConfig;
 use super::HooksFile;
@@ -52,6 +54,71 @@ fn hooks_file_deserializes_existing_json_shape() {
             },
         }
     );
+}
+
+#[test]
+fn prompt_hook_deserializes_optional_reasoning_effort_from_toml_and_json() {
+    let expected = HookEventsToml {
+        pre_tool_use: vec![MatcherGroup {
+            matcher: None,
+            hooks: vec![
+                HookHandlerConfig::Prompt {
+                    prompt: "Review $$ARGUMENTS".to_string(),
+                    model: Some("gpt-test".to_string()),
+                    reasoning_effort: Some(ReasoningEffort::High),
+                    timeout_sec: None,
+                    status_message: None,
+                    fail_closed: false,
+                },
+                HookHandlerConfig::Prompt {
+                    prompt: "Review without override".to_string(),
+                    model: None,
+                    reasoning_effort: None,
+                    timeout_sec: None,
+                    status_message: None,
+                    fail_closed: false,
+                },
+            ],
+        }],
+        ..Default::default()
+    };
+    let from_toml: HookEventsToml = toml::from_str(
+        r#"
+[[PreToolUse]]
+
+[[PreToolUse.hooks]]
+type = "prompt"
+prompt = "Review $$ARGUMENTS"
+model = "gpt-test"
+reasoningEffort = "high"
+
+[[PreToolUse.hooks]]
+type = "prompt"
+prompt = "Review without override"
+"#,
+    )
+    .expect("prompt hook TOML should deserialize");
+    let from_json: HooksFile = serde_json::from_str(
+        r#"{
+  "hooks": {
+    "PreToolUse": [{
+      "hooks": [{
+        "type": "prompt",
+        "prompt": "Review $$ARGUMENTS",
+        "model": "gpt-test",
+        "reasoningEffort": "high"
+      }, {
+        "type": "prompt",
+        "prompt": "Review without override"
+      }]
+    }]
+  }
+}"#,
+    )
+    .expect("prompt hook JSON should deserialize");
+
+    assert_eq!(from_toml, expected);
+    assert_eq!(from_json.hooks, expected);
 }
 
 #[test]

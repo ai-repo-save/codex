@@ -813,6 +813,7 @@ mod tests {
             kind: ConfiguredHandlerKind::Prompt {
                 prompt: "Review $$ARGUMENTS".to_string(),
                 model: None,
+                reasoning_effort: None,
                 timeout_sec: 30,
                 fail_closed,
             },

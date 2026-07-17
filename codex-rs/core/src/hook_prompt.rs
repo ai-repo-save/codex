@@ -13,7 +13,6 @@ use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
-use codex_protocol::openai_models::ReasoningEffort;
 use codex_rollout_trace::InferenceTraceContext;
 use futures::FutureExt;
 use futures::StreamExt;
@@ -113,7 +112,8 @@ impl PromptHookRunner for CorePromptHookRunner {
 impl PromptHookEvaluator {
     async fn run(&self, request: PromptHookRequest) -> anyhow::Result<String> {
         let _permit = acquire_prompt_hook_permit(&self.limiter).await?;
-        let (model_info, reasoning_effort) = self.resolve_model(request.model.as_deref()).await?;
+        let model_info = self.resolve_model(request.model.as_deref()).await?;
+        let reasoning_effort = request.reasoning_effort.clone();
         let prompt = prompt_for_request(request);
 
         let responses_metadata = self.model_client.isolated_responses_metadata();
@@ -139,14 +139,13 @@ impl PromptHookEvaluator {
     async fn resolve_model(
         &self,
         model_override: Option<&str>,
-    ) -> Result<(ModelInfo, Option<ReasoningEffort>), PromptHookEvaluationError> {
+    ) -> Result<ModelInfo, PromptHookEvaluationError> {
         if let Some(model_override) = model_override {
             let model_info = self
                 .models_manager
                 .get_model_info(model_override, &self.models_manager_config)
                 .await;
-            let effort = preferred_reasoning_effort(&model_info);
-            return Ok((model_info, effort));
+            return Ok(model_info);
         }
 
         let preferred_model = self.model_client.approval_review_preferred_model();
@@ -157,24 +156,15 @@ impl PromptHookEvaluator {
                 self.http_client_factory.clone(),
             )
             .await;
-        if let Some(preset) = available_models
+        if available_models
             .iter()
-            .find(|preset| preset.model == preferred_model)
+            .any(|preset| preset.model == preferred_model)
         {
             let model_info = self
                 .models_manager
                 .get_model_info(preferred_model, &self.models_manager_config)
                 .await;
-            let effort = if preset
-                .supported_reasoning_efforts
-                .iter()
-                .any(|preset| preset.effort == ReasoningEffort::Low)
-            {
-                Some(ReasoningEffort::Low)
-            } else {
-                Some(preset.default_reasoning_effort.clone())
-            };
-            return Ok((model_info, effort));
+            return Ok(model_info);
         }
 
         Err(PromptHookEvaluationError::PreferredModelUnavailable)
@@ -347,18 +337,6 @@ fn schema_allows_null(schema: &Value) -> bool {
         .filter_map(|key| schema.get(key).and_then(Value::as_array))
         .flatten()
         .any(schema_allows_null)
-}
-
-fn preferred_reasoning_effort(model_info: &ModelInfo) -> Option<ReasoningEffort> {
-    if model_info
-        .supported_reasoning_levels
-        .iter()
-        .any(|preset| preset.effort == ReasoningEffort::Low)
-    {
-        Some(ReasoningEffort::Low)
-    } else {
-        model_info.default_reasoning_level.clone()
-    }
 }
 
 async fn collect_final_json(

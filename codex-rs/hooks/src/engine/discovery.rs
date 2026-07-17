@@ -516,6 +516,7 @@ fn append_matcher_groups(
                         command: Some(command.clone()),
                         prompt: None,
                         model: None,
+                        reasoning_effort: None,
                         fail_closed: None,
                         timeout_sec,
                         status_message: status_message.clone(),
@@ -554,6 +555,7 @@ fn append_matcher_groups(
                 HookHandlerConfig::Prompt {
                     prompt,
                     model,
+                    reasoning_effort,
                     timeout_sec,
                     status_message,
                     fail_closed,
@@ -595,6 +597,7 @@ fn append_matcher_groups(
                     let normalized_handler = HookHandlerConfig::Prompt {
                         prompt: prompt.clone(),
                         model: model.clone(),
+                        reasoning_effort: reasoning_effort.clone(),
                         timeout_sec: Some(timeout_sec),
                         status_message: status_message.clone(),
                         fail_closed,
@@ -615,6 +618,7 @@ fn append_matcher_groups(
                         command: None,
                         prompt: Some(prompt.clone()),
                         model: model.clone(),
+                        reasoning_effort: reasoning_effort.clone(),
                         fail_closed: Some(fail_closed),
                         timeout_sec,
                         status_message: status_message.clone(),
@@ -640,6 +644,7 @@ fn append_matcher_groups(
                             kind: ConfiguredHandlerKind::Prompt {
                                 prompt,
                                 model,
+                                reasoning_effort,
                                 timeout_sec,
                                 fail_closed,
                             },
@@ -760,6 +765,7 @@ mod tests {
     use codex_config::ConfigLayerSource;
     use codex_config::HookEventsToml;
     use codex_config::RequirementSource;
+    use codex_protocol::openai_models::ReasoningEffort;
     use codex_protocol::protocol::HookEventName;
     use codex_protocol::protocol::HookSource;
     use codex_utils_absolute_path::AbsolutePathBuf;
@@ -871,6 +877,7 @@ mod tests {
         HookHandlerConfig::Prompt {
             prompt: "Review $$ARGUMENTS".to_string(),
             model: Some("gpt-test".to_string()),
+            reasoning_effort: Some(ReasoningEffort::High),
             timeout_sec: None,
             status_message: Some("Reviewing tool use".to_string()),
             fail_closed,
@@ -906,6 +913,7 @@ mod tests {
             ConfiguredHandlerKind::Prompt {
                 prompt: "Review $$ARGUMENTS".to_string(),
                 model: Some("gpt-test".to_string()),
+                reasoning_effort: Some(ReasoningEffort::High),
                 timeout_sec: 30,
                 fail_closed: true,
             }
@@ -918,8 +926,49 @@ mod tests {
             Some("Review $$ARGUMENTS")
         );
         assert_eq!(hook_entries[0].model.as_deref(), Some("gpt-test"));
+        assert_eq!(hook_entries[0].reasoning_effort, Some(ReasoningEffort::High));
         assert_eq!(hook_entries[0].timeout_sec, 30);
         assert_eq!(hook_entries[0].fail_closed, Some(true));
+    }
+
+    #[test]
+    fn prompt_reasoning_effort_changes_normalized_hook_hash() {
+        let mut handlers = Vec::new();
+        let mut hook_entries = Vec::new();
+        let mut warnings = Vec::new();
+        let mut display_order = 0;
+        let source_path = source_path();
+        let hook_states = std::collections::HashMap::new();
+        let mut low_effort = prompt_handler(/*fail_closed*/ false);
+        let HookHandlerConfig::Prompt {
+            reasoning_effort, ..
+        } = &mut low_effort
+        else {
+            unreachable!("prompt handler helper must return a prompt")
+        };
+        *reasoning_effort = Some(ReasoningEffort::Low);
+
+        append_matcher_groups(
+            &mut handlers,
+            &mut hook_entries,
+            &mut warnings,
+            &mut display_order,
+            &hook_handler_source(&source_path, &hook_states),
+            HookEventName::PreToolUse,
+            vec![
+                MatcherGroup {
+                    matcher: None,
+                    hooks: vec![prompt_handler(/*fail_closed*/ false)],
+                },
+                MatcherGroup {
+                    matcher: None,
+                    hooks: vec![low_effort],
+                },
+            ],
+        );
+
+        assert_eq!(warnings, Vec::<String>::new());
+        assert_ne!(hook_entries[0].current_hash, hook_entries[1].current_hash);
     }
 
     #[test]
@@ -945,6 +994,7 @@ mod tests {
                     HookHandlerConfig::Prompt {
                         prompt: String::new(),
                         model: None,
+                        reasoning_effort: None,
                         timeout_sec: None,
                         status_message: None,
                         fail_closed: false,
@@ -952,6 +1002,7 @@ mod tests {
                     HookHandlerConfig::Prompt {
                         prompt: oversized_prompt,
                         model: None,
+                        reasoning_effort: None,
                         timeout_sec: None,
                         status_message: None,
                         fail_closed: false,
@@ -959,6 +1010,7 @@ mod tests {
                     HookHandlerConfig::Prompt {
                         prompt: "Review $$ARGUMENTS".to_string(),
                         model: Some(" gpt-test".to_string()),
+                        reasoning_effort: None,
                         timeout_sec: None,
                         status_message: None,
                         fail_closed: false,
@@ -966,6 +1018,7 @@ mod tests {
                     HookHandlerConfig::Prompt {
                         prompt: "Review $$ARGUMENTS".to_string(),
                         model: None,
+                        reasoning_effort: None,
                         timeout_sec: Some(601),
                         status_message: None,
                         fail_closed: false,
@@ -973,6 +1026,7 @@ mod tests {
                     HookHandlerConfig::Prompt {
                         prompt: "Review $$ARGUMENTS".to_string(),
                         model: Some("gpt-test".to_string()),
+                        reasoning_effort: Some(ReasoningEffort::High),
                         timeout_sec: Some(1),
                         status_message: Some("  ".to_string()),
                         fail_closed: true,
@@ -989,6 +1043,7 @@ mod tests {
             ConfiguredHandlerKind::Prompt {
                 prompt: "Review $$ARGUMENTS".to_string(),
                 model: Some("gpt-test".to_string()),
+                reasoning_effort: Some(ReasoningEffort::High),
                 timeout_sec: 1,
                 fail_closed: true,
             }
@@ -1001,6 +1056,7 @@ mod tests {
             Some("Review $$ARGUMENTS")
         );
         assert_eq!(hook_entries[0].model.as_deref(), Some("gpt-test"));
+        assert_eq!(hook_entries[0].reasoning_effort, Some(ReasoningEffort::High));
         assert_eq!(hook_entries[0].status_message, None);
         assert_eq!(hook_entries[0].timeout_sec, 1);
         assert_eq!(hook_entries[0].fail_closed, Some(true));

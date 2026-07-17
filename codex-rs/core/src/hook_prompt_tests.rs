@@ -34,6 +34,7 @@ fn prompt_request_uses_strict_schema_without_tools() {
     let prompt = prompt_for_request(PromptHookRequest {
         rendered_prompt: "evaluate this input".to_string(),
         model: None,
+        reasoning_effort: None,
         event_name: HookEventName::PreToolUse,
         output_schema: output_schema.clone(),
     });
@@ -72,6 +73,7 @@ fn pre_tool_use_schema_is_strict_and_accepts_safe_and_deny_outputs() {
     let schema = prompt_for_request(PromptHookRequest {
         rendered_prompt: "evaluate this input".to_string(),
         model: None,
+        reasoning_effort: None,
         event_name: HookEventName::PreToolUse,
         output_schema: pre_tool_use_output_schema(),
     })

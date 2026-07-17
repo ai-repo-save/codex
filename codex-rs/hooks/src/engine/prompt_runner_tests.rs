@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use codex_protocol::openai_models::ReasoningEffort;
 use futures::FutureExt;
 use pretty_assertions::assert_eq;
 
@@ -64,10 +65,18 @@ async fn prompt_runner_receives_raw_override_event_and_pre_tool_schema() {
     assert_eq!(result.exit_code, Some(0));
     assert_eq!(result.stdout, "{}");
     let requests = requests.lock().expect("request lock");
-    assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].model.as_deref(), Some("gpt-override"));
-    assert_eq!(requests[0].event_name, HookEventName::PreToolUse);
-    assert_eq!(requests[0].output_schema["type"], "object");
+    assert_eq!(
+        requests.as_slice(),
+        &[PromptHookRequest {
+            rendered_prompt: "Review {}".to_string(),
+            model: Some("gpt-override".to_string()),
+            reasoning_effort: Some(ReasoningEffort::High),
+            event_name: HookEventName::PreToolUse,
+            output_schema: super::super::schema_loader::generated_hook_schemas()
+                .pre_tool_use_command_output
+                .clone(),
+        }]
+    );
 }
 
 fn prompt_handler(fail_closed: bool) -> ConfiguredHandler {
@@ -77,6 +86,7 @@ fn prompt_handler(fail_closed: bool) -> ConfiguredHandler {
         kind: ConfiguredHandlerKind::Prompt {
             prompt: "Review $$ARGUMENTS".to_string(),
             model: Some("gpt-override".to_string()),
+            reasoning_effort: Some(ReasoningEffort::High),
             timeout_sec: 30,
             fail_closed,
         },

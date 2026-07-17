@@ -607,6 +607,7 @@ impl ModelClient {
             settings.effort,
             settings.summary,
             settings.service_tier,
+            ModelClientSessionMode::Standard,
             responses_metadata,
         )?;
         let ResponsesApiRequest {
@@ -842,7 +843,15 @@ impl ModelClient {
         model_info: &ModelInfo,
         effort: Option<ReasoningEffortConfig>,
         summary: ReasoningSummaryConfig,
+        session_mode: ModelClientSessionMode,
     ) -> Option<Reasoning> {
+        if session_mode == ModelClientSessionMode::IsolatedOneShot {
+            return effort.map(|effort| Reasoning {
+                effort: Some(effort),
+                summary: (summary != ReasoningSummaryConfig::None).then_some(summary),
+                context: None,
+            });
+        }
         if model_info.supports_reasoning_summaries {
             Some(Reasoning {
                 effort: effort
@@ -873,6 +882,7 @@ impl ModelClient {
         effort: Option<ReasoningEffortConfig>,
         summary: ReasoningSummaryConfig,
         service_tier: Option<String>,
+        session_mode: ModelClientSessionMode,
         responses_metadata: &CodexResponsesMetadata,
     ) -> Result<ResponsesApiRequest> {
         let mut input = prompt.get_formatted_input_for_request(model_info.use_responses_lite);
@@ -909,7 +919,7 @@ impl ModelClient {
             .then_some(StreamOptions {
                 reasoning_summary_delivery: codex_api::ReasoningSummaryDelivery::SequentialCutoff,
             });
-        let reasoning = Self::build_reasoning(model_info, effort, summary);
+        let reasoning = Self::build_reasoning(model_info, effort, summary, session_mode);
         let include = if reasoning.is_some() {
             vec!["reasoning.encrypted_content".to_string()]
         } else {
@@ -1488,6 +1498,7 @@ impl ModelClientSession {
                 effort.clone(),
                 summary,
                 service_tier.clone(),
+                session_mode,
                 responses_metadata,
             )?;
             if session_mode == ModelClientSessionMode::IsolatedOneShot {
@@ -1606,6 +1617,7 @@ impl ModelClientSession {
                 effort.clone(),
                 summary,
                 service_tier.clone(),
+                ModelClientSessionMode::Standard,
                 responses_metadata,
             )?;
             let request_session_telemetry = if warmup {

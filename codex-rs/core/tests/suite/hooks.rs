@@ -15,6 +15,7 @@ use codex_protocol::models::ContentItem;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::permissions::NetworkSandboxPolicy;
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::HookCompletedEvent;
@@ -141,8 +142,9 @@ fn write_pre_tool_use_prompt_hook(
     fail_closed: bool,
     timeout_sec: Option<u64>,
     model: Option<&str>,
+    reasoning_effort: Option<ReasoningEffort>,
 ) -> Result<()> {
-    let hooks = serde_json::json!({
+    let mut hooks = serde_json::json!({
         "hooks": {
             "PreToolUse": [{
                 "matcher": "^Bash$",
@@ -157,6 +159,10 @@ fn write_pre_tool_use_prompt_hook(
             }]
         }
     });
+    if let Some(reasoning_effort) = reasoning_effort {
+        hooks["hooks"]["PreToolUse"][0]["hooks"][0]["reasoningEffort"] =
+            serde_json::json!(reasoning_effort);
+    }
     fs::write(home.join("hooks.json"), hooks.to_string()).context("write hooks.json")?;
     Ok(())
 }
@@ -2517,8 +2523,9 @@ fn prompt_hook_tool_turn_without_evaluator_sse(call_id: &str, command: &str) -> 
     ])
 }
 
-#[tokio::test]
-async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result<()> {
+async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
+    reasoning_effort: Option<ReasoningEffort>,
+) -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -2532,14 +2539,16 @@ async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result
     )
     .await;
 
+    let fixture_reasoning_effort = reasoning_effort.clone();
     let mut builder = test_codex()
         .with_model(PRE_TOOL_PROMPT_HOOK_MAIN_MODEL)
-        .with_pre_build_hook(|home| {
+        .with_pre_build_hook(move |home| {
             write_pre_tool_use_prompt_hook(
                 home,
                 /*fail_closed*/ false,
                 /*timeout_sec*/ None,
                 Some(PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL),
+                fixture_reasoning_effort.clone(),
             )
             .expect("write prompt hook fixture");
         })
@@ -2564,10 +2573,16 @@ async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result
         "explicit prompt hook model should take precedence"
     );
     assert_eq!(hook_body["tools"], serde_json::json!([]));
-    assert!(
-        hook_body["reasoning"]["effort"].is_null(),
-        "models without Low support should use their default effort"
-    );
+    match reasoning_effort {
+        Some(reasoning_effort) => assert_eq!(
+            hook_body["reasoning"]["effort"],
+            serde_json::json!(reasoning_effort)
+        ),
+        None => assert!(
+            hook_body.get("reasoning").is_none(),
+            "undeclared reasoning effort must omit reasoning parameters"
+        ),
+    }
     assert_eq!(hook_body["text"]["format"]["type"], "json_schema");
     assert_eq!(hook_body["text"]["format"]["strict"], true);
     assert_eq!(hook_request.message_input_texts("developer"), Vec::<String>::new());
@@ -2578,6 +2593,17 @@ async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result
     assert!(!requests[2].body_contains_text(PRE_TOOL_PROMPT_HOOK_SENTINEL));
 
     Ok(())
+}
+
+#[tokio::test]
+async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result<()> {
+    assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(None).await
+}
+
+#[tokio::test]
+async fn pre_tool_use_prompt_hook_sends_declared_reasoning_effort() -> Result<()> {
+    assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(Some(ReasoningEffort::Low))
+        .await
 }
 
 #[tokio::test]
@@ -2607,6 +2633,7 @@ async fn pre_tool_use_prompt_hook_deny_blocks_tool_and_turn_continues() -> Resul
                 /*fail_closed*/ false,
                 /*timeout_sec*/ None,
                 Some(PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL),
+                /*reasoning_effort*/ None,
             )
             .expect("write prompt hook fixture");
         })
@@ -2656,6 +2683,7 @@ async fn assert_prompt_hook_failure_is_fail_open(
                 /*fail_closed*/ false,
                 timeout_sec,
                 Some(PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL),
+                /*reasoning_effort*/ None,
             )
             .expect("write prompt hook fixture");
         })
@@ -2731,6 +2759,7 @@ async fn assert_missing_preferred_prompt_hook_model_respects_failure_mode(
                 fail_closed,
                 /*timeout_sec*/ None,
                 /*model*/ None,
+                /*reasoning_effort*/ None,
             )
             .expect("write prompt hook fixture");
         })
@@ -2809,6 +2838,7 @@ async fn pre_tool_use_prompt_hook_failure_fails_closed_and_turn_continues() -> R
                 /*fail_closed*/ true,
                 /*timeout_sec*/ None,
                 Some(PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL),
+                /*reasoning_effort*/ None,
             )
             .expect("write prompt hook fixture");
         })

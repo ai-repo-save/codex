@@ -138,6 +138,7 @@ matcher = "^Bash$"
 type = "prompt"
 prompt = "Evaluate $$ARGUMENTS against managed policy."
 model = "gpt-managed-hook"
+reasoningEffort = "high"
 timeout = 19
 failClosed = true
 statusMessage = "checking managed policy"
@@ -172,6 +173,7 @@ statusMessage = "checking managed policy"
                 hooks: vec![ConfiguredHookHandler::Prompt {
                     prompt: "Evaluate $$ARGUMENTS against managed policy.".to_string(),
                     model: Some("gpt-managed-hook".to_string()),
+                    reasoning_effort: Some(ReasoningEffort::High),
                     timeout_sec: Some(19),
                     fail_closed: true,
                     status_message: Some("checking managed policy".to_string()),

@@ -26,12 +26,13 @@ use crate::events::user_prompt_submit::UserPromptSubmitRequest;
 use crate::output_spill::HookOutputSpiller;
 use codex_config::ConfigLayerStack;
 use codex_plugin::PluginHookSource;
-use codex_protocol::ThreadId;
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::HookEventName;
 use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookRunSummary;
 use codex_protocol::protocol::HookSource;
 use codex_protocol::protocol::HookTrustStatus;
+use codex_protocol::ThreadId;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -66,6 +67,7 @@ pub(crate) enum ConfiguredHandlerKind {
     Prompt {
         prompt: String,
         model: Option<String>,
+        reasoning_effort: Option<ReasoningEffort>,
         timeout_sec: u64,
         fail_closed: bool,
     },
@@ -136,6 +138,7 @@ pub struct HookListEntry {
     pub command: Option<String>,
     pub prompt: Option<String>,
     pub model: Option<String>,
+    pub reasoning_effort: Option<ReasoningEffort>,
     pub fail_closed: Option<bool>,
     pub timeout_sec: u64,
     pub status_message: Option<String>,

@@ -72,6 +72,7 @@ fn hooks_to_info(hooks: &[codex_hooks::HookListEntry]) -> Vec<HookMetadata> {
             command: hook.command.clone(),
             prompt: hook.prompt.clone(),
             model: hook.model.clone(),
+            reasoning_effort: hook.reasoning_effort.clone(),
             fail_closed: hook.fail_closed.unwrap_or(false),
             timeout_sec: hook.timeout_sec,
             status_message: hook.status_message.clone(),

@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
 
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::HookEventName;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -167,6 +168,8 @@ pub enum HookHandlerConfig {
         prompt: String,
         #[serde(default)]
         model: Option<String>,
+        #[serde(default, rename = "reasoningEffort")]
+        reasoning_effort: Option<ReasoningEffort>,
         #[serde(default, rename = "timeout", alias = "timeoutSec")]
         timeout_sec: Option<u64>,
         #[serde(default, rename = "statusMessage")]

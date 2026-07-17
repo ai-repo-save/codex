@@ -505,6 +505,9 @@ impl HooksBrowserView {
                     "Model",
                     hook.model.as_deref().unwrap_or("default"),
                 ));
+                if let Some(reasoning_effort) = hook.reasoning_effort.as_ref() {
+                    lines.push(detail_line("Reasoning effort", reasoning_effort.as_str()));
+                }
                 lines.push(detail_line(
                     "Fail closed",
                     if hook.fail_closed { "Yes" } else { "No" },
@@ -902,6 +905,7 @@ mod tests {
     use tokio::sync::mpsc::unbounded_channel;
 
     const PROMPT_SENTINEL: &str = "PROMPT_SENTINEL_7F3A";
+    const REASONING_EFFORT_SENTINEL: &str = "REASONING_EFFORT_SENTINEL_9D2C";
 
     fn render_lines(view: &HooksBrowserView, width: u16) -> String {
         let height = view.desired_height(width);
@@ -959,6 +963,7 @@ mod tests {
             command: Some(command.to_string()),
             prompt: None,
             model: None,
+            reasoning_effort: None,
             fail_closed: false,
             timeout_sec: 30,
             status_message: None,
@@ -1314,6 +1319,11 @@ mod tests {
             "First prompt line\n{PROMPT_SENTINEL}\nThird prompt line that remains visible after wrapping"
         ));
         prompt_hook.model = Some("gpt-5.4-mini".to_string());
+        prompt_hook.reasoning_effort = Some(
+            codex_protocol::openai_models::ReasoningEffort::Custom(
+                REASONING_EFFORT_SENTINEL.to_string(),
+            ),
+        );
         prompt_hook.fail_closed = true;
         let mut view = HooksBrowserView::new(
             vec![prompt_hook],
@@ -1324,6 +1334,7 @@ mod tests {
 
         let event_page = render_lines(&view, /*width*/ 56);
         assert!(!event_page.contains(PROMPT_SENTINEL));
+        assert!(!event_page.contains(REASONING_EFFORT_SENTINEL));
         view.handle_key_event(KeyEvent::from(KeyCode::Enter));
         let handler_rows = view
             .handler_row_lines(HookEventName::PreToolUse, /*width*/ 56)
@@ -1336,9 +1347,11 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(!handler_rows.contains(PROMPT_SENTINEL));
+        assert!(!handler_rows.contains(REASONING_EFFORT_SENTINEL));
 
         let details = render_lines(&view, /*width*/ 56);
         assert!(details.contains(PROMPT_SENTINEL));
+        assert!(details.contains(REASONING_EFFORT_SENTINEL));
         assert_snapshot!("hooks_browser_prompt_handler_details", details);
     }
 

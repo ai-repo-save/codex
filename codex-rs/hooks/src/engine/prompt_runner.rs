@@ -1,6 +1,7 @@
 use std::time::Duration;
 use std::time::Instant;
 
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::HookEventName;
 use codex_utils_output_truncation::approx_token_count;
 use futures::future::BoxFuture;
@@ -21,6 +22,7 @@ const UNTRUSTED_EVENT_JSON_SUFFIX: &str = "\n</untrusted-hook-event-json>";
 pub struct PromptHookRequest {
     pub rendered_prompt: String,
     pub model: Option<String>,
+    pub reasoning_effort: Option<ReasoningEffort>,
     pub event_name: HookEventName,
     pub output_schema: Value,
 }
@@ -46,6 +48,7 @@ pub(crate) async fn run_prompt(
     let ConfiguredHandlerKind::Prompt {
         prompt,
         model,
+        reasoning_effort,
         timeout_sec,
         ..
     } = &handler.kind
@@ -70,6 +73,7 @@ pub(crate) async fn run_prompt(
     let request = PromptHookRequest {
         rendered_prompt,
         model: model.clone(),
+        reasoning_effort: reasoning_effort.clone(),
         event_name: handler.event_name,
         output_schema: super::schema_loader::generated_hook_schemas()
             .pre_tool_use_command_output

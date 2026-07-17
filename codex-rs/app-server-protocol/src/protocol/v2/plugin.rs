@@ -3,6 +3,7 @@ use super::HookEventName;
 use super::HookHandlerType;
 use super::HookSource;
 use super::HookTrustStatus;
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::SkillDependencies as CoreSkillDependencies;
 use codex_protocol::protocol::SkillInterface as CoreSkillInterface;
 use codex_protocol::protocol::SkillMetadata as CoreSkillMetadata;
@@ -516,6 +517,7 @@ pub struct HookMetadata {
     pub command: Option<String>,
     pub prompt: Option<String>,
     pub model: Option<String>,
+    pub reasoning_effort: Option<ReasoningEffort>,
     pub fail_closed: bool,
     pub timeout_sec: u64,
     pub status_message: Option<String>,

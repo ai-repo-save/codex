@@ -469,12 +469,14 @@ fn map_hook_handler_to_api(handler: CoreHookHandlerConfig) -> ConfiguredHookHand
         CoreHookHandlerConfig::Prompt {
             prompt,
             model,
+            reasoning_effort,
             timeout_sec,
             fail_closed,
             status_message,
         } => ConfiguredHookHandler::Prompt {
             prompt,
             model,
+            reasoning_effort,
             timeout_sec,
             fail_closed,
             status_message,

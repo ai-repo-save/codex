@@ -24,6 +24,7 @@ use codex_app_server_protocol::TurnStartParams;
 use codex_app_server_protocol::UserInput as V2UserInput;
 use codex_core::config::set_project_trust_level;
 use codex_protocol::config_types::TrustLevel;
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use core_test_support::skip_if_host_windows;
 use core_test_support::skip_if_remote;
@@ -72,6 +73,7 @@ fn prompt_hook_hash(
     matcher: Option<&str>,
     prompt: &str,
     model: Option<&str>,
+    reasoning_effort: Option<ReasoningEffort>,
     fail_closed: bool,
     status_message: Option<&str>,
 ) -> String {
@@ -82,6 +84,7 @@ fn prompt_hook_hash(
             hooks: vec![codex_config::HookHandlerConfig::Prompt {
                 prompt: prompt.to_string(),
                 model: model.map(ToOwned::to_owned),
+                reasoning_effort,
                 timeout_sec: Some(30),
                 fail_closed,
                 status_message: status_message.map(ToOwned::to_owned),
@@ -124,6 +127,7 @@ matcher = "Bash"
 type = "prompt"
 prompt = "Review this tool call: $$ARGUMENTS"
 model = "gpt-hook-reviewer"
+reasoningEffort = "high"
 failClosed = true
 statusMessage = "reviewing listed hook"
 "#,
@@ -214,6 +218,7 @@ async fn hooks_list_shows_discovered_hook() -> Result<()> {
                 command: Some("python3 /tmp/listed-hook.py".to_string()),
                 prompt: None,
                 model: None,
+                reasoning_effort: None,
                 fail_closed: false,
                 timeout_sec: 5,
                 status_message: Some("running listed hook".to_string()),
@@ -278,6 +283,7 @@ async fn hooks_list_returns_prompt_hook_definition() -> Result<()> {
                 command: None,
                 prompt: Some("Review this tool call: $$ARGUMENTS".to_string()),
                 model: Some("gpt-hook-reviewer".to_string()),
+                reasoning_effort: Some(ReasoningEffort::High),
                 fail_closed: true,
                 timeout_sec: 30,
                 status_message: Some("reviewing listed hook".to_string()),
@@ -292,6 +298,7 @@ async fn hooks_list_returns_prompt_hook_definition() -> Result<()> {
                     Some("Bash"),
                     "Review this tool call: $$ARGUMENTS",
                     Some("gpt-hook-reviewer"),
+                    Some(ReasoningEffort::High),
                     true,
                     Some("reviewing listed hook"),
                 ),
@@ -364,6 +371,7 @@ async fn hooks_list_shows_discovered_plugin_hook() -> Result<()> {
                 command: Some("echo plugin hook".to_string()),
                 prompt: None,
                 model: None,
+                reasoning_effort: None,
                 fail_closed: false,
                 timeout_sec: 7,
                 status_message: Some("running plugin hook".to_string()),
@@ -581,6 +589,7 @@ timeout = 5
                     command: Some("echo project hook".to_string()),
                     prompt: None,
                     model: None,
+                    reasoning_effort: None,
                     fail_closed: false,
                     timeout_sec: 5,
                     status_message: None,

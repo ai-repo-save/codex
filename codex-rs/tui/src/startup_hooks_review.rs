@@ -230,6 +230,12 @@ fn selection_view_params(
     {
         header.push(Line::default());
         header.push(Line::from(format!("Prompt hook {}", idx + 1).bold()));
+        if let Some(reasoning_effort) = hook.reasoning_effort.as_ref() {
+            header.push(Line::from(format!(
+                "Reasoning effort: {}",
+                reasoning_effort.as_str()
+            )));
+        }
         header.push(
             Paragraph::new(hook.prompt.clone().unwrap_or_else(|| "-".to_string()))
                 .wrap(Wrap { trim: false }),
@@ -316,6 +322,7 @@ mod tests {
     use tokio::sync::mpsc::unbounded_channel;
 
     const PROMPT_SENTINEL: &str = "PROMPT_SENTINEL_7F3A";
+    const REASONING_EFFORT_SENTINEL: &str = "REASONING_EFFORT_SENTINEL_9D2C";
 
     fn hook(key: &str, trust_status: HookTrustStatus) -> HookMetadata {
         HookMetadata {
@@ -327,6 +334,7 @@ mod tests {
             command: Some("/tmp/hook.sh".to_string()),
             prompt: None,
             model: None,
+            reasoning_effort: None,
             fail_closed: false,
             timeout_sec: 30,
             status_message: None,
@@ -414,6 +422,11 @@ mod tests {
         prompt_hook.prompt = Some(format!(
             "Review this complete prompt.\n{PROMPT_SENTINEL}\nDo not truncate the final line."
         ));
+        prompt_hook.reasoning_effort = Some(
+            codex_protocol::openai_models::ReasoningEffort::Custom(
+                REASONING_EFFORT_SENTINEL.to_string(),
+            ),
+        );
         let entry = HooksListEntry {
             cwd: test_path_buf("/tmp"),
             hooks: vec![prompt_hook],
@@ -430,6 +443,7 @@ mod tests {
 
         let rendered = render_lines(&view, /*width*/ 80);
         assert!(rendered.contains(PROMPT_SENTINEL));
+        assert!(rendered.contains(REASONING_EFFORT_SENTINEL));
         assert_snapshot!("startup_hooks_review_prompt_handler", rendered);
     }
 

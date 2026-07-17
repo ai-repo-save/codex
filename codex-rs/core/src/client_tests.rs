@@ -326,14 +326,82 @@ async fn isolated_session_uses_one_http_attempt_without_websocket_fallback() {
         .expect(/*requests*/ 1)
         .mount(&server)
         .await;
+    let client = isolated_test_client(&server);
+    let mut model_info = test_model_info();
+    model_info.supports_reasoning_summaries = true;
 
+    send_isolated_test_request(&client, &model_info, /*effort*/ None).await;
+
+    let requests = server
+        .received_requests()
+        .await
+        .expect("server should record the isolated request");
+    assert_eq!(requests.len(), 1);
+    let request_body = requests[0]
+        .body_json::<serde_json::Value>()
+        .expect("isolated request body should be JSON");
+    assert_eq!(
+        request_body["max_output_tokens"],
+        json!(ISOLATED_ONE_SHOT_MAX_OUTPUT_TOKENS)
+    );
+    assert_eq!(request_body.get("reasoning"), None);
+}
+
+#[tokio::test]
+async fn isolated_session_sends_explicit_reasoning_effort_exactly() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .respond_with(ResponseTemplate::new(/*status*/ 500))
+        .expect(/*requests*/ 2)
+        .mount(&server)
+        .await;
+    let client = isolated_test_client(&server);
+    let model_info = test_model_info();
+
+    for effort in [ReasoningEffort::Low, ReasoningEffort::Ultra] {
+        send_isolated_test_request(&client, &model_info, Some(effort)).await;
+    }
+
+    let requests = server
+        .received_requests()
+        .await
+        .expect("server should record isolated requests");
+    assert_eq!(requests.len(), 2);
+    let reasoning = requests
+        .iter()
+        .map(|request| {
+            request
+                .body_json::<serde_json::Value>()
+                .expect("isolated request body should be JSON")["reasoning"]
+                .clone()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        reasoning,
+        vec![json!({"effort": "low"}), json!({"effort": "ultra"})]
+    );
+}
+
+#[test]
+fn ultra_reasoning_uses_max_for_requests() {
+    assert_eq!(
+        (
+            super::reasoning_effort_for_request(ReasoningEffort::Ultra),
+            super::reasoning_effort_for_request(ReasoningEffort::High),
+        ),
+        (ReasoningEffort::Max, ReasoningEffort::High,)
+    );
+}
+
+fn isolated_test_client(server: &MockServer) -> ModelClient {
     let mut provider = create_oss_provider_with_base_url(
         format!("{}/v1", server.uri()).as_str(),
         WireApi::Responses,
     );
     provider.supports_websockets = true;
     provider.request_max_retries = Some(3);
-    let client = ModelClient::new(
+    ModelClient::new(
         /*auth_manager*/ None,
         AgentIdentityAuthPolicy::JwtOnly,
         ThreadId::new(),
@@ -348,7 +416,14 @@ async fn isolated_session_uses_one_http_attempt_without_websocket_fallback() {
         /*concurrent_reasoning_summaries_enabled*/ false,
         /*attestation_provider*/ None,
         HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
-    );
+    )
+}
+
+async fn send_isolated_test_request(
+    client: &ModelClient,
+    model_info: &ModelInfo,
+    effort: Option<ReasoningEffort>,
+) {
     let prompt = Prompt {
         input: vec![ResponseItem::Message {
             id: None,
@@ -366,9 +441,9 @@ async fn isolated_session_uses_one_http_attempt_without_websocket_fallback() {
         .new_isolated_session()
         .stream(
             &prompt,
-            &test_model_info(),
+            model_info,
             &test_session_telemetry(),
-            /*effort*/ None,
+            effort,
             codex_protocol::config_types::ReasoningSummary::None,
             /*service_tier*/ None,
             &responses_metadata,
@@ -377,29 +452,6 @@ async fn isolated_session_uses_one_http_attempt_without_websocket_fallback() {
         .await;
 
     assert!(result.is_err());
-    let requests = server
-        .received_requests()
-        .await
-        .expect("server should record the isolated request");
-    assert_eq!(requests.len(), 1);
-    let request_body = requests[0]
-        .body_json::<serde_json::Value>()
-        .expect("isolated request body should be JSON");
-    assert_eq!(
-        request_body["max_output_tokens"],
-        json!(ISOLATED_ONE_SHOT_MAX_OUTPUT_TOKENS)
-    );
-}
-
-#[test]
-fn ultra_reasoning_uses_max_for_requests() {
-    assert_eq!(
-        (
-            super::reasoning_effort_for_request(ReasoningEffort::Ultra),
-            super::reasoning_effort_for_request(ReasoningEffort::High),
-        ),
-        (ReasoningEffort::Max, ReasoningEffort::High,)
-    );
 }
 
 fn write_chatgpt_auth_json(codex_home: &std::path::Path) {

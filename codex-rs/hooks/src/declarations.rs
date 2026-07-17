@@ -65,6 +65,7 @@ mod tests {
                         HookHandlerConfig::Prompt {
                             prompt: "check $$ARGUMENTS".to_string(),
                             model: None,
+                            reasoning_effort: None,
                             timeout_sec: None,
                             status_message: None,
                             fail_closed: false,
