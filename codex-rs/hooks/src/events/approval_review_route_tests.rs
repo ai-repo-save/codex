@@ -74,8 +74,7 @@ async fn prompt_route_uses_command_dto_schema_and_static_decision_aggregation() 
         result: Ok(route_output("auto_review")),
     };
     let request = request();
-    let expected_input =
-        serde_json::to_string(&build_command_input(&request)).expect("input JSON");
+    let expected_input = serde_json::to_string(&build_command_input(&request)).expect("input JSON");
 
     let outcome = run(
         &[prompt_handler(/*fail_closed*/ false)],
@@ -85,7 +84,10 @@ async fn prompt_route_uses_command_dto_schema_and_static_decision_aggregation() 
     )
     .await;
 
-    assert_eq!(outcome.decision, Some(ApprovalReviewRouteDecision::AutoReview));
+    assert_eq!(
+        outcome.decision,
+        Some(ApprovalReviewRouteDecision::AutoReview)
+    );
     assert_eq!(outcome.hook_events.len(), 1);
     assert_eq!(outcome.hook_events[0].run.status, HookRunStatus::Completed);
     let requests = requests.lock().expect("request lock");

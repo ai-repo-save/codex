@@ -71,9 +71,7 @@ pub(crate) async fn run_prompt(
     let output_schema = match handler.event_name {
         HookEventName::PreToolUse => schemas.pre_tool_use_command_output.clone(),
         HookEventName::PermissionRequest => schemas.permission_request_command_output.clone(),
-        HookEventName::ApprovalReviewRoute => {
-            schemas.approval_review_route_command_output.clone()
-        }
+        HookEventName::ApprovalReviewRoute => schemas.approval_review_route_command_output.clone(),
         HookEventName::PostToolUse
         | HookEventName::SessionStart
         | HookEventName::SubagentStart

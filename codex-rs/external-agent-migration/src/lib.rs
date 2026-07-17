@@ -18,11 +18,8 @@ const EXTERNAL_AGENT_HOOKS_SUBDIR: &str = "hooks";
 const EXTERNAL_AGENT_MIGRATED_HOOKS_SUBDIR: &str = "hooks";
 const COMMAND_SKILL_PREFIX: &str = "source-command";
 const MAX_SKILL_NAME_LEN: usize = 64;
-const PROMPT_HOOK_EVENT_NAMES: [&str; 3] = [
-    "PreToolUse",
-    "PermissionRequest",
-    "ApprovalReviewRoute",
-];
+const PROMPT_HOOK_EVENT_NAMES: [&str; 3] =
+    ["PreToolUse", "PermissionRequest", "ApprovalReviewRoute"];
 
 #[derive(Debug)]
 struct ParsedDocument {

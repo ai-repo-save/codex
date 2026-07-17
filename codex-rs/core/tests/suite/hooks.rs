@@ -169,11 +169,7 @@ fn write_pre_tool_use_prompt_hook(
     Ok(())
 }
 
-fn write_approval_prompt_hook(
-    home: &Path,
-    event_name: &str,
-    fail_closed: bool,
-) -> Result<()> {
+fn write_approval_prompt_hook(home: &Path, event_name: &str, fail_closed: bool) -> Result<()> {
     let hooks = serde_json::json!({
         "hooks": {
             (event_name): [{
@@ -2101,12 +2097,8 @@ async fn permission_request_prompt_hook_denies_tool_and_turn_continues() -> Resu
 
     let mut builder = test_codex()
         .with_pre_build_hook(|home| {
-            write_approval_prompt_hook(
-                home,
-                "PermissionRequest",
-                /*fail_closed*/ false,
-            )
-            .expect("write permission request prompt hook fixture");
+            write_approval_prompt_hook(home, "PermissionRequest", /*fail_closed*/ false)
+                .expect("write permission request prompt hook fixture");
         })
         .with_config(trust_discovered_hooks);
     let test = builder.build(&server).await?;
@@ -2221,12 +2213,8 @@ async fn approval_review_route_prompt_runs_only_for_needs_approval() -> Result<(
 
     let mut builder = test_codex()
         .with_pre_build_hook(|home| {
-            write_approval_prompt_hook(
-                home,
-                "ApprovalReviewRoute",
-                /*fail_closed*/ false,
-            )
-            .expect("write approval review route prompt hook fixture");
+            write_approval_prompt_hook(home, "ApprovalReviewRoute", /*fail_closed*/ false)
+                .expect("write approval review route prompt hook fixture");
         })
         .with_config(trust_discovered_hooks);
     let test = builder.build(&server).await?;
