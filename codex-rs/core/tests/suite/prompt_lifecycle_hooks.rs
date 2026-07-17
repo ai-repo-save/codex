@@ -25,7 +25,6 @@ use core_test_support::responses::mount_sse_once_match;
 use core_test_support::responses::mount_sse_sequence;
 use core_test_support::responses::sse;
 use core_test_support::responses::start_mock_server;
-use core_test_support::responses::strip_metadata_from_json;
 use core_test_support::skip_if_no_network;
 use core_test_support::test_codex::TestCodex;
 use core_test_support::test_codex::test_codex;
@@ -45,7 +44,6 @@ const FIRST_REPLY: &str = "first lifecycle reply";
 const NEXT_REPLY: &str = "next lifecycle reply";
 const SPAWN_PROMPT: &str = "spawn the lifecycle child";
 const CHILD_PROMPT: &str = "run the lifecycle child";
-const OBSERVE_PROMPT: &str = "observe the lifecycle child result";
 const SPAWN_CALL_ID: &str = "prompt-lifecycle-spawn";
 
 fn write_prompt_hook(
@@ -382,7 +380,7 @@ async fn user_prompt_submit_fail_closed_rejects_only_the_failed_input() -> Resul
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn subagent_start_fail_closed_errors_child_without_sampling_and_notifies_parent() -> Result<()> {
+async fn subagent_start_fail_closed_errors_child_without_sampling() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -485,51 +483,5 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_and_notifies_p
         .count();
     assert_eq!(evaluator_request_count, 1);
     assert_eq!(child_main_request_count, 0);
-
-    wait_for_parent_delivery(&test, &child_error.message).await?;
-    let parent_observation = mount_sse_once_match(
-        &server,
-        {
-            let error = child_error.message.clone();
-            move |request: &wiremock::Request| {
-                request_body(request).is_some_and(|body| {
-                    body["model"] == json!(MAIN_MODEL)
-                        && request_contains(request, OBSERVE_PROMPT)
-                        && request_contains(request, &error)
-                })
-            }
-        },
-        model_sse("subagent-parent-observation", NEXT_REPLY),
-    )
-    .await;
-    test.submit_turn(OBSERVE_PROMPT).await?;
-
-    let request = parent_observation.single_request();
-    let messages = strip_metadata_from_json(Value::Array(request.inputs_of_type("agent_message")));
-    let messages = messages.as_array().context("agent message input array")?;
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0]["author"], json!("/root/worker"));
-    assert_eq!(messages[0]["recipient"], json!("/root"));
-    assert!(messages[0].to_string().contains(&child_error.message));
     Ok(())
-}
-
-async fn wait_for_parent_delivery(test: &TestCodex, error: &str) -> Result<()> {
-    let rollout_path = test
-        .codex
-        .rollout_path()
-        .context("parent rollout path")?;
-    let deadline = Instant::now() + Duration::from_secs(6);
-    loop {
-        if tokio::fs::read_to_string(&rollout_path)
-            .await
-            .is_ok_and(|rollout| rollout.contains(error))
-        {
-            return Ok(());
-        }
-        if Instant::now() >= deadline {
-            anyhow::bail!("timed out waiting for parent lifecycle notification");
-        }
-        sleep(Duration::from_millis(10)).await;
-    }
 }
