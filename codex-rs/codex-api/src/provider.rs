@@ -38,7 +38,7 @@ impl RetryConfig {
 /// HTTP endpoint configuration used to talk to a concrete API deployment.
 ///
 /// Encapsulates base URL, default headers, query params, retry policy, and
-/// stream idle timeout, plus helper methods for building requests.
+/// streaming timeouts, plus helper methods for building requests.
 #[derive(Debug, Clone)]
 pub struct Provider {
     pub name: String,
@@ -47,6 +47,7 @@ pub struct Provider {
     pub headers: HeaderMap,
     pub retry: RetryConfig,
     pub stream_idle_timeout: Duration,
+    pub stream_response_header_timeout: Duration,
 }
 
 impl Provider {
@@ -82,6 +83,7 @@ impl Provider {
             body: None,
             compression: RequestCompression::None,
             timeout: None,
+            response_header_timeout: None,
         }
     }
 

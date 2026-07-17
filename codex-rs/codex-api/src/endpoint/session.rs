@@ -132,6 +132,7 @@ impl<T: HttpTransport> EndpointSession<T> {
     {
         let body = body.map(RequestBody::EncodedJson);
         let mut request = self.make_request(&method, path, &extra_headers, body.as_ref());
+        request.response_header_timeout = Some(self.provider.stream_response_header_timeout);
         configure(&mut request);
         let request = request.into_prepared().map_err(TransportError::Build)?;
         let make_request = || request.clone();

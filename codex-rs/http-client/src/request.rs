@@ -81,6 +81,10 @@ pub struct Request {
     pub body: Option<RequestBody>,
     pub compression: RequestCompression,
     pub timeout: Option<Duration>,
+    /// Maximum time a streaming transport may wait for response headers.
+    ///
+    /// [`HttpTransport::execute`](crate::HttpTransport::execute) ignores this field.
+    pub response_header_timeout: Option<Duration>,
 }
 
 impl Request {
@@ -92,6 +96,7 @@ impl Request {
             body: None,
             compression: RequestCompression::None,
             timeout: None,
+            response_header_timeout: None,
         }
     }
 

@@ -3,6 +3,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_absolute_path::AbsolutePathBufGuard;
 use pretty_assertions::assert_eq;
 use std::num::NonZeroU64;
+use std::time::Duration;
 use tempfile::tempdir;
 
 #[test]
@@ -26,6 +27,7 @@ base_url = "http://localhost:11434/v1"
         request_max_retries: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
+        stream_response_header_timeout_ms: None,
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
@@ -60,6 +62,7 @@ query_params = { api-version = "2025-04-01-preview" }
         request_max_retries: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
+        stream_response_header_timeout_ms: None,
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
@@ -97,6 +100,7 @@ env_http_headers = { "X-Example-Env-Header" = "EXAMPLE_ENV_VAR" }
         request_max_retries: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
+        stream_response_header_timeout_ms: None,
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
@@ -130,6 +134,34 @@ supports_websockets = true
 
     let provider: ModelProviderInfo = toml::from_str(provider_toml).unwrap();
     assert_eq!(provider.websocket_connect_timeout_ms, Some(15_000));
+}
+
+#[test]
+fn test_stream_response_header_timeout_uses_configured_or_default_value() {
+    let test_cases = [
+        (
+            r#"
+name = "Example"
+stream_response_header_timeout_ms = 1_234
+            "#,
+            Duration::from_millis(1_234),
+        ),
+        (
+            r#"
+name = "Example"
+            "#,
+            Duration::from_secs(30),
+        ),
+    ];
+
+    for (provider_toml, expected_timeout) in test_cases {
+        let provider: ModelProviderInfo = toml::from_str(provider_toml).unwrap();
+        let api_provider = provider
+            .to_api_provider(/*auth_mode*/ None)
+            .expect("provider should build API provider");
+
+        assert_eq!(api_provider.stream_response_header_timeout, expected_timeout);
+    }
 }
 
 #[test]
@@ -174,6 +206,7 @@ fn test_supports_remote_compaction_for_azure_name() {
         request_max_retries: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
+        stream_response_header_timeout_ms: None,
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
@@ -199,6 +232,7 @@ fn test_supports_remote_compaction_for_non_openai_non_azure_provider() {
         request_max_retries: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
+        stream_response_header_timeout_ms: None,
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
@@ -307,6 +341,7 @@ fn test_create_amazon_bedrock_provider() {
             request_max_retries: None,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
+            stream_response_header_timeout_ms: None,
             websocket_connect_timeout_ms: None,
             requires_openai_auth: false,
             supports_websockets: false,

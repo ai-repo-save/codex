@@ -143,13 +143,22 @@ fn provider(name: &str) -> Provider {
             retry_transport: true,
         },
         stream_idle_timeout: Duration::from_millis(10),
+        stream_response_header_timeout: Duration::from_millis(20),
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RecordedStreamRequest {
+    body: RequestBody,
+    headers: HeaderMap,
+    compression: codex_client::RequestCompression,
+    response_header_timeout: Option<Duration>,
 }
 
 #[derive(Debug, Default)]
 struct FlakyTransportState {
     attempts: i64,
-    requests: Vec<(RequestBody, HeaderMap, codex_client::RequestCompression)>,
+    requests: Vec<RecordedStreamRequest>,
 }
 
 #[derive(Clone)]
@@ -177,7 +186,7 @@ impl FlakyTransport {
             .attempts
     }
 
-    fn requests(&self) -> Vec<(RequestBody, HeaderMap, codex_client::RequestCompression)> {
+    fn requests(&self) -> Vec<RecordedStreamRequest> {
         self.state
             .lock()
             .expect("flaky transport state mutex should not be poisoned")
@@ -256,12 +265,15 @@ impl HttpTransport for FlakyTransport {
             .lock()
             .expect("flaky transport state mutex should not be poisoned");
         state.attempts += 1;
-        state
-            .requests
-            .push((body, req.headers.clone(), req.compression));
+        state.requests.push(RecordedStreamRequest {
+            body,
+            headers: req.headers.clone(),
+            compression: req.compression,
+            response_header_timeout: req.response_header_timeout,
+        });
 
         if state.attempts == 1 {
-            return Err(TransportError::Network("first attempt fails".to_string()));
+            return Err(TransportError::Timeout);
         }
 
         let stream = futures::stream::iter(vec![Ok(Bytes::from(
@@ -394,7 +406,7 @@ async fn streaming_client_adds_auth_headers() -> Result<()> {
 }
 
 #[tokio::test]
-async fn streaming_client_retries_on_transport_error() -> Result<()> {
+async fn streaming_client_retries_on_response_header_timeout() -> Result<()> {
     let transport = FlakyTransport::new();
 
     let mut provider = provider("openai");
@@ -433,10 +445,10 @@ async fn streaming_client_retries_on_transport_error() -> Result<()> {
     let requests = transport.requests();
     assert_eq!(requests.len(), 2);
     assert_eq!(requests[0], requests[1]);
-    let RequestBody::EncodedJson(first_body) = &requests[0].0 else {
+    let RequestBody::EncodedJson(first_body) = &requests[0].body else {
         panic!("expected an encoded JSON body");
     };
-    let RequestBody::EncodedJson(second_body) = &requests[1].0 else {
+    let RequestBody::EncodedJson(second_body) = &requests[1].body else {
         panic!("expected an encoded JSON body");
     };
     assert_eq!(
@@ -444,10 +456,21 @@ async fn streaming_client_retries_on_transport_error() -> Result<()> {
         second_body.as_bytes().as_ptr()
     );
     assert_eq!(
-        requests[0].1.get(http::header::CONTENT_ENCODING),
+        requests[0].headers.get(http::header::CONTENT_ENCODING),
         Some(&HeaderValue::from_static("zstd"))
     );
-    assert_eq!(requests[0].2, codex_client::RequestCompression::None);
+    assert_eq!(
+        requests[0].compression,
+        codex_client::RequestCompression::None
+    );
+    assert_eq!(
+        requests[0].response_header_timeout,
+        Some(Duration::from_millis(20))
+    );
+    assert_eq!(
+        requests[1].response_header_timeout,
+        Some(Duration::from_millis(20))
+    );
     Ok(())
 }
 

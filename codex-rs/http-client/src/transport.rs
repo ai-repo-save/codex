@@ -27,6 +27,7 @@ pub trait HttpTransport: Send + Sync {
         &self,
         req: Request,
     ) -> impl std::future::Future<Output = Result<Response, TransportError>> + Send;
+    /// Starts a streaming request and enforces [`Request::response_header_timeout`] when set.
     fn stream(
         &self,
         req: Request,
@@ -55,6 +56,7 @@ impl ReqwestTransport {
             body: _,
             compression: _,
             timeout,
+            response_header_timeout: _,
         } = req;
 
         let mut builder = self.client.request(
@@ -137,8 +139,15 @@ impl HttpTransport for ReqwestTransport {
         }
 
         let url = req.url.clone();
+        let response_header_timeout = req.response_header_timeout;
         let builder = self.build(req)?;
-        let resp = builder.send().await.map_err(Self::map_error)?;
+        let resp = match response_header_timeout {
+            Some(timeout) => tokio::time::timeout(timeout, builder.send())
+                .await
+                .map_err(|_| TransportError::Timeout)?
+                .map_err(Self::map_error)?,
+            None => builder.send().await.map_err(Self::map_error)?,
+        };
         let status = resp.status();
         let headers = resp.headers().clone();
         if !status.is_success() {
