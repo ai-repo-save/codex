@@ -161,6 +161,7 @@ const RESPONSES_COMPACT_ENDPOINT: &str = "/responses/compact";
 // period between stream events.
 const COMPACT_REQUEST_TIMEOUT_IDLE_MULTIPLIER: u32 = 4;
 const MEMORIES_SUMMARIZE_ENDPOINT: &str = "/memories/trace_summarize";
+const ISOLATED_ONE_SHOT_MAX_OUTPUT_TOKENS: u32 = 4096;
 #[cfg(test)]
 pub(crate) const WEBSOCKET_CONNECT_TIMEOUT: Duration =
     Duration::from_millis(DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS);
@@ -272,6 +273,7 @@ pub struct ModelClient {
 pub struct ModelClientSession {
     client: ModelClient,
     websocket_session: WebsocketSession,
+    mode: ModelClientSessionMode,
     /// Turn state for sticky routing.
     ///
     /// This is an `OnceLock` that stores the turn state value received from the server
@@ -283,6 +285,12 @@ pub struct ModelClientSession {
     /// keep sending it unchanged between turn requests (e.g., for retries, incremental
     /// appends, or continuation requests), and must not send it between different turns.
     turn_state: Arc<OnceLock<String>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ModelClientSessionMode {
+    Standard,
+    IsolatedOneShot,
 }
 
 #[derive(Debug, Clone)]
@@ -319,6 +327,7 @@ fn responses_request_properties_match(
         stream: previous_stream,
         stream_options: _,
         include: previous_include,
+        max_output_tokens: previous_max_output_tokens,
         service_tier: previous_service_tier,
         prompt_cache_key: previous_prompt_cache_key,
         text: previous_text,
@@ -336,6 +345,7 @@ fn responses_request_properties_match(
         stream: current_stream,
         stream_options: _,
         include: current_include,
+        max_output_tokens: current_max_output_tokens,
         service_tier: current_service_tier,
         prompt_cache_key: current_prompt_cache_key,
         text: current_text,
@@ -353,6 +363,7 @@ fn responses_request_properties_match(
         // Stream options control delivery for this response, not the context
         // referenced by `previous_response_id`.
         && previous_include == current_include
+        && previous_max_output_tokens == current_max_output_tokens
         && previous_service_tier == current_service_tier
         && previous_prompt_cache_key == current_prompt_cache_key
         && previous_text == current_text
@@ -480,12 +491,40 @@ impl ModelClient {
         ModelClientSession {
             client: self.clone(),
             websocket_session: self.take_cached_websocket_session(),
+            mode: ModelClientSessionMode::Standard,
+            turn_state: Arc::new(OnceLock::new()),
+        }
+    }
+
+    /// Creates a fresh one-shot session that cannot reuse or mutate the parent session's
+    /// WebSocket or prompt-cache state.
+    pub(crate) fn new_isolated_session(&self) -> ModelClientSession {
+        let mut client = self.clone();
+        client.prompt_cache_key_override = Some(ThreadId::new().to_string());
+        ModelClientSession {
+            client,
+            websocket_session: WebsocketSession::default(),
+            mode: ModelClientSessionMode::IsolatedOneShot,
             turn_state: Arc::new(OnceLock::new()),
         }
     }
 
     pub(crate) fn auth_manager(&self) -> Option<Arc<AuthManager>> {
         self.state.provider.auth_manager()
+    }
+
+    pub(crate) fn approval_review_preferred_model(&self) -> &'static str {
+        self.state.provider.approval_review_preferred_model()
+    }
+
+    pub(crate) fn isolated_responses_metadata(&self) -> CodexResponsesMetadata {
+        let thread_id = self.state.thread_id.to_string();
+        CodexResponsesMetadata::new(
+            "prompt-hook".to_string(),
+            thread_id.clone(),
+            thread_id,
+            "prompt-hook".to_string(),
+        )
     }
 
     fn take_cached_websocket_session(&self) -> WebsocketSession {
@@ -906,6 +945,7 @@ impl ModelClient {
             stream: true,
             stream_options,
             include,
+            max_output_tokens: None,
             service_tier,
             prompt_cache_key,
             text,
@@ -1106,9 +1146,11 @@ impl ModelClient {
 
 impl Drop for ModelClientSession {
     fn drop(&mut self) {
-        let websocket_session = std::mem::take(&mut self.websocket_session);
-        self.client
-            .store_cached_websocket_session(websocket_session);
+        if self.mode == ModelClientSessionMode::Standard {
+            let websocket_session = std::mem::take(&mut self.websocket_session);
+            self.client
+                .store_cached_websocket_session(websocket_session);
+        }
     }
 }
 
@@ -1403,6 +1445,7 @@ impl ModelClientSession {
         service_tier: Option<String>,
         responses_metadata: &CodexResponsesMetadata,
         inference_trace: &InferenceTraceContext,
+        session_mode: ModelClientSessionMode,
     ) -> Result<ResponseStream> {
         let auth_manager = self.client.state.provider.auth_manager();
         let mut auth_recovery = auth_manager
@@ -1410,7 +1453,10 @@ impl ModelClientSession {
             .map(AuthManager::unauthorized_recovery);
         let mut pending_retry = PendingUnauthorizedRetry::default();
         loop {
-            let client_setup = self.client.current_client_setup().await?;
+            let mut client_setup = self.client.current_client_setup().await?;
+            if session_mode == ModelClientSessionMode::IsolatedOneShot {
+                client_setup.api_provider.retry.max_attempts = 0;
+            }
             let transport = self
                 .client
                 .build_responses_transport(&client_setup.api_provider, RESPONSES_ENDPOINT)?;
@@ -1444,6 +1490,9 @@ impl ModelClientSession {
                 service_tier.clone(),
                 responses_metadata,
             )?;
+            if session_mode == ModelClientSessionMode::IsolatedOneShot {
+                request.max_output_tokens = Some(ISOLATED_ONE_SHOT_MAX_OUTPUT_TOKENS);
+            }
             let store = request.store;
             self.client
                 .prepare_response_items_for_request(&mut request.input, store);
@@ -1472,7 +1521,9 @@ impl ModelClientSession {
                 }
                 Err(ApiError::Transport(
                     unauthorized_transport @ TransportError::Http { status, .. },
-                )) if status == StatusCode::UNAUTHORIZED => {
+                )) if status == StatusCode::UNAUTHORIZED
+                    && session_mode == ModelClientSessionMode::Standard =>
+                {
                     let response_debug_context =
                         extract_response_debug_context(&unauthorized_transport);
                     inference_trace_attempt.record_failed(
@@ -1783,6 +1834,22 @@ impl ModelClientSession {
         responses_metadata: &CodexResponsesMetadata,
         inference_trace: &InferenceTraceContext,
     ) -> Result<ResponseStream> {
+        if self.mode == ModelClientSessionMode::IsolatedOneShot {
+            return self
+                .stream_responses_api(
+                    prompt,
+                    model_info,
+                    session_telemetry,
+                    effort,
+                    summary,
+                    service_tier,
+                    responses_metadata,
+                    inference_trace,
+                    self.mode,
+                )
+                .await;
+        }
+
         let wire_api = self.client.state.provider.info().wire_api;
         match wire_api {
             WireApi::Responses => {
@@ -1819,6 +1886,7 @@ impl ModelClientSession {
                     service_tier,
                     responses_metadata,
                     inference_trace,
+                    self.mode,
                 )
                 .await
             }

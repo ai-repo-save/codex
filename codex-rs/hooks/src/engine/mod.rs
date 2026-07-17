@@ -2,6 +2,7 @@ pub(crate) mod command_runner;
 pub(crate) mod discovery;
 pub(crate) mod dispatcher;
 pub(crate) mod output_parser;
+pub(crate) mod prompt_runner;
 pub(crate) mod schema_loader;
 
 use crate::events::approval_review_route::ApprovalReviewRouteOutcome;
@@ -33,6 +34,10 @@ use codex_protocol::protocol::HookSource;
 use codex_protocol::protocol::HookTrustStatus;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use std::collections::HashMap;
+use std::sync::Arc;
+
+pub use prompt_runner::PromptHookRequest;
+pub use prompt_runner::PromptHookRunner;
 
 #[derive(Debug, Clone)]
 pub(crate) struct CommandShell {
@@ -44,13 +49,26 @@ pub(crate) struct CommandShell {
 pub(crate) struct ConfiguredHandler {
     pub event_name: codex_protocol::protocol::HookEventName,
     pub matcher: Option<String>,
-    pub command: String,
-    pub timeout_sec: u64,
+    pub kind: ConfiguredHandlerKind,
     pub status_message: Option<String>,
     pub source_path: AbsolutePathBuf,
     pub source: HookSource,
     pub display_order: i64,
     pub env: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ConfiguredHandlerKind {
+    Command {
+        command: String,
+        timeout_sec: u64,
+    },
+    Prompt {
+        prompt: String,
+        model: Option<String>,
+        timeout_sec: u64,
+        fail_closed: bool,
+    },
 }
 
 impl ConfiguredHandler {
@@ -78,6 +96,35 @@ impl ConfiguredHandler {
             codex_protocol::protocol::HookEventName::Stop => "stop",
         }
     }
+
+    pub(crate) fn handler_type(&self) -> HookHandlerType {
+        match &self.kind {
+            ConfiguredHandlerKind::Command { .. } => HookHandlerType::Command,
+            ConfiguredHandlerKind::Prompt { .. } => HookHandlerType::Prompt,
+        }
+    }
+
+    pub(crate) fn timeout_sec(&self) -> u64 {
+        match &self.kind {
+            ConfiguredHandlerKind::Command { timeout_sec, .. }
+            | ConfiguredHandlerKind::Prompt { timeout_sec, .. } => *timeout_sec,
+        }
+    }
+
+    pub(crate) fn fail_closed(&self) -> bool {
+        match &self.kind {
+            ConfiguredHandlerKind::Prompt { fail_closed, .. } => *fail_closed,
+            ConfiguredHandlerKind::Command { .. } => false,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn command(&self) -> Option<&str> {
+        match &self.kind {
+            ConfiguredHandlerKind::Command { command, .. } => Some(command),
+            ConfiguredHandlerKind::Prompt { .. } => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +134,9 @@ pub struct HookListEntry {
     pub handler_type: HookHandlerType,
     pub matcher: Option<String>,
     pub command: Option<String>,
+    pub prompt: Option<String>,
+    pub model: Option<String>,
+    pub fail_closed: Option<bool>,
     pub timeout_sec: u64,
     pub status_message: Option<String>,
     pub source_path: AbsolutePathBuf,
@@ -104,6 +154,7 @@ pub(crate) struct ClaudeHooksEngine {
     handlers: Vec<ConfiguredHandler>,
     warnings: Vec<String>,
     shell: CommandShell,
+    prompt_hook_runner: Option<Arc<dyn PromptHookRunner>>,
     output_spiller: HookOutputSpiller,
 }
 
@@ -116,11 +167,32 @@ impl ClaudeHooksEngine {
         plugin_hook_load_warnings: Vec<String>,
         shell: CommandShell,
     ) -> Self {
+        Self::new_with_prompt_runner(
+            enabled,
+            bypass_hook_trust,
+            config_layer_stack,
+            plugin_hook_sources,
+            plugin_hook_load_warnings,
+            shell,
+            None,
+        )
+    }
+
+    pub(crate) fn new_with_prompt_runner(
+        enabled: bool,
+        bypass_hook_trust: bool,
+        config_layer_stack: Option<&ConfigLayerStack>,
+        plugin_hook_sources: Vec<PluginHookSource>,
+        plugin_hook_load_warnings: Vec<String>,
+        shell: CommandShell,
+        prompt_hook_runner: Option<Arc<dyn PromptHookRunner>>,
+    ) -> Self {
         if !enabled {
             return Self {
                 handlers: Vec::new(),
                 warnings: Vec::new(),
                 shell,
+                prompt_hook_runner,
                 output_spiller: HookOutputSpiller::new(),
             };
         }
@@ -136,6 +208,7 @@ impl ClaudeHooksEngine {
             handlers: discovered.handlers,
             warnings: discovered.warnings,
             shell,
+            prompt_hook_runner,
             output_spiller: HookOutputSpiller::new(),
         }
     }
@@ -192,8 +265,13 @@ impl ClaudeHooksEngine {
 
     pub(crate) async fn run_pre_tool_use(&self, request: PreToolUseRequest) -> PreToolUseOutcome {
         let session_id = request.session_id;
-        let mut outcome =
-            crate::events::pre_tool_use::run(&self.handlers, &self.shell, request).await;
+        let mut outcome = crate::events::pre_tool_use::run(
+            &self.handlers,
+            &self.shell,
+            self.prompt_hook_runner.as_deref(),
+            request,
+        )
+        .await;
         outcome.additional_contexts = self
             .maybe_spill_texts(session_id, outcome.additional_contexts)
             .await;

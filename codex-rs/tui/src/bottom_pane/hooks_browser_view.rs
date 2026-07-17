@@ -485,12 +485,33 @@ impl HooksBrowserView {
             width,
             /*max_lines*/ None,
         ));
-        lines.extend(detail_wrapped_lines(
-            "Command",
-            hook.command.as_deref().unwrap_or("-"),
-            width,
-            Some(MAX_COMMAND_DETAIL_LINES),
-        ));
+        match hook.handler_type {
+            HookHandlerType::Command => {
+                lines.extend(detail_wrapped_lines(
+                    "Command",
+                    hook.command.as_deref().unwrap_or("-"),
+                    width,
+                    Some(MAX_COMMAND_DETAIL_LINES),
+                ));
+            }
+            HookHandlerType::Prompt => {
+                lines.extend(detail_wrapped_lines(
+                    "Prompt",
+                    hook.prompt.as_deref().unwrap_or("-"),
+                    width,
+                    /*max_lines*/ None,
+                ));
+                lines.push(detail_line(
+                    "Model",
+                    hook.model.as_deref().unwrap_or("default"),
+                ));
+                lines.push(detail_line(
+                    "Fail closed",
+                    if hook.fail_closed { "Yes" } else { "No" },
+                ));
+            }
+            HookHandlerType::Agent => lines.push(detail_line("Agent", "-")),
+        }
         lines.push(detail_line("Timeout", &format!("{}s", hook.timeout_sec)));
         lines.push(detail_line("Trust", hook_trust_label(hook.trust_status)));
         lines
@@ -880,6 +901,8 @@ mod tests {
     use ratatui::style::Modifier;
     use tokio::sync::mpsc::unbounded_channel;
 
+    const PROMPT_SENTINEL: &str = "PROMPT_SENTINEL_7F3A";
+
     fn render_lines(view: &HooksBrowserView, width: u16) -> String {
         let height = view.desired_height(width);
         let area = Rect::new(0, 0, width, height);
@@ -934,6 +957,9 @@ mod tests {
             is_managed,
             matcher: Some("Bash".to_string()),
             command: Some(command.to_string()),
+            prompt: None,
+            model: None,
+            fail_closed: false,
             timeout_sec: 30,
             status_message: None,
             source_path: test_path_buf("/tmp/hooks.json").abs(),
@@ -1267,6 +1293,53 @@ mod tests {
             "hooks_browser_capped_command_details",
             render_lines(&view, /*width*/ 44)
         );
+    }
+
+    #[test]
+    fn renders_prompt_details_in_full_without_leaking_into_browser_lists() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let mut prompt_hook = hook(
+            "path:prompt",
+            HookEventName::PreToolUse,
+            HookSource::User,
+            /*plugin_id*/ None,
+            "",
+            /*enabled*/ true,
+            /*is_managed*/ false,
+            /*display_order*/ 0,
+        );
+        prompt_hook.handler_type = HookHandlerType::Prompt;
+        prompt_hook.command = None;
+        prompt_hook.prompt = Some(format!(
+            "First prompt line\n{PROMPT_SENTINEL}\nThird prompt line that remains visible after wrapping"
+        ));
+        prompt_hook.model = Some("gpt-5.4-mini".to_string());
+        prompt_hook.fail_closed = true;
+        let mut view = HooksBrowserView::new(
+            vec![prompt_hook],
+            Vec::new(),
+            Vec::new(),
+            AppEventSender::new(tx_raw),
+        );
+
+        let event_page = render_lines(&view, /*width*/ 56);
+        assert!(!event_page.contains(PROMPT_SENTINEL));
+        view.handle_key_event(KeyEvent::from(KeyCode::Enter));
+        let handler_rows = view
+            .handler_row_lines(HookEventName::PreToolUse, /*width*/ 56)
+            .into_iter()
+            .flat_map(|line| {
+                line.spans
+                    .into_iter()
+                    .map(|span| span.content.into_owned())
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(!handler_rows.contains(PROMPT_SENTINEL));
+
+        let details = render_lines(&view, /*width*/ 56);
+        assert!(details.contains(PROMPT_SENTINEL));
+        assert_snapshot!("hooks_browser_prompt_handler_details", details);
     }
 
     #[test]

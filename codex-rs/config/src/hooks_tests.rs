@@ -264,3 +264,39 @@ commandWindows = "powershell -File C:\\enterprise\\hooks\\pre.ps1"
         }
     );
 }
+
+#[test]
+fn prompt_hook_deserializes_defaults_without_semantic_validation() {
+    let parsed: HookHandlerConfig = serde_json::from_value(serde_json::json!({
+        "type": "prompt",
+        "statusMessage": "  "
+    }))
+    .expect("prompt hook should deserialize");
+
+    assert_eq!(
+        parsed,
+        HookHandlerConfig::Prompt {
+            prompt: String::new(),
+            model: None,
+            timeout_sec: None,
+            status_message: Some("  ".to_string()),
+            fail_closed: false,
+        }
+    );
+}
+
+#[test]
+fn prompt_hook_semantic_errors_do_not_reject_the_config_layer() {
+    let oversized_prompt = "é".repeat(8 * 1024 + 1);
+    for semantic_error in [
+        serde_json::json!({"type":"prompt","prompt":" "}),
+        serde_json::json!({"type":"prompt","prompt":oversized_prompt}),
+        serde_json::json!({"type":"prompt","prompt":"review","model":" gpt-test"}),
+        serde_json::json!({"type":"prompt","prompt":"review","model":""}),
+        serde_json::json!({"type":"prompt","prompt":"review","timeout":0}),
+        serde_json::json!({"type":"prompt","prompt":"review","timeout":601}),
+    ] {
+        serde_json::from_value::<HookHandlerConfig>(semantic_error)
+            .expect("semantic validation belongs to per-handler discovery");
+    }
+}

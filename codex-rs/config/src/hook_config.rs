@@ -163,7 +163,18 @@ pub enum HookHandlerConfig {
         status_message: Option<String>,
     },
     #[serde(rename = "prompt")]
-    Prompt {},
+    Prompt {
+        #[serde(default)]
+        prompt: String,
+        #[serde(default)]
+        model: Option<String>,
+        #[serde(default, rename = "timeout", alias = "timeoutSec")]
+        timeout_sec: Option<u64>,
+        #[serde(default, rename = "statusMessage")]
+        status_message: Option<String>,
+        #[serde(default, rename = "failClosed")]
+        fail_closed: bool,
+    },
     #[serde(rename = "agent")]
     Agent {},
 }

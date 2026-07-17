@@ -1003,10 +1003,51 @@ impl Session {
                     (None, None)
                 };
 
+            let model_client = ModelClient::new(
+                Some(Arc::clone(&auth_manager)),
+                if config.features.enabled(Feature::UseAgentIdentity) {
+                    AgentIdentityAuthPolicy::ChatGptAuth
+                } else {
+                    AgentIdentityAuthPolicy::JwtOnly
+                },
+                thread_id,
+                session_configuration.provider.clone(),
+                session_configuration.session_source.clone(),
+                session_configuration.originator.clone(),
+                config.model_verbosity,
+                config.features.enabled(Feature::EnableRequestCompression),
+                config.features.enabled(Feature::RuntimeMetrics),
+                Self::build_model_client_beta_features_header(config.as_ref()),
+                /*item_ids_enabled*/ config.features.enabled(Feature::ItemIds)
+                    || matches!(
+                        session_configuration.history_mode,
+                        ThreadHistoryMode::Paginated
+                    ),
+                /*concurrent_reasoning_summaries_enabled*/ config
+                    .features
+                    .enabled(Feature::ConcurrentReasoningSummaries),
+                attestation_provider.clone(),
+                config.http_client_factory(),
+            )
+            .with_prompt_cache_key_override(prompt_cache_key_override.or_else(|| {
+                crate::guardian::prompt_cache_key_override_for_review_session(
+                    &session_configuration.session_source,
+                    session_configuration.parent_thread_id,
+                )
+            }));
+            let prompt_hook_runner = crate::hook_prompt::build_prompt_hook_runner(
+                model_client.clone(),
+                Arc::clone(&models_manager),
+                config.as_ref(),
+                session_configuration.collaboration_mode.model().to_string(),
+                session_telemetry.clone(),
+                session_configuration.service_tier.clone(),
+            );
             let hooks = build_hooks_for_config(
                 &config,
                 plugins_manager.as_ref(),
                 resolved_environments.single_local_environment(),
+                Some(prompt_hook_runner),
             )
             .await;
             for warning in hooks.startup_warnings() {
@@ -1104,40 +1145,7 @@ impl Session {
                 thread_store: Arc::clone(&thread_store),
                 attestation_provider: attestation_provider.clone(),
                 time_provider,
-                model_client: ModelClient::new(
-                    Some(Arc::clone(&auth_manager)),
-                    if config.features.enabled(Feature::UseAgentIdentity) {
-                        AgentIdentityAuthPolicy::ChatGptAuth
-                    } else {
-                        AgentIdentityAuthPolicy::JwtOnly
-                    },
-                    thread_id,
-                    session_configuration.provider.clone(),
-                    session_configuration.session_source.clone(),
-                    session_configuration.originator.clone(),
-                    config.model_verbosity,
-                    config.features.enabled(Feature::EnableRequestCompression),
-                    config.features.enabled(Feature::RuntimeMetrics),
-                    Self::build_model_client_beta_features_header(config.as_ref()),
-                    /*item_ids_enabled*/ config.features.enabled(Feature::ItemIds)
-                        || matches!(
-                            session_configuration.history_mode,
-                            ThreadHistoryMode::Paginated
-                        ),
-                    /*concurrent_reasoning_summaries_enabled*/ config
-                        .features
-                        .enabled(Feature::ConcurrentReasoningSummaries),
-                    attestation_provider,
-                    config.http_client_factory(),
-                )
-                .with_prompt_cache_key_override(
-                    prompt_cache_key_override.or_else(|| {
-                        crate::guardian::prompt_cache_key_override_for_review_session(
-                            &session_configuration.session_source,
-                            session_configuration.parent_thread_id,
-                        )
-                    }),
-                ),
+                model_client,
                 code_mode_service: crate::tools::code_mode::CodeModeService::new(Arc::clone(
                     &code_mode_session_provider,
                 )),

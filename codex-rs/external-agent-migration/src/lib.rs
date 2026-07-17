@@ -557,7 +557,7 @@ fn append_convertible_hook_groups(
             {
                 continue;
             }
-            let mut hook_commands = Vec::new();
+            let mut migrated_handlers = Vec::new();
             if let Some(hooks) = group_object.get("hooks").and_then(JsonValue::as_array) {
                 for hook in hooks {
                     let Some(hook_object) = hook.as_object() else {
@@ -567,6 +567,12 @@ fn append_convertible_hook_groups(
                         .get("type")
                         .and_then(JsonValue::as_str)
                         .unwrap_or("command");
+                    if hook_type == "prompt" && event_name == "PreToolUse" {
+                        if let Some(prompt_payload) = migrate_prompt_hook(hook_object) {
+                            migrated_handlers.push(JsonValue::Object(prompt_payload));
+                        }
+                        continue;
+                    }
                     if hook_type != "command" {
                         continue;
                     }
@@ -616,24 +622,27 @@ fn append_convertible_hook_groups(
                         .get("timeout")
                         .or_else(|| hook_object.get("timeoutSec"))
                         .and_then(json_u64)
+                        .filter(|timeout| (1..=600).contains(timeout))
                     {
                         command_payload.insert(
                             "timeout".to_string(),
                             JsonValue::Number(serde_json::Number::from(timeout)),
                         );
                     }
-                    if let Some(status_message) =
-                        hook_object.get("statusMessage").and_then(JsonValue::as_str)
+                    if let Some(status_message) = hook_object
+                        .get("statusMessage")
+                        .and_then(JsonValue::as_str)
+                        .filter(|status_message| !status_message.trim().is_empty())
                     {
                         command_payload.insert(
                             "statusMessage".to_string(),
                             JsonValue::String(rewrite_external_agent_terms(status_message)),
                         );
                     }
-                    hook_commands.push(JsonValue::Object(command_payload));
+                    migrated_handlers.push(JsonValue::Object(command_payload));
                 }
             }
-            if hook_commands.is_empty() {
+            if migrated_handlers.is_empty() {
                 continue;
             }
 
@@ -646,7 +655,7 @@ fn append_convertible_hook_groups(
                     JsonValue::String(matcher.to_string()),
                 );
             }
-            group_payload.insert("hooks".to_string(), JsonValue::Array(hook_commands));
+            group_payload.insert("hooks".to_string(), JsonValue::Array(migrated_handlers));
             if let Some(groups) = hooks_payload
                 .entry(event_name.to_string())
                 .or_insert_with(|| JsonValue::Array(Vec::new()))
@@ -656,6 +665,74 @@ fn append_convertible_hook_groups(
             }
         }
     }
+}
+
+fn migrate_prompt_hook(
+    hook_object: &serde_json::Map<String, JsonValue>,
+) -> Option<serde_json::Map<String, JsonValue>> {
+    if hook_object.keys().any(|key| {
+        !matches!(
+            key.as_str(),
+            "type"
+                | "prompt"
+                | "model"
+                | "timeout"
+                | "timeoutSec"
+                | "failClosed"
+                | "statusMessage"
+        )
+    }) {
+        return None;
+    }
+    let prompt = hook_object
+        .get("prompt")
+        .and_then(JsonValue::as_str)
+        .filter(|prompt| !prompt.trim().is_empty())?;
+
+    let mut prompt_payload = serde_json::Map::new();
+    prompt_payload.insert("type".to_string(), JsonValue::String("prompt".to_string()));
+    let mut rewritten_prompt = String::with_capacity(prompt.len());
+    let mut remaining_prompt = prompt;
+    while let Some(index) = remaining_prompt.find("$ARGUMENTS") {
+        let (prefix, suffix) = remaining_prompt.split_at(index);
+        rewritten_prompt.push_str(prefix);
+        if prefix.ends_with('$') {
+            rewritten_prompt.push_str("$ARGUMENTS");
+        } else {
+            rewritten_prompt.push_str("$$ARGUMENTS");
+        }
+        remaining_prompt = &suffix["$ARGUMENTS".len()..];
+    }
+    rewritten_prompt.push_str(remaining_prompt);
+    prompt_payload.insert(
+        "prompt".to_string(),
+        JsonValue::String(rewritten_prompt),
+    );
+    if let Some(timeout) = hook_object
+        .get("timeout")
+        .or_else(|| hook_object.get("timeoutSec"))
+        .and_then(json_u64)
+        .filter(|timeout| (1..=600).contains(timeout))
+    {
+        prompt_payload.insert(
+            "timeout".to_string(),
+            JsonValue::Number(serde_json::Number::from(timeout)),
+        );
+    }
+    if let Some(fail_closed) = hook_object.get("failClosed").and_then(JsonValue::as_bool) {
+        prompt_payload.insert("failClosed".to_string(), JsonValue::Bool(fail_closed));
+    }
+    if let Some(status_message) = hook_object
+        .get("statusMessage")
+        .and_then(JsonValue::as_str)
+        .filter(|status_message| !status_message.trim().is_empty())
+    {
+        prompt_payload.insert(
+            "statusMessage".to_string(),
+            JsonValue::String(rewrite_external_agent_terms(status_message)),
+        );
+    }
+    Some(prompt_payload)
 }
 
 fn rewrite_hook_command(command: &str, target_config_dir: Option<&Path>) -> String {
@@ -1754,7 +1831,7 @@ command = "enabled-server"
         let root = source_path("commands");
         let file = source_path("commands/deploy.md");
         let document = parse_document_content(
-            "---\ndescription: Deploy\n---\nDeploy $ARGUMENTS from @release.yaml\n",
+            "---\ndescription: Deploy\n---\nDeploy $$ARGUMENTS from @release.yaml\n",
         );
 
         assert!(command_skill_name_if_supported(&root, &file, &document).is_none());
@@ -1872,7 +1949,7 @@ Review carefully."""
     }
 
     #[test]
-    fn hook_migration_ignores_unsupported_handlers() {
+    fn hook_migration_preserves_pre_tool_prompt_and_ignores_unsupported_handlers() {
         let settings = serde_json::json!({
             "hooks": {
                 "PreToolUse": [{
@@ -1895,6 +1972,19 @@ Review carefully."""
                             "url": "https://example.invalid/hook"
                         }
                     ]
+                }, {
+                    "matcher": "Write",
+                    "hooks": [{
+                        "type": "prompt",
+                        "prompt": "  Review $ARGUMENTS carefully.  ",
+                        "model": "claude-opus-4-1",
+                        "timeoutSec": 42,
+                        "failClosed": true,
+                        "statusMessage": "asking Claude to review"
+                    }, {
+                        "type": "prompt",
+                        "prompt": "Already normalized: $$ARGUMENTS"
+                    }]
                 }],
                 "PermissionRequest": [{
                     "matcher": "Bash",
@@ -1915,6 +2005,22 @@ Review carefully."""
         assert_eq!(
             migration,
             serde_json::json!({
+                "PreToolUse": [{
+                    "matcher": "Write",
+                    "hooks": [
+                        {
+                            "type": "prompt",
+                            "prompt": "  Review $$ARGUMENTS carefully.  ",
+                            "timeout": 42,
+                            "failClosed": true,
+                            "statusMessage": "asking Codex to review"
+                        },
+                        {
+                            "type": "prompt",
+                            "prompt": "Already normalized: $$ARGUMENTS"
+                        }
+                    ]
+                }],
                 "PermissionRequest": [{
                     "matcher": "Bash",
                     "hooks": [{
@@ -2176,15 +2282,39 @@ Review carefully."""
     }
 
     #[test]
-    fn hook_migration_drops_negative_timeouts() {
+    fn hook_migration_drops_invalid_target_values() {
         let settings = serde_json::json!({
             "hooks": {
                 "SessionStart": [{
                     "matcher": "startup",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "echo negative",
+                            "timeout": -1,
+                            "statusMessage": "   "
+                        },
+                        {
+                            "type": "command",
+                            "command": "echo zero",
+                            "timeout": 0
+                        },
+                        {
+                            "type": "command",
+                            "command": "echo too-large",
+                            "timeout": 601
+                        }
+                    ]
+                }],
+                "PreToolUse": [{
+                    "matcher": "Write",
                     "hooks": [{
-                        "type": "command",
-                        "command": "echo setup",
-                        "timeout": -1
+                        "type": "prompt",
+                        "prompt": "Review $ARGUMENTS",
+                        "model": "claude-opus-4-1",
+                        "timeoutSec": 601,
+                        "failClosed": true,
+                        "statusMessage": ""
                     }]
                 }]
             }
@@ -2197,9 +2327,27 @@ Review carefully."""
             serde_json::json!({
                 "SessionStart": [{
                     "matcher": "startup",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "echo negative"
+                        },
+                        {
+                            "type": "command",
+                            "command": "echo zero"
+                        },
+                        {
+                            "type": "command",
+                            "command": "echo too-large"
+                        }
+                    ]
+                }],
+                "PreToolUse": [{
+                    "matcher": "Write",
                     "hooks": [{
-                        "type": "command",
-                        "command": "echo setup"
+                        "type": "prompt",
+                        "prompt": "Review $$ARGUMENTS",
+                        "failClosed": true
                     }]
                 }]
             })

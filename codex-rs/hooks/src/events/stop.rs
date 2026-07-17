@@ -178,11 +178,14 @@ pub(crate) async fn run(
     };
 
     let results = dispatcher::execute_handlers(
-        shell,
         matched,
         input_json,
-        request.cwd.as_path(),
-        Some(request.turn_id),
+        dispatcher::HandlerExecutionContext {
+            shell,
+            prompt_runner: None,
+            cwd: request.cwd.as_path(),
+            turn_id: Some(request.turn_id),
+        },
         parse_completed,
     )
     .await;
@@ -433,6 +436,7 @@ mod tests {
     use super::aggregate_results;
     use super::parse_completed;
     use crate::engine::ConfiguredHandler;
+    use crate::engine::ConfiguredHandlerKind;
     use crate::engine::command_runner::CommandRunResult;
 
     #[test]
@@ -632,8 +636,10 @@ mod tests {
         ConfiguredHandler {
             event_name: HookEventName::Stop,
             matcher: None,
-            command: "echo hook".to_string(),
-            timeout_sec: 600,
+            kind: ConfiguredHandlerKind::Command {
+                command: "echo hook".to_string(),
+                timeout_sec: 600,
+            },
             status_message: None,
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: codex_protocol::protocol::HookSource::User,

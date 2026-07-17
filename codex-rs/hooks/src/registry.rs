@@ -5,6 +5,8 @@ use tokio::process::Command;
 use crate::engine::ClaudeHooksEngine;
 use crate::engine::CommandShell;
 use crate::engine::HookListEntry;
+use crate::engine::PromptHookRunner;
+use std::sync::Arc;
 use crate::events::approval_review_route::ApprovalReviewRouteOutcome;
 use crate::events::approval_review_route::ApprovalReviewRouteRequest;
 use crate::events::compact::PostCompactRequest;
@@ -38,6 +40,7 @@ pub struct HooksConfig {
     pub plugin_hook_load_warnings: Vec<String>,
     pub shell_program: Option<String>,
     pub shell_args: Vec<String>,
+    pub prompt_hook_runner: Option<Arc<dyn PromptHookRunner>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -66,7 +69,7 @@ impl Hooks {
             .map(crate::notify_hook)
             .into_iter()
             .collect();
-        let engine = ClaudeHooksEngine::new(
+        let engine = ClaudeHooksEngine::new_with_prompt_runner(
             config.feature_enabled,
             config.bypass_hook_trust,
             config.config_layer_stack.as_ref(),
@@ -76,6 +79,7 @@ impl Hooks {
                 program: config.shell_program.unwrap_or_default(),
                 args: config.shell_args,
             },
+            config.prompt_hook_runner,
         );
         Self {
             after_agent,

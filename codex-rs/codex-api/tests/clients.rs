@@ -323,6 +323,7 @@ async fn responses_client_stream_request_preserves_item_ids() -> Result<()> {
         stream: true,
         stream_options: None,
         include: Vec::new(),
+        max_output_tokens: Some(4096),
         service_tier: None,
         prompt_cache_key: None,
         text: None,
@@ -342,6 +343,7 @@ async fn responses_client_stream_request_preserves_item_ids() -> Result<()> {
     let body: serde_json::Value =
         serde_json::from_slice(prepared.body.as_deref().expect("body should be JSON"))?;
     assert_eq!(body, expected);
+    assert_eq!(body["max_output_tokens"], 4096);
     assert_eq!(body["input"][0]["id"], "msg_1");
     assert_eq!(
         prepared.headers.get(http::header::CONTENT_TYPE),
@@ -410,6 +412,7 @@ async fn streaming_client_retries_on_transport_error() -> Result<()> {
         stream: true,
         stream_options: None,
         include: Vec::new(),
+        max_output_tokens: None,
         service_tier: None,
         prompt_cache_key: None,
         text: None,
@@ -530,6 +533,7 @@ async fn azure_store_sends_ids_and_headers() -> Result<()> {
         stream: true,
         stream_options: None,
         include: Vec::new(),
+        max_output_tokens: None,
         service_tier: None,
         prompt_cache_key: None,
         text: None,

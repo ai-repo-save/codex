@@ -119,11 +119,14 @@ pub(crate) async fn run(
     };
 
     let results = dispatcher::execute_handlers(
-        shell,
         matched,
         input_json,
-        request.cwd.as_path(),
-        Some(request.turn_id.clone()),
+        dispatcher::HandlerExecutionContext {
+            shell,
+            prompt_runner: None,
+            cwd: request.cwd.as_path(),
+            turn_id: Some(request.turn_id.clone()),
+        },
         parse_completed,
     )
     .await;

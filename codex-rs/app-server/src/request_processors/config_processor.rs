@@ -466,7 +466,19 @@ fn map_hook_handler_to_api(handler: CoreHookHandlerConfig) -> ConfiguredHookHand
             r#async,
             status_message,
         },
-        CoreHookHandlerConfig::Prompt {} => ConfiguredHookHandler::Prompt {},
+        CoreHookHandlerConfig::Prompt {
+            prompt,
+            model,
+            timeout_sec,
+            fail_closed,
+            status_message,
+        } => ConfiguredHookHandler::Prompt {
+            prompt,
+            model,
+            timeout_sec,
+            fail_closed,
+            status_message,
+        },
         CoreHookHandlerConfig::Agent {} => ConfiguredHookHandler::Agent {},
     }
 }

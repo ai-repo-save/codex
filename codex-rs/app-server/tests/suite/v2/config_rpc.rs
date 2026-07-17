@@ -17,10 +17,13 @@ use codex_app_server_protocol::ConfigReadResponse;
 use codex_app_server_protocol::ConfigRequirementsReadResponse;
 use codex_app_server_protocol::ConfigValueWriteParams;
 use codex_app_server_protocol::ConfigWriteResponse;
+use codex_app_server_protocol::ConfiguredHookHandler;
+use codex_app_server_protocol::ConfiguredHookMatcherGroup;
 use codex_app_server_protocol::ForcedChatgptWorkspaceIds;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::MergeStrategy;
+use codex_app_server_protocol::ManagedHooksRequirements;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::SandboxMode;
 use codex_app_server_protocol::ToolsV2;
@@ -117,6 +120,74 @@ service_tier = "fast"
         Some(ReasoningEffort::Medium)
     );
     assert_eq!(defaults.service_tier.as_deref(), Some("fast"));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn config_requirements_read_returns_raw_prompt_hook_definition() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join("requirements.toml"),
+        r#"
+[hooks]
+
+[[hooks.PreToolUse]]
+matcher = "^Bash$"
+
+[[hooks.PreToolUse.hooks]]
+type = "prompt"
+prompt = "Evaluate $$ARGUMENTS against managed policy."
+model = "gpt-managed-hook"
+timeout = 19
+failClosed = true
+statusMessage = "checking managed policy"
+"#,
+    )?;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build()
+        .await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+
+    let request_id = mcp.send_config_requirements_read_request().await?;
+    let response = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
+    )
+    .await??;
+    let response: ConfigRequirementsReadResponse = to_response(response)?;
+    let hooks = response
+        .requirements
+        .and_then(|requirements| requirements.hooks)
+        .expect("managed hooks requirements");
+
+    assert_eq!(
+        hooks,
+        ManagedHooksRequirements {
+            managed_dir: None,
+            windows_managed_dir: None,
+            pre_tool_use: vec![ConfiguredHookMatcherGroup {
+                matcher: Some("^Bash$".to_string()),
+                hooks: vec![ConfiguredHookHandler::Prompt {
+                    prompt: "Evaluate $$ARGUMENTS against managed policy.".to_string(),
+                    model: Some("gpt-managed-hook".to_string()),
+                    timeout_sec: Some(19),
+                    fail_closed: true,
+                    status_message: Some("checking managed policy".to_string()),
+                }],
+            }],
+            permission_request: Vec::new(),
+            post_tool_use: Vec::new(),
+            pre_compact: Vec::new(),
+            post_compact: Vec::new(),
+            session_start: Vec::new(),
+            user_prompt_submit: Vec::new(),
+            subagent_start: Vec::new(),
+            subagent_stop: Vec::new(),
+            stop: Vec::new(),
+        }
+    );
     Ok(())
 }
 

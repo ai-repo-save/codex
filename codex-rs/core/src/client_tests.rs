@@ -1,9 +1,11 @@
 use super::AuthRequestTelemetryContext;
 use super::CompactConversationRequestSettings;
+use super::ISOLATED_ONE_SHOT_MAX_OUTPUT_TOKENS;
 use super::ModelClient;
 use super::PendingUnauthorizedRetry;
 use super::Prompt;
 use super::UnauthorizedRecoveryExecution;
+use super::WebsocketSession;
 use super::X_CODEX_INSTALLATION_ID_HEADER;
 use super::X_CODEX_PARENT_THREAD_ID_HEADER;
 use super::X_CODEX_TURN_METADATA_HEADER;
@@ -289,6 +291,104 @@ fn test_session_telemetry() -> SessionTelemetry {
         "test-terminal".to_string(),
         SessionSource::Cli,
     )
+}
+
+#[test]
+fn isolated_session_does_not_touch_parent_transport_or_prompt_cache() {
+    let model_client = test_model_client(SessionSource::Cli);
+    let parent_prompt_cache_key = model_client.prompt_cache_key();
+    let cached_websocket_session = WebsocketSession::default();
+    cached_websocket_session.set_connection_reused(/*connection_reused*/ true);
+    model_client.store_cached_websocket_session(cached_websocket_session);
+
+    let isolated_session = model_client.new_isolated_session();
+    assert!(!isolated_session.websocket_session.connection_reused());
+    assert_ne!(
+        isolated_session.client.prompt_cache_key(),
+        parent_prompt_cache_key
+    );
+    drop(isolated_session);
+
+    assert!(
+        model_client
+            .take_cached_websocket_session()
+            .connection_reused()
+    );
+    assert_eq!(model_client.prompt_cache_key(), parent_prompt_cache_key);
+}
+
+#[tokio::test]
+async fn isolated_session_uses_one_http_attempt_without_websocket_fallback() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .respond_with(ResponseTemplate::new(/*status*/ 500))
+        .expect(/*requests*/ 1)
+        .mount(&server)
+        .await;
+
+    let mut provider = create_oss_provider_with_base_url(
+        format!("{}/v1", server.uri()).as_str(),
+        WireApi::Responses,
+    );
+    provider.supports_websockets = true;
+    provider.request_max_retries = Some(3);
+    let client = ModelClient::new(
+        /*auth_manager*/ None,
+        AgentIdentityAuthPolicy::JwtOnly,
+        ThreadId::new(),
+        provider,
+        SessionSource::Cli,
+        "test_originator".to_string(),
+        /*model_verbosity*/ None,
+        /*enable_request_compression*/ false,
+        /*include_timing_metrics*/ false,
+        /*beta_features_header*/ None,
+        /*item_ids_enabled*/ false,
+        /*concurrent_reasoning_summaries_enabled*/ false,
+        /*attestation_provider*/ None,
+        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+    );
+    let prompt = Prompt {
+        input: vec![ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "evaluate".to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }],
+        ..Default::default()
+    };
+    let responses_metadata = client.isolated_responses_metadata();
+    let result = client
+        .new_isolated_session()
+        .stream(
+            &prompt,
+            &test_model_info(),
+            &test_session_telemetry(),
+            /*effort*/ None,
+            codex_protocol::config_types::ReasoningSummary::None,
+            /*service_tier*/ None,
+            &responses_metadata,
+            &InferenceTraceContext::disabled(),
+        )
+        .await;
+
+    assert!(result.is_err());
+    let requests = server
+        .received_requests()
+        .await
+        .expect("server should record the isolated request");
+    assert_eq!(requests.len(), 1);
+    let request_body = requests[0]
+        .body_json::<serde_json::Value>()
+        .expect("isolated request body should be JSON");
+    assert_eq!(
+        request_body["max_output_tokens"],
+        json!(ISOLATED_ONE_SHOT_MAX_OUTPUT_TOKENS)
+    );
 }
 
 #[test]

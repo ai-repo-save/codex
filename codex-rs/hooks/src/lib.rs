@@ -14,6 +14,8 @@ pub use config_rules::hook_states_from_stack;
 pub use declarations::PluginHookDeclaration;
 pub use declarations::plugin_hook_declarations;
 pub use engine::HookListEntry;
+pub use engine::PromptHookRequest;
+pub use engine::PromptHookRunner;
 pub use events::approval_review_route::ApprovalReviewRouteDecision;
 pub use events::approval_review_route::ApprovalReviewRouteOutcome;
 pub use events::approval_review_route::ApprovalReviewRouteRequest;

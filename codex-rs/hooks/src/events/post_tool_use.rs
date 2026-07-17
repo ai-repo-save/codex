@@ -106,11 +106,14 @@ pub(crate) async fn run(
     };
 
     let mut results = dispatcher::execute_handlers(
-        shell,
         matched,
         input_json,
-        request.cwd.as_path(),
-        Some(request.turn_id.clone()),
+        dispatcher::HandlerExecutionContext {
+            shell,
+            prompt_runner: None,
+            cwd: request.cwd.as_path(),
+            turn_id: Some(request.turn_id.clone()),
+        },
         parse_completed,
     )
     .await;
@@ -418,6 +421,7 @@ mod tests {
     use super::parse_completed;
     use super::preview;
     use crate::engine::ConfiguredHandler;
+    use crate::engine::ConfiguredHandlerKind;
     use crate::engine::command_runner::CommandRunResult;
     use crate::events::common;
 
@@ -744,8 +748,10 @@ mod tests {
         ConfiguredHandler {
             event_name: HookEventName::PostToolUse,
             matcher: Some("^Bash$".to_string()),
-            command: "python3 post_tool_use_hook.py".to_string(),
-            timeout_sec: 5,
+            kind: ConfiguredHandlerKind::Command {
+                command: "python3 post_tool_use_hook.py".to_string(),
+                timeout_sec: 5,
+            },
             status_message: Some("running post tool use hook".to_string()),
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: codex_protocol::protocol::HookSource::User,

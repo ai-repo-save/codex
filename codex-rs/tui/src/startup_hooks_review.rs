@@ -32,6 +32,7 @@ use crate::render::renderable::Renderable;
 use crate::tui::Tui;
 use crate::tui::TuiEvent;
 use codex_app_server_client::AppServerRequestHandle;
+use codex_app_server_protocol::HookHandlerType;
 use codex_app_server_protocol::HooksListEntry;
 use std::path::PathBuf;
 
@@ -221,6 +222,19 @@ fn selection_view_params(
     } else if trusting_all {
         header.push(Line::from("Trusting hooks...".dim()));
     }
+    for (idx, hook) in entry
+        .hooks
+        .iter()
+        .filter(|hook| hook_needs_review(hook) && hook.handler_type == HookHandlerType::Prompt)
+        .enumerate()
+    {
+        header.push(Line::default());
+        header.push(Line::from(format!("Prompt hook {}", idx + 1).bold()));
+        header.push(
+            Paragraph::new(hook.prompt.clone().unwrap_or_else(|| "-".to_string()))
+                .wrap(Wrap { trim: false }),
+        );
+    }
 
     SelectionViewParams {
         footer_hint: Some(standard_popup_hint_line_for_keymap(&keymap.list)),
@@ -301,6 +315,8 @@ mod tests {
     use ratatui::layout::Rect;
     use tokio::sync::mpsc::unbounded_channel;
 
+    const PROMPT_SENTINEL: &str = "PROMPT_SENTINEL_7F3A";
+
     fn hook(key: &str, trust_status: HookTrustStatus) -> HookMetadata {
         HookMetadata {
             key: key.to_string(),
@@ -309,6 +325,9 @@ mod tests {
             is_managed: false,
             matcher: Some("Bash".to_string()),
             command: Some("/tmp/hook.sh".to_string()),
+            prompt: None,
+            model: None,
+            fail_closed: false,
             timeout_sec: 30,
             status_message: None,
             source_path: test_path_buf("/tmp/hooks.json").abs(),
@@ -383,6 +402,35 @@ mod tests {
             "startup_hooks_review_prompt",
             render_lines(&view, /*width*/ 80)
         );
+    }
+
+    #[test]
+    fn renders_review_needed_prompt_hook_in_full() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let keymap = RuntimeKeymap::defaults();
+        let mut prompt_hook = hook("path:prompt", HookTrustStatus::Untrusted);
+        prompt_hook.handler_type = HookHandlerType::Prompt;
+        prompt_hook.command = None;
+        prompt_hook.prompt = Some(format!(
+            "Review this complete prompt.\n{PROMPT_SENTINEL}\nDo not truncate the final line."
+        ));
+        let entry = HooksListEntry {
+            cwd: test_path_buf("/tmp"),
+            hooks: vec![prompt_hook],
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        };
+        let view = selection_view(
+            &entry,
+            /*trust_all_error*/ None,
+            /*trusting_all*/ false,
+            AppEventSender::new(tx_raw),
+            &keymap,
+        );
+
+        let rendered = render_lines(&view, /*width*/ 80);
+        assert!(rendered.contains(PROMPT_SENTINEL));
+        assert_snapshot!("startup_hooks_review_prompt_handler", rendered);
     }
 
     #[test]

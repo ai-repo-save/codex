@@ -67,6 +67,33 @@ fn command_hook_hash(
     codex_config::version_for_toml(&value)
 }
 
+fn prompt_hook_hash(
+    event_name: &'static str,
+    matcher: Option<&str>,
+    prompt: &str,
+    model: Option<&str>,
+    fail_closed: bool,
+    status_message: Option<&str>,
+) -> String {
+    let identity = NormalizedHookIdentity {
+        event_name,
+        group: codex_config::MatcherGroup {
+            matcher: matcher.map(ToOwned::to_owned),
+            hooks: vec![codex_config::HookHandlerConfig::Prompt {
+                prompt: prompt.to_string(),
+                model: model.map(ToOwned::to_owned),
+                timeout_sec: Some(30),
+                fail_closed,
+                status_message: status_message.map(ToOwned::to_owned),
+            }],
+        },
+    };
+    let Ok(value) = codex_config::TomlValue::try_from(identity) else {
+        unreachable!("normalized hook identity should serialize to TOML");
+    };
+    codex_config::version_for_toml(&value)
+}
+
 fn write_user_hook_config(codex_home: &std::path::Path) -> Result<()> {
     std::fs::write(
         codex_home.join("config.toml"),
@@ -80,6 +107,25 @@ type = "command"
 command = "python3 /tmp/listed-hook.py"
 timeout = 5
 statusMessage = "running listed hook"
+"#,
+    )?;
+    Ok(())
+}
+
+fn write_user_prompt_hook_config(codex_home: &std::path::Path) -> Result<()> {
+    std::fs::write(
+        codex_home.join("config.toml"),
+        r#"[hooks]
+
+[[hooks.PreToolUse]]
+matcher = "Bash"
+
+[[hooks.PreToolUse.hooks]]
+type = "prompt"
+prompt = "Review this tool call: $$ARGUMENTS"
+model = "gpt-hook-reviewer"
+failClosed = true
+statusMessage = "reviewing listed hook"
 "#,
     )?;
     Ok(())
@@ -166,6 +212,9 @@ async fn hooks_list_shows_discovered_hook() -> Result<()> {
                 handler_type: HookHandlerType::Command,
                 matcher: Some("Bash".to_string()),
                 command: Some("python3 /tmp/listed-hook.py".to_string()),
+                prompt: None,
+                model: None,
+                fail_closed: false,
                 timeout_sec: 5,
                 status_message: Some("running listed hook".to_string()),
                 source_path: config_path,
@@ -180,6 +229,71 @@ async fn hooks_list_shows_discovered_hook() -> Result<()> {
                     "python3 /tmp/listed-hook.py",
                     /*timeout_sec*/ 5,
                     Some("running listed hook"),
+                ),
+                trust_status: HookTrustStatus::Untrusted,
+            }],
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        }]
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn hooks_list_returns_prompt_hook_definition() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    let cwd = TempDir::new()?;
+    write_user_prompt_hook_config(codex_home.path())?;
+
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build()
+        .await?;
+    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+
+    let request_id = mcp
+        .send_hooks_list_request(HooksListParams {
+            cwds: vec![cwd.path().to_path_buf()],
+        })
+        .await?;
+    let response: JSONRPCResponse = timeout(
+        DEFAULT_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
+    )
+    .await??;
+    let HooksListResponse { data } = to_response(response)?;
+    let config_path = AbsolutePathBuf::from_absolute_path(std::fs::canonicalize(
+        codex_home.path().join("config.toml"),
+    )?)?;
+    assert_eq!(
+        data,
+        vec![HooksListEntry {
+            cwd: cwd.path().to_path_buf(),
+            hooks: vec![HookMetadata {
+                key: format!("{}:pre_tool_use:0:0", config_path.as_path().display()),
+                event_name: HookEventName::PreToolUse,
+                handler_type: HookHandlerType::Prompt,
+                matcher: Some("Bash".to_string()),
+                command: None,
+                prompt: Some("Review this tool call: $$ARGUMENTS".to_string()),
+                model: Some("gpt-hook-reviewer".to_string()),
+                fail_closed: true,
+                timeout_sec: 30,
+                status_message: Some("reviewing listed hook".to_string()),
+                source_path: config_path,
+                source: HookSource::User,
+                plugin_id: None,
+                display_order: 0,
+                enabled: true,
+                is_managed: false,
+                current_hash: prompt_hook_hash(
+                    "pre_tool_use",
+                    Some("Bash"),
+                    "Review this tool call: $$ARGUMENTS",
+                    Some("gpt-hook-reviewer"),
+                    true,
+                    Some("reviewing listed hook"),
                 ),
                 trust_status: HookTrustStatus::Untrusted,
             }],
@@ -248,6 +362,9 @@ async fn hooks_list_shows_discovered_plugin_hook() -> Result<()> {
                 handler_type: HookHandlerType::Command,
                 matcher: Some("Bash".to_string()),
                 command: Some("echo plugin hook".to_string()),
+                prompt: None,
+                model: None,
+                fail_closed: false,
                 timeout_sec: 7,
                 status_message: Some("running plugin hook".to_string()),
                 source_path: plugin_hooks_path,
@@ -462,6 +579,9 @@ timeout = 5
                     handler_type: HookHandlerType::Command,
                     matcher: Some("Bash".to_string()),
                     command: Some("echo project hook".to_string()),
+                    prompt: None,
+                    model: None,
+                    fail_closed: false,
                     timeout_sec: 5,
                     status_message: None,
                     source_path: project_config_path,

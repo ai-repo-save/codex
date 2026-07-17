@@ -23,10 +23,12 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::ConfiguredHandler;
+use super::ConfiguredHandlerKind;
 use super::HookListEntry;
 use crate::config_rules::hook_states_from_stack;
 use crate::events::common::matcher_pattern_for_event;
 use crate::events::common::validate_matcher_pattern;
+use codex_protocol::protocol::HookEventName;
 use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookSource;
 use codex_protocol::protocol::HookTrustStatus;
@@ -444,7 +446,7 @@ fn append_matcher_groups(
     warnings: &mut Vec<String>,
     display_order: &mut i64,
     source: &HookHandlerSource<'_>,
-    event_name: codex_protocol::protocol::HookEventName,
+    event_name: HookEventName,
     groups: Vec<MatcherGroup>,
 ) {
     for (group_index, group) in groups.into_iter().enumerate() {
@@ -494,8 +496,7 @@ fn append_matcher_groups(
                         r#async,
                         status_message: status_message.clone(),
                     };
-                    let current_hash =
-                        command_hook_hash(event_name, matcher, &group, normalized_handler);
+                    let current_hash = hook_hash(event_name, matcher, &group, normalized_handler);
                     let command = source.env.iter().fold(command, |command, (key, value)| {
                         command.replace(&format!("${{{key}}}"), value)
                     });
@@ -513,6 +514,9 @@ fn append_matcher_groups(
                         handler_type: HookHandlerType::Command,
                         matcher: matcher.map(ToOwned::to_owned),
                         command: Some(command.clone()),
+                        prompt: None,
+                        model: None,
+                        fail_closed: None,
                         timeout_sec,
                         status_message: status_message.clone(),
                         source_path: source.path.clone(),
@@ -534,8 +538,10 @@ fn append_matcher_groups(
                         handlers.push(ConfiguredHandler {
                             event_name,
                             matcher: matcher.map(ToOwned::to_owned),
-                            command,
-                            timeout_sec,
+                            kind: ConfiguredHandlerKind::Command {
+                                command,
+                                timeout_sec,
+                            },
                             status_message,
                             source_path: source.path.clone(),
                             source: source.source,
@@ -545,10 +551,107 @@ fn append_matcher_groups(
                     }
                     *display_order += 1;
                 }
-                HookHandlerConfig::Prompt {} => warnings.push(format!(
-                    "skipping prompt hook in {}: prompt hooks are not supported yet",
-                    source.path.display()
-                )),
+                HookHandlerConfig::Prompt {
+                    prompt,
+                    model,
+                    timeout_sec,
+                    status_message,
+                    fail_closed,
+                } => {
+                    if event_name != HookEventName::PreToolUse {
+                        warnings.push(format!(
+                            "skipping prompt hook in {}: prompt hooks are not supported for {}",
+                            source.path.display(),
+                            super::dispatcher::hook_event_name_label(event_name)
+                        ));
+                        continue;
+                    }
+                    if prompt.trim().is_empty() || prompt.len() > 16 * 1024 {
+                        warnings.push(format!(
+                            "skipping invalid hook prompt in {}",
+                            source.path.display()
+                        ));
+                        continue;
+                    }
+                    if model.as_deref().is_some_and(|model| {
+                        model.trim().is_empty() || model.trim() != model
+                    }) {
+                        warnings.push(format!(
+                            "skipping invalid prompt hook model in {}",
+                            source.path.display()
+                        ));
+                        continue;
+                    }
+                    if timeout_sec.is_some_and(|timeout_sec| !(1..=600).contains(&timeout_sec)) {
+                        warnings.push(format!(
+                            "skipping invalid prompt hook timeout in {}",
+                            source.path.display()
+                        ));
+                        continue;
+                    }
+                    let timeout_sec = timeout_sec.unwrap_or(30);
+                    let status_message = status_message
+                        .filter(|status_message| !status_message.trim().is_empty());
+                    let normalized_handler = HookHandlerConfig::Prompt {
+                        prompt: prompt.clone(),
+                        model: model.clone(),
+                        timeout_sec: Some(timeout_sec),
+                        status_message: status_message.clone(),
+                        fail_closed,
+                    };
+                    let current_hash = hook_hash(event_name, matcher, &group, normalized_handler);
+                    let key =
+                        crate::hook_key(&source.key_source, event_name, group_index, handler_index);
+                    let state = source.hook_states.get(&key);
+                    let enabled = hook_enabled(source.is_managed, state);
+                    let trusted_hash = hook_trusted_hash(source.is_managed, state);
+                    let trust_status =
+                        hook_trust_status(source.is_managed, &current_hash, trusted_hash);
+                    hook_entries.push(HookListEntry {
+                        key,
+                        event_name,
+                        handler_type: HookHandlerType::Prompt,
+                        matcher: matcher.map(ToOwned::to_owned),
+                        command: None,
+                        prompt: Some(prompt.clone()),
+                        model: model.clone(),
+                        fail_closed: Some(fail_closed),
+                        timeout_sec,
+                        status_message: status_message.clone(),
+                        source_path: source.path.clone(),
+                        source: source.source,
+                        plugin_id: source.plugin_id.clone(),
+                        display_order: *display_order,
+                        enabled,
+                        is_managed: source.is_managed,
+                        current_hash,
+                        trust_status,
+                    });
+                    if enabled
+                        && (source.bypass_hook_trust
+                            || matches!(
+                                trust_status,
+                                HookTrustStatus::Managed | HookTrustStatus::Trusted
+                            ))
+                    {
+                        handlers.push(ConfiguredHandler {
+                            event_name,
+                            matcher: matcher.map(ToOwned::to_owned),
+                            kind: ConfiguredHandlerKind::Prompt {
+                                prompt,
+                                model,
+                                timeout_sec,
+                                fail_closed,
+                            },
+                            status_message,
+                            source_path: source.path.clone(),
+                            source: source.source,
+                            display_order: *display_order,
+                            env: source.env.clone(),
+                        });
+                    }
+                    *display_order += 1;
+                }
                 HookHandlerConfig::Agent {} => warnings.push(format!(
                     "skipping agent hook in {}: agent hooks are not supported yet",
                     source.path.display()
@@ -567,8 +670,8 @@ struct NormalizedHookIdentity {
     group: MatcherGroup,
 }
 
-fn command_hook_hash(
-    event_name: codex_protocol::protocol::HookEventName,
+fn hook_hash(
+    event_name: HookEventName,
     matcher: Option<&str>,
     group: &MatcherGroup,
     normalized_handler: HookHandlerConfig,
@@ -665,11 +768,14 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use super::ConfiguredHandler;
+    use super::ConfiguredHandlerKind;
+    use super::HookListEntry;
     use super::append_matcher_groups;
     use codex_config::HookHandlerConfig;
     use codex_config::HookStateToml;
     use codex_config::MatcherGroup;
     use codex_config::TomlValue;
+    use codex_protocol::protocol::HookHandlerType;
     use codex_protocol::protocol::HookTrustStatus;
 
     fn source_path() -> AbsolutePathBuf {
@@ -761,6 +867,178 @@ mod tests {
         }
     }
 
+    fn prompt_handler(fail_closed: bool) -> HookHandlerConfig {
+        HookHandlerConfig::Prompt {
+            prompt: "Review $$ARGUMENTS".to_string(),
+            model: Some("gpt-test".to_string()),
+            timeout_sec: None,
+            status_message: Some("Reviewing tool use".to_string()),
+            fail_closed,
+        }
+    }
+
+    #[test]
+    fn pre_tool_use_prompt_hook_enters_runtime_and_list_metadata() {
+        let mut handlers = Vec::new();
+        let mut hook_entries = Vec::new();
+        let mut warnings = Vec::new();
+        let mut display_order = 0;
+        let source_path = source_path();
+        let hook_states = std::collections::HashMap::new();
+
+        append_matcher_groups(
+            &mut handlers,
+            &mut hook_entries,
+            &mut warnings,
+            &mut display_order,
+            &hook_handler_source(&source_path, &hook_states),
+            HookEventName::PreToolUse,
+            vec![MatcherGroup {
+                matcher: Some("^Bash$".to_string()),
+                hooks: vec![prompt_handler(/*fail_closed*/ true)],
+            }],
+        );
+
+        assert_eq!(warnings, Vec::<String>::new());
+        assert_eq!(handlers.len(), 1);
+        assert_eq!(
+            handlers[0].kind,
+            ConfiguredHandlerKind::Prompt {
+                prompt: "Review $$ARGUMENTS".to_string(),
+                model: Some("gpt-test".to_string()),
+                timeout_sec: 30,
+                fail_closed: true,
+            }
+        );
+        assert_eq!(hook_entries.len(), 1);
+        assert_eq!(hook_entries[0].handler_type, HookHandlerType::Prompt);
+        assert_eq!(hook_entries[0].command, None);
+        assert_eq!(
+            hook_entries[0].prompt.as_deref(),
+            Some("Review $$ARGUMENTS")
+        );
+        assert_eq!(hook_entries[0].model.as_deref(), Some("gpt-test"));
+        assert_eq!(hook_entries[0].timeout_sec, 30);
+        assert_eq!(hook_entries[0].fail_closed, Some(true));
+    }
+
+    #[test]
+    fn invalid_prompt_handlers_are_skipped_without_dropping_valid_siblings() {
+        let mut handlers = Vec::new();
+        let mut hook_entries = Vec::new();
+        let mut warnings = Vec::new();
+        let mut display_order = 0;
+        let source_path = source_path();
+        let hook_states = std::collections::HashMap::new();
+        let oversized_prompt = "é".repeat(8 * 1024 + 1);
+
+        append_matcher_groups(
+            &mut handlers,
+            &mut hook_entries,
+            &mut warnings,
+            &mut display_order,
+            &hook_handler_source(&source_path, &hook_states),
+            HookEventName::PreToolUse,
+            vec![MatcherGroup {
+                matcher: None,
+                hooks: vec![
+                    HookHandlerConfig::Prompt {
+                        prompt: String::new(),
+                        model: None,
+                        timeout_sec: None,
+                        status_message: None,
+                        fail_closed: false,
+                    },
+                    HookHandlerConfig::Prompt {
+                        prompt: oversized_prompt,
+                        model: None,
+                        timeout_sec: None,
+                        status_message: None,
+                        fail_closed: false,
+                    },
+                    HookHandlerConfig::Prompt {
+                        prompt: "Review $$ARGUMENTS".to_string(),
+                        model: Some(" gpt-test".to_string()),
+                        timeout_sec: None,
+                        status_message: None,
+                        fail_closed: false,
+                    },
+                    HookHandlerConfig::Prompt {
+                        prompt: "Review $$ARGUMENTS".to_string(),
+                        model: None,
+                        timeout_sec: Some(601),
+                        status_message: None,
+                        fail_closed: false,
+                    },
+                    HookHandlerConfig::Prompt {
+                        prompt: "Review $$ARGUMENTS".to_string(),
+                        model: Some("gpt-test".to_string()),
+                        timeout_sec: Some(1),
+                        status_message: Some("  ".to_string()),
+                        fail_closed: true,
+                    },
+                ],
+            }],
+        );
+
+        assert_eq!(warnings.len(), 4);
+        assert_eq!(handlers.len(), 1);
+        assert_eq!(handlers[0].display_order, 0);
+        assert_eq!(
+            handlers[0].kind,
+            ConfiguredHandlerKind::Prompt {
+                prompt: "Review $$ARGUMENTS".to_string(),
+                model: Some("gpt-test".to_string()),
+                timeout_sec: 1,
+                fail_closed: true,
+            }
+        );
+        assert_eq!(handlers[0].status_message, None);
+        assert_eq!(hook_entries.len(), 1);
+        assert_eq!(hook_entries[0].display_order, 0);
+        assert_eq!(
+            hook_entries[0].prompt.as_deref(),
+            Some("Review $$ARGUMENTS")
+        );
+        assert_eq!(hook_entries[0].model.as_deref(), Some("gpt-test"));
+        assert_eq!(hook_entries[0].status_message, None);
+        assert_eq!(hook_entries[0].timeout_sec, 1);
+        assert_eq!(hook_entries[0].fail_closed, Some(true));
+    }
+
+    #[test]
+    fn unsupported_event_skips_each_prompt_handler_without_metadata() {
+        let mut handlers = Vec::new();
+        let mut hook_entries = Vec::new();
+        let mut warnings = Vec::new();
+        let mut display_order = 0;
+        let source_path = source_path();
+        let hook_states = std::collections::HashMap::new();
+
+        append_matcher_groups(
+            &mut handlers,
+            &mut hook_entries,
+            &mut warnings,
+            &mut display_order,
+            &hook_handler_source(&source_path, &hook_states),
+            HookEventName::SessionStart,
+            vec![MatcherGroup {
+                matcher: None,
+                hooks: vec![
+                    prompt_handler(/*fail_closed*/ false),
+                    prompt_handler(/*fail_closed*/ true),
+                ],
+            }],
+        );
+
+        assert_eq!(handlers, Vec::<ConfiguredHandler>::new());
+        assert_eq!(hook_entries, Vec::<HookListEntry>::new());
+        assert_eq!(warnings.len(), 2);
+        assert!(warnings.iter().all(|warning| warning.contains(
+            "prompt hooks are not supported for SessionStart"
+        )));
+    }
+
     #[test]
     fn user_prompt_submit_ignores_invalid_matcher_during_discovery() {
         let mut handlers = Vec::new();
@@ -785,8 +1063,10 @@ mod tests {
             vec![ConfiguredHandler {
                 event_name: HookEventName::UserPromptSubmit,
                 matcher: None,
-                command: "echo hello".to_string(),
-                timeout_sec: 600,
+                kind: ConfiguredHandlerKind::Command {
+                    command: "echo hello".to_string(),
+                    timeout_sec: 600,
+                },
                 status_message: None,
                 source_path: source_path.clone(),
                 source: hook_source(),
@@ -820,8 +1100,10 @@ mod tests {
             vec![ConfiguredHandler {
                 event_name: HookEventName::PreToolUse,
                 matcher: Some("^Bash$".to_string()),
-                command: "echo hello".to_string(),
-                timeout_sec: 600,
+                kind: ConfiguredHandlerKind::Command {
+                    command: "echo hello".to_string(),
+                    timeout_sec: 600,
+                },
                 status_message: None,
                 source_path: source_path.clone(),
                 source: hook_source(),
@@ -1007,7 +1289,7 @@ mod tests {
         assert_eq!(warnings, Vec::<String>::new());
         assert_eq!(handlers.len(), 1);
         assert_eq!(
-            handlers[0].command,
+            handlers[0].command().expect("command handler"),
             if cfg!(windows) {
                 "echo windows"
             } else {

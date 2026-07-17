@@ -814,6 +814,7 @@ fn serialize_websocket_request(request: &ResponsesWsRequest) -> Result<String, A
 mod tests {
     use super::*;
     use crate::common::ResponseCreateWsRequest;
+    use crate::common::ResponsesApiRequest;
     use codex_protocol::models::ContentItem;
     use codex_protocol::models::ResponseItem;
     use pretty_assertions::assert_eq;
@@ -821,11 +822,10 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn direct_serialization_preserves_websocket_request_payload() {
-        let request = ResponsesWsRequest::ResponseCreate(ResponseCreateWsRequest {
+    fn serialization_preserves_converted_websocket_request_payload() {
+        let request = ResponsesApiRequest {
             model: "gpt-test".to_string(),
             instructions: "Use the available tools.".to_string(),
-            previous_response_id: Some("resp-1".to_string()),
             input: vec![ResponseItem::Message {
                 id: Some("msg-1".to_string()),
                 role: "user".to_string(),
@@ -847,23 +847,29 @@ mod tests {
             stream: true,
             stream_options: None,
             include: vec!["reasoning.encrypted_content".to_string()],
+            max_output_tokens: Some(4096),
             service_tier: Some("priority".to_string()),
             prompt_cache_key: Some("cache-key".to_string()),
             text: None,
-            generate: Some(false),
             client_metadata: Some(HashMap::from([(
                 "traceparent".to_string(),
                 "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01".to_string(),
             )])),
-        });
+        };
+        let mut websocket_request = ResponseCreateWsRequest::from(&request);
+        websocket_request.previous_response_id = Some("resp-1".to_string());
+        websocket_request.generate = Some(false);
+        let websocket_request = ResponsesWsRequest::ResponseCreate(websocket_request);
 
-        let previous_payload = serde_json::to_value(&request).expect("serialize previous payload");
+        let previous_payload =
+            serde_json::to_value(&websocket_request).expect("serialize previous payload");
         let request_text =
-            serialize_websocket_request(&request).expect("serialize websocket request");
+            serialize_websocket_request(&websocket_request).expect("serialize websocket request");
         let wire_payload =
             serde_json::from_str::<Value>(&request_text).expect("parse websocket request");
 
         assert_eq!(wire_payload, previous_payload);
+        assert_eq!(wire_payload["max_output_tokens"], 4096);
     }
 
     #[test]

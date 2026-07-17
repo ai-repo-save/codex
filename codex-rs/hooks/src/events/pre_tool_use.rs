@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::HookCompletedEvent;
 use codex_protocol::protocol::HookEventName;
+use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookOutputEntry;
 use codex_protocol::protocol::HookOutputEntryKind;
 use codex_protocol::protocol::HookRunStatus;
@@ -13,6 +14,7 @@ use serde_json::Value;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
+use crate::engine::PromptHookRunner;
 use crate::engine::command_runner::CommandRunResult;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
@@ -71,6 +73,7 @@ pub(crate) fn preview(
 pub(crate) async fn run(
     handlers: &[ConfiguredHandler],
     shell: &CommandShell,
+    prompt_runner: Option<&dyn PromptHookRunner>,
     request: PreToolUseRequest,
 ) -> PreToolUseOutcome {
     let matcher_inputs = common::matcher_inputs(&request.tool_name, &request.matcher_aliases);
@@ -103,11 +106,14 @@ pub(crate) async fn run(
     };
 
     let results = dispatcher::execute_handlers(
-        shell,
         matched,
         input_json,
-        request.cwd.as_path(),
-        Some(request.turn_id.clone()),
+        dispatcher::HandlerExecutionContext {
+            shell,
+            prompt_runner,
+            cwd: request.cwd.as_path(),
+            turn_id: Some(request.turn_id.clone()),
+        },
         parse_completed,
     )
     .await;
@@ -209,6 +215,13 @@ fn parse_completed(
             Some(0) => {
                 let trimmed_stdout = run_result.stdout.trim();
                 if trimmed_stdout.is_empty() {
+                    if handler.handler_type() == HookHandlerType::Prompt {
+                        status = HookRunStatus::Failed;
+                        entries.push(HookOutputEntry {
+                            kind: HookOutputEntryKind::Error,
+                            text: "prompt hook returned empty output".to_string(),
+                        });
+                    }
                 } else if let Some(parsed) = output_parser::parse_pre_tool_use(&run_result.stdout) {
                     if let Some(system_message) = parsed.universal.system_message {
                         entries.push(HookOutputEntry {
@@ -243,7 +256,9 @@ fn parse_completed(
                             updated_input = parsed.updated_input;
                         }
                     }
-                } else if output_parser::looks_like_json(&run_result.stdout) {
+                } else if handler.handler_type() == HookHandlerType::Prompt
+                    || output_parser::looks_like_json(&run_result.stdout)
+                {
                     status = HookRunStatus::Failed;
                     entries.push(HookOutputEntry {
                         kind: HookOutputEntryKind::Error,
@@ -283,6 +298,14 @@ fn parse_completed(
                 });
             }
         },
+    }
+
+    if matches!(status, HookRunStatus::Failed) && handler.fail_closed() {
+        should_block = true;
+        block_reason = entries
+            .iter()
+            .find(|entry| matches!(entry.kind, HookOutputEntryKind::Error))
+            .map(|entry| entry.text.clone());
     }
 
     let completed = HookCompletedEvent {
@@ -329,6 +352,7 @@ mod tests {
     use super::parse_completed;
     use super::preview;
     use crate::engine::ConfiguredHandler;
+    use crate::engine::ConfiguredHandlerKind;
     use crate::engine::command_runner::CommandRunResult;
     use crate::events::common;
 
@@ -672,6 +696,34 @@ mod tests {
     }
 
     #[test]
+    fn failed_prompt_hook_honors_fail_closed_without_changing_failed_status() {
+        let mut failed_run = run_result(/*exit_code*/ None, "", "");
+        failed_run.error = Some("model request failed".to_string());
+
+        let fail_open = parse_completed(
+            &prompt_handler(/*fail_closed*/ false),
+            failed_run,
+            Some("turn-1".to_string()),
+        );
+        let mut failed_run = run_result(/*exit_code*/ None, "", "");
+        failed_run.error = Some("model request failed".to_string());
+        let fail_closed = parse_completed(
+            &prompt_handler(/*fail_closed*/ true),
+            failed_run,
+            Some("turn-1".to_string()),
+        );
+
+        assert_eq!(fail_open.completed.run.status, HookRunStatus::Failed);
+        assert_eq!(fail_open.data.should_block, false);
+        assert_eq!(fail_closed.completed.run.status, HookRunStatus::Failed);
+        assert_eq!(fail_closed.data.should_block, true);
+        assert_eq!(
+            fail_closed.data.block_reason.as_deref(),
+            Some("model request failed")
+        );
+    }
+
+    #[test]
     fn exit_code_two_blocks_processing() {
         let parsed = parse_completed(
             &handler(),
@@ -742,8 +794,28 @@ mod tests {
         ConfiguredHandler {
             event_name: HookEventName::PreToolUse,
             matcher: Some("^Bash$".to_string()),
-            command: "echo hook".to_string(),
-            timeout_sec: 5,
+            kind: ConfiguredHandlerKind::Command {
+                command: "echo hook".to_string(),
+                timeout_sec: 5,
+            },
+            status_message: None,
+            source_path: test_path_buf("/tmp/hooks.json").abs(),
+            source: codex_protocol::protocol::HookSource::User,
+            display_order: 0,
+            env: std::collections::HashMap::new(),
+        }
+    }
+
+    fn prompt_handler(fail_closed: bool) -> ConfiguredHandler {
+        ConfiguredHandler {
+            event_name: HookEventName::PreToolUse,
+            matcher: Some("^Bash$".to_string()),
+            kind: ConfiguredHandlerKind::Prompt {
+                prompt: "Review $$ARGUMENTS".to_string(),
+                model: None,
+                timeout_sec: 30,
+                fail_closed,
+            },
             status_message: None,
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: codex_protocol::protocol::HookSource::User,

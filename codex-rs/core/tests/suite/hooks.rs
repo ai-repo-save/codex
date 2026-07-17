@@ -17,6 +17,11 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::HookCompletedEvent;
+use codex_protocol::protocol::HookEventName;
+use codex_protocol::protocol::HookHandlerType;
+use codex_protocol::protocol::HookRunStatus;
+use codex_protocol::protocol::HookStartedEvent;
 use codex_protocol::protocol::Op;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::RolloutLine;
@@ -35,14 +40,17 @@ use core_test_support::responses::ev_message_item_added;
 use core_test_support::responses::ev_output_text_delta;
 use core_test_support::responses::ev_response_created;
 use core_test_support::responses::mount_sse_once;
+use core_test_support::responses::mount_response_sequence;
 use core_test_support::responses::mount_sse_sequence;
 use core_test_support::responses::sse;
+use core_test_support::responses::sse_response;
 use core_test_support::responses::start_mock_server;
 use core_test_support::skip_if_host_windows;
 use core_test_support::skip_if_no_network;
 use core_test_support::streaming_sse::StreamingSseChunk;
 use core_test_support::streaming_sse::start_streaming_sse_server;
 use core_test_support::test_codex::test_codex;
+use core_test_support::test_codex::turn_permission_fields;
 use core_test_support::wait_for_event;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
@@ -52,12 +60,19 @@ use tempfile::TempDir;
 use tokio::sync::oneshot;
 use tokio::time::sleep;
 use tokio::time::timeout;
+use wiremock::ResponseTemplate;
 
 const FIRST_CONTINUATION_PROMPT: &str = "Retry with exactly the phrase meow meow meow.";
 const SECOND_CONTINUATION_PROMPT: &str = "Now tighten it to just: meow.";
 const BLOCKED_PROMPT_CONTEXT: &str = "Remember the blocked lighthouse note.";
 const PERMISSION_REQUEST_HOOK_MATCHER: &str = "^Bash$";
 const PERMISSION_REQUEST_ALLOW_REASON: &str = "should not be used for allow";
+const PRE_TOOL_PROMPT_HOOK_SENTINEL: &str = "Block commands that violate the configured policy.";
+const PRE_TOOL_PROMPT_HOOK_INSTRUCTIONS: &str =
+    "Block commands that violate the configured policy. $$ARGUMENTS";
+const PRE_TOOL_PROMPT_HOOK_MAIN_MODEL: &str = "test-gpt-5.1-codex";
+const PRE_TOOL_PROMPT_HOOK_PREFERRED_MODEL: &str = "codex-auto-review";
+const PRE_TOOL_PROMPT_HOOK_BLOCK_REASON: &str = "blocked by prompt hook";
 
 fn restrictive_workspace_write_profile() -> PermissionProfile {
     PermissionProfile::workspace_write_with(
@@ -119,6 +134,80 @@ fn trust_plugin_hooks(config: &mut Config, plugin_hook_sources: Vec<PluginHookSo
         "trusted plugin hook fixture should discover at least one hook"
     );
     trust_hooks(config, listed.hooks);
+}
+
+fn write_pre_tool_use_prompt_hook(
+    home: &Path,
+    fail_closed: bool,
+    timeout_sec: Option<u64>,
+) -> Result<()> {
+    let hooks = serde_json::json!({
+        "hooks": {
+            "PreToolUse": [{
+                "matcher": "^Bash$",
+                "hooks": [{
+                    "type": "prompt",
+                    "prompt": PRE_TOOL_PROMPT_HOOK_INSTRUCTIONS,
+                    "timeout": timeout_sec,
+                    "failClosed": fail_closed,
+                    "statusMessage": "checking command policy",
+                }]
+            }]
+        }
+    });
+    fs::write(home.join("hooks.json"), hooks.to_string()).context("write hooks.json")?;
+    Ok(())
+}
+
+async fn submit_turn_and_capture_prompt_hook_lifecycle(
+    test: &core_test_support::test_codex::TestCodex,
+    prompt: &str,
+) -> Result<(HookStartedEvent, HookCompletedEvent)> {
+    let (sandbox_policy, permission_profile) =
+        turn_permission_fields(PermissionProfile::Disabled, test.config.cwd.as_path());
+    test.codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: prompt.to_string(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
+                approval_policy: Some(AskForApproval::Never),
+                sandbox_policy: Some(sandbox_policy),
+                permission_profile,
+                ..Default::default()
+            },
+        })
+        .await?;
+
+    let mut started = None;
+    let mut completed = None;
+    loop {
+        match test.codex.next_event().await?.msg {
+            EventMsg::HookStarted(event)
+                if event.run.event_name == HookEventName::PreToolUse
+                    && event.run.handler_type == HookHandlerType::Prompt =>
+            {
+                started = Some(event);
+            }
+            EventMsg::HookCompleted(event)
+                if event.run.event_name == HookEventName::PreToolUse
+                    && event.run.handler_type == HookHandlerType::Prompt =>
+            {
+                completed = Some(event);
+            }
+            EventMsg::TurnComplete(_) => break,
+            _ => {}
+        }
+    }
+
+    Ok((
+        started.context("prompt hook started event")?,
+        completed.context("prompt hook completed event")?,
+    ))
 }
 
 fn write_stop_hook(home: &Path, block_prompts: &[&str]) -> Result<()> {
@@ -2372,6 +2461,245 @@ async fn pre_tool_use_blocks_shell_command_before_execution() -> Result<()> {
         hook_inputs[0]["turn_id"]
             .as_str()
             .is_some_and(|turn_id| !turn_id.is_empty())
+    );
+
+    Ok(())
+}
+
+fn prompt_hook_tool_turn_sse(
+    call_id: &str,
+    command: &str,
+    hook_output: &str,
+) -> Result<Vec<String>> {
+    let args = serde_json::json!({ "command": command });
+    Ok(vec![
+        sse(vec![
+            ev_response_created("prompt-hook-main-1"),
+            ev_function_call(
+                call_id,
+                "shell_command",
+                &serde_json::to_string(&args)?,
+            ),
+            ev_completed("prompt-hook-main-1"),
+        ]),
+        sse(vec![
+            ev_response_created("prompt-hook-evaluator"),
+            ev_assistant_message("prompt-hook-result", hook_output),
+            ev_completed("prompt-hook-evaluator"),
+        ]),
+        sse(vec![
+            ev_response_created("prompt-hook-main-2"),
+            ev_assistant_message("prompt-hook-main-result", "tool handling complete"),
+            ev_completed("prompt-hook-main-2"),
+        ]),
+    ])
+}
+
+#[tokio::test]
+async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let call_id = "pretooluse-prompt-allow";
+    let marker_dir = TempDir::new()?;
+    let marker = marker_dir.path().join("marker");
+    let command = format!("printf allowed > {}", marker.display());
+    let responses = mount_sse_sequence(
+        &server,
+        prompt_hook_tool_turn_sse(call_id, &command, "{}")?,
+    )
+    .await;
+
+    let mut builder = test_codex()
+        .with_model(PRE_TOOL_PROMPT_HOOK_MAIN_MODEL)
+        .with_pre_build_hook(|home| {
+            write_pre_tool_use_prompt_hook(home, /*fail_closed*/ false, /*timeout_sec*/ None)
+                .expect("write prompt hook fixture");
+        })
+        .with_config(trust_discovered_hooks);
+    let test = builder.build(&server).await?;
+
+    let turn_prompt = "run the isolated prompt hook allow command";
+    let (started, completed) =
+        submit_turn_and_capture_prompt_hook_lifecycle(&test, turn_prompt).await?;
+    assert_eq!(started.run.status, HookRunStatus::Running);
+    assert_eq!(completed.run.status, HookRunStatus::Completed);
+    assert_eq!(started.run.id, completed.run.id);
+    assert!(marker.exists(), "allowed command should execute");
+
+    let requests = responses.requests();
+    assert_eq!(requests.len(), 3, "one prompt handler should issue one POST");
+    let hook_request = &requests[1];
+    let hook_body = hook_request.body_json();
+    assert_eq!(hook_body["model"], PRE_TOOL_PROMPT_HOOK_PREFERRED_MODEL);
+    assert_eq!(hook_body["tools"], serde_json::json!([]));
+    assert_eq!(hook_body["reasoning"]["effort"], "low");
+    assert_eq!(hook_body["text"]["format"]["type"], "json_schema");
+    assert_eq!(hook_body["text"]["format"]["strict"], true);
+    assert_eq!(hook_request.message_input_texts("developer"), Vec::<String>::new());
+    let hook_user_inputs = hook_request.message_input_texts("user");
+    assert_eq!(hook_user_inputs.len(), 1);
+    assert!(hook_user_inputs[0].contains(PRE_TOOL_PROMPT_HOOK_SENTINEL));
+    assert!(!hook_request.body_contains_text(turn_prompt));
+    assert!(!requests[2].body_contains_text(PRE_TOOL_PROMPT_HOOK_SENTINEL));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn pre_tool_use_prompt_hook_deny_blocks_tool_and_turn_continues() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let call_id = "pretooluse-prompt-deny";
+    let marker_dir = TempDir::new()?;
+    let marker = marker_dir.path().join("marker");
+    let command = format!("printf blocked > {}", marker.display());
+    let hook_output = serde_json::json!({
+        "decision": "block",
+        "reason": PRE_TOOL_PROMPT_HOOK_BLOCK_REASON,
+    })
+    .to_string();
+    let responses = mount_sse_sequence(
+        &server,
+        prompt_hook_tool_turn_sse(call_id, &command, &hook_output)?,
+    )
+    .await;
+
+    let mut builder = test_codex()
+        .with_pre_build_hook(|home| {
+            write_pre_tool_use_prompt_hook(home, /*fail_closed*/ false, /*timeout_sec*/ None)
+                .expect("write prompt hook fixture");
+        })
+        .with_config(trust_discovered_hooks);
+    let test = builder.build(&server).await?;
+
+    let (_, completed) =
+        submit_turn_and_capture_prompt_hook_lifecycle(&test, "run prompt hook deny command").await?;
+    assert_eq!(completed.run.status, HookRunStatus::Blocked);
+    assert!(!marker.exists(), "denied command should not execute");
+    let requests = responses.requests();
+    assert_eq!(requests.len(), 3);
+    let output = requests[2]
+        .function_call_output(call_id)
+        .get("output")
+        .and_then(Value::as_str)
+        .context("blocked tool output")?
+        .to_string();
+    assert!(output.contains(PRE_TOOL_PROMPT_HOOK_BLOCK_REASON));
+
+    Ok(())
+}
+
+async fn assert_prompt_hook_failure_is_fail_open(
+    hook_response: ResponseTemplate,
+    timeout_sec: Option<u64>,
+) -> Result<()> {
+    let server = start_mock_server().await;
+    let call_id = "pretooluse-prompt-failure-open";
+    let marker_dir = TempDir::new()?;
+    let marker = marker_dir.path().join("marker");
+    let command = format!("printf allowed > {}", marker.display());
+    let mut bodies = prompt_hook_tool_turn_sse(call_id, &command, "{}")?;
+    let responses = mount_response_sequence(
+        &server,
+        vec![
+            sse_response(bodies.remove(0)),
+            hook_response,
+            sse_response(bodies.remove(1)),
+        ],
+    )
+    .await;
+    let mut builder = test_codex()
+        .with_pre_build_hook(move |home| {
+            write_pre_tool_use_prompt_hook(home, /*fail_closed*/ false, timeout_sec)
+                .expect("write prompt hook fixture");
+        })
+        .with_config(trust_discovered_hooks);
+    let test = builder.build(&server).await?;
+
+    let (_, completed) =
+        submit_turn_and_capture_prompt_hook_lifecycle(&test, "run fail-open prompt hook").await?;
+    assert_eq!(completed.run.status, HookRunStatus::Failed);
+    assert!(marker.exists(), "fail-open prompt hook should execute tool");
+    assert_eq!(responses.requests().len(), 3);
+    Ok(())
+}
+
+#[tokio::test]
+async fn pre_tool_use_prompt_hook_invalid_output_fails_open() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    assert_prompt_hook_failure_is_fail_open(
+        sse_response(sse(vec![
+            ev_response_created("prompt-hook-invalid"),
+            ev_assistant_message("prompt-hook-invalid-result", "not json"),
+            ev_completed("prompt-hook-invalid"),
+        ])),
+        /*timeout_sec*/ None,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn pre_tool_use_prompt_hook_request_failure_fails_open_without_retry() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    assert_prompt_hook_failure_is_fail_open(
+        ResponseTemplate::new(500).set_body_json(serde_json::json!({
+            "error": {"type": "server_error", "message": "prompt hook request failed"}
+        })),
+        /*timeout_sec*/ None,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn pre_tool_use_prompt_hook_timeout_fails_open() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    assert_prompt_hook_failure_is_fail_open(
+        sse_response(sse(vec![ev_response_created("prompt-hook-timeout")]))
+            .set_delay(Duration::from_secs(2)),
+        Some(1),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn pre_tool_use_prompt_hook_failure_fails_closed_and_turn_continues() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let call_id = "pretooluse-prompt-failure-closed";
+    let marker_dir = TempDir::new()?;
+    let marker = marker_dir.path().join("marker");
+    let command = format!("printf blocked > {}", marker.display());
+    let responses = mount_sse_sequence(
+        &server,
+        prompt_hook_tool_turn_sse(call_id, &command, "not json")?,
+    )
+    .await;
+    let mut builder = test_codex()
+        .with_pre_build_hook(|home| {
+            write_pre_tool_use_prompt_hook(home, /*fail_closed*/ true, /*timeout_sec*/ None)
+                .expect("write prompt hook fixture");
+        })
+        .with_config(trust_discovered_hooks);
+    let test = builder.build(&server).await?;
+
+    let (_, completed) =
+        submit_turn_and_capture_prompt_hook_lifecycle(&test, "run fail-closed prompt hook").await?;
+    assert_eq!(completed.run.status, HookRunStatus::Failed);
+    assert!(!marker.exists(), "fail-closed prompt hook should block tool");
+    let requests = responses.requests();
+    assert_eq!(requests.len(), 3);
+    assert!(
+        requests[2]
+            .function_call_output(call_id)
+            .get("output")
+            .and_then(Value::as_str)
+            .is_some_and(|output| output.contains("blocked by PreToolUse hook"))
     );
 
     Ok(())
