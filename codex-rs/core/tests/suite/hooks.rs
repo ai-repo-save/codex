@@ -71,7 +71,6 @@ const PRE_TOOL_PROMPT_HOOK_SENTINEL: &str = "Block commands that violate the con
 const PRE_TOOL_PROMPT_HOOK_INSTRUCTIONS: &str =
     "Block commands that violate the configured policy. $$ARGUMENTS";
 const PRE_TOOL_PROMPT_HOOK_MAIN_MODEL: &str = "test-gpt-5.1-codex";
-const PRE_TOOL_PROMPT_HOOK_PREFERRED_MODEL: &str = "codex-auto-review";
 const PRE_TOOL_PROMPT_HOOK_BLOCK_REASON: &str = "blocked by prompt hook";
 
 fn restrictive_workspace_write_profile() -> PermissionProfile {
@@ -2531,7 +2530,11 @@ async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result
     assert_eq!(requests.len(), 3, "one prompt handler should issue one POST");
     let hook_request = &requests[1];
     let hook_body = hook_request.body_json();
-    assert_eq!(hook_body["model"], PRE_TOOL_PROMPT_HOOK_PREFERRED_MODEL);
+    assert_eq!(
+        hook_body["model"],
+        PRE_TOOL_PROMPT_HOOK_MAIN_MODEL,
+        "missing preferred model should fall back to the current model"
+    );
     assert_eq!(hook_body["tools"], serde_json::json!([]));
     assert_eq!(hook_body["reasoning"]["effort"], "low");
     assert_eq!(hook_body["text"]["format"]["type"], "json_schema");
