@@ -1898,7 +1898,7 @@
           "type": "integer"
         },
         "stream_response_header_timeout_ms": {
-          "description": "Maximum time (in milliseconds) to wait for response headers on a streaming response.",
+          "description": "Maximum time (in milliseconds) to wait for response headers on a streaming response. Defaults to 30,000 milliseconds when omitted. This timeout applies only while waiting for the streaming HTTP response headers, not to the SSE body after the headers arrive.",
           "format": "uint64",
           "minimum": 0.0,
           "type": "integer"
