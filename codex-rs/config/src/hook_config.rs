@@ -164,7 +164,6 @@ pub enum HookHandlerConfig {
     },
     #[serde(rename = "prompt")]
     Prompt {
-        #[serde(default)]
         prompt: String,
         #[serde(default)]
         model: Option<String>,

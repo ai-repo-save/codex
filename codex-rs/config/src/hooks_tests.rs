@@ -266,23 +266,14 @@ commandWindows = "powershell -File C:\\enterprise\\hooks\\pre.ps1"
 }
 
 #[test]
-fn prompt_hook_deserializes_defaults_without_semantic_validation() {
-    let parsed: HookHandlerConfig = serde_json::from_value(serde_json::json!({
+fn prompt_hook_requires_prompt_text() {
+    let error = serde_json::from_value::<HookHandlerConfig>(serde_json::json!({
         "type": "prompt",
         "statusMessage": "  "
     }))
-    .expect("prompt hook should deserialize");
+    .expect_err("prompt hook should require prompt text");
 
-    assert_eq!(
-        parsed,
-        HookHandlerConfig::Prompt {
-            prompt: String::new(),
-            model: None,
-            timeout_sec: None,
-            status_message: Some("  ".to_string()),
-            fail_closed: false,
-        }
-    );
+    assert!(error.to_string().contains("missing field `prompt`"));
 }
 
 #[test]
