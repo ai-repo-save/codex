@@ -1848,7 +1848,9 @@ impl ModelClientSession {
     ) -> Result<ResponseStream> {
         let isolated_session_telemetry = if self.mode == ModelClientSessionMode::IsolatedOneShot {
             let conversation_id = ThreadId::try_from(responses_metadata.thread_id.as_str())
-                .map_err(|error| anyhow::anyhow!("invalid isolated request identity: {error}"))?;
+                .map_err(|error| {
+                    CodexErr::Fatal(format!("invalid isolated request identity: {error}"))
+                })?;
             Some(
                 session_telemetry
                     .clone()
