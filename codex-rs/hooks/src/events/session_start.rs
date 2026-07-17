@@ -442,6 +442,9 @@ mod tests {
             "startup".to_string(),
         ))
         .expect("input JSON");
+        let expected_prompt = format!(
+            "<untrusted-hook-event-json>\n{expected_input}\n</untrusted-hook-event-json>"
+        );
 
         let outcome = run(
             &[prompt_handler(/*fail_closed*/ false)],
@@ -462,7 +465,7 @@ mod tests {
         assert_eq!(
             requests.as_slice(),
             &[PromptHookRequest {
-                rendered_prompt: expected_input,
+                rendered_prompt: expected_prompt,
                 model: None,
                 reasoning_effort: None,
                 event_name: HookEventName::SessionStart,
