@@ -15,7 +15,7 @@ use super::command_runner::CommandRunResult;
 const PROMPT_ARGUMENTS_PLACEHOLDER: &str = "$$ARGUMENTS";
 const PROMPT_HOOK_EVENT_JSON_LIMIT: usize = 64 * 1024;
 const PROMPT_HOOK_INPUT_TOKEN_LIMIT: usize = 8_192;
-const UNTRUSTED_EVENT_JSON_PREFIX: &str = "\n\n<untrusted-hook-event-json>\n";
+const UNTRUSTED_EVENT_JSON_PREFIX: &str = "<untrusted-hook-event-json>\n";
 const UNTRUSTED_EVENT_JSON_SUFFIX: &str = "\n</untrusted-hook-event-json>";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,10 +128,14 @@ fn render_prompt(prompt: &str, input_json: &str) -> Result<String, String> {
             "prompt hook event JSON exceeds the {PROMPT_HOOK_EVENT_JSON_LIMIT}-byte limit"
         ));
     }
+    let escaped_input_json = input_json.replace('<', "\\u003c").replace('>', "\\u003e");
+    let untrusted_event_json = format!(
+        "{UNTRUSTED_EVENT_JSON_PREFIX}{escaped_input_json}{UNTRUSTED_EVENT_JSON_SUFFIX}"
+    );
     let rendered = if prompt.contains(PROMPT_ARGUMENTS_PLACEHOLDER) {
-        prompt.replace(PROMPT_ARGUMENTS_PLACEHOLDER, input_json)
+        prompt.replace(PROMPT_ARGUMENTS_PLACEHOLDER, &untrusted_event_json)
     } else {
-        format!("{prompt}{UNTRUSTED_EVENT_JSON_PREFIX}{input_json}{UNTRUSTED_EVENT_JSON_SUFFIX}")
+        format!("{prompt}\n\n{untrusted_event_json}")
     };
     let estimated_tokens = approx_token_count(&rendered);
     if estimated_tokens > PROMPT_HOOK_INPUT_TOKEN_LIMIT {
