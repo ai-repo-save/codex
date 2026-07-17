@@ -94,6 +94,7 @@ mod personality_migration;
 mod plugins;
 mod prompt_caching;
 mod prompt_debug_tests;
+mod prompt_lifecycle_hooks;
 mod quota_exceeded;
 mod realtime_conversation;
 mod remote_env;
