@@ -245,10 +245,16 @@ fn normalize_strict_schema(schema: &mut Value) {
     }
     schema.remove("$schema");
     schema.remove("title");
-    if let Some(constant) = schema.remove("const")
-        && !schema.contains_key("enum")
-    {
-        schema.insert("enum".to_string(), Value::Array(vec![constant]));
+    if let Some(constant) = schema.remove("const") {
+        let constant_allowed = schema
+            .get("enum")
+            .is_none_or(|variants| {
+                variants
+                    .as_array()
+                    .is_some_and(|variants| variants.contains(&constant))
+            });
+        let variants = constant_allowed.then_some(constant).into_iter().collect();
+        schema.insert("enum".to_string(), Value::Array(variants));
     }
 
     for key in ["definitions", "$defs"] {

@@ -15,12 +15,24 @@ use super::PROMPT_HOOK_MAX_OUTPUT_BYTES;
 use super::PromptHookEvaluationError;
 use super::acquire_prompt_hook_permit;
 use super::collect_final_json;
+use super::normalize_strict_schema;
 use super::prompt_for_request;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
 
 const VALID_OUTPUT: &str = r#"{"continue":true}"#;
 const FENCED_OUTPUT: &str = "```json\n{\"continue\":true}\n```";
+
+#[test]
+fn strict_schema_intersects_constant_and_enum_constraints() {
+    let mut compatible = json!({"const": "PreToolUse", "enum": ["PreToolUse", "Stop"]});
+    normalize_strict_schema(&mut compatible);
+    assert_eq!(compatible, json!({"enum": ["PreToolUse"]}));
+
+    let mut incompatible = json!({"const": "PreToolUse", "enum": ["Stop"]});
+    normalize_strict_schema(&mut incompatible);
+    assert_eq!(incompatible, json!({"enum": []}));
+}
 
 #[test]
 fn prompt_request_uses_strict_schema_without_titles_constants_or_tools() {
