@@ -36,9 +36,10 @@ fn accept_request(listener: TcpListener) -> TcpStream {
         .accept()
         .expect("test server should accept a request");
     let mut buffer = [0_u8; 1024];
-    stream
+    let bytes_read = stream
         .read(&mut buffer)
         .expect("test server should read a request");
+    assert_ne!(bytes_read, 0, "test server should receive request bytes");
     stream
 }
 
