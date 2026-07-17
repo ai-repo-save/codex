@@ -74,6 +74,8 @@ const PRE_TOOL_PROMPT_HOOK_INSTRUCTIONS: &str =
 const PRE_TOOL_PROMPT_HOOK_MAIN_MODEL: &str = "test-gpt-5.1-codex";
 const PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL: &str = "prompt-hook-test-model";
 const PRE_TOOL_PROMPT_HOOK_BLOCK_REASON: &str = "blocked by prompt hook";
+const PERMISSION_REQUEST_PROMPT_DENY_REASON: &str = "denied by permission request prompt hook";
+const APPROVAL_REVIEW_ROUTE_PROMPT_SENTINEL: &str = "ApprovalReviewRoute";
 
 fn restrictive_workspace_write_profile() -> PermissionProfile {
     PermissionProfile::workspace_write_with(
@@ -163,6 +165,28 @@ fn write_pre_tool_use_prompt_hook(
         hooks["hooks"]["PreToolUse"][0]["hooks"][0]["reasoningEffort"] =
             serde_json::json!(reasoning_effort);
     }
+    fs::write(home.join("hooks.json"), hooks.to_string()).context("write hooks.json")?;
+    Ok(())
+}
+
+fn write_approval_prompt_hook(
+    home: &Path,
+    event_name: &str,
+    fail_closed: bool,
+) -> Result<()> {
+    let hooks = serde_json::json!({
+        "hooks": {
+            (event_name): [{
+                "matcher": "^Bash$",
+                "hooks": [{
+                    "type": "prompt",
+                    "prompt": "$$ARGUMENTS",
+                    "model": PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL,
+                    "failClosed": fail_closed,
+                }]
+            }]
+        }
+    });
     fs::write(home.join("hooks.json"), hooks.to_string()).context("write hooks.json")?;
     Ok(())
 }
@@ -1026,6 +1050,19 @@ fn request_hook_prompt_texts(
         .into_iter()
         .filter_map(|text| parse_hook_prompt_fragment(&text).map(|fragment| fragment.text))
         .collect()
+}
+
+fn assert_prompt_hook_request_is_isolated(
+    request: &core_test_support::responses::ResponsesRequest,
+) {
+    let body = request.body_json();
+    assert_eq!(body["tools"], serde_json::json!([]));
+    assert_eq!(body["text"]["format"]["type"], "json_schema");
+    assert_eq!(body["text"]["format"]["strict"], true);
+    assert_eq!(
+        request.message_input_texts("developer"),
+        Vec::<String>::new()
+    );
 }
 
 fn spilled_hook_output_path(text: &str) -> Option<&str> {
@@ -2037,6 +2074,214 @@ async fn blocked_queued_prompt_does_not_strand_earlier_accepted_prompt() -> Resu
 }
 
 #[tokio::test]
+async fn permission_request_prompt_hook_denies_tool_and_turn_continues() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let call_id = "permissionrequest-prompt-deny";
+    let marker_dir = TempDir::new()?;
+    let marker = marker_dir.path().join("marker");
+    fs::write(&marker, "seed").context("create permission request prompt marker")?;
+    let command = format!("rm -f {}", marker.display());
+    let hook_output = serde_json::json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PermissionRequest",
+            "decision": {
+                "behavior": "deny",
+                "message": PERMISSION_REQUEST_PROMPT_DENY_REASON,
+            }
+        }
+    })
+    .to_string();
+    let responses = mount_sse_sequence(
+        &server,
+        prompt_hook_tool_turn_sse(call_id, &command, &hook_output)?,
+    )
+    .await;
+
+    let mut builder = test_codex()
+        .with_pre_build_hook(|home| {
+            write_approval_prompt_hook(
+                home,
+                "PermissionRequest",
+                /*fail_closed*/ false,
+            )
+            .expect("write permission request prompt hook fixture");
+        })
+        .with_config(trust_discovered_hooks);
+    let test = builder.build(&server).await?;
+
+    test.submit_turn_with_approval_and_permission_profile(
+        "run the command denied by the permission request prompt hook",
+        AskForApproval::OnRequest,
+        PermissionProfile::Disabled,
+    )
+    .await?;
+
+    let requests = responses.requests();
+    assert_eq!(
+        requests.len(),
+        3,
+        "one prompt handler should issue one evaluator POST"
+    );
+    assert_prompt_hook_request_is_isolated(&requests[1]);
+    let hook_input: Value = serde_json::from_str(
+        requests[1]
+            .message_input_texts("user")
+            .first()
+            .context("permission request prompt input")?,
+    )?;
+    assert_permission_request_hook_input(&hook_input, "Bash", &command, /*description*/ None);
+    let output = requests[2]
+        .function_call_output(call_id)
+        .get("output")
+        .and_then(Value::as_str)
+        .context("denied permission request tool output")?;
+    assert!(output.contains(PERMISSION_REQUEST_PROMPT_DENY_REASON));
+    assert!(
+        marker.exists(),
+        "permission request prompt denial must not execute the command"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn approval_review_route_prompt_runs_only_for_needs_approval() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let approval_call_id = "approval-review-route-needs-approval";
+    let skip_call_id = "approval-review-route-skip";
+    let marker_dir = TempDir::new()?;
+    let marker = marker_dir.path().join("marker");
+    fs::write(&marker, "seed").context("create approval review route marker")?;
+    let approval_command = format!("rm -f {}", marker.display());
+    let skip_command = "printf route-skip";
+    let approval_args = serde_json::json!({ "command": approval_command });
+    let skip_args = serde_json::json!({ "command": skip_command });
+    let route_output = serde_json::json!({
+        "hookSpecificOutput": {
+            "hookEventName": "ApprovalReviewRoute",
+            "reviewer": "auto_review",
+        }
+    })
+    .to_string();
+    let guardian_output = serde_json::json!({
+        "risk_level": "low",
+        "user_authorization": "high",
+        "outcome": "allow",
+        "rationale": "The command removes the test-owned marker.",
+    })
+    .to_string();
+    let responses = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("route-main-approval"),
+                ev_function_call(
+                    approval_call_id,
+                    "shell_command",
+                    &serde_json::to_string(&approval_args)?,
+                ),
+                ev_completed("route-main-approval"),
+            ]),
+            sse(vec![
+                ev_response_created("route-evaluator"),
+                ev_assistant_message("route-evaluator-result", &route_output),
+                ev_completed("route-evaluator"),
+            ]),
+            sse(vec![
+                ev_response_created("route-guardian"),
+                ev_assistant_message("route-guardian-result", &guardian_output),
+                ev_completed("route-guardian"),
+            ]),
+            sse(vec![
+                ev_response_created("route-main-approval-complete"),
+                ev_assistant_message("route-main-approval-result", "approval route complete"),
+                ev_completed("route-main-approval-complete"),
+            ]),
+            sse(vec![
+                ev_response_created("route-main-skip"),
+                ev_function_call(
+                    skip_call_id,
+                    "shell_command",
+                    &serde_json::to_string(&skip_args)?,
+                ),
+                ev_completed("route-main-skip"),
+            ]),
+            sse(vec![
+                ev_response_created("route-main-skip-complete"),
+                ev_assistant_message("route-main-skip-result", "skip route complete"),
+                ev_completed("route-main-skip-complete"),
+            ]),
+        ],
+    )
+    .await;
+
+    let mut builder = test_codex()
+        .with_pre_build_hook(|home| {
+            write_approval_prompt_hook(
+                home,
+                "ApprovalReviewRoute",
+                /*fail_closed*/ false,
+            )
+            .expect("write approval review route prompt hook fixture");
+        })
+        .with_config(trust_discovered_hooks);
+    let test = builder.build(&server).await?;
+
+    test.submit_turn_with_approval_and_permission_profile(
+        "run the command requiring routed approval",
+        AskForApproval::OnRequest,
+        PermissionProfile::Disabled,
+    )
+    .await?;
+    test.submit_turn_with_approval_and_permission_profile(
+        "run the command that skips approval",
+        AskForApproval::OnRequest,
+        PermissionProfile::Disabled,
+    )
+    .await?;
+
+    let requests = responses.requests();
+    assert_eq!(requests.len(), 6);
+    let route_requests = requests
+        .iter()
+        .filter(|request| request.body_contains_text(APPROVAL_REVIEW_ROUTE_PROMPT_SENTINEL))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        route_requests.len(),
+        1,
+        "Skip must not issue an ApprovalReviewRoute evaluator POST"
+    );
+    let route_request = route_requests[0];
+    assert_prompt_hook_request_is_isolated(route_request);
+    let route_input: Value = serde_json::from_str(
+        route_request
+            .message_input_texts("user")
+            .first()
+            .context("approval review route prompt input")?,
+    )?;
+    assert_eq!(route_input["hook_event_name"], "ApprovalReviewRoute");
+    assert_eq!(route_input["tool_name"], "Bash");
+    assert_eq!(route_input["tool_input"]["command"], approval_command);
+    assert_eq!(route_input["approval_kind"], "shell");
+    assert_eq!(route_input["approval_policy"], "on_request");
+    assert_eq!(route_input["strict_auto_review"], false);
+    assert_eq!(route_input["static_auto_review_enabled"], false);
+    assert!(route_input["retry_reason"].is_string());
+    requests[3].function_call_output(approval_call_id);
+    requests[5].function_call_output(skip_call_id);
+    assert!(
+        !marker.exists(),
+        "AutoReview route should complete approval and execute the command"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn permission_request_hook_allows_shell_command_without_user_approval() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
@@ -2567,7 +2812,7 @@ async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
         hook_body["model"], PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL,
         "explicit prompt hook model should take precedence"
     );
-    assert_eq!(hook_body["tools"], serde_json::json!([]));
+    assert_prompt_hook_request_is_isolated(hook_request);
     match reasoning_effort {
         Some(reasoning_effort) => assert_eq!(
             hook_body["reasoning"]["effort"],
@@ -2578,12 +2823,6 @@ async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
             "undeclared reasoning effort must omit reasoning parameters"
         ),
     }
-    assert_eq!(hook_body["text"]["format"]["type"], "json_schema");
-    assert_eq!(hook_body["text"]["format"]["strict"], true);
-    assert_eq!(
-        hook_request.message_input_texts("developer"),
-        Vec::<String>::new()
-    );
     let hook_user_inputs = hook_request.message_input_texts("user");
     assert_eq!(hook_user_inputs.len(), 1);
     assert!(hook_user_inputs[0].contains(PRE_TOOL_PROMPT_HOOK_SENTINEL));
