@@ -160,7 +160,10 @@ name = "Example"
             .to_api_provider(/*auth_mode*/ None)
             .expect("provider should build API provider");
 
-        assert_eq!(api_provider.stream_response_header_timeout, expected_timeout);
+        assert_eq!(
+            api_provider.stream_response_header_timeout,
+            expected_timeout
+        );
     }
 }
 
