@@ -442,9 +442,8 @@ mod tests {
             "startup".to_string(),
         ))
         .expect("input JSON");
-        let expected_prompt = format!(
-            "<untrusted-hook-event-json>\n{expected_input}\n</untrusted-hook-event-json>"
-        );
+        let expected_prompt =
+            format!("<untrusted-hook-event-json>\n{expected_input}\n</untrusted-hook-event-json>");
 
         let outcome = run(
             &[prompt_handler(/*fail_closed*/ false)],

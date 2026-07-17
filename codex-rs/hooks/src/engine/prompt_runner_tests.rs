@@ -24,9 +24,8 @@ impl PromptHookRunner for RecordingRunner {
 #[test]
 fn prompt_rendering_replaces_every_arguments_placeholder() {
     let event_json = r#"{"hook_event_name":"PreToolUse"}"#;
-    let untrusted_event_json = format!(
-        "<untrusted-hook-event-json>\n{event_json}\n</untrusted-hook-event-json>"
-    );
+    let untrusted_event_json =
+        format!("<untrusted-hook-event-json>\n{event_json}\n</untrusted-hook-event-json>");
 
     assert_eq!(
         render_prompt("Before $$ARGUMENTS after $$ARGUMENTS", event_json),
@@ -141,8 +140,8 @@ async fn prompt_runner_receives_raw_event_and_event_output_schema() {
 
 fn prompt_request(event_name: HookEventName, output_schema: Value) -> PromptHookRequest {
     PromptHookRequest {
-        rendered_prompt:
-            "Review <untrusted-hook-event-json>\n{}\n</untrusted-hook-event-json>".to_string(),
+        rendered_prompt: "Review <untrusted-hook-event-json>\n{}\n</untrusted-hook-event-json>"
+            .to_string(),
         model: Some("gpt-override".to_string()),
         reasoning_effort: Some(ReasoningEffort::High),
         event_name,

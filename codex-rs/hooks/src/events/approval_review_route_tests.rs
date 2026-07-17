@@ -75,9 +75,8 @@ async fn prompt_route_uses_command_dto_schema_and_static_decision_aggregation() 
     };
     let request = request();
     let expected_input = serde_json::to_string(&build_command_input(&request)).expect("input JSON");
-    let expected_prompt = format!(
-        "<untrusted-hook-event-json>\n{expected_input}\n</untrusted-hook-event-json>"
-    );
+    let expected_prompt =
+        format!("<untrusted-hook-event-json>\n{expected_input}\n</untrusted-hook-event-json>");
 
     let outcome = run(
         &[prompt_handler(/*fail_closed*/ false)],

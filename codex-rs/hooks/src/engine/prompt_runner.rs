@@ -129,9 +129,8 @@ fn render_prompt(prompt: &str, input_json: &str) -> Result<String, String> {
         ));
     }
     let escaped_input_json = input_json.replace('<', "\\u003c").replace('>', "\\u003e");
-    let untrusted_event_json = format!(
-        "{UNTRUSTED_EVENT_JSON_PREFIX}{escaped_input_json}{UNTRUSTED_EVENT_JSON_SUFFIX}"
-    );
+    let untrusted_event_json =
+        format!("{UNTRUSTED_EVENT_JSON_PREFIX}{escaped_input_json}{UNTRUSTED_EVENT_JSON_SUFFIX}");
     let rendered = if prompt.contains(PROMPT_ARGUMENTS_PLACEHOLDER) {
         prompt.replace(PROMPT_ARGUMENTS_PLACEHOLDER, &untrusted_event_json)
     } else {
