@@ -159,6 +159,7 @@ pub(crate) struct ClaudeHooksEngine {
 }
 
 impl ClaudeHooksEngine {
+    #[cfg(test)]
     pub(crate) fn new(
         enabled: bool,
         bypass_hook_trust: bool,
