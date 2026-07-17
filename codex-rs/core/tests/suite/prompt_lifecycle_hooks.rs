@@ -6,7 +6,6 @@ use anyhow::Context;
 use anyhow::Result;
 use codex_core::compact::SUMMARIZATION_PROMPT;
 use codex_features::Feature;
-use codex_protocol::items::TurnItem;
 use codex_protocol::protocol::AgentStatus;
 use codex_protocol::protocol::CodexErrorInfo;
 use codex_protocol::protocol::EventMsg;
@@ -163,6 +162,13 @@ fn request_body(request: &wiremock::Request) -> Option<Value> {
     decoded_body(request).and_then(|body| serde_json::from_slice(&body).ok())
 }
 
+fn request_header<'a>(request: &'a wiremock::Request, name: &str) -> Option<&'a str> {
+    request
+        .headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+}
+
 fn request_contains(request: &wiremock::Request, text: &str) -> bool {
     decoded_body(request)
         .and_then(|body| String::from_utf8(body).ok())
@@ -221,18 +227,21 @@ async fn pre_compact_invalid_prompt_output_fails_open_and_compacts() -> Result<(
     let events = wait_for_compact_terminal(&test).await?;
 
     assert!(failed_prompt_hook(&events, HookEventName::PreCompact));
-    assert!(events.iter().any(|event| {
-        matches!(
-            event,
-            EventMsg::ItemCompleted(completed)
-                if matches!(&completed.item, TurnItem::ContextCompaction(_))
-        )
-    }));
     let requests = responses.requests();
     assert_eq!(requests.len(), 3);
     assert!(request_uses_model(&requests[0], MAIN_MODEL));
     assert!(request_uses_model(&requests[1], EVALUATOR_MODEL));
     assert!(request_uses_model(&requests[2], MAIN_MODEL));
+    let compact_metadata: Value = serde_json::from_str(
+        &requests[2]
+            .header("x-codex-turn-metadata")
+            .expect("compact request should include turn metadata"),
+    )
+    .expect("compact turn metadata should be valid json");
+    assert_eq!(
+        compact_metadata["request_kind"].as_str(),
+        Some("compaction")
+    );
     Ok(())
 }
 
@@ -418,7 +427,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_and_notifies_p
         |request: &wiremock::Request| {
             request_body(request).is_some_and(|body| {
                 body["model"] == json!(MAIN_MODEL)
-                    && body["client_metadata"]["x-openai-subagent"] == json!("collab_spawn")
+                    && request_header(request, "x-openai-subagent") == Some("collab_spawn")
             })
         },
         model_sse("unexpected-child-main", "unexpected child sample"),
@@ -469,7 +478,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_and_notifies_p
         .filter(|request| {
             request_body(request).is_some_and(|body| {
                 body["model"] == json!(EVALUATOR_MODEL)
-                    && body["client_metadata"]["x-codex-window-id"] == json!("prompt-hook")
+                    && request_header(request, "x-codex-window-id") == Some("prompt-hook")
                     && body["tools"].as_array().is_some_and(Vec::is_empty)
                     && request_contains(request, "Evaluate this lifecycle hook payload: ")
                     && request_contains(request, r#"\"hookEventName\":\"SubagentStart\""#)
@@ -482,7 +491,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_and_notifies_p
         .filter(|request| {
             request_body(request).is_some_and(|body| {
                 body["model"] == json!(MAIN_MODEL)
-                    && body["client_metadata"]["x-openai-subagent"] == json!("collab_spawn")
+                    && request_header(request, "x-openai-subagent") == Some("collab_spawn")
                     && request_contains(request, CHILD_PROMPT)
                     && body["tools"].as_array().is_some_and(|tools| {
                         tools.iter().any(|tool| {
