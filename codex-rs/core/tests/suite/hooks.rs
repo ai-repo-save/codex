@@ -2970,8 +2970,11 @@ async fn pre_tool_use_prompt_hook_deny_blocks_tool_and_turn_continues() -> Resul
     let marker = marker_dir.path().join("marker");
     let command = format!("printf blocked > {}", marker.display());
     let hook_output = serde_json::json!({
-        "decision": "block",
-        "reason": PRE_TOOL_PROMPT_HOOK_BLOCK_REASON,
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": PRE_TOOL_PROMPT_HOOK_BLOCK_REASON,
+        },
     })
     .to_string();
     let responses = mount_sse_sequence(
