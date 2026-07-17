@@ -9,11 +9,14 @@ use codex_models_manager::manager::RefreshStrategy;
 use codex_models_manager::manager::SharedModelsManager;
 use codex_otel::SessionTelemetry;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
+use codex_protocol::error::CodexErr;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
 use codex_rollout_trace::InferenceTraceContext;
+use codex_utils_output_truncation::TruncationPolicy;
+use codex_utils_output_truncation::truncate_text;
 use futures::FutureExt;
 use futures::StreamExt;
 use serde_json::Map;
@@ -28,6 +31,7 @@ use crate::config::Config;
 use crate::stream_events_utils::raw_assistant_output_text_from_item;
 
 const PROMPT_HOOK_MAX_CONCURRENCY: usize = 4;
+const PROMPT_HOOK_MAX_ERROR_DETAIL_BYTES: usize = 1024;
 const PROMPT_HOOK_MAX_OUTPUT_BYTES: usize = 32 * 1024;
 
 const PROMPT_HOOK_BASE_INSTRUCTIONS: &str = r#"You evaluate a Codex prompt hook.
@@ -45,8 +49,8 @@ enum PromptHookEvaluationError {
     ConcurrencyClosed,
     #[error("prompt hook preferred model is unavailable")]
     PreferredModelUnavailable,
-    #[error("prompt hook model request failed")]
-    Request,
+    #[error("prompt hook model request failed: {0}")]
+    Request(String),
     #[error("prompt hook response stream failed")]
     Stream,
     #[error("prompt hook response exceeded the output limit")]
@@ -129,7 +133,7 @@ impl PromptHookEvaluator {
                 &InferenceTraceContext::disabled(),
             )
             .await
-            .map_err(|_| PromptHookEvaluationError::Request)?;
+            .map_err(prompt_hook_request_error)?;
         collect_final_json(&mut stream)
             .await
             .map_err(anyhow::Error::new)
@@ -165,6 +169,14 @@ impl PromptHookEvaluator {
 
         Err(PromptHookEvaluationError::PreferredModelUnavailable)
     }
+}
+
+fn prompt_hook_request_error(error: CodexErr) -> PromptHookEvaluationError {
+    let detail = truncate_text(
+        &error.to_string(),
+        TruncationPolicy::Bytes(PROMPT_HOOK_MAX_ERROR_DETAIL_BYTES),
+    );
+    PromptHookEvaluationError::Request(detail)
 }
 
 async fn acquire_prompt_hook_permit(

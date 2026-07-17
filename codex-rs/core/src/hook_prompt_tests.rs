@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use codex_hooks::PromptHookRequest;
+use codex_protocol::error::CodexErr;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::HookEventName;
@@ -17,11 +18,31 @@ use super::acquire_prompt_hook_permit;
 use super::collect_final_json;
 use super::normalize_strict_schema;
 use super::prompt_for_request;
+use super::prompt_hook_request_error;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
 
 const VALID_OUTPUT: &str = r#"{"continue":true}"#;
 const FENCED_OUTPUT: &str = "```json\n{\"continue\":true}\n```";
+
+#[test]
+fn request_error_detail_is_utf8_safe_and_bounded() {
+    const DETAIL_CHARACTER: &str = "前";
+    const EXPECTED_RETAINED_CHARACTERS_PER_SIDE: usize = 170;
+    const EXPECTED_TRUNCATED_CHARACTERS: usize = 260;
+
+    let detail = DETAIL_CHARACTER.repeat(600);
+    let expected_detail = format!(
+        "{}…{EXPECTED_TRUNCATED_CHARACTERS} chars truncated…{}",
+        DETAIL_CHARACTER.repeat(EXPECTED_RETAINED_CHARACTERS_PER_SIDE),
+        DETAIL_CHARACTER.repeat(EXPECTED_RETAINED_CHARACTERS_PER_SIDE),
+    );
+
+    assert_eq!(
+        prompt_hook_request_error(CodexErr::InvalidRequest(detail)),
+        PromptHookEvaluationError::Request(expected_detail)
+    );
+}
 
 #[test]
 fn strict_schema_intersects_constant_and_enum_constraints() {
