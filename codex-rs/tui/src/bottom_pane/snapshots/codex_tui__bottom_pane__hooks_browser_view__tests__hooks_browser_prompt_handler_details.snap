@@ -1,0 +1,25 @@
+---
+source: tui/src/bottom_pane/hooks_browser_view.rs
+assertion_line: 1356
+expression: details
+---
+                                                        
+  PreToolUse hooks                                      
+  Turn hooks on or off. Your changes are saved automat  
+                                                        
+  [x] Hook 1                                            
+                                                        
+  Event     PreToolUse                                  
+  Matcher   Bash                                        
+  Source    User config - /tmp/hooks.json               
+  Prompt    First prompt line                           
+            PROMPT_SENTINEL_7F3A                        
+            Third prompt line that remains visible      
+            after wrapping                              
+  Model     gpt-5.4-mini                                
+  Reasoning REASONING_EFFORT_SENTINEL_9D2C              
+  On error  Block                                       
+  Timeout   30s                                         
+  Trust     Trusted                                     
+                                                        
+  Press space or enter to toggle; esc to go back
