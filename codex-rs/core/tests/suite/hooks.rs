@@ -2817,9 +2817,8 @@ async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
         None
     );
     assert_eq!(
-        output_schema.pointer(
-            "/$defs/PreToolUseHookSpecificOutputWire/properties/hookEventName/const"
-        ),
+        output_schema
+            .pointer("/$defs/PreToolUseHookSpecificOutputWire/properties/hookEventName/const"),
         Some(&serde_json::json!("PreToolUse"))
     );
     let output_schema_json = serde_json::to_string(output_schema)?;
