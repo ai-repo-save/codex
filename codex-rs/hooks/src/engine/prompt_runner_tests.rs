@@ -14,10 +14,7 @@ struct RecordingRunner {
 }
 
 impl PromptHookRunner for RecordingRunner {
-    fn run(
-        &self,
-        request: PromptHookRequest,
-    ) -> BoxFuture<'static, anyhow::Result<String>> {
+    fn run(&self, request: PromptHookRequest) -> BoxFuture<'static, anyhow::Result<String>> {
         self.requests.lock().expect("request lock").push(request);
         let output = self.output.clone();
         async move { Ok(output) }.boxed()

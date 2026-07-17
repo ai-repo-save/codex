@@ -705,10 +705,7 @@ fn migrate_prompt_hook(
         remaining_prompt = &suffix["$ARGUMENTS".len()..];
     }
     rewritten_prompt.push_str(remaining_prompt);
-    prompt_payload.insert(
-        "prompt".to_string(),
-        JsonValue::String(rewritten_prompt),
-    );
+    prompt_payload.insert("prompt".to_string(), JsonValue::String(rewritten_prompt));
     if let Some(reasoning_effort) = hook_object
         .get("reasoningEffort")
         .and_then(JsonValue::as_str)

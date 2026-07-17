@@ -18,8 +18,8 @@ use futures::FutureExt;
 use futures::StreamExt;
 use serde_json::Map;
 use serde_json::Value;
-use tokio::sync::Semaphore;
 use tokio::sync::OwnedSemaphorePermit;
+use tokio::sync::Semaphore;
 
 use crate::client::ModelClient;
 use crate::client_common::Prompt;
@@ -83,8 +83,7 @@ pub(crate) fn build_prompt_hook_runner(
     service_tier: Option<String>,
 ) -> Arc<dyn PromptHookRunner> {
     let limiter = Arc::clone(
-        PROMPT_HOOK_LIMITER
-            .get_or_init(|| Arc::new(Semaphore::new(PROMPT_HOOK_MAX_CONCURRENCY))),
+        PROMPT_HOOK_LIMITER.get_or_init(|| Arc::new(Semaphore::new(PROMPT_HOOK_MAX_CONCURRENCY))),
     );
     Arc::new(CorePromptHookRunner {
         evaluator: PromptHookEvaluator {
@@ -151,10 +150,7 @@ impl PromptHookEvaluator {
         let preferred_model = self.model_client.approval_review_preferred_model();
         let available_models = self
             .models_manager
-            .list_models(
-                RefreshStrategy::Offline,
-                self.http_client_factory.clone(),
-            )
+            .list_models(RefreshStrategy::Offline, self.http_client_factory.clone())
             .await;
         if available_models
             .iter()
@@ -324,9 +320,7 @@ fn schema_allows_null(schema: &Value) -> bool {
     match schema.get("type") {
         Some(Value::String(schema_type)) if schema_type == "null" => return true,
         Some(Value::Array(schema_types))
-            if schema_types
-                .iter()
-                .any(|schema_type| schema_type == "null") =>
+            if schema_types.iter().any(|schema_type| schema_type == "null") =>
         {
             return true;
         }
@@ -360,7 +354,10 @@ async fn collect_final_json(
                 }
             }
             ResponseEvent::OutputItemAdded(item) => {
-                if !matches!(item, ResponseItem::Message { .. } | ResponseItem::Reasoning { .. }) {
+                if !matches!(
+                    item,
+                    ResponseItem::Message { .. } | ResponseItem::Reasoning { .. }
+                ) {
                     return Err(PromptHookEvaluationError::ToolCall);
                 }
             }

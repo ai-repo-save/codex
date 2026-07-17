@@ -575,9 +575,10 @@ fn append_matcher_groups(
                         ));
                         continue;
                     }
-                    if model.as_deref().is_some_and(|model| {
-                        model.trim().is_empty() || model.trim() != model
-                    }) {
+                    if model
+                        .as_deref()
+                        .is_some_and(|model| model.trim().is_empty() || model.trim() != model)
+                    {
                         warnings.push(format!(
                             "skipping invalid prompt hook model in {}",
                             source.path.display()
@@ -592,8 +593,8 @@ fn append_matcher_groups(
                         continue;
                     }
                     let timeout_sec = timeout_sec.unwrap_or(30);
-                    let status_message = status_message
-                        .filter(|status_message| !status_message.trim().is_empty());
+                    let status_message =
+                        status_message.filter(|status_message| !status_message.trim().is_empty());
                     let normalized_handler = HookHandlerConfig::Prompt {
                         prompt: prompt.clone(),
                         model: model.clone(),
@@ -926,7 +927,10 @@ mod tests {
             Some("Review $$ARGUMENTS")
         );
         assert_eq!(hook_entries[0].model.as_deref(), Some("gpt-test"));
-        assert_eq!(hook_entries[0].reasoning_effort, Some(ReasoningEffort::High));
+        assert_eq!(
+            hook_entries[0].reasoning_effort,
+            Some(ReasoningEffort::High)
+        );
         assert_eq!(hook_entries[0].timeout_sec, 30);
         assert_eq!(hook_entries[0].fail_closed, Some(true));
     }
@@ -1056,7 +1060,10 @@ mod tests {
             Some("Review $$ARGUMENTS")
         );
         assert_eq!(hook_entries[0].model.as_deref(), Some("gpt-test"));
-        assert_eq!(hook_entries[0].reasoning_effort, Some(ReasoningEffort::High));
+        assert_eq!(
+            hook_entries[0].reasoning_effort,
+            Some(ReasoningEffort::High)
+        );
         assert_eq!(hook_entries[0].status_message, None);
         assert_eq!(hook_entries[0].timeout_sec, 1);
         assert_eq!(hook_entries[0].fail_closed, Some(true));
@@ -1090,9 +1097,11 @@ mod tests {
         assert_eq!(handlers, Vec::<ConfiguredHandler>::new());
         assert_eq!(hook_entries, Vec::<HookListEntry>::new());
         assert_eq!(warnings.len(), 2);
-        assert!(warnings.iter().all(|warning| warning.contains(
-            "prompt hooks are not supported for SessionStart"
-        )));
+        assert!(
+            warnings
+                .iter()
+                .all(|warning| warning.contains("prompt hooks are not supported for SessionStart"))
+        );
     }
 
     #[test]

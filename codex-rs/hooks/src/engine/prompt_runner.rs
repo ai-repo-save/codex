@@ -32,10 +32,7 @@ pub struct PromptHookRequest {
 /// Implementations must return exactly one JSON value conforming to `output_schema` and must not
 /// expose tool execution to the evaluator.
 pub trait PromptHookRunner: Send + Sync {
-    fn run(
-        &self,
-        request: PromptHookRequest,
-    ) -> BoxFuture<'static, anyhow::Result<String>>;
+    fn run(&self, request: PromptHookRequest) -> BoxFuture<'static, anyhow::Result<String>>;
 }
 
 pub(crate) async fn run_prompt(
@@ -100,9 +97,7 @@ fn render_prompt(prompt: &str, input_json: &str) -> Result<String, String> {
     let rendered = if prompt.contains(PROMPT_ARGUMENTS_PLACEHOLDER) {
         prompt.replace(PROMPT_ARGUMENTS_PLACEHOLDER, input_json)
     } else {
-        format!(
-            "{prompt}{UNTRUSTED_EVENT_JSON_PREFIX}{input_json}{UNTRUSTED_EVENT_JSON_SUFFIX}"
-        )
+        format!("{prompt}{UNTRUSTED_EVENT_JSON_PREFIX}{input_json}{UNTRUSTED_EVENT_JSON_SUFFIX}")
     };
     let estimated_tokens = approx_token_count(&rendered);
     if estimated_tokens > PROMPT_HOOK_INPUT_TOKEN_LIMIT {
@@ -114,13 +109,7 @@ fn render_prompt(prompt: &str, input_json: &str) -> Result<String, String> {
 }
 
 fn failed_prompt_run(started_at: i64, started: Instant, error: String) -> CommandRunResult {
-    prompt_run_result(
-        started_at,
-        started,
-        None,
-        String::new(),
-        Some(error),
-    )
+    prompt_run_result(started_at, started, None, String::new(), Some(error))
 }
 
 fn prompt_run_result(

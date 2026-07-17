@@ -422,11 +422,10 @@ mod tests {
         prompt_hook.prompt = Some(format!(
             "Review this complete prompt.\n{PROMPT_SENTINEL}\nDo not truncate the final line."
         ));
-        prompt_hook.reasoning_effort = Some(
-            codex_protocol::openai_models::ReasoningEffort::Custom(
+        prompt_hook.reasoning_effort =
+            Some(codex_protocol::openai_models::ReasoningEffort::Custom(
                 REASONING_EFFORT_SENTINEL.to_string(),
-            ),
-        );
+            ));
         let entry = HooksListEntry {
             cwd: test_path_buf("/tmp"),
             hooks: vec![prompt_hook],

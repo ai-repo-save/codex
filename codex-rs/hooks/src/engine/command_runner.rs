@@ -166,7 +166,8 @@ fn build_command(shell: &CommandShell, handler: &ConfiguredHandler) -> Command {
     let ConfiguredHandlerKind::Command {
         command: command_text,
         ..
-    } = &handler.kind else {
+    } = &handler.kind
+    else {
         panic!("prompt handler cannot run as a command hook");
     };
     let mut process = if shell.program.is_empty() {

@@ -14,8 +14,8 @@ use codex_protocol::items::parse_hook_prompt_fragment;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::ResponseItem;
-use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::openai_models::ReasoningEffort;
+use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::HookCompletedEvent;
@@ -40,8 +40,8 @@ use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_message_item_added;
 use core_test_support::responses::ev_output_text_delta;
 use core_test_support::responses::ev_response_created;
-use core_test_support::responses::mount_sse_once;
 use core_test_support::responses::mount_response_sequence;
+use core_test_support::responses::mount_sse_once;
 use core_test_support::responses::mount_sse_sequence;
 use core_test_support::responses::sse;
 use core_test_support::responses::sse_response;
@@ -2483,11 +2483,7 @@ fn prompt_hook_tool_turn_sse(
     Ok(vec![
         sse(vec![
             ev_response_created("prompt-hook-main-1"),
-            ev_function_call(
-                call_id,
-                "shell_command",
-                &serde_json::to_string(&args)?,
-            ),
+            ev_function_call(call_id, "shell_command", &serde_json::to_string(&args)?),
             ev_completed("prompt-hook-main-1"),
         ]),
         sse(vec![
@@ -2503,16 +2499,15 @@ fn prompt_hook_tool_turn_sse(
     ])
 }
 
-fn prompt_hook_tool_turn_without_evaluator_sse(call_id: &str, command: &str) -> Result<Vec<String>> {
+fn prompt_hook_tool_turn_without_evaluator_sse(
+    call_id: &str,
+    command: &str,
+) -> Result<Vec<String>> {
     let args = serde_json::json!({ "command": command });
     Ok(vec![
         sse(vec![
             ev_response_created("prompt-hook-main-1"),
-            ev_function_call(
-                call_id,
-                "shell_command",
-                &serde_json::to_string(&args)?,
-            ),
+            ev_function_call(call_id, "shell_command", &serde_json::to_string(&args)?),
             ev_completed("prompt-hook-main-1"),
         ]),
         sse(vec![
@@ -2533,11 +2528,8 @@ async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
     let marker_dir = TempDir::new()?;
     let marker = marker_dir.path().join("marker");
     let command = format!("printf allowed > {}", marker.display());
-    let responses = mount_sse_sequence(
-        &server,
-        prompt_hook_tool_turn_sse(call_id, &command, "{}")?,
-    )
-    .await;
+    let responses =
+        mount_sse_sequence(&server, prompt_hook_tool_turn_sse(call_id, &command, "{}")?).await;
 
     let fixture_reasoning_effort = reasoning_effort.clone();
     let mut builder = test_codex()
@@ -2564,12 +2556,15 @@ async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
     assert!(marker.exists(), "allowed command should execute");
 
     let requests = responses.requests();
-    assert_eq!(requests.len(), 3, "one prompt handler should issue one POST");
+    assert_eq!(
+        requests.len(),
+        3,
+        "one prompt handler should issue one POST"
+    );
     let hook_request = &requests[1];
     let hook_body = hook_request.body_json();
     assert_eq!(
-        hook_body["model"],
-        PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL,
+        hook_body["model"], PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL,
         "explicit prompt hook model should take precedence"
     );
     assert_eq!(hook_body["tools"], serde_json::json!([]));
@@ -2585,7 +2580,10 @@ async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
     }
     assert_eq!(hook_body["text"]["format"]["type"], "json_schema");
     assert_eq!(hook_body["text"]["format"]["strict"], true);
-    assert_eq!(hook_request.message_input_texts("developer"), Vec::<String>::new());
+    assert_eq!(
+        hook_request.message_input_texts("developer"),
+        Vec::<String>::new()
+    );
     let hook_user_inputs = hook_request.message_input_texts("user");
     assert_eq!(hook_user_inputs.len(), 1);
     assert!(hook_user_inputs[0].contains(PRE_TOOL_PROMPT_HOOK_SENTINEL));
@@ -2641,7 +2639,8 @@ async fn pre_tool_use_prompt_hook_deny_blocks_tool_and_turn_continues() -> Resul
     let test = builder.build(&server).await?;
 
     let (_, completed) =
-        submit_turn_and_capture_prompt_hook_lifecycle(&test, "run prompt hook deny command").await?;
+        submit_turn_and_capture_prompt_hook_lifecycle(&test, "run prompt hook deny command")
+            .await?;
     assert_eq!(completed.run.status, HookRunStatus::Blocked);
     assert!(!marker.exists(), "denied command should not execute");
     let requests = responses.requests();
@@ -2783,7 +2782,11 @@ async fn assert_missing_preferred_prompt_hook_model_respects_failure_mode(
     );
 
     let requests = responses.requests();
-    assert_eq!(requests.len(), 2, "model selection must fail before a prompt POST");
+    assert_eq!(
+        requests.len(),
+        2,
+        "model selection must fail before a prompt POST"
+    );
     assert!(
         requests
             .iter()
@@ -2848,7 +2851,10 @@ async fn pre_tool_use_prompt_hook_failure_fails_closed_and_turn_continues() -> R
     let (_, completed) =
         submit_turn_and_capture_prompt_hook_lifecycle(&test, "run fail-closed prompt hook").await?;
     assert_eq!(completed.run.status, HookRunStatus::Failed);
-    assert!(!marker.exists(), "fail-closed prompt hook should block tool");
+    assert!(
+        !marker.exists(),
+        "fail-closed prompt hook should block tool"
+    );
     let requests = responses.requests();
     assert_eq!(requests.len(), 3);
     assert!(

@@ -6,7 +6,6 @@ use crate::engine::ClaudeHooksEngine;
 use crate::engine::CommandShell;
 use crate::engine::HookListEntry;
 use crate::engine::PromptHookRunner;
-use std::sync::Arc;
 use crate::events::approval_review_route::ApprovalReviewRouteOutcome;
 use crate::events::approval_review_route::ApprovalReviewRouteRequest;
 use crate::events::compact::PostCompactRequest;
@@ -29,6 +28,7 @@ use crate::types::Hook;
 use crate::types::HookEvent;
 use crate::types::HookPayload;
 use crate::types::HookResponse;
+use std::sync::Arc;
 
 #[derive(Default, Clone)]
 pub struct HooksConfig {

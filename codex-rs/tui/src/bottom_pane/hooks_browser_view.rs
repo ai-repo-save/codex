@@ -511,7 +511,11 @@ impl HooksBrowserView {
                 }
                 lines.push(detail_line(
                     "On error",
-                    if hook.fail_closed { "Block" } else { "Continue" },
+                    if hook.fail_closed {
+                        "Block"
+                    } else {
+                        "Continue"
+                    },
                 ));
             }
             HookHandlerType::Agent => lines.push(detail_line("Agent", "-")),
@@ -1320,11 +1324,10 @@ mod tests {
             "First prompt line\n{PROMPT_SENTINEL}\nThird prompt line that remains visible after wrapping"
         ));
         prompt_hook.model = Some("gpt-5.4-mini".to_string());
-        prompt_hook.reasoning_effort = Some(
-            codex_protocol::openai_models::ReasoningEffort::Custom(
+        prompt_hook.reasoning_effort =
+            Some(codex_protocol::openai_models::ReasoningEffort::Custom(
                 REASONING_EFFORT_SENTINEL.to_string(),
-            ),
-        );
+            ));
         prompt_hook.fail_closed = true;
         let mut view = HooksBrowserView::new(
             vec![prompt_hook],
@@ -1340,11 +1343,7 @@ mod tests {
         let handler_rows = view
             .handler_row_lines(HookEventName::PreToolUse, /*width*/ 56)
             .into_iter()
-            .flat_map(|line| {
-                line.spans
-                    .into_iter()
-                    .map(|span| span.content.into_owned())
-            })
+            .flat_map(|line| line.spans.into_iter().map(|span| span.content.into_owned()))
             .collect::<Vec<_>>()
             .join("\n");
         assert!(!handler_rows.contains(PROMPT_SENTINEL));

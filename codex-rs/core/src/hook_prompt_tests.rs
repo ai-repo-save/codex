@@ -83,9 +83,7 @@ fn pre_tool_use_schema_is_strict_and_accepts_safe_and_deny_outputs() {
     assert_strict_schema(&schema);
     assert_eq!(schema.get("$schema"), None);
     assert_eq!(
-        schema.pointer(
-            "/definitions/PreToolUseHookSpecificOutputWire/properties/updatedInput"
-        ),
+        schema.pointer("/definitions/PreToolUseHookSpecificOutputWire/properties/updatedInput"),
         Some(&json!({"type": "null"}))
     );
     assert_schema_accepts(
@@ -198,20 +196,25 @@ async fn injected_limiter_releases_capacity_when_permit_drops() {
     let second = acquire_prompt_hook_permit(&limiter);
     tokio::pin!(second);
 
-    assert!(tokio::time::timeout(Duration::from_millis(10), &mut second)
-        .await
-        .is_err());
+    assert!(
+        tokio::time::timeout(Duration::from_millis(10), &mut second)
+            .await
+            .is_err()
+    );
     drop(first);
-    assert!(tokio::time::timeout(Duration::from_secs(1), second)
-        .await
-        .expect("second evaluator should resume after the permit is dropped")
-        .is_ok());
+    assert!(
+        tokio::time::timeout(Duration::from_secs(1), second)
+            .await
+            .expect("second evaluator should resume after the permit is dropped")
+            .is_ok()
+    );
 }
 
 fn response_stream(events: Vec<ResponseEvent>) -> ResponseStream {
     let (tx, rx_event) = mpsc::channel(events.len().max(1));
     for event in events {
-        tx.try_send(Ok(event)).expect("test stream should have capacity");
+        tx.try_send(Ok(event))
+            .expect("test stream should have capacity");
     }
     drop(tx);
     ResponseStream {
@@ -319,7 +322,10 @@ fn assert_strict_schema(schema: &serde_json::Value) {
             .any(|key| schema.contains_key(key)),
         "strict schema node has no supported value constraint: {schema:?}"
     );
-    if let Some(properties) = schema.get("properties").and_then(serde_json::Value::as_object) {
+    if let Some(properties) = schema
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+    {
         assert_eq!(schema.get("additionalProperties"), Some(&json!(false)));
         let required = schema
             .get("required")
@@ -403,7 +409,10 @@ fn assert_schema_accepts(
                 .and_then(serde_json::Value::as_array)
                 .expect("object schema should declare required properties");
             for name in required.iter().filter_map(serde_json::Value::as_str) {
-                assert!(object.contains_key(name), "missing required property {name}");
+                assert!(
+                    object.contains_key(name),
+                    "missing required property {name}"
+                );
             }
             for (name, child) in object {
                 let property_schema = properties
