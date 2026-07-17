@@ -1,34 +1,5 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "definitions": {
-    "PreToolUsePromptHookSpecificOutputWire": {
-      "additionalProperties": false,
-      "properties": {
-        "hookEventName": {
-          "const": "PreToolUse",
-          "type": "string"
-        },
-        "permissionDecision": {
-          "$ref": "#/definitions/PreToolUsePromptPermissionDecisionWire"
-        },
-        "permissionDecisionReason": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "hookEventName",
-        "permissionDecision",
-        "permissionDecisionReason"
-      ],
-      "type": "object"
-    },
-    "PreToolUsePromptPermissionDecisionWire": {
-      "enum": [
-        "deny"
-      ],
-      "type": "string"
-    }
-  },
   "anyOf": [
     {
       "additionalProperties": false,
@@ -38,7 +9,28 @@
       "additionalProperties": false,
       "properties": {
         "hookSpecificOutput": {
-          "$ref": "#/definitions/PreToolUsePromptHookSpecificOutputWire"
+          "additionalProperties": false,
+          "properties": {
+            "hookEventName": {
+              "const": "PreToolUse",
+              "type": "string"
+            },
+            "permissionDecision": {
+              "enum": [
+                "deny"
+              ],
+              "type": "string"
+            },
+            "permissionDecisionReason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "hookEventName",
+            "permissionDecision",
+            "permissionDecisionReason"
+          ],
+          "type": "object"
         }
       },
       "required": [
