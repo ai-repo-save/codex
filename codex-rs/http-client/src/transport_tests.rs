@@ -4,8 +4,10 @@ use std::io::Read;
 use std::io::Write;
 use std::net::TcpListener;
 use std::net::TcpStream;
+use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use tokio::sync::oneshot;
 
 const RESPONSE_HEADER_TIMEOUT: Duration = Duration::from_millis(50);
 const RESPONSE_BODY_DELAY: Duration = Duration::from_millis(100);
@@ -47,12 +49,32 @@ fn accept_request(listener: TcpListener) -> TcpStream {
 async fn stream_times_out_when_response_headers_do_not_arrive() {
     let listener = TcpListener::bind(("127.0.0.1", 0)).expect("test server should bind");
     let request = request(&listener);
+    let (server_ready, server_ready_rx) = oneshot::channel();
+    let (request_received, request_received_rx) = oneshot::channel();
+    let (finish_server, finish_server_rx) = mpsc::channel();
     let server = thread::spawn(move || {
+        server_ready
+            .send(())
+            .expect("test should wait for the server to be ready");
         let _stream = accept_request(listener);
-        thread::sleep(RESPONSE_BODY_DELAY);
+        request_received
+            .send(())
+            .expect("test should wait for the request");
+        finish_server_rx
+            .recv()
+            .expect("test should release the server");
     });
 
+    server_ready_rx
+        .await
+        .expect("test server should be ready to accept the request");
     let result = transport().stream(request).await;
+    request_received_rx
+        .await
+        .expect("test server should receive the request");
+    finish_server
+        .send(())
+        .expect("test server should still be waiting");
     server.join().expect("test server should finish");
 
     assert!(matches!(result, Err(TransportError::Timeout)));
@@ -62,7 +84,13 @@ async fn stream_times_out_when_response_headers_do_not_arrive() {
 async fn stream_continues_when_response_body_arrives_after_header_timeout() {
     let listener = TcpListener::bind(("127.0.0.1", 0)).expect("test server should bind");
     let request = request(&listener);
+    let (server_ready, server_ready_rx) = oneshot::channel();
+    let (headers_sent, headers_sent_rx) = oneshot::channel();
+    let (send_body, send_body_rx) = mpsc::channel();
     let server = thread::spawn(move || {
+        server_ready
+            .send(())
+            .expect("test should wait for the server to be ready");
         let mut stream = accept_request(listener);
         stream
             .write_all(RESPONSE_HEADERS)
@@ -70,16 +98,31 @@ async fn stream_continues_when_response_body_arrives_after_header_timeout() {
         stream
             .flush()
             .expect("test server should flush response headers");
-        thread::sleep(RESPONSE_BODY_DELAY);
+        headers_sent
+            .send(())
+            .expect("test should wait for response headers");
+        send_body_rx
+            .recv()
+            .expect("test should release the response body");
         stream
             .write_all(RESPONSE_BODY)
             .expect("test server should write response body");
     });
 
+    server_ready_rx
+        .await
+        .expect("test server should be ready to accept the request");
     let mut response = transport()
         .stream(request)
         .await
         .expect("response headers should arrive before the timeout");
+    headers_sent_rx
+        .await
+        .expect("test server should send response headers");
+    tokio::time::sleep(RESPONSE_BODY_DELAY).await;
+    send_body
+        .send(())
+        .expect("test server should be waiting to send the response body");
     let body = response
         .bytes
         .next()

@@ -128,6 +128,8 @@ pub struct ModelProviderInfo {
     /// the connection as lost.
     pub stream_idle_timeout_ms: Option<u64>,
     /// Maximum time (in milliseconds) to wait for response headers on a streaming response.
+    /// Defaults to 30,000 milliseconds when omitted. This timeout applies only while waiting for
+    /// the streaming HTTP response headers, not to the SSE body after the headers arrive.
     pub stream_response_header_timeout_ms: Option<u64>,
     /// Maximum time (in milliseconds) to wait for a websocket connection attempt before treating
     /// it as failed.
