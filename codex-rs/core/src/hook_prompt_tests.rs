@@ -89,7 +89,7 @@ fn prompt_request_uses_strict_schema_without_titles_constants_or_tools() {
 }
 
 #[test]
-fn pre_tool_use_schema_is_strict_and_accepts_safe_and_deny_outputs() {
+fn pre_tool_use_prompt_schema_only_accepts_noop_and_deny_outputs() {
     let schema = prompt_for_request(PromptHookRequest {
         rendered_prompt: "evaluate this input".to_string(),
         model: None,
@@ -102,44 +102,48 @@ fn pre_tool_use_schema_is_strict_and_accepts_safe_and_deny_outputs() {
 
     assert_strict_schema(&schema);
     assert_eq!(schema.get("$schema"), None);
-    assert!(schema.get("$defs").is_some());
     assert_eq!(schema.get("definitions"), None);
-    assert_eq!(
-        schema.pointer("/$defs/PreToolUseHookSpecificOutputWire/properties/updatedInput"),
-        Some(&json!({"type": "null"}))
-    );
+    assert_schema_accepts(&schema, &json!({}), &schema);
     assert_schema_accepts(
         &schema,
         &json!({
-            "continue": true,
-            "decision": null,
-            "hookSpecificOutput": null,
-            "reason": null,
-            "stopReason": null,
-            "suppressOutput": false,
-            "systemMessage": null
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": "do not run that"
+            }
         }),
         &schema,
     );
-    assert_schema_accepts(
-        &schema,
-        &json!({
-            "continue": true,
-            "decision": null,
+
+    for unsupported in [
+        json!({"continue": false}),
+        json!({
             "hookSpecificOutput": {
-                "additionalContext": null,
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "permissionDecisionReason": "allow it"
+            }
+        }),
+        json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": "ask first"
+            }
+        }),
+        json!({"decision": "block", "reason": "legacy block"}),
+        json!({
+            "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
                 "permissionDecisionReason": "do not run that",
-                "updatedInput": null
-            },
-            "reason": null,
-            "stopReason": null,
-            "suppressOutput": false,
-            "systemMessage": null
+                "updatedInput": {"command": "echo rewritten"}
+            }
         }),
-        &schema,
-    );
+    ] {
+        assert_schema_rejects(&schema, &unsupported, &schema);
+    }
 }
 
 #[test]
@@ -455,4 +459,15 @@ fn schema_accepts(
     root: &serde_json::Value,
 ) -> bool {
     std::panic::catch_unwind(|| assert_schema_accepts(schema, value, root)).is_ok()
+}
+
+fn assert_schema_rejects(
+    schema: &serde_json::Value,
+    value: &serde_json::Value,
+    root: &serde_json::Value,
+) {
+    assert!(
+        !schema_accepts(schema, value, root),
+        "value {value} should be rejected by {schema:?}"
+    );
 }

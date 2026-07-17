@@ -2,9 +2,11 @@ use schemars::JsonSchema;
 use schemars::r#gen::SchemaGenerator;
 use schemars::r#gen::SchemaSettings;
 use schemars::schema::InstanceType;
+use schemars::schema::ObjectValidation;
 use schemars::schema::RootSchema;
 use schemars::schema::Schema;
 use schemars::schema::SchemaObject;
+use schemars::schema::SubschemaValidation;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Map;
@@ -26,6 +28,7 @@ const POST_COMPACT_INPUT_FIXTURE: &str = "post-compact.command.input.schema.json
 const POST_COMPACT_OUTPUT_FIXTURE: &str = "post-compact.command.output.schema.json";
 const PRE_TOOL_USE_INPUT_FIXTURE: &str = "pre-tool-use.command.input.schema.json";
 const PRE_TOOL_USE_OUTPUT_FIXTURE: &str = "pre-tool-use.command.output.schema.json";
+const PRE_TOOL_USE_PROMPT_OUTPUT_FIXTURE: &str = "pre-tool-use.prompt.output.schema.json";
 const PRE_COMPACT_INPUT_FIXTURE: &str = "pre-compact.command.input.schema.json";
 const PRE_COMPACT_OUTPUT_FIXTURE: &str = "pre-compact.command.output.schema.json";
 const SESSION_START_INPUT_FIXTURE: &str = "session-start.command.input.schema.json";
@@ -137,6 +140,83 @@ pub(crate) struct PreToolUseCommandOutputWire {
     pub reason: Option<String>,
     #[serde(default)]
     pub hook_specific_output: Option<PreToolUseHookSpecificOutputWire>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum PreToolUsePromptOutputWire {
+    NoDecision(PreToolUsePromptNoDecisionOutputWire),
+    Deny(PreToolUsePromptDenyOutputWire),
+}
+
+impl JsonSchema for PreToolUsePromptOutputWire {
+    fn schema_name() -> String {
+        "pre-tool-use.prompt.output".to_string()
+    }
+
+    fn json_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+        let no_decision = Schema::Object(SchemaObject {
+            instance_type: Some(InstanceType::Object.into()),
+            object: Some(Box::new(ObjectValidation {
+                additional_properties: Some(Box::new(Schema::Bool(false))),
+                ..Default::default()
+            })),
+            ..Default::default()
+        });
+
+        let mut deny_validation = ObjectValidation {
+            additional_properties: Some(Box::new(Schema::Bool(false))),
+            ..Default::default()
+        };
+        deny_validation.properties.insert(
+            "hookSpecificOutput".to_string(),
+            schema_gen.subschema_for::<PreToolUsePromptHookSpecificOutputWire>(),
+        );
+        deny_validation
+            .required
+            .insert("hookSpecificOutput".to_string());
+        let deny = Schema::Object(SchemaObject {
+            instance_type: Some(InstanceType::Object.into()),
+            object: Some(Box::new(deny_validation)),
+            ..Default::default()
+        });
+
+        Schema::Object(SchemaObject {
+            instance_type: Some(InstanceType::Object.into()),
+            subschemas: Some(Box::new(SubschemaValidation {
+                any_of: Some(vec![no_decision, deny]),
+                ..Default::default()
+            })),
+            ..Default::default()
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PreToolUsePromptNoDecisionOutputWire {}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PreToolUsePromptDenyOutputWire {
+    pub hook_specific_output: PreToolUsePromptHookSpecificOutputWire,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PreToolUsePromptHookSpecificOutputWire {
+    #[schemars(schema_with = "pre_tool_use_hook_event_name_schema")]
+    pub hook_event_name: HookEventNameWire,
+    pub permission_decision: PreToolUsePromptPermissionDecisionWire,
+    pub permission_decision_reason: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub(crate) enum PreToolUsePromptPermissionDecisionWire {
+    #[serde(rename = "deny")]
+    Deny,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -729,6 +809,10 @@ pub fn write_schema_fixtures(schema_root: &Path) -> anyhow::Result<()> {
         schema_json::<PreToolUseCommandOutputWire>()?,
     )?;
     write_schema(
+        &generated_dir.join(PRE_TOOL_USE_PROMPT_OUTPUT_FIXTURE),
+        schema_json::<PreToolUsePromptOutputWire>()?,
+    )?;
+    write_schema(
         &generated_dir.join(SESSION_START_INPUT_FIXTURE),
         schema_json::<SessionStartCommandInput>()?,
     )?;
@@ -943,6 +1027,7 @@ mod tests {
     use super::PRE_COMPACT_OUTPUT_FIXTURE;
     use super::PRE_TOOL_USE_INPUT_FIXTURE;
     use super::PRE_TOOL_USE_OUTPUT_FIXTURE;
+    use super::PRE_TOOL_USE_PROMPT_OUTPUT_FIXTURE;
     use super::PermissionRequestCommandInput;
     use super::PermissionRequestCommandOutputWire;
     use super::PostCompactCommandInput;
@@ -952,6 +1037,7 @@ mod tests {
     use super::PreCompactCommandInput;
     use super::PreToolUseCommandInput;
     use super::PreToolUseCommandOutputWire;
+    use super::PreToolUsePromptOutputWire;
     use super::SESSION_START_INPUT_FIXTURE;
     use super::SESSION_START_OUTPUT_FIXTURE;
     use super::STOP_INPUT_FIXTURE;
@@ -1016,6 +1102,9 @@ mod tests {
             }
             PRE_TOOL_USE_OUTPUT_FIXTURE => {
                 include_str!("../schema/generated/pre-tool-use.command.output.schema.json")
+            }
+            PRE_TOOL_USE_PROMPT_OUTPUT_FIXTURE => {
+                include_str!("../schema/generated/pre-tool-use.prompt.output.schema.json")
             }
             SESSION_START_INPUT_FIXTURE => {
                 include_str!("../schema/generated/session-start.command.input.schema.json")
@@ -1088,6 +1177,7 @@ mod tests {
             PRE_COMPACT_OUTPUT_FIXTURE,
             PRE_TOOL_USE_INPUT_FIXTURE,
             PRE_TOOL_USE_OUTPUT_FIXTURE,
+            PRE_TOOL_USE_PROMPT_OUTPUT_FIXTURE,
             SESSION_START_INPUT_FIXTURE,
             SESSION_START_OUTPUT_FIXTURE,
             USER_PROMPT_SUBMIT_INPUT_FIXTURE,
@@ -1141,6 +1231,60 @@ mod tests {
             "UserPromptSubmitHookSpecificOutputWire",
             "UserPromptSubmit",
         );
+    }
+
+    #[test]
+    fn pre_tool_use_prompt_output_accepts_only_no_decision_or_deny() {
+        let accepted = [
+            json!({}),
+            json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": "blocked by policy",
+                }
+            }),
+        ];
+        let rejected = [
+            json!({ "continue": false }),
+            json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "allow",
+                    "permissionDecisionReason": "allowed",
+                }
+            }),
+            json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "ask",
+                    "permissionDecisionReason": "ask the user",
+                }
+            }),
+            json!({ "decision": "block", "reason": "legacy block" }),
+            json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": "rewrite requested",
+                    "updatedInput": {},
+                }
+            }),
+            json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": null,
+                }
+            }),
+        ];
+
+        for output in accepted {
+            assert!(serde_json::from_value::<PreToolUsePromptOutputWire>(output).is_ok());
+        }
+        for output in rejected {
+            assert!(serde_json::from_value::<PreToolUsePromptOutputWire>(output).is_err());
+        }
     }
 
     #[test]

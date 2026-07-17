@@ -108,7 +108,7 @@ async fn prompt_runner_receives_raw_event_and_event_output_schema() {
         &[
             prompt_request(
                 HookEventName::PreToolUse,
-                schemas.pre_tool_use_command_output.clone(),
+                schemas.pre_tool_use_prompt_output.clone(),
             ),
             prompt_request(
                 HookEventName::PermissionRequest,

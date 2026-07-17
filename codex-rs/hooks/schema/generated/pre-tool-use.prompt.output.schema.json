@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "PreToolUsePromptHookSpecificOutputWire": {
+      "additionalProperties": false,
+      "properties": {
+        "hookEventName": {
+          "const": "PreToolUse",
+          "type": "string"
+        },
+        "permissionDecision": {
+          "$ref": "#/definitions/PreToolUsePromptPermissionDecisionWire"
+        },
+        "permissionDecisionReason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "hookEventName",
+        "permissionDecision",
+        "permissionDecisionReason"
+      ],
+      "type": "object"
+    },
+    "PreToolUsePromptPermissionDecisionWire": {
+      "enum": [
+        "deny"
+      ],
+      "type": "string"
+    }
+  },
+  "anyOf": [
+    {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "hookSpecificOutput": {
+          "$ref": "#/definitions/PreToolUsePromptHookSpecificOutputWire"
+        }
+      },
+      "required": [
+        "hookSpecificOutput"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "pre-tool-use.prompt.output",
+  "type": "object"
+}

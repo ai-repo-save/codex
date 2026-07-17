@@ -82,7 +82,7 @@ pub(crate) async fn run_prompt(
     };
     let schemas = super::schema_loader::generated_hook_schemas();
     let output_schema = match handler.event_name {
-        HookEventName::PreToolUse => schemas.pre_tool_use_command_output.clone(),
+        HookEventName::PreToolUse => schemas.pre_tool_use_prompt_output.clone(),
         HookEventName::PermissionRequest => schemas.permission_request_command_output.clone(),
         HookEventName::ApprovalReviewRoute => schemas.approval_review_route_command_output.clone(),
         HookEventName::PreCompact => schemas.pre_compact_command_output.clone(),
