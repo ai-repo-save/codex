@@ -2808,25 +2808,47 @@ async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
     );
     assert_prompt_hook_request_is_isolated(hook_request);
     let output_schema = &hook_body["text"]["format"]["schema"];
-    assert!(
-        output_schema.get("$defs").is_some(),
-        "wire output schema should use the current definitions keyword"
-    );
-    assert_eq!(output_schema.get("definitions"), None);
-    assert_eq!(output_schema.get("title"), None);
     assert_eq!(
-        output_schema.pointer("/$defs/PreToolUseHookSpecificOutputWire/title"),
-        None
+        output_schema,
+        &serde_json::json!({
+            "anyOf": [
+                {
+                    "additionalProperties": false,
+                    "type": "object"
+                },
+                {
+                    "additionalProperties": false,
+                    "properties": {
+                        "hookSpecificOutput": {
+                            "additionalProperties": false,
+                            "properties": {
+                                "hookEventName": {
+                                    "enum": ["PreToolUse"],
+                                    "type": "string"
+                                },
+                                "permissionDecision": {
+                                    "enum": ["deny"],
+                                    "type": "string"
+                                },
+                                "permissionDecisionReason": {
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "hookEventName",
+                                "permissionDecision",
+                                "permissionDecisionReason"
+                            ],
+                            "type": "object"
+                        }
+                    },
+                    "required": ["hookSpecificOutput"],
+                    "type": "object"
+                }
+            ],
+            "type": "object"
+        })
     );
-    assert_eq!(
-        output_schema
-            .pointer("/$defs/PreToolUseHookSpecificOutputWire/properties/hookEventName/enum"),
-        Some(&serde_json::json!(["PreToolUse"]))
-    );
-    let output_schema_json = serde_json::to_string(output_schema)?;
-    assert!(!output_schema_json.contains("\"const\""));
-    assert!(output_schema_json.contains("#/$defs/"));
-    assert!(!output_schema_json.contains("#/definitions/"));
     match reasoning_effort {
         Some(reasoning_effort) => assert_eq!(
             hook_body["reasoning"]["effort"],
