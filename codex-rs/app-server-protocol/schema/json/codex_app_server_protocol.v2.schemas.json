@@ -4881,6 +4881,32 @@
         },
         {
           "properties": {
+            "failClosed": {
+              "type": "boolean"
+            },
+            "model": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "statusMessage": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "timeoutSec": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "type": {
               "enum": [
                 "prompt"
@@ -4890,6 +4916,8 @@
             }
           },
           "required": [
+            "failClosed",
+            "prompt",
             "type"
           ],
           "title": "PromptConfiguredHookHandler",
@@ -7233,6 +7261,9 @@
         "eventName": {
           "$ref": "#/definitions/HookEventName"
         },
+        "failClosed": {
+          "type": "boolean"
+        },
         "handlerType": {
           "$ref": "#/definitions/HookHandlerType"
         },
@@ -7248,7 +7279,19 @@
             "null"
           ]
         },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "pluginId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt": {
           "type": [
             "string",
             "null"
@@ -7280,6 +7323,7 @@
         "displayOrder",
         "enabled",
         "eventName",
+        "failClosed",
         "handlerType",
         "isManaged",
         "key",

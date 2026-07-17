@@ -65,6 +65,9 @@
         "eventName": {
           "$ref": "#/definitions/HookEventName"
         },
+        "failClosed": {
+          "type": "boolean"
+        },
         "handlerType": {
           "$ref": "#/definitions/HookHandlerType"
         },
@@ -80,7 +83,19 @@
             "null"
           ]
         },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "pluginId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt": {
           "type": [
             "string",
             "null"
@@ -112,6 +127,7 @@
         "displayOrder",
         "enabled",
         "eventName",
+        "failClosed",
         "handlerType",
         "isManaged",
         "key",
