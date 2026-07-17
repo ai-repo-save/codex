@@ -1378,6 +1378,14 @@
             "prompt": {
               "type": "string"
             },
+            "reasoningEffort": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/ReasoningEffort"
+                }
+              ],
+              "default": null
+            },
             "statusMessage": {
               "default": null,
               "type": "string"
