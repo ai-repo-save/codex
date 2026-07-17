@@ -518,12 +518,12 @@ impl ModelClient {
     }
 
     pub(crate) fn isolated_responses_metadata(&self) -> CodexResponsesMetadata {
-        let thread_id = self.state.thread_id.to_string();
+        let run_id = ThreadId::new().to_string();
         CodexResponsesMetadata::new(
             "prompt-hook".to_string(),
-            thread_id.clone(),
-            thread_id,
-            "prompt-hook".to_string(),
+            run_id.clone(),
+            run_id.clone(),
+            run_id,
         )
     }
 
@@ -1846,6 +1846,20 @@ impl ModelClientSession {
         responses_metadata: &CodexResponsesMetadata,
         inference_trace: &InferenceTraceContext,
     ) -> Result<ResponseStream> {
+        let isolated_session_telemetry = if self.mode == ModelClientSessionMode::IsolatedOneShot {
+            let conversation_id = ThreadId::try_from(responses_metadata.thread_id.as_str())
+                .map_err(|error| anyhow::anyhow!("invalid isolated request identity: {error}"))?;
+            Some(
+                session_telemetry
+                    .clone()
+                    .with_conversation_id(conversation_id),
+            )
+        } else {
+            None
+        };
+        let session_telemetry = isolated_session_telemetry
+            .as_ref()
+            .unwrap_or(session_telemetry);
         if self.mode == ModelClientSessionMode::IsolatedOneShot {
             return self
                 .stream_responses_api(

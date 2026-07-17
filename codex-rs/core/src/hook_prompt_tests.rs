@@ -23,11 +23,16 @@ const VALID_OUTPUT: &str = r#"{"continue":true}"#;
 const FENCED_OUTPUT: &str = "```json\n{\"continue\":true}\n```";
 
 #[test]
-fn prompt_request_uses_strict_schema_without_tools() {
+fn prompt_request_uses_strict_schema_without_titles_or_tools() {
     let output_schema = json!({
+        "title": "PromptHookOutput",
         "type": "object",
         "properties": {
-            "continue": {"default": true, "type": "boolean"},
+            "continue": {
+                "default": true,
+                "title": "Continue",
+                "type": "boolean"
+            },
             "reason": {"default": null, "type": "string"}
         }
     });
@@ -308,7 +313,6 @@ fn assert_strict_schema(schema: &serde_json::Value) {
         "items",
         "properties",
         "required",
-        "title",
         "type",
     ];
     for key in schema.keys() {

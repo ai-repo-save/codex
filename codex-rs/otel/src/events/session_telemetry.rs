@@ -110,6 +110,11 @@ pub struct SessionTelemetry {
 }
 
 impl SessionTelemetry {
+    pub fn with_conversation_id(mut self, conversation_id: ThreadId) -> Self {
+        self.metadata.conversation_id = conversation_id;
+        self
+    }
+
     pub fn with_auth_env(mut self, auth_env: AuthEnvTelemetryMetadata) -> Self {
         self.metadata.auth_env = auth_env;
         self

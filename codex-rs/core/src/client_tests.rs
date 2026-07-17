@@ -46,6 +46,7 @@ use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::InternalSessionSource;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
+use codex_protocol::protocol::TokenUsage;
 use codex_rollout_trace::CompactionTraceContext;
 use codex_rollout_trace::ExecutionStatus;
 use codex_rollout_trace::InferenceTraceAttempt;
@@ -279,8 +280,12 @@ fn test_model_info() -> ModelInfo {
 }
 
 fn test_session_telemetry() -> SessionTelemetry {
+    test_session_telemetry_with_thread_id(ThreadId::new())
+}
+
+fn test_session_telemetry_with_thread_id(thread_id: ThreadId) -> SessionTelemetry {
     SessionTelemetry::new(
-        ThreadId::new(),
+        thread_id,
         "gpt-test",
         "gpt-test",
         /*account_id*/ None,
@@ -315,6 +320,19 @@ fn isolated_session_does_not_touch_parent_transport_or_prompt_cache() {
             .connection_reused()
     );
     assert_eq!(model_client.prompt_cache_key(), parent_prompt_cache_key);
+}
+
+#[test]
+fn isolated_request_metadata_has_independent_run_identity() {
+    let model_client = test_model_client(SessionSource::Cli);
+    let first = model_client.isolated_responses_metadata();
+    let second = model_client.isolated_responses_metadata();
+    let parent_thread_id = model_client.state.thread_id.to_string();
+
+    assert_eq!(first.session_id, first.thread_id);
+    assert_eq!(first.thread_id, first.window_id);
+    assert_ne!(first.thread_id, second.thread_id);
+    assert_ne!(first.thread_id, parent_thread_id);
 }
 
 #[tokio::test]
@@ -380,6 +398,165 @@ async fn isolated_session_sends_explicit_reasoning_effort_exactly() {
     assert_eq!(
         reasoning,
         vec![json!({"effort": "low"}), json!({"effort": "ultra"})]
+    );
+}
+
+#[tokio::test]
+async fn isolated_stream_uses_independent_telemetry_and_preserves_completed_usage() {
+    const PARENT_PROBE_ENDPOINT: &str = "parent-probe";
+
+    let server = MockServer::start().await;
+    let usage = TokenUsage {
+        input_tokens: 3,
+        cached_input_tokens: 1,
+        output_tokens: 5,
+        reasoning_output_tokens: 2,
+        total_tokens: 9,
+    };
+    let sse_body = format!(
+        "event: response.completed\ndata: {}\n\n",
+        json!({
+            "type": "response.completed",
+            "response": {
+                "id": "isolated-response",
+                "usage": {
+                    "input_tokens": usage.input_tokens,
+                    "input_tokens_details": {"cached_tokens": usage.cached_input_tokens},
+                    "output_tokens": usage.output_tokens,
+                    "output_tokens_details": {"reasoning_tokens": usage.reasoning_output_tokens},
+                    "total_tokens": usage.total_tokens
+                }
+            }
+        })
+    );
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .respond_with(
+            ResponseTemplate::new(/*status*/ 200).set_body_raw(sse_body, "text/event-stream"),
+        )
+        .expect(/*requests*/ 1)
+        .mount(&server)
+        .await;
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let _guard = tracing_subscriber::registry()
+        .with(TelemetryEventCollectorLayer {
+            events: Arc::clone(&events),
+        })
+        .set_default();
+    let client = isolated_test_client(&server);
+    let parent_thread_id = ThreadId::new();
+    let expected_parent_id = parent_thread_id.to_string();
+    let parent_telemetry = test_session_telemetry_with_thread_id(parent_thread_id);
+    let responses_metadata = client.isolated_responses_metadata();
+    let isolated_thread_id = responses_metadata.thread_id.clone();
+    let prompt = Prompt {
+        input: vec![ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "evaluate".to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }],
+        ..Default::default()
+    };
+
+    let mut stream = client
+        .new_isolated_session()
+        .stream(
+            &prompt,
+            &test_model_info(),
+            &parent_telemetry,
+            /*effort*/ None,
+            codex_protocol::config_types::ReasoningSummary::None,
+            /*service_tier*/ None,
+            &responses_metadata,
+            &InferenceTraceContext::disabled(),
+        )
+        .await
+        .expect("isolated stream should start");
+    let mut completed_usage = None;
+    while let Some(event) = stream.next().await {
+        if let ResponseEvent::Completed { token_usage, .. } = event.expect("stream event") {
+            completed_usage = token_usage;
+        }
+    }
+    assert_eq!(completed_usage, Some(usage));
+
+    parent_telemetry.record_api_request(
+        /*attempt*/ 0,
+        Some(204),
+        /*error*/ None,
+        Duration::ZERO,
+        /*auth_header_attached*/ false,
+        /*auth_header_name*/ None,
+        /*retry_after_unauthorized*/ false,
+        /*recovery_mode*/ None,
+        /*recovery_phase*/ None,
+        PARENT_PROBE_ENDPOINT,
+        /*request_id*/ None,
+        /*cf_ray*/ None,
+        /*auth_error*/ None,
+        /*auth_error_code*/ None,
+        /*agent_identity_telemetry*/ None,
+    );
+
+    let events = events.lock().unwrap();
+    let isolated_request = telemetry_event(&events, "codex.api_request", |event| {
+        event.get("endpoint").is_some_and(|value| value == "responses")
+    });
+    let completed_response = telemetry_event(&events, "codex.sse_event", |event| {
+        event.contains_key("input_token_count")
+    });
+    let parent_probe = telemetry_event(&events, "codex.api_request", |event| {
+        event
+            .get("endpoint")
+            .is_some_and(|value| value == PARENT_PROBE_ENDPOINT)
+    });
+
+    assert_eq!(
+        isolated_request.get("conversation.id"),
+        Some(&isolated_thread_id)
+    );
+    assert_eq!(
+        completed_response.get("conversation.id"),
+        Some(&isolated_thread_id)
+    );
+    assert_eq!(
+        completed_response
+            .get("input_token_count")
+            .map(String::as_str),
+        Some("3")
+    );
+    assert_eq!(
+        completed_response
+            .get("cached_token_count")
+            .map(String::as_str),
+        Some("1")
+    );
+    assert_eq!(
+        completed_response
+            .get("output_token_count")
+            .map(String::as_str),
+        Some("5")
+    );
+    assert_eq!(
+        completed_response
+            .get("reasoning_token_count")
+            .map(String::as_str),
+        Some("2")
+    );
+    assert_eq!(
+        completed_response
+            .get("tool_token_count")
+            .map(String::as_str),
+        Some("9")
+    );
+    assert_eq!(
+        parent_probe.get("conversation.id").map(String::as_str),
+        Some(expected_parent_id.as_str())
     );
 }
 
@@ -513,6 +690,41 @@ impl Visit for TagCollectorVisitor {
 #[derive(Clone)]
 struct TagCollectorLayer {
     tags: Arc<Mutex<BTreeMap<String, String>>>,
+}
+
+#[derive(Clone)]
+struct TelemetryEventCollectorLayer {
+    events: Arc<Mutex<Vec<BTreeMap<String, String>>>>,
+}
+
+impl<S> Layer<S> for TelemetryEventCollectorLayer
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn on_event(&self, event: &Event<'_>, _ctx: LayerContext<'_, S>) {
+        if event.metadata().target() != "codex_otel.log_only" {
+            return;
+        }
+        let mut visitor = TagCollectorVisitor::default();
+        event.record(&mut visitor);
+        self.events.lock().unwrap().push(visitor.tags);
+    }
+}
+
+fn telemetry_event<'a>(
+    events: &'a [BTreeMap<String, String>],
+    event_name: &str,
+    predicate: impl Fn(&BTreeMap<String, String>) -> bool,
+) -> &'a BTreeMap<String, String> {
+    events
+        .iter()
+        .find(|event| {
+            event
+                .get("event.name")
+                .is_some_and(|value| value == event_name)
+                && predicate(event)
+        })
+        .unwrap_or_else(|| panic!("missing telemetry event {event_name}: {events:?}"))
 }
 
 impl<S> Layer<S> for TagCollectorLayer

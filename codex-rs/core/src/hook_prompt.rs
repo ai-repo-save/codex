@@ -244,6 +244,7 @@ fn normalize_strict_schema(schema: &mut Value) {
         inline_all_of(schema);
     }
     schema.remove("$schema");
+    schema.remove("title");
 
     for key in ["definitions", "$defs"] {
         if let Some(Value::Object(definitions)) = schema.get_mut(key) {
