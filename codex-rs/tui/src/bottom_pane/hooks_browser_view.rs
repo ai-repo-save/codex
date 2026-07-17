@@ -507,11 +507,11 @@ impl HooksBrowserView {
                     hook.model.as_deref().unwrap_or("default"),
                 ));
                 if let Some(reasoning_effort) = hook.reasoning_effort.as_ref() {
-                    lines.push(detail_line("Reasoning effort", reasoning_effort.as_str()));
+                    lines.push(detail_line("Reasoning", reasoning_effort.as_str()));
                 }
                 lines.push(detail_line(
-                    "Fail closed",
-                    if hook.fail_closed { "Yes" } else { "No" },
+                    "On error",
+                    if hook.fail_closed { "Block" } else { "Continue" },
                 ));
             }
             HookHandlerType::Agent => lines.push(detail_line("Agent", "-")),
