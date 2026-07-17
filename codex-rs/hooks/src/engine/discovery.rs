@@ -560,12 +560,7 @@ fn append_matcher_groups(
                     status_message,
                     fail_closed,
                 } => {
-                    if !matches!(
-                        event_name,
-                        HookEventName::PreToolUse
-                            | HookEventName::PermissionRequest
-                            | HookEventName::ApprovalReviewRoute
-                    ) {
+                    if !super::prompt_runner::supports_event(event_name) {
                         warnings.push(format!(
                             "skipping prompt hook in {}: prompt hooks are not supported for {}",
                             source.path.display(),
@@ -903,6 +898,10 @@ mod tests {
             HookEventName::PreToolUse,
             HookEventName::PermissionRequest,
             HookEventName::ApprovalReviewRoute,
+            HookEventName::PreCompact,
+            HookEventName::SessionStart,
+            HookEventName::UserPromptSubmit,
+            HookEventName::SubagentStart,
         ] {
             append_matcher_groups(
                 &mut handlers,
@@ -919,8 +918,8 @@ mod tests {
         }
 
         assert_eq!(warnings, Vec::<String>::new());
-        assert_eq!(handlers.len(), 3);
-        assert_eq!(hook_entries.len(), 3);
+        assert_eq!(handlers.len(), 7);
+        assert_eq!(hook_entries.len(), 7);
         for (handler, hook_entry) in handlers.iter().zip(&hook_entries) {
             assert_eq!(handler.event_name, hook_entry.event_name);
             assert_eq!(
@@ -1081,7 +1080,56 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_event_skips_each_prompt_handler_without_metadata() {
+    fn unsupported_events_skip_each_prompt_handler_without_lifecycle_or_metadata() {
+        let mut handlers = Vec::new();
+        let mut hook_entries = Vec::new();
+        let mut warnings = Vec::new();
+        let mut display_order = 0;
+        let source_path = source_path();
+        let hook_states = std::collections::HashMap::new();
+
+        for event_name in [
+            HookEventName::PostToolUse,
+            HookEventName::PostCompact,
+            HookEventName::SubagentStop,
+            HookEventName::Stop,
+        ] {
+            append_matcher_groups(
+                &mut handlers,
+                &mut hook_entries,
+                &mut warnings,
+                &mut display_order,
+                &hook_handler_source(&source_path, &hook_states),
+                event_name,
+                vec![MatcherGroup {
+                    matcher: None,
+                    hooks: vec![
+                        prompt_handler(/*fail_closed*/ false),
+                        prompt_handler(/*fail_closed*/ true),
+                    ],
+                }],
+            );
+        }
+
+        assert_eq!(handlers, Vec::<ConfiguredHandler>::new());
+        assert_eq!(hook_entries, Vec::<HookListEntry>::new());
+        assert_eq!(display_order, 0);
+        assert_eq!(warnings.len(), 8);
+        for event_name in ["PostToolUse", "PostCompact", "SubagentStop", "Stop"] {
+            assert_eq!(
+                warnings
+                    .iter()
+                    .filter(|warning| warning.contains(&format!(
+                        "prompt hooks are not supported for {event_name}"
+                    )))
+                    .count(),
+                2
+            );
+        }
+    }
+
+    #[test]
+    fn agent_handlers_warn_per_handler_without_lifecycle_or_metadata() {
         let mut handlers = Vec::new();
         let mut hook_entries = Vec::new();
         let mut warnings = Vec::new();
@@ -1095,24 +1143,19 @@ mod tests {
             &mut warnings,
             &mut display_order,
             &hook_handler_source(&source_path, &hook_states),
-            HookEventName::SessionStart,
+            HookEventName::PreToolUse,
             vec![MatcherGroup {
                 matcher: None,
-                hooks: vec![
-                    prompt_handler(/*fail_closed*/ false),
-                    prompt_handler(/*fail_closed*/ true),
-                ],
+                hooks: vec![HookHandlerConfig::Agent {}, HookHandlerConfig::Agent {}],
             }],
         );
 
         assert_eq!(handlers, Vec::<ConfiguredHandler>::new());
         assert_eq!(hook_entries, Vec::<HookListEntry>::new());
+        assert_eq!(display_order, 0);
         assert_eq!(warnings.len(), 2);
-        assert!(
-            warnings
-                .iter()
-                .all(|warning| warning.contains("prompt hooks are not supported for SessionStart"))
-        );
+        assert!(warnings.iter().all(|warning| warning
+            .contains("agent hooks are not supported yet")));
     }
 
     #[test]

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::HookCompletedEvent;
 use codex_protocol::protocol::HookEventName;
+use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookOutputEntry;
 use codex_protocol::protocol::HookOutputEntryKind;
 use codex_protocol::protocol::HookRunStatus;
@@ -12,6 +13,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
+use crate::engine::PromptHookRunner;
 use crate::engine::command_runner::CommandRunResult;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
@@ -74,6 +76,7 @@ pub(crate) fn preview_pre(
 pub(crate) async fn run_pre(
     handlers: &[ConfiguredHandler],
     shell: &CommandShell,
+    prompt_runner: Option<&dyn PromptHookRunner>,
     request: PreCompactRequest,
 ) -> PreCompactOutcome {
     let matched = dispatcher::select_handlers(
@@ -109,7 +112,7 @@ pub(crate) async fn run_pre(
         input_json,
         dispatcher::HandlerExecutionContext {
             shell,
-            prompt_runner: None,
+            prompt_runner,
             cwd: request.cwd.as_path(),
             turn_id: Some(request.turn_id),
         },
@@ -239,7 +242,7 @@ fn post_command_input_json(request: &PostCompactRequest) -> Result<String, serde
     })
 }
 
-#[derive(Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 struct CompactHandlerData {
     should_stop: bool,
     stop_reason: Option<String>,
@@ -268,6 +271,13 @@ fn parse_pre_completed(
             Some(0) => {
                 let trimmed_stdout = run_result.stdout.trim();
                 if trimmed_stdout.is_empty() {
+                    if handler.handler_type() == HookHandlerType::Prompt {
+                        status = HookRunStatus::Failed;
+                        entries.push(HookOutputEntry {
+                            kind: HookOutputEntryKind::Error,
+                            text: "prompt hook returned empty output".to_string(),
+                        });
+                    }
                 } else if let Some(parsed) = output_parser::parse_pre_compact(&run_result.stdout) {
                     if let Some(system_message) = parsed.universal.system_message {
                         entries.push(HookOutputEntry {
@@ -294,7 +304,9 @@ fn parse_pre_completed(
                             text: invalid_reason,
                         });
                     }
-                } else if output_parser::looks_like_json(&run_result.stdout) {
+                } else if handler.handler_type() == HookHandlerType::Prompt
+                    || output_parser::looks_like_json(&run_result.stdout)
+                {
                     status = HookRunStatus::Failed;
                     entries.push(HookOutputEntry {
                         kind: HookOutputEntryKind::Error,
@@ -318,6 +330,14 @@ fn parse_pre_completed(
                 });
             }
         },
+    }
+
+    if matches!(status, HookRunStatus::Failed) && handler.fail_closed() {
+        should_stop = true;
+        stop_reason = entries
+            .iter()
+            .find(|entry| matches!(entry.kind, HookOutputEntryKind::Error))
+            .map(|entry| entry.text.clone());
     }
 
     dispatcher::ParsedHandler {
@@ -604,6 +624,46 @@ mod tests {
     }
 
     #[test]
+    fn prompt_pre_compact_invalid_output_honors_failure_policy() {
+        for (stdout, expected_error) in [
+            ("", "prompt hook returned empty output"),
+            (
+                "not json",
+                "hook returned invalid PreCompact hook JSON output",
+            ),
+            (
+                "{\"continue\":",
+                "hook returned invalid PreCompact hook JSON output",
+            ),
+        ] {
+            for fail_closed in [false, true] {
+                let parsed = parse_pre_completed(
+                    &prompt_handler(fail_closed),
+                    run_result(Some(0), stdout, ""),
+                    Some("turn-1".to_string()),
+                );
+
+                assert_eq!(parsed.completed.run.status, HookRunStatus::Failed);
+                assert_eq!(
+                    parsed.completed.run.entries,
+                    vec![HookOutputEntry {
+                        kind: HookOutputEntryKind::Error,
+                        text: expected_error.to_string(),
+                    }]
+                );
+                assert_eq!(
+                    parsed.data,
+                    super::CompactHandlerData {
+                        should_stop: fail_closed,
+                        stop_reason: fail_closed.then(|| expected_error.to_string()),
+                        supplement: None,
+                    }
+                );
+            }
+        }
+    }
+
+    #[test]
     fn post_compact_ignores_plain_stdout() {
         let parsed = parse_post_completed(
             &handler(HookEventName::PostCompact),
@@ -649,6 +709,25 @@ mod tests {
             kind: ConfiguredHandlerKind::Command {
                 command: "python3 compact_hook.py".to_string(),
                 timeout_sec: 5,
+            },
+            status_message: Some("running compact hook".to_string()),
+            source_path: test_path_buf("/tmp/hooks.json").abs(),
+            source: codex_protocol::protocol::HookSource::User,
+            display_order: 0,
+            env: std::collections::HashMap::new(),
+        }
+    }
+
+    fn prompt_handler(fail_closed: bool) -> ConfiguredHandler {
+        ConfiguredHandler {
+            event_name: HookEventName::PreCompact,
+            matcher: None,
+            kind: ConfiguredHandlerKind::Prompt {
+                prompt: "$$ARGUMENTS".to_string(),
+                model: None,
+                reasoning_effort: None,
+                timeout_sec: 30,
+                fail_closed,
             },
             status_message: Some("running compact hook".to_string()),
             source_path: test_path_buf("/tmp/hooks.json").abs(),

@@ -18,8 +18,15 @@ const EXTERNAL_AGENT_HOOKS_SUBDIR: &str = "hooks";
 const EXTERNAL_AGENT_MIGRATED_HOOKS_SUBDIR: &str = "hooks";
 const COMMAND_SKILL_PREFIX: &str = "source-command";
 const MAX_SKILL_NAME_LEN: usize = 64;
-const PROMPT_HOOK_EVENT_NAMES: [&str; 3] =
-    ["PreToolUse", "PermissionRequest", "ApprovalReviewRoute"];
+const PROMPT_HOOK_EVENT_NAMES: [&str; 7] = [
+    "PreToolUse",
+    "PermissionRequest",
+    "ApprovalReviewRoute",
+    "PreCompact",
+    "SessionStart",
+    "UserPromptSubmit",
+    "SubagentStart",
+];
 
 #[derive(Debug)]
 struct ParsedDocument {
@@ -1959,7 +1966,7 @@ Review carefully."""
     }
 
     #[test]
-    fn hook_migration_preserves_supported_prompt_events_except_source_models() {
+    fn hook_migration_migrates_only_supported_prompt_events() {
         let settings = serde_json::json!({
             "hooks": {
                 "PreToolUse": [{
@@ -2026,9 +2033,39 @@ Review carefully."""
                         "statusMessage": "asking Claude to route review"
                     }]
                 }],
+                "PreCompact": [{
+                    "matcher": "manual",
+                    "hooks": [{"type": "prompt", "prompt": "Prepare compaction"}]
+                }],
+                "SessionStart": [{
+                    "matcher": "startup",
+                    "hooks": [{"type": "prompt", "prompt": "Initialize session"}]
+                }],
+                "UserPromptSubmit": [{
+                    "matcher": "ignored",
+                    "hooks": [
+                        {"type": "prompt", "prompt": "Review user prompt"},
+                        {"type": "agent", "prompt": "Delegate review"}
+                    ]
+                }],
                 "SubagentStart": [{
                     "matcher": "worker",
-                    "hooks": [{"type": "prompt", "prompt": "check"}]
+                    "hooks": [{"type": "prompt", "prompt": "Check subagent"}]
+                }],
+                "PostToolUse": [{
+                    "matcher": "Bash",
+                    "hooks": [{"type": "prompt", "prompt": "Review tool result"}]
+                }],
+                "PostCompact": [{
+                    "matcher": "manual",
+                    "hooks": [{"type": "prompt", "prompt": "Review compaction"}]
+                }],
+                "SubagentStop": [{
+                    "matcher": "worker",
+                    "hooks": [{"type": "prompt", "prompt": "Review subagent result"}]
+                }],
+                "Stop": [{
+                    "hooks": [{"type": "prompt", "prompt": "Review final response"}]
                 }]
             }
         });
@@ -2081,6 +2118,21 @@ Review carefully."""
                         "failClosed": true,
                         "statusMessage": "asking Codex to route review"
                     }]
+                }],
+                "PreCompact": [{
+                    "matcher": "manual",
+                    "hooks": [{"type": "prompt", "prompt": "Prepare compaction"}]
+                }],
+                "SessionStart": [{
+                    "matcher": "startup",
+                    "hooks": [{"type": "prompt", "prompt": "Initialize session"}]
+                }],
+                "UserPromptSubmit": [{
+                    "hooks": [{"type": "prompt", "prompt": "Review user prompt"}]
+                }],
+                "SubagentStart": [{
+                    "matcher": "worker",
+                    "hooks": [{"type": "prompt", "prompt": "Check subagent"}]
                 }]
             })
             .as_object()

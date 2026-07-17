@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::HookCompletedEvent;
 use codex_protocol::protocol::HookEventName;
+use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookOutputEntry;
 use codex_protocol::protocol::HookOutputEntryKind;
 use codex_protocol::protocol::HookRunStatus;
@@ -12,6 +13,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
+use crate::engine::PromptHookRunner;
 use crate::engine::command_runner::CommandRunResult;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
@@ -108,6 +110,7 @@ pub(crate) fn preview(
 pub(crate) async fn run(
     handlers: &[ConfiguredHandler],
     shell: &CommandShell,
+    prompt_runner: Option<&dyn PromptHookRunner>,
     request: SessionStartRequest,
     turn_id: Option<String>,
 ) -> SessionStartOutcome {
@@ -185,7 +188,7 @@ pub(crate) async fn run(
         input_json,
         dispatcher::HandlerExecutionContext {
             shell,
-            prompt_runner: None,
+            prompt_runner,
             cwd: request.cwd.as_path(),
             turn_id,
         },
@@ -240,6 +243,13 @@ fn parse_completed(
             Some(0) => {
                 let trimmed_stdout = run_result.stdout.trim();
                 if trimmed_stdout.is_empty() {
+                    if handler.handler_type() == HookHandlerType::Prompt {
+                        status = HookRunStatus::Failed;
+                        entries.push(HookOutputEntry {
+                            kind: HookOutputEntryKind::Error,
+                            text: "prompt hook returned empty output".to_string(),
+                        });
+                    }
                 } else if let Some(parsed) = match handler.event_name {
                     HookEventName::SessionStart => {
                         output_parser::parse_session_start(&run_result.stdout)
@@ -278,7 +288,9 @@ fn parse_completed(
                             });
                         }
                     }
-                } else if output_parser::looks_like_json(&run_result.stdout) {
+                } else if handler.handler_type() == HookHandlerType::Prompt
+                    || output_parser::looks_like_json(&run_result.stdout)
+                {
                     status = HookRunStatus::Failed;
                     entries.push(HookOutputEntry {
                         kind: HookOutputEntryKind::Error,
@@ -321,6 +333,17 @@ fn parse_completed(
         },
     }
 
+    if matches!(status, HookRunStatus::Failed) && handler.fail_closed() {
+        should_stop = true;
+        stop_reason = Some(
+            entries
+                .iter()
+                .find(|entry| matches!(entry.kind, HookOutputEntryKind::Error))
+                .map(|entry| entry.text.clone())
+                .unwrap_or_else(|| "start prompt hook failed".to_string()),
+        );
+    }
+
     let completed = HookCompletedEvent {
         turn_id,
         run: dispatcher::completed_summary(handler, &run_result, status, entries),
@@ -348,19 +371,105 @@ fn serialization_failure_outcome(hook_events: Vec<HookCompletedEvent>) -> Sessio
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::Mutex;
+
+    use codex_protocol::ThreadId;
     use codex_protocol::protocol::HookEventName;
     use codex_protocol::protocol::HookOutputEntry;
     use codex_protocol::protocol::HookOutputEntryKind;
     use codex_protocol::protocol::HookRunStatus;
     use codex_utils_absolute_path::test_support::PathBufExt;
     use codex_utils_absolute_path::test_support::test_path_buf;
+    use futures::FutureExt;
+    use futures::future::BoxFuture;
     use pretty_assertions::assert_eq;
 
     use super::SessionStartHandlerData;
+    use super::SessionStartRequest;
+    use super::SessionStartSource;
+    use super::StartHookTarget;
     use super::parse_completed;
+    use super::run;
+    use crate::engine::CommandShell;
     use crate::engine::ConfiguredHandler;
     use crate::engine::ConfiguredHandlerKind;
+    use crate::engine::PromptHookRequest;
+    use crate::engine::PromptHookRunner;
     use crate::engine::command_runner::CommandRunResult;
+    use crate::schema::SessionStartCommandInput;
+
+    #[derive(Clone)]
+    struct RecordingRunner {
+        requests: Arc<Mutex<Vec<PromptHookRequest>>>,
+        output: String,
+    }
+
+    impl PromptHookRunner for RecordingRunner {
+        fn run(&self, request: PromptHookRequest) -> BoxFuture<'static, anyhow::Result<String>> {
+            self.requests.lock().expect("request lock").push(request);
+            let output = self.output.clone();
+            async move { Ok(output) }.boxed()
+        }
+    }
+
+    #[tokio::test]
+    async fn prompt_handler_receives_session_start_context() {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let runner = RecordingRunner {
+            requests: requests.clone(),
+            output: r#"{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"prompt context"}}"#
+                .to_string(),
+        };
+        let session_id = ThreadId::new();
+        let cwd = test_path_buf("/tmp").abs();
+        let request = SessionStartRequest {
+            session_id: session_id.clone(),
+            cwd: cwd.clone(),
+            transcript_path: None,
+            model: "gpt-test".to_string(),
+            permission_mode: "default".to_string(),
+            target: StartHookTarget::SessionStart {
+                source: SessionStartSource::Startup,
+            },
+        };
+        let expected_input = serde_json::to_string(&SessionStartCommandInput::new(
+            session_id.to_string(),
+            None,
+            cwd.display().to_string(),
+            "gpt-test".to_string(),
+            "default".to_string(),
+            "startup".to_string(),
+        ))
+        .expect("input JSON");
+
+        let outcome = run(
+            &[prompt_handler(/*fail_closed*/ false)],
+            &shell(),
+            Some(&runner),
+            request,
+            /*turn_id*/ None,
+        )
+        .await;
+
+        assert_eq!(
+            outcome.additional_contexts,
+            vec!["prompt context".to_string()]
+        );
+        assert_eq!(outcome.should_stop, false);
+        let requests = requests.lock().expect("request lock");
+        let schemas = crate::engine::schema_loader::generated_hook_schemas();
+        assert_eq!(
+            requests.as_slice(),
+            &[PromptHookRequest {
+                rendered_prompt: expected_input,
+                model: None,
+                reasoning_effort: None,
+                event_name: HookEventName::SessionStart,
+                output_schema: schemas.session_start_command_output.clone(),
+            }]
+        );
+    }
 
     #[test]
     fn plain_stdout_becomes_model_context() {
@@ -455,6 +564,45 @@ mod tests {
     }
 
     #[test]
+    fn prompt_output_failures_honor_fail_closed_without_changing_failed_status() {
+        for event_name in [HookEventName::SessionStart, HookEventName::SubagentStart] {
+            for stdout in [
+                "",
+                "not json",
+                r#"{"unexpected":true}"#,
+                r#"{"continue":true"#,
+            ] {
+                let fail_open = parse_completed(
+                    &prompt_handler_for(event_name, /*fail_closed*/ false),
+                    run_result(Some(0), stdout, ""),
+                    /*turn_id*/ None,
+                );
+                let fail_closed = parse_completed(
+                    &prompt_handler_for(event_name, /*fail_closed*/ true),
+                    run_result(Some(0), stdout, ""),
+                    /*turn_id*/ None,
+                );
+
+                assert_eq!(fail_open.completed.run.status, HookRunStatus::Failed);
+                assert_eq!(fail_open.data.should_stop, false);
+                assert_eq!(fail_open.data.stop_reason, None);
+                assert_eq!(fail_closed.completed.run.status, HookRunStatus::Failed);
+                assert_eq!(fail_closed.data.should_stop, true);
+                assert_eq!(
+                    fail_closed.data.stop_reason,
+                    fail_closed
+                        .completed
+                        .run
+                        .entries
+                        .iter()
+                        .find(|entry| entry.kind == HookOutputEntryKind::Error)
+                        .map(|entry| entry.text.clone())
+                );
+            }
+        }
+    }
+
+    #[test]
     fn subagent_start_plain_stdout_becomes_model_context() {
         let parsed = parse_completed(
             &handler_for(HookEventName::SubagentStart),
@@ -529,6 +677,36 @@ mod tests {
             source: codex_protocol::protocol::HookSource::User,
             display_order: 0,
             env: std::collections::HashMap::new(),
+        }
+    }
+
+    fn prompt_handler(fail_closed: bool) -> ConfiguredHandler {
+        prompt_handler_for(HookEventName::SessionStart, fail_closed)
+    }
+
+    fn prompt_handler_for(event_name: HookEventName, fail_closed: bool) -> ConfiguredHandler {
+        ConfiguredHandler {
+            event_name,
+            matcher: None,
+            kind: ConfiguredHandlerKind::Prompt {
+                prompt: "$$ARGUMENTS".to_string(),
+                model: None,
+                reasoning_effort: None,
+                timeout_sec: 30,
+                fail_closed,
+            },
+            status_message: None,
+            source_path: test_path_buf("/tmp/hooks.json").abs(),
+            source: codex_protocol::protocol::HookSource::User,
+            display_order: 0,
+            env: std::collections::HashMap::new(),
+        }
+    }
+
+    fn shell() -> CommandShell {
+        CommandShell {
+            program: "sh".to_string(),
+            args: vec!["-c".to_string()],
         }
     }
 

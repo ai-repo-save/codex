@@ -34,6 +34,7 @@ use codex_protocol::protocol::CodexErrorInfo;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::HookCompletedEvent;
 use codex_protocol::protocol::HookEventName;
+use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookRunStatus;
 use codex_protocol::protocol::HookRunSummary;
 use codex_protocol::protocol::HookSource;
@@ -146,6 +147,7 @@ pub(crate) async fn run_pending_session_start_hooks(
                 source: session_start_source,
             },
         };
+        let is_subagent_start = matches!(&target, StartHookTarget::SubagentStart { .. });
         let request = codex_hooks::SessionStartRequest {
             session_id: sess.session_id().into(),
             #[allow(deprecated)]
@@ -157,16 +159,37 @@ pub(crate) async fn run_pending_session_start_hooks(
         };
         let hooks = sess.hooks();
         let preview_runs = hooks.preview_session_start(&request);
-        if run_context_injecting_hook(
-            sess,
-            turn_context,
-            preview_runs,
-            hooks.run_session_start(request, Some(turn_context.sub_id.clone())),
-        )
-        .await
-        .record_additional_contexts(sess, turn_context)
-        .await
-        {
+        emit_hook_started_events(sess, turn_context, preview_runs).await;
+        let outcome = hooks
+            .run_session_start(request, Some(turn_context.sub_id.clone()))
+            .await;
+        let failed_prompt_reason = (is_subagent_start
+            && outcome.should_stop
+            && outcome.hook_events.iter().any(|completed| {
+                completed.run.status == HookRunStatus::Failed
+                    && completed.run.handler_type == HookHandlerType::Prompt
+            }))
+        .then(|| {
+            outcome
+                .stop_reason
+                .clone()
+                .unwrap_or_else(|| "subagent start prompt hook failed".to_string())
+        });
+        emit_hook_completed_events(sess, turn_context, outcome.hook_events).await;
+        record_additional_contexts(sess, turn_context, outcome.additional_contexts).await;
+
+        if let Some(message) = failed_prompt_reason {
+            sess.send_event(
+                turn_context,
+                EventMsg::Error(codex_protocol::protocol::ErrorEvent {
+                    message,
+                    codex_error_info: Some(CodexErrorInfo::Other),
+                }),
+            )
+            .await;
+            return true;
+        }
+        if outcome.should_stop {
             return true;
         }
     }

@@ -60,6 +60,10 @@ async fn prompt_runner_receives_raw_event_and_event_output_schema() {
         HookEventName::PreToolUse,
         HookEventName::PermissionRequest,
         HookEventName::ApprovalReviewRoute,
+        HookEventName::PreCompact,
+        HookEventName::SessionStart,
+        HookEventName::UserPromptSubmit,
+        HookEventName::SubagentStart,
     ] {
         let handler = prompt_handler(event_name, /*fail_closed*/ false);
 
@@ -83,6 +87,22 @@ async fn prompt_runner_receives_raw_event_and_event_output_schema() {
             prompt_request(
                 HookEventName::ApprovalReviewRoute,
                 schemas.approval_review_route_command_output.clone(),
+            ),
+            prompt_request(
+                HookEventName::PreCompact,
+                schemas.pre_compact_command_output.clone(),
+            ),
+            prompt_request(
+                HookEventName::SessionStart,
+                schemas.session_start_command_output.clone(),
+            ),
+            prompt_request(
+                HookEventName::UserPromptSubmit,
+                schemas.user_prompt_submit_command_output.clone(),
+            ),
+            prompt_request(
+                HookEventName::SubagentStart,
+                schemas.subagent_start_command_output.clone(),
             ),
         ]
     );

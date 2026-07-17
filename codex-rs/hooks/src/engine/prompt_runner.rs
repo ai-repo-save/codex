@@ -35,6 +35,19 @@ pub trait PromptHookRunner: Send + Sync {
     fn run(&self, request: PromptHookRequest) -> BoxFuture<'static, anyhow::Result<String>>;
 }
 
+pub(crate) fn supports_event(event_name: HookEventName) -> bool {
+    matches!(
+        event_name,
+        HookEventName::PreToolUse
+            | HookEventName::PermissionRequest
+            | HookEventName::ApprovalReviewRoute
+            | HookEventName::PreCompact
+            | HookEventName::SessionStart
+            | HookEventName::UserPromptSubmit
+            | HookEventName::SubagentStart
+    )
+}
+
 pub(crate) async fn run_prompt(
     runner: Option<&dyn PromptHookRunner>,
     handler: &ConfiguredHandler,
@@ -72,13 +85,13 @@ pub(crate) async fn run_prompt(
         HookEventName::PreToolUse => schemas.pre_tool_use_command_output.clone(),
         HookEventName::PermissionRequest => schemas.permission_request_command_output.clone(),
         HookEventName::ApprovalReviewRoute => schemas.approval_review_route_command_output.clone(),
+        HookEventName::PreCompact => schemas.pre_compact_command_output.clone(),
+        HookEventName::SessionStart => schemas.session_start_command_output.clone(),
+        HookEventName::UserPromptSubmit => schemas.user_prompt_submit_command_output.clone(),
+        HookEventName::SubagentStart => schemas.subagent_start_command_output.clone(),
         HookEventName::PostToolUse
-        | HookEventName::SessionStart
-        | HookEventName::SubagentStart
         | HookEventName::SubagentStop
-        | HookEventName::PreCompact
         | HookEventName::PostCompact
-        | HookEventName::UserPromptSubmit
         | HookEventName::Stop => {
             return failed_prompt_run(
                 started_at,

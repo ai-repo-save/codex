@@ -259,8 +259,14 @@ impl ClaudeHooksEngine {
         turn_id: Option<String>,
     ) -> SessionStartOutcome {
         let session_id = request.session_id;
-        let mut outcome =
-            crate::events::session_start::run(&self.handlers, &self.shell, request, turn_id).await;
+        let mut outcome = crate::events::session_start::run(
+            &self.handlers,
+            &self.shell,
+            self.prompt_hook_runner.as_deref(),
+            request,
+            turn_id,
+        )
+        .await;
         outcome.additional_contexts = self
             .maybe_spill_texts(session_id, outcome.additional_contexts)
             .await;
@@ -332,7 +338,13 @@ impl ClaudeHooksEngine {
     }
 
     pub(crate) async fn run_pre_compact(&self, request: PreCompactRequest) -> PreCompactOutcome {
-        crate::events::compact::run_pre(&self.handlers, &self.shell, request).await
+        crate::events::compact::run_pre(
+            &self.handlers,
+            &self.shell,
+            self.prompt_hook_runner.as_deref(),
+            request,
+        )
+        .await
     }
 
     pub(crate) fn preview_post_compact(&self, request: &PostCompactRequest) -> Vec<HookRunSummary> {
@@ -358,8 +370,13 @@ impl ClaudeHooksEngine {
         request: UserPromptSubmitRequest,
     ) -> UserPromptSubmitOutcome {
         let session_id = request.session_id;
-        let mut outcome =
-            crate::events::user_prompt_submit::run(&self.handlers, &self.shell, request).await;
+        let mut outcome = crate::events::user_prompt_submit::run(
+            &self.handlers,
+            &self.shell,
+            self.prompt_hook_runner.as_deref(),
+            request,
+        )
+        .await;
         outcome.additional_contexts = self
             .maybe_spill_texts(session_id, outcome.additional_contexts)
             .await;

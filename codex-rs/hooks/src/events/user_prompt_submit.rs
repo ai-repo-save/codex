@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::HookCompletedEvent;
 use codex_protocol::protocol::HookEventName;
+use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookOutputEntry;
 use codex_protocol::protocol::HookOutputEntryKind;
 use codex_protocol::protocol::HookRunStatus;
@@ -12,6 +13,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
+use crate::engine::PromptHookRunner;
 use crate::engine::command_runner::CommandRunResult;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
@@ -31,7 +33,7 @@ pub struct UserPromptSubmitRequest {
     pub prompt: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct UserPromptSubmitOutcome {
     pub hook_events: Vec<HookCompletedEvent>,
     pub should_stop: bool,
@@ -63,6 +65,7 @@ pub(crate) fn preview(
 pub(crate) async fn run(
     handlers: &[ConfiguredHandler],
     shell: &CommandShell,
+    prompt_runner: Option<&dyn PromptHookRunner>,
     request: UserPromptSubmitRequest,
 ) -> UserPromptSubmitOutcome {
     let matched = dispatcher::select_handlers(
@@ -107,7 +110,7 @@ pub(crate) async fn run(
         input_json,
         dispatcher::HandlerExecutionContext {
             shell,
-            prompt_runner: None,
+            prompt_runner,
             cwd: request.cwd.as_path(),
             turn_id: Some(request.turn_id),
         },
@@ -115,6 +118,12 @@ pub(crate) async fn run(
     )
     .await;
 
+    outcome_from_results(results)
+}
+
+fn outcome_from_results(
+    results: Vec<dispatcher::ParsedHandler<UserPromptSubmitHandlerData>>,
+) -> UserPromptSubmitOutcome {
     let should_stop = results.iter().any(|result| result.data.should_stop);
     let stop_reason = results
         .iter()
@@ -156,6 +165,13 @@ fn parse_completed(
             Some(0) => {
                 let trimmed_stdout = run_result.stdout.trim();
                 if trimmed_stdout.is_empty() {
+                    if handler.handler_type() == HookHandlerType::Prompt {
+                        status = HookRunStatus::Failed;
+                        entries.push(HookOutputEntry {
+                            kind: HookOutputEntryKind::Error,
+                            text: "prompt hook returned empty output".to_string(),
+                        });
+                    }
                 } else if let Some(parsed) =
                     output_parser::parse_user_prompt_submit(&run_result.stdout)
                 {
@@ -202,7 +218,9 @@ fn parse_completed(
                             });
                         }
                     }
-                } else if output_parser::looks_like_json(&run_result.stdout) {
+                } else if handler.handler_type() == HookHandlerType::Prompt
+                    || output_parser::looks_like_json(&run_result.stdout)
+                {
                     status = HookRunStatus::Failed;
                     entries.push(HookOutputEntry {
                         kind: HookOutputEntryKind::Error,
@@ -251,6 +269,17 @@ fn parse_completed(
         },
     }
 
+    if matches!(status, HookRunStatus::Failed) && handler.fail_closed() {
+        should_stop = true;
+        stop_reason = Some(
+            entries
+                .iter()
+                .find(|entry| matches!(entry.kind, HookOutputEntryKind::Error))
+                .map(|entry| entry.text.clone())
+                .unwrap_or_else(|| "user prompt submit prompt hook failed".to_string()),
+        );
+    }
+
     let completed = HookCompletedEvent {
         turn_id,
         run: dispatcher::completed_summary(handler, &run_result, status, entries),
@@ -278,15 +307,23 @@ fn serialization_failure_outcome(hook_events: Vec<HookCompletedEvent>) -> UserPr
 
 #[cfg(test)]
 mod tests {
+    use codex_protocol::protocol::HookCompletedEvent;
     use codex_protocol::protocol::HookEventName;
+    use codex_protocol::protocol::HookExecutionMode;
+    use codex_protocol::protocol::HookHandlerType;
     use codex_protocol::protocol::HookOutputEntry;
     use codex_protocol::protocol::HookOutputEntryKind;
     use codex_protocol::protocol::HookRunStatus;
+    use codex_protocol::protocol::HookRunSummary;
+    use codex_protocol::protocol::HookScope;
+    use codex_protocol::protocol::HookSource;
     use codex_utils_absolute_path::test_support::PathBufExt;
     use codex_utils_absolute_path::test_support::test_path_buf;
     use pretty_assertions::assert_eq;
 
     use super::UserPromptSubmitHandlerData;
+    use super::UserPromptSubmitOutcome;
+    use super::outcome_from_results;
     use super::parse_completed;
     use crate::engine::ConfiguredHandler;
     use crate::engine::ConfiguredHandlerKind;
@@ -421,6 +458,114 @@ mod tests {
         );
     }
 
+    #[test]
+    fn prompt_output_must_be_non_empty_valid_json() {
+        for stdout in [
+            "",
+            "additional context",
+            "{not json",
+            r#"{"decision":"block"}"#,
+        ] {
+            let parsed = parse_completed(
+                &prompt_handler(/*fail_closed*/ false),
+                run_result(Some(0), stdout, ""),
+                Some("turn-1".to_string()),
+            );
+
+            assert_eq!(parsed.completed.run.status, HookRunStatus::Failed);
+            assert_eq!(
+                parsed.data,
+                UserPromptSubmitHandlerData {
+                    should_stop: false,
+                    stop_reason: None,
+                    additional_contexts_for_model: Vec::new(),
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn failed_prompt_hook_honors_fail_closed_without_changing_failed_status() {
+        let failure = "model request failed";
+        let fail_open = parse_completed(
+            &prompt_handler(/*fail_closed*/ false),
+            failed_run(failure),
+            Some("turn-1".to_string()),
+        );
+        let fail_closed = parse_completed(
+            &prompt_handler(/*fail_closed*/ true),
+            failed_run(failure),
+            Some("turn-1".to_string()),
+        );
+
+        let expected_entries = vec![HookOutputEntry {
+            kind: HookOutputEntryKind::Error,
+            text: failure.to_string(),
+        }];
+        assert_eq!(fail_open.completed.run.status, HookRunStatus::Failed);
+        assert_eq!(fail_open.completed.run.entries, expected_entries);
+        assert_eq!(fail_closed.completed.run.status, HookRunStatus::Failed);
+        assert_eq!(fail_closed.completed.run.entries, expected_entries);
+
+        let expected_event = HookCompletedEvent {
+            turn_id: Some("turn-1".to_string()),
+            run: HookRunSummary {
+                id: "user-prompt-submit:0:/tmp/hooks.json".to_string(),
+                event_name: HookEventName::UserPromptSubmit,
+                handler_type: HookHandlerType::Prompt,
+                execution_mode: HookExecutionMode::Sync,
+                scope: HookScope::Turn,
+                source_path: test_path_buf("/tmp/hooks.json").abs(),
+                source: HookSource::User,
+                display_order: 0,
+                status: HookRunStatus::Failed,
+                status_message: None,
+                started_at: 1,
+                completed_at: Some(2),
+                duration_ms: Some(1),
+                entries: expected_entries,
+            },
+        };
+
+        assert_eq!(
+            outcome_from_results(vec![fail_open]),
+            UserPromptSubmitOutcome {
+                hook_events: vec![expected_event.clone()],
+                should_stop: false,
+                stop_reason: None,
+                additional_contexts: Vec::new(),
+            }
+        );
+        assert_eq!(
+            outcome_from_results(vec![fail_closed]),
+            UserPromptSubmitOutcome {
+                hook_events: vec![expected_event],
+                should_stop: true,
+                stop_reason: Some(failure.to_string()),
+                additional_contexts: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn command_plain_text_output_remains_additional_context() {
+        let parsed = parse_completed(
+            &handler(),
+            run_result(Some(0), "additional context", ""),
+            Some("turn-1".to_string()),
+        );
+
+        assert_eq!(parsed.completed.run.status, HookRunStatus::Completed);
+        assert_eq!(
+            parsed.data,
+            UserPromptSubmitHandlerData {
+                should_stop: false,
+                stop_reason: None,
+                additional_contexts_for_model: vec!["additional context".to_string()],
+            }
+        );
+    }
+
     fn handler() -> ConfiguredHandler {
         ConfiguredHandler {
             event_name: HookEventName::UserPromptSubmit,
@@ -435,6 +580,31 @@ mod tests {
             display_order: 0,
             env: std::collections::HashMap::new(),
         }
+    }
+
+    fn prompt_handler(fail_closed: bool) -> ConfiguredHandler {
+        ConfiguredHandler {
+            event_name: HookEventName::UserPromptSubmit,
+            matcher: None,
+            kind: ConfiguredHandlerKind::Prompt {
+                prompt: "Review $$ARGUMENTS".to_string(),
+                model: None,
+                reasoning_effort: None,
+                timeout_sec: 30,
+                fail_closed,
+            },
+            status_message: None,
+            source_path: test_path_buf("/tmp/hooks.json").abs(),
+            source: codex_protocol::protocol::HookSource::User,
+            display_order: 0,
+            env: std::collections::HashMap::new(),
+        }
+    }
+
+    fn failed_run(error: &str) -> CommandRunResult {
+        let mut result = run_result(None, "", "");
+        result.error = Some(error.to_string());
+        result
     }
 
     fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> CommandRunResult {
