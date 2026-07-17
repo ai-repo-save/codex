@@ -6,6 +6,7 @@ use anyhow::Context;
 use anyhow::Result;
 use codex_core::compact::SUMMARIZATION_PROMPT;
 use codex_features::Feature;
+use codex_protocol::items::TurnItem;
 use codex_protocol::protocol::AgentStatus;
 use codex_protocol::protocol::CodexErrorInfo;
 use codex_protocol::protocol::EventMsg;
@@ -220,7 +221,13 @@ async fn pre_compact_invalid_prompt_output_fails_open_and_compacts() -> Result<(
     let events = wait_for_compact_terminal(&test).await?;
 
     assert!(failed_prompt_hook(&events, HookEventName::PreCompact));
-    assert!(events.iter().any(|event| matches!(event, EventMsg::ContextCompacted(_))));
+    assert!(events.iter().any(|event| {
+        matches!(
+            event,
+            EventMsg::ItemCompleted(completed)
+                if matches!(&completed.item, TurnItem::ContextCompaction(_))
+        )
+    }));
     let requests = responses.requests();
     assert_eq!(requests.len(), 3);
     assert!(request_uses_model(&requests[0], MAIN_MODEL));
@@ -278,10 +285,20 @@ async fn pre_compact_fail_closed_aborts_only_compaction() -> Result<()> {
 }
 
 async fn wait_for_compact_terminal(test: &TestCodex) -> Result<Vec<EventMsg>> {
+    let mut turn_id = None;
     let mut events = Vec::new();
     loop {
         let event = test.codex.next_event().await?.msg;
-        let terminal = matches!(event, EventMsg::TurnComplete(_) | EventMsg::TurnAborted(_));
+        if let EventMsg::TurnStarted(started) = &event {
+            turn_id = Some(started.turn_id.clone());
+        }
+        let terminal = match &event {
+            EventMsg::TurnComplete(completed) => turn_id.as_ref() == Some(&completed.turn_id),
+            EventMsg::TurnAborted(aborted) => turn_id
+                .as_ref()
+                .is_some_and(|turn_id| aborted.turn_id.as_ref() == Some(turn_id)),
+            _ => false,
+        };
         events.push(event);
         if terminal {
             return Ok(events);
@@ -417,7 +434,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_and_notifies_p
     let test = test_codex()
         .with_model(MAIN_MODEL)
         .with_pre_build_hook(|home| {
-            write_prompt_hook(home, "SubagentStart", Some("worker"), true)
+            write_prompt_hook(home, "SubagentStart", Some("default"), true)
                 .expect("write SubagentStart prompt hook");
         })
         .with_config(|config| {
@@ -456,7 +473,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_and_notifies_p
                     && body["tools"].as_array().is_some_and(Vec::is_empty)
                     && request_contains(request, "Evaluate this lifecycle hook payload: ")
                     && request_contains(request, r#"\"hookEventName\":\"SubagentStart\""#)
-                    && request_contains(request, r#"\"agentType\":\"worker\""#)
+                    && request_contains(request, r#"\"agentType\":\"default\""#)
             })
         })
         .count();
