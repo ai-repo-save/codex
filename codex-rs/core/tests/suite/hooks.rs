@@ -1056,7 +1056,9 @@ fn assert_prompt_hook_request_is_isolated(
     request: &core_test_support::responses::ResponsesRequest,
 ) {
     let body = request.body_json();
-    assert_eq!(body["tools"], serde_json::json!([]));
+    assert_eq!(body.get("tools"), None);
+    assert_eq!(body["tool_choice"], "none");
+    assert_eq!(body["parallel_tool_calls"], false);
     assert_eq!(body["text"]["format"]["type"], "json_schema");
     assert_eq!(body["text"]["format"]["strict"], true);
     assert_eq!(

@@ -893,12 +893,16 @@ impl ModelClient {
                 .for_each(ResponseItem::clear_internal_chat_message_metadata_passthrough);
         }
         let tools = create_tools_json_for_responses_api(&prompt.tools)?;
+        let has_tools = !tools.is_empty();
         let (instructions, tools) = if model_info.use_responses_lite {
-            let mut prefix = vec![ResponseItem::AdditionalTools {
-                id: None,
-                role: "developer".to_string(),
-                tools,
-            }];
+            let mut prefix = Vec::new();
+            if has_tools {
+                prefix.push(ResponseItem::AdditionalTools {
+                    id: None,
+                    role: "developer".to_string(),
+                    tools,
+                });
+            }
             if !prompt.base_instructions.text.is_empty() {
                 prefix.push(ResponseItem::Message {
                     id: None,
@@ -913,7 +917,10 @@ impl ModelClient {
             input.splice(0..0, prefix);
             (String::new(), None)
         } else {
-            (prompt.base_instructions.text.clone(), Some(tools))
+            (
+                prompt.base_instructions.text.clone(),
+                has_tools.then_some(tools),
+            )
         };
         let stream_options = (self.state.concurrent_reasoning_summaries_enabled && is_openai)
             .then_some(StreamOptions {
@@ -948,8 +955,10 @@ impl ModelClient {
             instructions,
             input,
             tools,
-            tool_choice: "auto".to_string(),
-            parallel_tool_calls: prompt.parallel_tool_calls && !model_info.use_responses_lite,
+            tool_choice: if has_tools { "auto" } else { "none" }.to_string(),
+            parallel_tool_calls: has_tools
+                && prompt.parallel_tool_calls
+                && !model_info.use_responses_lite,
             reasoning,
             store: provider.is_azure_responses_endpoint(),
             stream: true,
