@@ -1,0 +1,21 @@
+---
+source: tui/src/startup_hooks_review.rs
+assertion_line: 447
+expression: rendered
+---
+
+  Hooks need review
+  1 hook is new or changed.
+  Hooks can run outside the sandbox after you trust them.
+
+  Prompt hook 1
+  Reasoning effort: REASONING_EFFORT_SENTINEL_9D2C
+  Review this complete prompt.
+  PROMPT_SENTINEL_7F3A
+  Do not truncate the final line.
+
+› 1. Review hooks
+  2. Trust all and continue
+  3. Continue without trusting (hooks won't run)
+
+  Press enter to confirm or esc to go back
