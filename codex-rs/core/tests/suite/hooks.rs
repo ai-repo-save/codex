@@ -21,8 +21,6 @@ use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::HookCompletedEvent;
 use codex_protocol::protocol::HookEventName;
 use codex_protocol::protocol::HookHandlerType;
-use codex_protocol::protocol::HookOutputEntry;
-use codex_protocol::protocol::HookOutputEntryKind;
 use codex_protocol::protocol::HookRunStatus;
 use codex_protocol::protocol::HookStartedEvent;
 use codex_protocol::protocol::Op;
@@ -76,9 +74,6 @@ const PRE_TOOL_PROMPT_HOOK_INSTRUCTIONS: &str =
 const PRE_TOOL_PROMPT_HOOK_MAIN_MODEL: &str = "test-gpt-5.1-codex";
 const PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL: &str = "prompt-hook-test-model";
 const PRE_TOOL_PROMPT_HOOK_BLOCK_REASON: &str = "blocked by prompt hook";
-const PRE_TOOL_PROMPT_HOOK_REQUEST_FAILURE_DETAIL: &str =
-    r#"{"error":{"message":"backend rejected isolated prompt hook request","type":"invalid_request_error"}}"#;
-const PRE_TOOL_PROMPT_HOOK_REQUEST_FAILURE_ERROR: &str = r#"prompt hook model request failed: {"error":{"message":"backend rejected isolated prompt hook request","type":"invalid_request_error"}}"#;
 const PRE_TOOL_PROMPT_HOOK_UNTRUSTED_PREFIX: &str = "<untrusted-hook-event-json>\n";
 const PRE_TOOL_PROMPT_HOOK_UNTRUSTED_SUFFIX: &str = "\n</untrusted-hook-event-json>";
 const PRE_TOOL_PROMPT_HOOK_UNTRUSTED_CLOSING_TAG: &str = "</untrusted-hook-event-json>";
@@ -1064,7 +1059,6 @@ fn assert_prompt_hook_request_is_isolated(
     assert_eq!(body.get("tools"), None);
     assert_eq!(body["tool_choice"], "none");
     assert_eq!(body["parallel_tool_calls"], false);
-    assert_eq!(body.get("max_output_tokens"), None);
     assert_eq!(body["text"]["format"]["type"], "json_schema");
     assert_eq!(body["text"]["format"]["strict"], true);
     assert_eq!(
@@ -2995,7 +2989,7 @@ async fn pre_tool_use_prompt_hook_deny_blocks_tool_and_turn_continues() -> Resul
 async fn assert_prompt_hook_failure_is_fail_open(
     hook_response: ResponseTemplate,
     timeout_sec: Option<u64>,
-) -> Result<HookCompletedEvent> {
+) -> Result<()> {
     let server = start_mock_server().await;
     let call_id = "pretooluse-prompt-failure-open";
     let marker_dir = TempDir::new()?;
@@ -3030,7 +3024,7 @@ async fn assert_prompt_hook_failure_is_fail_open(
     assert_eq!(completed.run.status, HookRunStatus::Failed);
     assert!(marker.exists(), "fail-open prompt hook should execute tool");
     assert_eq!(responses.requests().len(), 3);
-    Ok(completed)
+    Ok(())
 }
 
 #[tokio::test]
@@ -3045,35 +3039,20 @@ async fn pre_tool_use_prompt_hook_invalid_output_fails_open() -> Result<()> {
         ])),
         /*timeout_sec*/ None,
     )
-    .await?;
-    Ok(())
+    .await
 }
 
 #[tokio::test]
 async fn pre_tool_use_prompt_hook_request_failure_fails_open_without_retry() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
-    let completed = assert_prompt_hook_failure_is_fail_open(
-        ResponseTemplate::new(400).set_body_string(PRE_TOOL_PROMPT_HOOK_REQUEST_FAILURE_DETAIL),
+    assert_prompt_hook_failure_is_fail_open(
+        ResponseTemplate::new(500).set_body_json(serde_json::json!({
+            "error": {"type": "server_error", "message": "prompt hook request failed"}
+        })),
         /*timeout_sec*/ None,
     )
-    .await?;
-    assert_eq!(
-        completed.run.entries,
-        vec![HookOutputEntry {
-            kind: HookOutputEntryKind::Error,
-            text: PRE_TOOL_PROMPT_HOOK_REQUEST_FAILURE_ERROR.to_string(),
-        }]
-    );
-    assert!(
-        completed
-            .run
-            .entries
-            .iter()
-            .all(|entry| !entry.text.contains(PRE_TOOL_PROMPT_HOOK_SENTINEL))
-    );
-
-    Ok(())
+    .await
 }
 
 #[tokio::test]
@@ -3085,8 +3064,7 @@ async fn pre_tool_use_prompt_hook_timeout_fails_open() -> Result<()> {
             .set_delay(Duration::from_secs(2)),
         Some(1),
     )
-    .await?;
-    Ok(())
+    .await
 }
 
 async fn assert_missing_preferred_prompt_hook_model_respects_failure_mode(

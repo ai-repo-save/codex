@@ -366,6 +366,48 @@ async fn isolated_session_uses_one_http_attempt_without_websocket_fallback() {
 }
 
 #[tokio::test]
+async fn isolated_session_omits_max_output_tokens_for_codex_backend_auth() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .respond_with(ResponseTemplate::new(/*status*/ 500))
+        .expect(/*requests*/ 1)
+        .mount(&server)
+        .await;
+    let provider =
+        ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    let client = ModelClient::new(
+        Some(AuthManager::from_auth_for_testing(
+            CodexAuth::create_dummy_chatgpt_auth_for_testing(),
+        )),
+        AgentIdentityAuthPolicy::JwtOnly,
+        ThreadId::new(),
+        provider,
+        SessionSource::Cli,
+        "test_originator".to_string(),
+        /*model_verbosity*/ None,
+        /*enable_request_compression*/ false,
+        /*include_timing_metrics*/ false,
+        /*beta_features_header*/ None,
+        /*item_ids_enabled*/ false,
+        /*concurrent_reasoning_summaries_enabled*/ false,
+        /*attestation_provider*/ None,
+        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+    );
+
+    send_isolated_test_request(&client, &test_model_info(), /*effort*/ None).await;
+
+    let requests = server
+        .received_requests()
+        .await
+        .expect("server should record the isolated request");
+    let request_body = requests[0]
+        .body_json::<serde_json::Value>()
+        .expect("isolated request body should be JSON");
+    assert_eq!(request_body.get("max_output_tokens"), None);
+}
+
+#[tokio::test]
 async fn isolated_session_sends_explicit_reasoning_effort_exactly() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
