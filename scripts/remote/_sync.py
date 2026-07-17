@@ -58,7 +58,11 @@ def run_remote_workflow(config: RemoteWorkflow) -> int:
     run(("git", "push", "origin", config.branch), cwd=repo_root)
 
     sync_remote_checkout(repo_root, config, local_head)
-    run_remote_command(config)
+    remote_command_error: subprocess.CalledProcessError | None = None
+    try:
+        run_remote_command(config)
+    except subprocess.CalledProcessError as error:
+        remote_command_error = error
 
     ensure_clean_local_worktree(repo_root)
     ensure_local_head(repo_root, local_head)
@@ -66,11 +70,13 @@ def run_remote_workflow(config: RemoteWorkflow) -> int:
     status_plan = remote_status_plan(config)
     if not status_plan.copy_paths and not status_plan.delete_paths:
         LOGGER.info("remote command produced no Git-visible file changes")
-        return 0
+    else:
+        apply_remote_changes(repo_root, config, status_plan)
+        LOGGER.info("local checkout updated from remote Git-visible changes")
+        run(("git", "status", "--short"), cwd=repo_root)
 
-    apply_remote_changes(repo_root, config, status_plan)
-    LOGGER.info("local checkout updated from remote Git-visible changes")
-    run(("git", "status", "--short"), cwd=repo_root)
+    if remote_command_error is not None:
+        raise remote_command_error
     return 0
 
 

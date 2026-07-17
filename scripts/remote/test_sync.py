@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -13,6 +14,39 @@ import _sync  # noqa: E402
 
 
 class RemoteSyncTest(unittest.TestCase):
+    def test_failed_remote_command_copies_git_visible_changes_before_raising(
+        self,
+    ) -> None:
+        config = _sync.RemoteWorkflow(
+            host="builder",
+            branch="main",
+            remote_path="/root/codex",
+            command=("false",),
+        )
+        command_error = subprocess.CalledProcessError(1, config.command)
+        status_plan = _sync.StatusPlan(
+            copy_paths=("snapshot.snap.new",),
+            delete_paths=(),
+        )
+
+        with (
+            patch.object(_sync, "git_repo_root", return_value=Path("/repo")),
+            patch.object(_sync, "require_command"),
+            patch.object(_sync, "ensure_clean_local_worktree"),
+            patch.object(_sync, "ensure_current_branch"),
+            patch.object(_sync, "git_output", return_value="abc123"),
+            patch.object(_sync, "run"),
+            patch.object(_sync, "sync_remote_checkout"),
+            patch.object(_sync, "run_remote_command", side_effect=command_error),
+            patch.object(_sync, "ensure_local_head"),
+            patch.object(_sync, "remote_status_plan", return_value=status_plan),
+            patch.object(_sync, "apply_remote_changes") as apply_remote_changes,
+            self.assertRaises(subprocess.CalledProcessError),
+        ):
+            _sync.run_remote_workflow(config)
+
+        apply_remote_changes.assert_called_once_with(Path("/repo"), config, status_plan)
+
     def test_remote_codex_rs_test_command_uses_nextest_without_bench_smoke(
         self,
     ) -> None:
