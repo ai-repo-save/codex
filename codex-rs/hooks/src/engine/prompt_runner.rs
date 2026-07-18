@@ -137,11 +137,9 @@ pub(crate) async fn run_prompt(
             stdout,
             None,
         )),
-        Ok(Err(error)) => HandlerRunResult::completed(failed_prompt_run(
-            started_at,
-            started,
-            error.to_string(),
-        )),
+        Ok(Err(error)) => {
+            HandlerRunResult::completed(failed_prompt_run(started_at, started, error.to_string()))
+        }
         Err(_) => HandlerRunResult::completed(failed_prompt_run(
             started_at,
             started,

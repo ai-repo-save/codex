@@ -11,8 +11,8 @@ use super::super::ConfiguredHandlerKind;
 use super::super::ConfiguredPromptFilter;
 use super::super::command_runner::ShellCommandRequest;
 use super::super::command_runner::run_shell_command;
-use super::PromptFilterOutcome;
 use super::FILTER_OUTPUT_LIMIT;
+use super::PromptFilterOutcome;
 use super::run_prompt_filter;
 
 const FILTER_INPUT: &str = "{}";

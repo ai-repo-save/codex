@@ -222,12 +222,8 @@ async fn kill_process_tree(child: &mut tokio::process::Child, process_id: Option
         let _ = child.kill().await;
         return;
     };
-    if let Err(error) =
-        codex_utils_pty::process_group::kill_process_group(process_group_id)
-    {
-        tracing::warn!(
-            "failed to kill hook command process group {process_group_id}: {error}"
-        );
+    if let Err(error) = codex_utils_pty::process_group::kill_process_group(process_group_id) {
+        tracing::warn!("failed to kill hook command process group {process_group_id}: {error}");
         let _ = child.kill().await;
         return;
     }

@@ -398,9 +398,9 @@ mod tests {
     use crate::engine::CommandShell;
     use crate::engine::ConfiguredHandler;
     use crate::engine::ConfiguredHandlerKind;
+    use crate::engine::HandlerRunResult;
     use crate::engine::PromptHookRequest;
     use crate::engine::PromptHookRunner;
-    use crate::engine::HandlerRunResult;
     use crate::engine::command_runner::CommandRunResult;
     use crate::schema::SessionStartCommandInput;
 

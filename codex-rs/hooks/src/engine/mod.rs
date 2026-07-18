@@ -6,6 +6,7 @@ pub(crate) mod output_parser;
 pub(crate) mod prompt_runner;
 pub(crate) mod schema_loader;
 
+use self::command_runner::CommandRunResult;
 use crate::events::approval_review_route::ApprovalReviewRouteOutcome;
 use crate::events::approval_review_route::ApprovalReviewRouteRequest;
 use crate::events::compact::PostCompactRequest;
@@ -24,7 +25,6 @@ use crate::events::stop::StopOutcome;
 use crate::events::stop::StopRequest;
 use crate::events::user_prompt_submit::UserPromptSubmitOutcome;
 use crate::events::user_prompt_submit::UserPromptSubmitRequest;
-use self::command_runner::CommandRunResult;
 use crate::output_spill::HookOutputSpiller;
 use codex_config::ConfigLayerStack;
 use codex_config::PromptHookFilterConfig;

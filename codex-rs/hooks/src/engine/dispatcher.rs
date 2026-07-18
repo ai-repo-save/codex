@@ -109,11 +109,9 @@ pub(crate) async fn execute_handlers<T>(
         let turn_id = turn_id.clone();
         pending.push(async move {
             let result = match &handler.kind {
-                ConfiguredHandlerKind::Command { .. } => {
-                    HandlerRunResult::completed(
-                        run_command(shell, &handler, configured_order, &input_json, cwd).await,
-                    )
-                }
+                ConfiguredHandlerKind::Command { .. } => HandlerRunResult::completed(
+                    run_command(shell, &handler, configured_order, &input_json, cwd).await,
+                ),
                 ConfiguredHandlerKind::Prompt { .. } => {
                     run_prompt(prompt_runner, shell, &handler, &input_json, cwd).await
                 }
