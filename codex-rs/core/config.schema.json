@@ -2717,7 +2717,8 @@
         "timeout": {
           "default": null,
           "format": "uint64",
-          "minimum": 0.0,
+          "maximum": 60.0,
+          "minimum": 1.0,
           "type": "integer"
         }
       },
