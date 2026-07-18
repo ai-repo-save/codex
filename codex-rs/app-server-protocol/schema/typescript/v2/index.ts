@@ -86,6 +86,7 @@ export type { ConfigWarningNotification } from "./ConfigWarningNotification";
 export type { ConfigWriteResponse } from "./ConfigWriteResponse";
 export type { ConfiguredHookHandler } from "./ConfiguredHookHandler";
 export type { ConfiguredHookMatcherGroup } from "./ConfiguredHookMatcherGroup";
+export type { ConfiguredPromptHookFilter } from "./ConfiguredPromptHookFilter";
 export type { ConsumeAccountRateLimitResetCreditOutcome } from "./ConsumeAccountRateLimitResetCreditOutcome";
 export type { ConsumeAccountRateLimitResetCreditParams } from "./ConsumeAccountRateLimitResetCreditParams";
 export type { ConsumeAccountRateLimitResetCreditResponse } from "./ConsumeAccountRateLimitResetCreditResponse";

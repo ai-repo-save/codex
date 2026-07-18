@@ -4884,6 +4884,16 @@
             "failClosed": {
               "type": "boolean"
             },
+            "filter": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ConfiguredPromptHookFilter"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "model": {
               "type": [
                 "string",
@@ -4968,6 +4978,31 @@
       },
       "required": [
         "hooks"
+      ],
+      "type": "object"
+    },
+    "ConfiguredPromptHookFilter": {
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "commandWindows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timeout": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "command"
       ],
       "type": "object"
     },
@@ -7273,6 +7308,16 @@
         },
         "failClosed": {
           "type": "boolean"
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ConfiguredPromptHookFilter"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "handlerType": {
           "$ref": "#/definitions/HookHandlerType"
