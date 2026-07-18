@@ -1824,7 +1824,7 @@ fn request_user_input_default_mode_description_fragment() -> String {
     features.enable(Feature::DefaultModeRequestUserInput);
     let mode_names = request_user_input_available_modes(&features)
         .into_iter()
-        .map(|mode| mode.display_name())
+        .map(codex_config::types::ModeKind::display_name)
         .collect::<Vec<_>>()
         .join(",");
     format!("This tool is only available in modes: {mode_names}.")

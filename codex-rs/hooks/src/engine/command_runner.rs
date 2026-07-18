@@ -125,8 +125,17 @@ pub(crate) async fn run_shell_command(request: ShellCommandRequest<'_>) -> Comma
     };
 
     let stdin = child.stdin.take();
-    let stdout = child.stdout.take().expect("hook stdout should be piped");
-    let stderr = child.stderr.take().expect("hook stderr should be piped");
+    let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
+        return CommandRunCompletion {
+            exit_code: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            stdout_len: 0,
+            stderr_len: 0,
+            error: Some("hook output pipes are unavailable".to_string()),
+            outcome: "pipe_error",
+        };
+    };
     let timeout_duration = Duration::from_secs(timeout_sec);
     match timeout(timeout_duration, async {
         let write_stdin = async move {
@@ -158,13 +167,17 @@ pub(crate) async fn run_shell_command(request: ShellCommandRequest<'_>) -> Comma
                 stderr: String::from_utf8_lossy(&stderr.bytes).to_string(),
                 stdout_len: stdout.total_len,
                 stderr_len: stderr.total_len,
-                error: output_exceeded.then(|| {
-                    let limit = output_limit.expect("exceeded output requires a limit");
-                    format!(
+                error: match (output_exceeded, output_limit) {
+                    (true, Some(limit)) => Some(format!(
                         "hook output exceeded {limit} bytes (stdout: {}, stderr: {})",
                         stdout.total_len, stderr.total_len
-                    )
-                }),
+                    )),
+                    (true, None) => Some(format!(
+                        "hook output exceeded its limit (stdout: {}, stderr: {})",
+                        stdout.total_len, stderr.total_len
+                    )),
+                    (false, _) => None,
+                },
                 outcome: if output_exceeded {
                     "output_limit"
                 } else {

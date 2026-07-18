@@ -180,7 +180,7 @@ fn thread_fork_params_from_reset_context(params: ThreadResetContextParams) -> Th
                 .map(|root| {
                     AbsolutePathBuf::resolve_path_against_base(
                         root,
-                        &std::env::current_dir()
+                        std::env::current_dir()
                             .expect("current working directory should be available")
                             .as_path(),
                     )
@@ -3684,7 +3684,7 @@ impl ThreadRequestProcessor {
                     rollout_path: source_thread.rollout_path.clone(),
                 }),
                 thread_source.map(Into::into),
-                self.request_trace_context(&request_id).await,
+                self.request_trace_context(request_id).await,
                 supports_openai_form_elicitation,
             )
             .await

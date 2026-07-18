@@ -424,7 +424,7 @@ mod tests {
         let session_id = ThreadId::new();
         let cwd = test_path_buf("/tmp").abs();
         let request = SessionStartRequest {
-            session_id: session_id,
+            session_id,
             cwd: cwd.clone(),
             transcript_path: None,
             model: "gpt-test".to_string(),
