@@ -1,6 +1,6 @@
+use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
-use std::path::Path;
 
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::HookEventName;
@@ -9,9 +9,9 @@ use futures::future::BoxFuture;
 use serde_json::Value;
 use tokio::time::timeout;
 
+use super::CommandShell;
 use super::ConfiguredHandler;
 use super::ConfiguredHandlerKind;
-use super::CommandShell;
 use super::command_runner::CommandRunResult;
 use super::filter_runner::PromptFilterOutcome;
 use super::filter_runner::run_prompt_filter;

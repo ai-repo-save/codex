@@ -624,12 +624,12 @@ fn append_matcher_groups(
                     };
                     let current_hash = hook_hash(event_name, matcher, &group, normalized_handler);
                     let effective_filter = filter.map(|filter| ConfiguredPromptFilter {
-                        command: source.env.iter().fold(
-                            filter.command,
-                            |command, (key, value)| {
+                        command: source
+                            .env
+                            .iter()
+                            .fold(filter.command, |command, (key, value)| {
                                 command.replace(&format!("${{{key}}}"), value)
-                            },
-                        ),
+                            }),
                         timeout_sec: filter.timeout_sec,
                     });
                     let key =
@@ -648,11 +648,13 @@ fn append_matcher_groups(
                         prompt: Some(prompt.clone()),
                         model: model.clone(),
                         reasoning_effort: reasoning_effort.clone(),
-                        filter: effective_filter.as_ref().map(|filter| PromptHookFilterConfig {
-                            command: filter.command.clone(),
-                            command_windows: None,
-                            timeout_sec: Some(filter.timeout_sec),
-                        }),
+                        filter: effective_filter
+                            .as_ref()
+                            .map(|filter| PromptHookFilterConfig {
+                                command: filter.command.clone(),
+                                command_windows: None,
+                                timeout_sec: Some(filter.timeout_sec),
+                            }),
                         fail_closed: Some(fail_closed),
                         timeout_sec,
                         status_message: status_message.clone(),

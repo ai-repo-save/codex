@@ -131,12 +131,10 @@ pub(crate) async fn run_shell_command(request: ShellCommandRequest<'_>) -> Comma
     match timeout(timeout_duration, async {
         let write_stdin = async move {
             if let Some(mut stdin) = stdin {
-                stdin.write_all(input_json.as_bytes()).await.map_err(|err| {
-                    (
-                        "stdin_error",
-                        format!("failed to write hook stdin: {err}"),
-                    )
-                })?;
+                stdin
+                    .write_all(input_json.as_bytes())
+                    .await
+                    .map_err(|err| ("stdin_error", format!("failed to write hook stdin: {err}")))?;
             }
             Ok::<_, (&'static str, String)>(())
         };

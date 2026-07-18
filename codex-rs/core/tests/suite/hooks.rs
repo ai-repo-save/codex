@@ -2980,7 +2980,10 @@ async fn pre_tool_use_prompt_hook_filter_run_issues_one_evaluator_request() -> R
     .await?;
 
     assert_eq!(completed.run.status, HookRunStatus::Completed);
-    assert!(marker.exists(), "filter run should execute the allowed tool");
+    assert!(
+        marker.exists(),
+        "filter run should execute the allowed tool"
+    );
     let requests = responses.requests();
     assert_eq!(
         requests.len(),
@@ -3009,11 +3012,8 @@ async fn pre_tool_use_prompt_hook_filter_failure_falls_back_to_evaluator() -> Re
     let mut builder = test_codex()
         .with_model(PRE_TOOL_PROMPT_HOOK_MAIN_MODEL)
         .with_pre_build_hook(|home| {
-            write_pre_tool_use_prompt_hook_with_filter(
-                home,
-                "raise SystemExit(1)",
-            )
-            .expect("write failing prompt hook filter fixture");
+            write_pre_tool_use_prompt_hook_with_filter(home, "raise SystemExit(1)")
+                .expect("write failing prompt hook filter fixture");
         })
         .with_config(trust_discovered_hooks);
     let test = builder.build(&server).await?;

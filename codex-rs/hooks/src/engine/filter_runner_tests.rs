@@ -20,7 +20,10 @@ const FILTER_OUTPUT_BYTES: usize = 8 * 1024 + 1;
 #[tokio::test]
 async fn prompt_filter_accepts_strict_run_and_skip_json() {
     for (command, expected) in [
-        (stdout_command(r#"{"version":1,"decision":"run"}"#), PromptFilterOutcome::Run),
+        (
+            stdout_command(r#"{"version":1,"decision":"run"}"#),
+            PromptFilterOutcome::Run,
+        ),
         (
             stdout_command(r#"{"version":1,"decision":"skip"}"#),
             PromptFilterOutcome::Skip,

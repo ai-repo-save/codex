@@ -86,13 +86,13 @@ fn prompt_hook_hash(
             hooks: vec![codex_config::HookHandlerConfig::Prompt {
                 prompt: prompt.to_string(),
                 model: model.map(ToOwned::to_owned),
-                filter: filter.map(|(command, timeout_sec)| {
-                    codex_config::PromptHookFilterConfig {
+                filter: filter.map(
+                    |(command, timeout_sec)| codex_config::PromptHookFilterConfig {
                         command: command.to_string(),
                         command_windows: None,
                         timeout_sec: Some(timeout_sec),
-                    }
-                }),
+                    },
+                ),
                 reasoning_effort,
                 timeout_sec: Some(30),
                 fail_closed,

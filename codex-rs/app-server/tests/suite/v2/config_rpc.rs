@@ -177,9 +177,7 @@ statusMessage = "checking managed policy"
                     model: Some("gpt-managed-hook".to_string()),
                     filter: Some(ConfiguredPromptHookFilter {
                         command: "python3 /managed/filter.py".to_string(),
-                        command_windows: Some(
-                            "python.exe C:\\managed\\filter.py".to_string(),
-                        ),
+                        command_windows: Some("python.exe C:\\managed\\filter.py".to_string(),),
                         timeout_sec: Some(7),
                     }),
                     reasoning_effort: Some(ReasoningEffort::High),
