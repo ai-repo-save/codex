@@ -15,6 +15,7 @@ use super::*;
 use crate::engine::ConfiguredHandlerKind;
 use crate::engine::HandlerRunResult;
 use crate::engine::PromptHookRequest;
+use crate::engine::command_runner::CommandRunResult;
 
 #[derive(Clone)]
 struct RecordingRunner {
