@@ -108,6 +108,8 @@ pub(crate) async fn run_shell_command(request: ShellCommandRequest<'_>) -> Comma
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
 
     let mut child = match command.spawn() {
         Ok(child) => child,
@@ -123,9 +125,11 @@ pub(crate) async fn run_shell_command(request: ShellCommandRequest<'_>) -> Comma
             };
         }
     };
+    let process_id = child.id();
 
     let stdin = child.stdin.take();
     let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
+        kill_process_tree(&mut child, process_id).await;
         return CommandRunCompletion {
             exit_code: None,
             stdout: String::new(),
@@ -186,7 +190,7 @@ pub(crate) async fn run_shell_command(request: ShellCommandRequest<'_>) -> Comma
             }
         }
         Ok(Err((outcome, error))) => {
-            let _ = child.kill().await;
+            kill_process_tree(&mut child, process_id).await;
             CommandRunCompletion {
                 exit_code: None,
                 stdout: String::new(),
@@ -198,7 +202,7 @@ pub(crate) async fn run_shell_command(request: ShellCommandRequest<'_>) -> Comma
             }
         }
         Err(_) => {
-            let _ = child.kill().await;
+            kill_process_tree(&mut child, process_id).await;
             CommandRunCompletion {
                 exit_code: None,
                 stdout: String::new(),
@@ -210,6 +214,50 @@ pub(crate) async fn run_shell_command(request: ShellCommandRequest<'_>) -> Comma
             }
         }
     }
+}
+
+#[cfg(unix)]
+async fn kill_process_tree(child: &mut tokio::process::Child, process_id: Option<u32>) {
+    let Some(process_group_id) = process_id else {
+        let _ = child.kill().await;
+        return;
+    };
+    if let Err(error) =
+        codex_utils_pty::process_group::kill_process_group(process_group_id)
+    {
+        tracing::warn!(
+            "failed to kill hook command process group {process_group_id}: {error}"
+        );
+        let _ = child.kill().await;
+        return;
+    }
+    let _ = child.wait().await;
+}
+
+#[cfg(windows)]
+async fn kill_process_tree(child: &mut tokio::process::Child, process_id: Option<u32>) {
+    let Some(process_id) = process_id else {
+        let _ = child.kill().await;
+        return;
+    };
+    let process_id = process_id.to_string();
+    let status = Command::new("taskkill")
+        .args(["/PID", &process_id, "/T", "/F"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await;
+    if !status.is_ok_and(|status| status.success()) {
+        let _ = child.kill().await;
+        return;
+    }
+    let _ = child.wait().await;
+}
+
+#[cfg(not(any(unix, windows)))]
+async fn kill_process_tree(child: &mut tokio::process::Child, _process_id: Option<u32>) {
+    let _ = child.kill().await;
 }
 
 pub(crate) struct CommandRunCompletion {
@@ -311,3 +359,7 @@ fn default_shell_command() -> Command {
         command
     }
 }
+
+#[cfg(all(test, unix))]
+#[path = "command_runner_tests.rs"]
+mod tests;
