@@ -1,4 +1,5 @@
 use super::AppSummary;
+use super::ConfiguredPromptHookFilter;
 use super::HookEventName;
 use super::HookHandlerType;
 use super::HookSource;
@@ -517,6 +518,7 @@ pub struct HookMetadata {
     pub command: Option<String>,
     pub prompt: Option<String>,
     pub model: Option<String>,
+    pub filter: Option<ConfiguredPromptHookFilter>,
     pub reasoning_effort: Option<ReasoningEffort>,
     pub fail_closed: bool,
     pub timeout_sec: u64,

@@ -97,7 +97,7 @@ async fn prompt_runner_receives_raw_event_and_event_output_schema() {
     ] {
         let handler = prompt_handler(event_name, /*fail_closed*/ false);
 
-        let result = run_prompt(Some(&runner), &handler, "{}").await;
+        let result = run_prompt(Some(&runner), &shell(), &handler, "{}", cwd().as_path()).await;
 
         assert_eq!(result.exit_code, Some(0));
         assert_eq!(result.stdout, "{}");
@@ -155,6 +155,7 @@ fn prompt_handler(event_name: HookEventName, fail_closed: bool) -> ConfiguredHan
         matcher: None,
         kind: ConfiguredHandlerKind::Prompt {
             prompt: "Review $$ARGUMENTS".to_string(),
+            filter: None,
             model: Some("gpt-override".to_string()),
             reasoning_effort: Some(ReasoningEffort::High),
             timeout_sec: 30,
@@ -166,4 +167,15 @@ fn prompt_handler(event_name: HookEventName, fail_closed: bool) -> ConfiguredHan
         display_order: 0,
         env: std::collections::HashMap::new(),
     }
+}
+
+fn shell() -> CommandShell {
+    CommandShell {
+        program: String::new(),
+        args: Vec::new(),
+    }
+}
+
+fn cwd() -> codex_utils_absolute_path::AbsolutePathBuf {
+    codex_utils_absolute_path::AbsolutePathBuf::current_dir().expect("cwd")
 }

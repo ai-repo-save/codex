@@ -19,6 +19,7 @@ use codex_app_server_protocol::ConfigWriteErrorCode;
 use codex_app_server_protocol::ConfigWriteResponse;
 use codex_app_server_protocol::ConfiguredHookHandler;
 use codex_app_server_protocol::ConfiguredHookMatcherGroup;
+use codex_app_server_protocol::ConfiguredPromptHookFilter;
 use codex_app_server_protocol::ExperimentalFeatureEnablementSetParams;
 use codex_app_server_protocol::ExperimentalFeatureEnablementSetResponse;
 use codex_app_server_protocol::JSONRPCErrorError;
@@ -469,6 +470,7 @@ fn map_hook_handler_to_api(handler: CoreHookHandlerConfig) -> ConfiguredHookHand
         CoreHookHandlerConfig::Prompt {
             prompt,
             model,
+            filter,
             reasoning_effort,
             timeout_sec,
             fail_closed,
@@ -476,6 +478,11 @@ fn map_hook_handler_to_api(handler: CoreHookHandlerConfig) -> ConfiguredHookHand
         } => ConfiguredHookHandler::Prompt {
             prompt,
             model,
+            filter: filter.map(|filter| ConfiguredPromptHookFilter {
+                command: filter.command,
+                command_windows: filter.command_windows,
+                timeout_sec: filter.timeout_sec,
+            }),
             reasoning_effort,
             timeout_sec,
             fail_closed,

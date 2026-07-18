@@ -464,6 +464,17 @@ pub struct ConfiguredHookMatcherGroup {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ConfiguredPromptHookFilter {
+    pub command: String,
+    pub command_windows: Option<String>,
+    #[serde(rename = "timeout")]
+    #[ts(rename = "timeout")]
+    pub timeout_sec: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
 #[serde(tag = "type")]
 #[ts(tag = "type", export_to = "v2/")]
 pub enum ConfiguredHookHandler {
@@ -487,6 +498,7 @@ pub enum ConfiguredHookHandler {
     Prompt {
         prompt: String,
         model: Option<String>,
+        filter: Option<ConfiguredPromptHookFilter>,
         #[serde(rename = "reasoningEffort")]
         #[ts(rename = "reasoningEffort")]
         reasoning_effort: Option<ReasoningEffort>,

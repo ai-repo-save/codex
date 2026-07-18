@@ -7,6 +7,7 @@ use app_test_support::create_mock_responses_server_sequence_unchecked;
 use app_test_support::to_response;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigEdit;
+use codex_app_server_protocol::ConfiguredPromptHookFilter;
 use codex_app_server_protocol::HookEventName;
 use codex_app_server_protocol::HookHandlerType;
 use codex_app_server_protocol::HookMetadata;
@@ -73,6 +74,7 @@ fn prompt_hook_hash(
     matcher: Option<&str>,
     prompt: &str,
     model: Option<&str>,
+    filter: Option<(&str, u64)>,
     reasoning_effort: Option<ReasoningEffort>,
     fail_closed: bool,
     status_message: Option<&str>,
@@ -84,6 +86,13 @@ fn prompt_hook_hash(
             hooks: vec![codex_config::HookHandlerConfig::Prompt {
                 prompt: prompt.to_string(),
                 model: model.map(ToOwned::to_owned),
+                filter: filter.map(|(command, timeout_sec)| {
+                    codex_config::PromptHookFilterConfig {
+                        command: command.to_string(),
+                        command_windows: None,
+                        timeout_sec: Some(timeout_sec),
+                    }
+                }),
                 reasoning_effort,
                 timeout_sec: Some(30),
                 fail_closed,
@@ -127,6 +136,7 @@ matcher = "Bash"
 type = "prompt"
 prompt = "Review this tool call: $$ARGUMENTS"
 model = "gpt-hook-reviewer"
+filter = { command = "python3 /tmp/prompt-filter.py", commandWindows = "python3 /tmp/prompt-filter.py", timeout = 7 }
 reasoningEffort = "high"
 failClosed = true
 statusMessage = "reviewing listed hook"
@@ -218,6 +228,7 @@ async fn hooks_list_shows_discovered_hook() -> Result<()> {
                 command: Some("python3 /tmp/listed-hook.py".to_string()),
                 prompt: None,
                 model: None,
+                filter: None,
                 reasoning_effort: None,
                 fail_closed: false,
                 timeout_sec: 5,
@@ -283,6 +294,11 @@ async fn hooks_list_returns_prompt_hook_definition() -> Result<()> {
                 command: None,
                 prompt: Some("Review this tool call: $$ARGUMENTS".to_string()),
                 model: Some("gpt-hook-reviewer".to_string()),
+                filter: Some(ConfiguredPromptHookFilter {
+                    command: "python3 /tmp/prompt-filter.py".to_string(),
+                    command_windows: None,
+                    timeout_sec: Some(7),
+                }),
                 reasoning_effort: Some(ReasoningEffort::High),
                 fail_closed: true,
                 timeout_sec: 30,
@@ -298,6 +314,7 @@ async fn hooks_list_returns_prompt_hook_definition() -> Result<()> {
                     Some("Bash"),
                     "Review this tool call: $$ARGUMENTS",
                     Some("gpt-hook-reviewer"),
+                    Some(("python3 /tmp/prompt-filter.py", 7)),
                     Some(ReasoningEffort::High),
                     true,
                     Some("reviewing listed hook"),
@@ -371,6 +388,7 @@ async fn hooks_list_shows_discovered_plugin_hook() -> Result<()> {
                 command: Some("echo plugin hook".to_string()),
                 prompt: None,
                 model: None,
+                filter: None,
                 reasoning_effort: None,
                 fail_closed: false,
                 timeout_sec: 7,
@@ -589,6 +607,7 @@ timeout = 5
                     command: Some("echo project hook".to_string()),
                     prompt: None,
                     model: None,
+                    filter: None,
                     reasoning_effort: None,
                     fail_closed: false,
                     timeout_sec: 5,

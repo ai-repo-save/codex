@@ -173,6 +173,29 @@ fn write_pre_tool_use_prompt_hook(
     Ok(())
 }
 
+fn write_pre_tool_use_prompt_hook_with_filter(home: &Path, filter_script: &str) -> Result<()> {
+    let filter_path = home.join("prompt_hook_filter.py");
+    fs::write(&filter_path, filter_script).context("write prompt hook filter fixture")?;
+    let hooks = serde_json::json!({
+        "hooks": {
+            "PreToolUse": [{
+                "matcher": "^Bash$",
+                "hooks": [{
+                    "type": "prompt",
+                    "prompt": PRE_TOOL_PROMPT_HOOK_INSTRUCTIONS,
+                    "model": PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL,
+                    "failClosed": false,
+                    "filter": {
+                        "command": format!("python3 {}", filter_path.display()),
+                    },
+                }]
+            }]
+        }
+    });
+    fs::write(home.join("hooks.json"), hooks.to_string()).context("write hooks.json")?;
+    Ok(())
+}
+
 fn write_approval_prompt_hook(home: &Path, event_name: &str, fail_closed: bool) -> Result<()> {
     let hooks = serde_json::json!({
         "hooks": {
@@ -2878,6 +2901,143 @@ async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result
 async fn pre_tool_use_prompt_hook_sends_declared_reasoning_effort() -> Result<()> {
     assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(Some(ReasoningEffort::Low))
         .await
+}
+
+#[tokio::test]
+async fn pre_tool_use_prompt_hook_filter_skip_executes_tool_without_evaluator_request() -> Result<()>
+{
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let call_id = "pretooluse-prompt-filter-skip";
+    let marker_dir = TempDir::new()?;
+    let marker = marker_dir.path().join("marker");
+    let command = format!("printf allowed > {}", marker.display());
+    let responses = mount_sse_sequence(
+        &server,
+        prompt_hook_tool_turn_without_evaluator_sse(call_id, &command)?,
+    )
+    .await;
+    let mut builder = test_codex()
+        .with_model(PRE_TOOL_PROMPT_HOOK_MAIN_MODEL)
+        .with_pre_build_hook(|home| {
+            write_pre_tool_use_prompt_hook_with_filter(
+                home,
+                r#"print('{"version":1,"decision":"skip"}')"#,
+            )
+            .expect("write filtered prompt hook fixture");
+        })
+        .with_config(trust_discovered_hooks);
+    let test = builder.build(&server).await?;
+
+    let (_, completed) = submit_turn_and_capture_prompt_hook_lifecycle(
+        &test,
+        "run command skipped by prompt hook filter",
+    )
+    .await?;
+
+    assert_eq!(completed.run.status, HookRunStatus::Completed);
+    assert!(marker.exists(), "filter skip should execute the tool");
+    assert_eq!(
+        responses.requests().len(),
+        2,
+        "filter skip must not issue an evaluator POST"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn pre_tool_use_prompt_hook_filter_run_issues_one_evaluator_request() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let call_id = "pretooluse-prompt-filter-run";
+    let marker_dir = TempDir::new()?;
+    let marker = marker_dir.path().join("marker");
+    let command = format!("printf allowed > {}", marker.display());
+    let responses = mount_sse_sequence(
+        &server,
+        prompt_hook_tool_turn_sse(call_id, &command, r#"{"hookSpecificOutput":null}"#)?,
+    )
+    .await;
+    let mut builder = test_codex()
+        .with_model(PRE_TOOL_PROMPT_HOOK_MAIN_MODEL)
+        .with_pre_build_hook(|home| {
+            write_pre_tool_use_prompt_hook_with_filter(
+                home,
+                r#"print('{"version":1,"decision":"run"}')"#,
+            )
+            .expect("write filtered prompt hook fixture");
+        })
+        .with_config(trust_discovered_hooks);
+    let test = builder.build(&server).await?;
+
+    let (_, completed) = submit_turn_and_capture_prompt_hook_lifecycle(
+        &test,
+        "run command selected by prompt hook filter",
+    )
+    .await?;
+
+    assert_eq!(completed.run.status, HookRunStatus::Completed);
+    assert!(marker.exists(), "filter run should execute the allowed tool");
+    let requests = responses.requests();
+    assert_eq!(
+        requests.len(),
+        3,
+        "filter run must issue exactly one evaluator POST"
+    );
+    assert_prompt_hook_request_is_isolated(&requests[1]);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn pre_tool_use_prompt_hook_filter_failure_falls_back_to_evaluator() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let call_id = "pretooluse-prompt-filter-failure";
+    let marker_dir = TempDir::new()?;
+    let marker = marker_dir.path().join("marker");
+    let command = format!("printf allowed > {}", marker.display());
+    let responses = mount_sse_sequence(
+        &server,
+        prompt_hook_tool_turn_sse(call_id, &command, r#"{"hookSpecificOutput":null}"#)?,
+    )
+    .await;
+    let mut builder = test_codex()
+        .with_model(PRE_TOOL_PROMPT_HOOK_MAIN_MODEL)
+        .with_pre_build_hook(|home| {
+            write_pre_tool_use_prompt_hook_with_filter(
+                home,
+                "raise SystemExit(1)",
+            )
+            .expect("write failing prompt hook filter fixture");
+        })
+        .with_config(trust_discovered_hooks);
+    let test = builder.build(&server).await?;
+
+    let (_, completed) = submit_turn_and_capture_prompt_hook_lifecycle(
+        &test,
+        "run command after prompt hook filter failure",
+    )
+    .await?;
+
+    assert_eq!(completed.run.status, HookRunStatus::Completed);
+    assert!(
+        marker.exists(),
+        "filter failure should fall back to the evaluator and execute an allowed tool"
+    );
+    let requests = responses.requests();
+    assert_eq!(
+        requests.len(),
+        3,
+        "filter failure must fall back to exactly one evaluator POST"
+    );
+    assert_prompt_hook_request_is_isolated(&requests[1]);
+
+    Ok(())
 }
 
 #[tokio::test]

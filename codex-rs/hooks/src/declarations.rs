@@ -64,6 +64,7 @@ mod tests {
                     hooks: vec![
                         HookHandlerConfig::Prompt {
                             prompt: "check $$ARGUMENTS".to_string(),
+                            filter: None,
                             model: None,
                             reasoning_effort: None,
                             timeout_sec: None,

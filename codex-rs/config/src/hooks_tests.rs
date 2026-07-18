@@ -10,6 +10,7 @@ use super::HooksFile;
 use super::HooksToml;
 use super::ManagedHooksRequirementsToml;
 use super::MatcherGroup;
+use super::PromptHookFilterConfig;
 
 #[test]
 fn hooks_file_deserializes_existing_json_shape() {
@@ -64,6 +65,7 @@ fn prompt_hook_deserializes_optional_reasoning_effort_from_toml_and_json() {
             hooks: vec![
                 HookHandlerConfig::Prompt {
                     prompt: "Review $$ARGUMENTS".to_string(),
+                    filter: None,
                     model: Some("gpt-test".to_string()),
                     reasoning_effort: Some(ReasoningEffort::High),
                     timeout_sec: None,
@@ -72,6 +74,7 @@ fn prompt_hook_deserializes_optional_reasoning_effort_from_toml_and_json() {
                 },
                 HookHandlerConfig::Prompt {
                     prompt: "Review without override".to_string(),
+                    filter: None,
                     model: None,
                     reasoning_effort: None,
                     timeout_sec: None,
@@ -119,6 +122,44 @@ prompt = "Review without override"
 
     assert_eq!(from_toml, expected);
     assert_eq!(from_json.hooks, expected);
+}
+
+#[test]
+fn prompt_hook_deserializes_filter_from_toml_and_json() {
+    let expected = HookHandlerConfig::Prompt {
+        prompt: "Review $$ARGUMENTS".to_string(),
+        filter: Some(PromptHookFilterConfig {
+            command: "uv run --script /tmp/filter.py".to_string(),
+            command_windows: Some("py C:\\hooks\\filter.py".to_string()),
+            timeout_sec: Some(7),
+        }),
+        model: None,
+        reasoning_effort: None,
+        timeout_sec: None,
+        status_message: None,
+        fail_closed: false,
+    };
+    let from_toml: HookHandlerConfig = toml::from_str(
+        r#"
+type = "prompt"
+prompt = "Review $$ARGUMENTS"
+filter = { command = "uv run --script /tmp/filter.py", commandWindows = "py C:\\hooks\\filter.py", timeout = 7 }
+"#,
+    )
+    .expect("prompt filter TOML should deserialize");
+    let from_json: HookHandlerConfig = serde_json::from_value(serde_json::json!({
+        "type": "prompt",
+        "prompt": "Review $$ARGUMENTS",
+        "filter": {
+            "command": "uv run --script /tmp/filter.py",
+            "commandWindows": "py C:\\hooks\\filter.py",
+            "timeout": 7
+        }
+    }))
+    .expect("prompt filter JSON should deserialize");
+
+    assert_eq!(from_toml, expected);
+    assert_eq!(from_json, expected);
 }
 
 #[test]

@@ -149,6 +149,7 @@ fn prompt_handler(fail_closed: bool) -> ConfiguredHandler {
         matcher: Some("^Bash$".to_string()),
         kind: ConfiguredHandlerKind::Prompt {
             prompt: "Review $$ARGUMENTS".to_string(),
+            filter: None,
             model: None,
             reasoning_effort: None,
             timeout_sec: 30,

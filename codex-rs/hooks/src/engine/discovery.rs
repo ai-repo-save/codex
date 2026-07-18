@@ -14,6 +14,7 @@ use codex_config::HookStateToml;
 use codex_config::HooksFile;
 use codex_config::ManagedHooksRequirementsToml;
 use codex_config::MatcherGroup;
+use codex_config::PromptHookFilterConfig;
 use codex_config::RequirementSource;
 use codex_config::TomlValue;
 use codex_config::version_for_toml;
@@ -24,6 +25,7 @@ use serde::Serialize;
 
 use super::ConfiguredHandler;
 use super::ConfiguredHandlerKind;
+use super::ConfiguredPromptFilter;
 use super::HookListEntry;
 use crate::config_rules::hook_states_from_stack;
 use crate::events::common::matcher_pattern_for_event;
@@ -517,6 +519,7 @@ fn append_matcher_groups(
                         prompt: None,
                         model: None,
                         reasoning_effort: None,
+                        filter: None,
                         fail_closed: None,
                         timeout_sec,
                         status_message: status_message.clone(),
@@ -554,6 +557,7 @@ fn append_matcher_groups(
                 }
                 HookHandlerConfig::Prompt {
                     prompt,
+                    filter,
                     model,
                     reasoning_effort,
                     timeout_sec,
@@ -585,6 +589,16 @@ fn append_matcher_groups(
                         ));
                         continue;
                     }
+                    let filter = match filter {
+                        Some(filter) => {
+                            let Some(filter) = normalize_prompt_filter(filter, source, warnings)
+                            else {
+                                continue;
+                            };
+                            Some(filter)
+                        }
+                        None => None,
+                    };
                     if timeout_sec.is_some_and(|timeout_sec| !(1..=600).contains(&timeout_sec)) {
                         warnings.push(format!(
                             "skipping invalid prompt hook timeout in {}",
@@ -597,6 +611,11 @@ fn append_matcher_groups(
                         status_message.filter(|status_message| !status_message.trim().is_empty());
                     let normalized_handler = HookHandlerConfig::Prompt {
                         prompt: prompt.clone(),
+                        filter: filter.as_ref().map(|filter| PromptHookFilterConfig {
+                            command: filter.command.clone(),
+                            command_windows: None,
+                            timeout_sec: Some(filter.timeout_sec),
+                        }),
                         model: model.clone(),
                         reasoning_effort: reasoning_effort.clone(),
                         timeout_sec: Some(timeout_sec),
@@ -604,6 +623,15 @@ fn append_matcher_groups(
                         fail_closed,
                     };
                     let current_hash = hook_hash(event_name, matcher, &group, normalized_handler);
+                    let effective_filter = filter.map(|filter| ConfiguredPromptFilter {
+                        command: source.env.iter().fold(
+                            filter.command,
+                            |command, (key, value)| {
+                                command.replace(&format!("${{{key}}}"), value)
+                            },
+                        ),
+                        timeout_sec: filter.timeout_sec,
+                    });
                     let key =
                         crate::hook_key(&source.key_source, event_name, group_index, handler_index);
                     let state = source.hook_states.get(&key);
@@ -620,6 +648,11 @@ fn append_matcher_groups(
                         prompt: Some(prompt.clone()),
                         model: model.clone(),
                         reasoning_effort: reasoning_effort.clone(),
+                        filter: effective_filter.as_ref().map(|filter| PromptHookFilterConfig {
+                            command: filter.command.clone(),
+                            command_windows: None,
+                            timeout_sec: Some(filter.timeout_sec),
+                        }),
                         fail_closed: Some(fail_closed),
                         timeout_sec,
                         status_message: status_message.clone(),
@@ -644,6 +677,7 @@ fn append_matcher_groups(
                             matcher: matcher.map(ToOwned::to_owned),
                             kind: ConfiguredHandlerKind::Prompt {
                                 prompt,
+                                filter: effective_filter,
                                 model,
                                 reasoning_effort,
                                 timeout_sec,
@@ -665,6 +699,39 @@ fn append_matcher_groups(
             }
         }
     }
+}
+
+fn normalize_prompt_filter(
+    filter: PromptHookFilterConfig,
+    source: &HookHandlerSource<'_>,
+    warnings: &mut Vec<String>,
+) -> Option<ConfiguredPromptFilter> {
+    let command = if cfg!(windows) {
+        filter.command_windows.unwrap_or(filter.command)
+    } else {
+        filter.command
+    };
+    if command.trim().is_empty() {
+        warnings.push(format!(
+            "skipping prompt hook with empty filter command in {}",
+            source.path.display()
+        ));
+        return None;
+    }
+    if filter
+        .timeout_sec
+        .is_some_and(|timeout_sec| !(1..=60).contains(&timeout_sec))
+    {
+        warnings.push(format!(
+            "skipping prompt hook with invalid filter timeout in {}",
+            source.path.display()
+        ));
+        return None;
+    }
+    Some(ConfiguredPromptFilter {
+        command,
+        timeout_sec: filter.timeout_sec.unwrap_or(5),
+    })
 }
 
 /// Hash a normalized, config-derived identity instead of source text so equivalent
@@ -765,6 +832,7 @@ mod tests {
     use codex_config::ConfigLayerEntry;
     use codex_config::ConfigLayerSource;
     use codex_config::HookEventsToml;
+    use codex_config::PromptHookFilterConfig;
     use codex_config::RequirementSource;
     use codex_protocol::openai_models::ReasoningEffort;
     use codex_protocol::protocol::HookEventName;
@@ -877,11 +945,24 @@ mod tests {
     fn prompt_handler(fail_closed: bool) -> HookHandlerConfig {
         HookHandlerConfig::Prompt {
             prompt: "Review $$ARGUMENTS".to_string(),
+            filter: None,
             model: Some("gpt-test".to_string()),
             reasoning_effort: Some(ReasoningEffort::High),
             timeout_sec: None,
             status_message: Some("Reviewing tool use".to_string()),
             fail_closed,
+        }
+    }
+
+    fn prompt_handler_with_filter(filter: PromptHookFilterConfig) -> HookHandlerConfig {
+        HookHandlerConfig::Prompt {
+            prompt: "Review $$ARGUMENTS".to_string(),
+            filter: Some(filter),
+            model: None,
+            reasoning_effort: None,
+            timeout_sec: None,
+            status_message: None,
+            fail_closed: false,
         }
     }
 
@@ -926,6 +1007,7 @@ mod tests {
                 handler.kind,
                 ConfiguredHandlerKind::Prompt {
                     prompt: "Review $$ARGUMENTS".to_string(),
+                    filter: None,
                     model: Some("gpt-test".to_string()),
                     reasoning_effort: Some(ReasoningEffort::High),
                     timeout_sec: 30,
@@ -986,6 +1068,168 @@ mod tests {
     }
 
     #[test]
+    fn prompt_filter_normalization_uses_default_timeout_and_hashes_normalized_values() {
+        let mut handlers = Vec::new();
+        let mut hook_entries = Vec::new();
+        let mut warnings = Vec::new();
+        let mut display_order = 0;
+        let source_path = source_path();
+        let hook_states = std::collections::HashMap::new();
+
+        append_matcher_groups(
+            &mut handlers,
+            &mut hook_entries,
+            &mut warnings,
+            &mut display_order,
+            &hook_handler_source(&source_path, &hook_states),
+            HookEventName::PreToolUse,
+            vec![MatcherGroup {
+                matcher: None,
+                hooks: vec![
+                    prompt_handler_with_filter(PromptHookFilterConfig {
+                        command: "echo filter".to_string(),
+                        command_windows: None,
+                        timeout_sec: None,
+                    }),
+                    prompt_handler_with_filter(PromptHookFilterConfig {
+                        command: "echo filter".to_string(),
+                        command_windows: None,
+                        timeout_sec: Some(5),
+                    }),
+                    prompt_handler_with_filter(PromptHookFilterConfig {
+                        command: "echo another-filter".to_string(),
+                        command_windows: None,
+                        timeout_sec: Some(5),
+                    }),
+                    prompt_handler_with_filter(PromptHookFilterConfig {
+                        command: "echo filter".to_string(),
+                        command_windows: None,
+                        timeout_sec: Some(6),
+                    }),
+                ],
+            }],
+        );
+
+        assert_eq!(warnings, Vec::<String>::new());
+        assert_eq!(handlers.len(), 4);
+        assert_eq!(hook_entries.len(), 4);
+        for handler in &handlers[..2] {
+            assert_eq!(
+                handler.kind,
+                ConfiguredHandlerKind::Prompt {
+                    prompt: "Review $$ARGUMENTS".to_string(),
+                    filter: Some(super::ConfiguredPromptFilter {
+                        command: "echo filter".to_string(),
+                        timeout_sec: 5,
+                    }),
+                    model: None,
+                    reasoning_effort: None,
+                    timeout_sec: 30,
+                    fail_closed: false,
+                }
+            );
+        }
+        assert_eq!(hook_entries[0].current_hash, hook_entries[1].current_hash);
+        assert_ne!(hook_entries[0].current_hash, hook_entries[2].current_hash);
+        assert_ne!(hook_entries[0].current_hash, hook_entries[3].current_hash);
+    }
+
+    #[test]
+    fn invalid_prompt_filter_timeout_skips_only_that_handler() {
+        let mut handlers = Vec::new();
+        let mut hook_entries = Vec::new();
+        let mut warnings = Vec::new();
+        let mut display_order = 0;
+        let source_path = source_path();
+        let hook_states = std::collections::HashMap::new();
+
+        append_matcher_groups(
+            &mut handlers,
+            &mut hook_entries,
+            &mut warnings,
+            &mut display_order,
+            &hook_handler_source(&source_path, &hook_states),
+            HookEventName::PreToolUse,
+            vec![MatcherGroup {
+                matcher: None,
+                hooks: vec![
+                    prompt_handler_with_filter(PromptHookFilterConfig {
+                        command: "echo invalid".to_string(),
+                        command_windows: None,
+                        timeout_sec: Some(61),
+                    }),
+                    prompt_handler_with_filter(PromptHookFilterConfig {
+                        command: "echo valid".to_string(),
+                        command_windows: None,
+                        timeout_sec: Some(1),
+                    }),
+                ],
+            }],
+        );
+
+        assert_eq!(handlers.len(), 1);
+        assert_eq!(hook_entries.len(), 1);
+        assert_eq!(
+            handlers[0].kind,
+            ConfiguredHandlerKind::Prompt {
+                prompt: "Review $$ARGUMENTS".to_string(),
+                filter: Some(super::ConfiguredPromptFilter {
+                    command: "echo valid".to_string(),
+                    timeout_sec: 1,
+                }),
+                model: None,
+                reasoning_effort: None,
+                timeout_sec: 30,
+                fail_closed: false,
+            }
+        );
+    }
+
+    #[test]
+    fn prompt_filter_uses_platform_command_override() {
+        let mut handlers = Vec::new();
+        let mut warnings = Vec::new();
+        let mut display_order = 0;
+        let source_path = source_path();
+        let hook_states = std::collections::HashMap::new();
+
+        append_matcher_groups(
+            &mut handlers,
+            &mut Vec::new(),
+            &mut warnings,
+            &mut display_order,
+            &hook_handler_source(&source_path, &hook_states),
+            HookEventName::PreToolUse,
+            vec![MatcherGroup {
+                matcher: None,
+                hooks: vec![prompt_handler_with_filter(PromptHookFilterConfig {
+                    command: "echo unix".to_string(),
+                    command_windows: Some("echo windows".to_string()),
+                    timeout_sec: None,
+                })],
+            }],
+        );
+
+        assert_eq!(warnings, Vec::<String>::new());
+        let ConfiguredHandlerKind::Prompt {
+            filter: Some(filter),
+            ..
+        } = &handlers[0].kind
+        else {
+            panic!("prompt filter handler")
+        };
+        assert_eq!(
+            filter.command,
+            if cfg!(windows) {
+                "echo windows"
+            } else {
+                "echo unix"
+            }
+        );
+        assert_eq!(filter.timeout_sec, 5);
+    }
+
+    #[test]
     fn invalid_prompt_handlers_are_skipped_without_dropping_valid_siblings() {
         let mut handlers = Vec::new();
         let mut hook_entries = Vec::new();
@@ -1007,6 +1251,7 @@ mod tests {
                 hooks: vec![
                     HookHandlerConfig::Prompt {
                         prompt: String::new(),
+                        filter: None,
                         model: None,
                         reasoning_effort: None,
                         timeout_sec: None,
@@ -1015,6 +1260,7 @@ mod tests {
                     },
                     HookHandlerConfig::Prompt {
                         prompt: oversized_prompt,
+                        filter: None,
                         model: None,
                         reasoning_effort: None,
                         timeout_sec: None,
@@ -1023,6 +1269,7 @@ mod tests {
                     },
                     HookHandlerConfig::Prompt {
                         prompt: "Review $$ARGUMENTS".to_string(),
+                        filter: None,
                         model: Some(" gpt-test".to_string()),
                         reasoning_effort: None,
                         timeout_sec: None,
@@ -1031,6 +1278,7 @@ mod tests {
                     },
                     HookHandlerConfig::Prompt {
                         prompt: "Review $$ARGUMENTS".to_string(),
+                        filter: None,
                         model: None,
                         reasoning_effort: None,
                         timeout_sec: Some(601),
@@ -1039,6 +1287,7 @@ mod tests {
                     },
                     HookHandlerConfig::Prompt {
                         prompt: "Review $$ARGUMENTS".to_string(),
+                        filter: None,
                         model: Some("gpt-test".to_string()),
                         reasoning_effort: Some(ReasoningEffort::High),
                         timeout_sec: Some(1),
@@ -1056,6 +1305,7 @@ mod tests {
             handlers[0].kind,
             ConfiguredHandlerKind::Prompt {
                 prompt: "Review $$ARGUMENTS".to_string(),
+                filter: None,
                 model: Some("gpt-test".to_string()),
                 reasoning_effort: Some(ReasoningEffort::High),
                 timeout_sec: 1,

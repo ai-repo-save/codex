@@ -588,6 +588,7 @@ mod tests {
             matcher: None,
             kind: ConfiguredHandlerKind::Prompt {
                 prompt: "Review $$ARGUMENTS".to_string(),
+                filter: None,
                 model: None,
                 reasoning_effort: None,
                 timeout_sec: 30,

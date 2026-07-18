@@ -166,6 +166,8 @@ pub enum HookHandlerConfig {
     #[serde(rename = "prompt")]
     Prompt {
         prompt: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<PromptHookFilterConfig>,
         #[serde(default)]
         model: Option<String>,
         #[serde(default, rename = "reasoningEffort")]
@@ -179,6 +181,16 @@ pub enum HookHandlerConfig {
     },
     #[serde(rename = "agent")]
     Agent {},
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PromptHookFilterConfig {
+    pub command: String,
+    #[serde(default, rename = "commandWindows", alias = "command_windows")]
+    pub command_windows: Option<String>,
+    #[serde(default, rename = "timeout")]
+    pub timeout_sec: Option<u64>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]

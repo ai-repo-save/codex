@@ -16,6 +16,8 @@ expression: details
             PROMPT_SENTINEL_7F3A                        
             Third prompt line that remains visible      
             after wrapping                              
+  Filter    uv run --script filter-search-safety.py     
+  Filt time 5s                                          
   Model     gpt-5.4-mini                                
   Reasoning REASONING_EFFORT_SENTINEL_9D2C              
   On error  Block                                       

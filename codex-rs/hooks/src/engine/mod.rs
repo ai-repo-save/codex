@@ -1,6 +1,7 @@
 pub(crate) mod command_runner;
 pub(crate) mod discovery;
 pub(crate) mod dispatcher;
+pub(crate) mod filter_runner;
 pub(crate) mod output_parser;
 pub(crate) mod prompt_runner;
 pub(crate) mod schema_loader;
@@ -25,6 +26,7 @@ use crate::events::user_prompt_submit::UserPromptSubmitOutcome;
 use crate::events::user_prompt_submit::UserPromptSubmitRequest;
 use crate::output_spill::HookOutputSpiller;
 use codex_config::ConfigLayerStack;
+use codex_config::PromptHookFilterConfig;
 use codex_plugin::PluginHookSource;
 use codex_protocol::ThreadId;
 use codex_protocol::openai_models::ReasoningEffort;
@@ -66,11 +68,18 @@ pub(crate) enum ConfiguredHandlerKind {
     },
     Prompt {
         prompt: String,
+        filter: Option<ConfiguredPromptFilter>,
         model: Option<String>,
         reasoning_effort: Option<ReasoningEffort>,
         timeout_sec: u64,
         fail_closed: bool,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ConfiguredPromptFilter {
+    pub command: String,
+    pub timeout_sec: u64,
 }
 
 impl ConfiguredHandler {
@@ -139,6 +148,7 @@ pub struct HookListEntry {
     pub prompt: Option<String>,
     pub model: Option<String>,
     pub reasoning_effort: Option<ReasoningEffort>,
+    pub filter: Option<PromptHookFilterConfig>,
     pub fail_closed: Option<bool>,
     pub timeout_sec: u64,
     pub status_message: Option<String>,

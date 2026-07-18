@@ -19,6 +19,7 @@ use codex_app_server_protocol::ConfigValueWriteParams;
 use codex_app_server_protocol::ConfigWriteResponse;
 use codex_app_server_protocol::ConfiguredHookHandler;
 use codex_app_server_protocol::ConfiguredHookMatcherGroup;
+use codex_app_server_protocol::ConfiguredPromptHookFilter;
 use codex_app_server_protocol::ForcedChatgptWorkspaceIds;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCResponse;
@@ -138,6 +139,7 @@ matcher = "^Bash$"
 type = "prompt"
 prompt = "Evaluate $$ARGUMENTS against managed policy."
 model = "gpt-managed-hook"
+filter = { command = "python3 /managed/filter.py", commandWindows = "python.exe C:\\managed\\filter.py", timeout = 7 }
 reasoningEffort = "high"
 timeout = 19
 failClosed = true
@@ -173,6 +175,13 @@ statusMessage = "checking managed policy"
                 hooks: vec![ConfiguredHookHandler::Prompt {
                     prompt: "Evaluate $$ARGUMENTS against managed policy.".to_string(),
                     model: Some("gpt-managed-hook".to_string()),
+                    filter: Some(ConfiguredPromptHookFilter {
+                        command: "python3 /managed/filter.py".to_string(),
+                        command_windows: Some(
+                            "python.exe C:\\managed\\filter.py".to_string(),
+                        ),
+                        timeout_sec: Some(7),
+                    }),
                     reasoning_effort: Some(ReasoningEffort::High),
                     timeout_sec: Some(19),
                     fail_closed: true,
@@ -190,6 +199,64 @@ statusMessage = "checking managed policy"
             stop: Vec::new(),
         }
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn config_read_returns_prompt_hook_filter_definition() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    write_config(
+        &codex_home,
+        r#"
+[hooks]
+
+[[hooks.PreToolUse]]
+matcher = "^Bash$"
+
+[[hooks.PreToolUse.hooks]]
+type = "prompt"
+prompt = "Evaluate $$ARGUMENTS."
+filter = { command = "python3 /user/filter.py", commandWindows = "python.exe C:\\user\\filter.py", timeout = 7 }
+"#,
+    )?;
+
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build()
+        .await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+
+    let request_id = mcp
+        .send_config_read_request(ConfigReadParams {
+            include_layers: false,
+            cwd: None,
+        })
+        .await?;
+    let response: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
+    )
+    .await??;
+    let ConfigReadResponse { config, .. } = to_response(response)?;
+
+    let filter = config
+        .additional
+        .get("hooks")
+        .and_then(|hooks| hooks.get("PreToolUse"))
+        .and_then(|groups| groups.get(0))
+        .and_then(|group| group.get("hooks"))
+        .and_then(|handlers| handlers.get(0))
+        .and_then(|handler| handler.get("filter"));
+    assert_eq!(
+        filter,
+        Some(&json!({
+            "command": "python3 /user/filter.py",
+            "commandWindows": "python.exe C:\\user\\filter.py",
+            "timeout": 7
+        }))
+    );
+
     Ok(())
 }
 

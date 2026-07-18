@@ -502,6 +502,21 @@ impl HooksBrowserView {
                     width,
                     /*max_lines*/ None,
                 ));
+                if let Some(filter) = hook.filter.as_ref() {
+                    lines.extend(detail_wrapped_lines(
+                        "Filter",
+                        &filter.command,
+                        width,
+                        Some(MAX_COMMAND_DETAIL_LINES),
+                    ));
+                    lines.push(detail_line(
+                        "Filt time",
+                        &filter.timeout_sec.map_or_else(
+                            || "default".to_string(),
+                            |timeout_sec| format!("{timeout_sec}s"),
+                        ),
+                    ));
+                }
                 lines.push(detail_line(
                     "Model",
                     hook.model.as_deref().unwrap_or("default"),
@@ -968,6 +983,7 @@ mod tests {
             command: Some(command.to_string()),
             prompt: None,
             model: None,
+            filter: None,
             reasoning_effort: None,
             fail_closed: false,
             timeout_sec: 30,
@@ -1324,6 +1340,13 @@ mod tests {
             "First prompt line\n{PROMPT_SENTINEL}\nThird prompt line that remains visible after wrapping"
         ));
         prompt_hook.model = Some("gpt-5.4-mini".to_string());
+        prompt_hook.filter = Some(
+            codex_app_server_protocol::ConfiguredPromptHookFilter {
+                command: "uv run --script filter-search-safety.py".to_string(),
+                command_windows: None,
+                timeout_sec: Some(5),
+            },
+        );
         prompt_hook.reasoning_effort =
             Some(codex_protocol::openai_models::ReasoningEffort::Custom(
                 REASONING_EFFORT_SENTINEL.to_string(),

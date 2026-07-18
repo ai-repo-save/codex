@@ -3,6 +3,8 @@ use std::process::Stdio;
 use std::time::Duration;
 use std::time::Instant;
 
+use tokio::io::AsyncRead;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::timeout;
@@ -56,8 +58,50 @@ pub(crate) async fn run_command(
 ) -> CommandRunResult {
     let started_at = chrono::Utc::now().timestamp();
     let started = Instant::now();
+    let ConfiguredHandlerKind::Command {
+        command: command_text,
+        timeout_sec,
+    } = &handler.kind
+    else {
+        panic!("prompt handler cannot run as a command hook");
+    };
+    let completion = run_shell_command(ShellCommandRequest {
+        shell,
+        command_text,
+        env: &handler.env,
+        input_json,
+        cwd,
+        timeout_sec: *timeout_sec,
+        output_limit: None,
+        timeout_error: format!("hook timed out after {timeout_sec}s"),
+    })
+    .await;
+    finish_command_run(started_at, started, completion)
+}
 
-    let mut command = build_command(shell, handler);
+pub(crate) struct ShellCommandRequest<'a> {
+    pub shell: &'a CommandShell,
+    pub command_text: &'a str,
+    pub env: &'a std::collections::HashMap<String, String>,
+    pub input_json: &'a str,
+    pub cwd: &'a Path,
+    pub timeout_sec: u64,
+    pub output_limit: Option<usize>,
+    pub timeout_error: String,
+}
+
+pub(crate) async fn run_shell_command(request: ShellCommandRequest<'_>) -> CommandRunCompletion {
+    let ShellCommandRequest {
+        shell,
+        command_text,
+        env,
+        input_json,
+        cwd,
+        timeout_sec,
+        output_limit,
+        timeout_error,
+    } = request;
+    let mut command = build_command(shell, command_text, env);
     command
         .current_dir(cwd)
         .stdin(Stdio::piped())
@@ -68,81 +112,138 @@ pub(crate) async fn run_command(
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(err) => {
-            return finish_command_run(
-                started_at,
-                started,
-                CommandRunCompletion {
-                    exit_code: None,
-                    stdout: String::new(),
-                    stderr: String::new(),
-                    error: Some(err.to_string()),
-                    outcome: "spawn_error",
-                },
-            );
+            return CommandRunCompletion {
+                exit_code: None,
+                stdout: String::new(),
+                stderr: String::new(),
+                stdout_len: 0,
+                stderr_len: 0,
+                error: Some(err.to_string()),
+                outcome: "spawn_error",
+            };
         }
     };
 
-    if let Some(mut stdin) = child.stdin.take()
-        && let Err(err) = stdin.write_all(input_json.as_bytes()).await
+    let stdin = child.stdin.take();
+    let stdout = child.stdout.take().expect("hook stdout should be piped");
+    let stderr = child.stderr.take().expect("hook stderr should be piped");
+    let timeout_duration = Duration::from_secs(timeout_sec);
+    match timeout(timeout_duration, async {
+        let write_stdin = async move {
+            if let Some(mut stdin) = stdin {
+                stdin.write_all(input_json.as_bytes()).await.map_err(|err| {
+                    (
+                        "stdin_error",
+                        format!("failed to write hook stdin: {err}"),
+                    )
+                })?;
+            }
+            Ok::<_, (&'static str, String)>(())
+        };
+        let collect_process = async {
+            tokio::try_join!(
+                child.wait(),
+                collect_output(stdout, output_limit),
+                collect_output(stderr, output_limit),
+            )
+            .map_err(|err| ("wait_error", err.to_string()))
+        };
+        tokio::try_join!(write_stdin, collect_process)
+    })
+    .await
     {
-        let _ = child.kill().await;
-        return finish_command_run(
-            started_at,
-            started,
+        Ok(Ok(((), (status, stdout, stderr)))) => {
+            let output_exceeded = stdout.exceeded || stderr.exceeded;
+            CommandRunCompletion {
+                exit_code: status.code(),
+                stdout: String::from_utf8_lossy(&stdout.bytes).to_string(),
+                stderr: String::from_utf8_lossy(&stderr.bytes).to_string(),
+                stdout_len: stdout.total_len,
+                stderr_len: stderr.total_len,
+                error: output_exceeded.then(|| {
+                    let limit = output_limit.expect("exceeded output requires a limit");
+                    format!(
+                        "hook output exceeded {limit} bytes (stdout: {}, stderr: {})",
+                        stdout.total_len, stderr.total_len
+                    )
+                }),
+                outcome: if output_exceeded {
+                    "output_limit"
+                } else {
+                    "completed"
+                },
+            }
+        }
+        Ok(Err((outcome, error))) => {
+            let _ = child.kill().await;
             CommandRunCompletion {
                 exit_code: None,
                 stdout: String::new(),
                 stderr: String::new(),
-                error: Some(format!("failed to write hook stdin: {err}")),
-                outcome: "stdin_error",
-            },
-        );
-    }
-
-    let timeout_duration = Duration::from_secs(handler.timeout_sec());
-    match timeout(timeout_duration, child.wait_with_output()).await {
-        Ok(Ok(output)) => finish_command_run(
-            started_at,
-            started,
-            CommandRunCompletion {
-                exit_code: output.status.code(),
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                error: None,
-                outcome: "completed",
-            },
-        ),
-        Ok(Err(err)) => finish_command_run(
-            started_at,
-            started,
+                stdout_len: 0,
+                stderr_len: 0,
+                error: Some(error),
+                outcome,
+            }
+        }
+        Err(_) => {
+            let _ = child.kill().await;
             CommandRunCompletion {
                 exit_code: None,
                 stdout: String::new(),
                 stderr: String::new(),
-                error: Some(err.to_string()),
-                outcome: "wait_error",
-            },
-        ),
-        Err(_) => finish_command_run(
-            started_at,
-            started,
-            CommandRunCompletion {
-                exit_code: None,
-                stdout: String::new(),
-                stderr: String::new(),
-                error: Some(format!("hook timed out after {}s", handler.timeout_sec())),
+                stdout_len: 0,
+                stderr_len: 0,
+                error: Some(timeout_error),
                 outcome: "timeout",
-            },
-        ),
+            }
+        }
     }
 }
 
-struct CommandRunCompletion {
-    exit_code: Option<i32>,
-    stdout: String,
-    stderr: String,
-    error: Option<String>,
-    outcome: &'static str,
+pub(crate) struct CommandRunCompletion {
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub stdout_len: usize,
+    pub stderr_len: usize,
+    pub error: Option<String>,
+    pub outcome: &'static str,
+}
+
+struct CollectedOutput {
+    bytes: Vec<u8>,
+    total_len: usize,
+    exceeded: bool,
+}
+
+async fn collect_output(
+    mut reader: impl AsyncRead + Unpin,
+    limit: Option<usize>,
+) -> std::io::Result<CollectedOutput> {
+    let mut bytes = Vec::new();
+    let mut total_len = 0_usize;
+    let mut buffer = [0_u8; 8 * 1024];
+    loop {
+        let read = reader.read(&mut buffer).await?;
+        if read == 0 {
+            break;
+        }
+        total_len = total_len.saturating_add(read);
+        match limit {
+            Some(limit) if bytes.len() < limit => {
+                let remaining = limit - bytes.len();
+                bytes.extend_from_slice(&buffer[..read.min(remaining)]);
+            }
+            Some(_) => {}
+            None => bytes.extend_from_slice(&buffer[..read]),
+        }
+    }
+    Ok(CollectedOutput {
+        bytes,
+        total_len,
+        exceeded: limit.is_some_and(|limit| total_len > limit),
+    })
 }
 
 fn finish_command_run(
@@ -162,14 +263,11 @@ fn finish_command_run(
     }
 }
 
-fn build_command(shell: &CommandShell, handler: &ConfiguredHandler) -> Command {
-    let ConfiguredHandlerKind::Command {
-        command: command_text,
-        ..
-    } = &handler.kind
-    else {
-        panic!("prompt handler cannot run as a command hook");
-    };
+fn build_command(
+    shell: &CommandShell,
+    command_text: &str,
+    env: &std::collections::HashMap<String, String>,
+) -> Command {
     let mut process = if shell.program.is_empty() {
         default_shell_command()
     } else {
@@ -181,7 +279,7 @@ fn build_command(shell: &CommandShell, handler: &ConfiguredHandler) -> Command {
         process.args(&shell.args);
         process.arg(command_text);
     }
-    process.envs(&handler.env);
+    process.envs(env);
     process
 }
 

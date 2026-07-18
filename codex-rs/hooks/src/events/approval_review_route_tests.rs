@@ -259,6 +259,7 @@ fn request() -> ApprovalReviewRouteRequest {
 fn prompt_handler(fail_closed: bool) -> ConfiguredHandler {
     handler(ConfiguredHandlerKind::Prompt {
         prompt: "$$ARGUMENTS".to_string(),
+        filter: None,
         model: None,
         reasoning_effort: None,
         timeout_sec: 30,

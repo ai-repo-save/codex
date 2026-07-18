@@ -334,6 +334,7 @@ mod tests {
             command: Some("/tmp/hook.sh".to_string()),
             prompt: None,
             model: None,
+            filter: None,
             reasoning_effort: None,
             fail_closed: false,
             timeout_sec: 30,

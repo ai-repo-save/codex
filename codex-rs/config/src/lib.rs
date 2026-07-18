@@ -106,6 +106,7 @@ pub use hook_config::HooksFile;
 pub use hook_config::HooksToml;
 pub use hook_config::ManagedHooksRequirementsToml;
 pub use hook_config::MatcherGroup;
+pub use hook_config::PromptHookFilterConfig;
 pub use host_name::host_name;
 pub use marketplace_edit::MarketplaceConfigUpdate;
 pub use marketplace_edit::RemoveMarketplaceConfigOutcome;

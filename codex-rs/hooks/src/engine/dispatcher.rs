@@ -112,7 +112,7 @@ pub(crate) async fn execute_handlers<T>(
                     run_command(shell, &handler, configured_order, &input_json, cwd).await
                 }
                 ConfiguredHandlerKind::Prompt { .. } => {
-                    run_prompt(prompt_runner, &handler, &input_json).await
+                    run_prompt(prompt_runner, shell, &handler, &input_json, cwd).await
                 }
             };
             (configured_order, parse(&handler, result, turn_id))

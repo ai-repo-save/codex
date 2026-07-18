@@ -1,5 +1,6 @@
 use std::time::Duration;
 use std::time::Instant;
+use std::path::Path;
 
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::HookEventName;
@@ -10,7 +11,10 @@ use tokio::time::timeout;
 
 use super::ConfiguredHandler;
 use super::ConfiguredHandlerKind;
+use super::CommandShell;
 use super::command_runner::CommandRunResult;
+use super::filter_runner::PromptFilterOutcome;
+use super::filter_runner::run_prompt_filter;
 
 const PROMPT_ARGUMENTS_PLACEHOLDER: &str = "$$ARGUMENTS";
 const PROMPT_HOOK_EVENT_JSON_LIMIT: usize = 64 * 1024;
@@ -50,8 +54,10 @@ pub(crate) fn supports_event(event_name: HookEventName) -> bool {
 
 pub(crate) async fn run_prompt(
     runner: Option<&dyn PromptHookRunner>,
+    shell: &CommandShell,
     handler: &ConfiguredHandler,
     input_json: &str,
+    cwd: &Path,
 ) -> CommandRunResult {
     let started_at = chrono::Utc::now().timestamp();
     let started = Instant::now();
@@ -69,6 +75,9 @@ pub(crate) async fn run_prompt(
             "command handler cannot run as a prompt hook".to_string(),
         );
     };
+    if run_prompt_filter(shell, handler, input_json, cwd).await == PromptFilterOutcome::Skip {
+        return prompt_run_result(started_at, started, Some(0), "{}".to_string(), None);
+    }
     let Some(runner) = runner else {
         return failed_prompt_run(
             started_at,
