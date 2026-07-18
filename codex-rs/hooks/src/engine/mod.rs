@@ -24,6 +24,7 @@ use crate::events::stop::StopOutcome;
 use crate::events::stop::StopRequest;
 use crate::events::user_prompt_submit::UserPromptSubmitOutcome;
 use crate::events::user_prompt_submit::UserPromptSubmitRequest;
+use self::command_runner::CommandRunResult;
 use crate::output_spill::HookOutputSpiller;
 use codex_config::ConfigLayerStack;
 use codex_config::PromptHookFilterConfig;
@@ -37,6 +38,8 @@ use codex_protocol::protocol::HookSource;
 use codex_protocol::protocol::HookTrustStatus;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use std::collections::HashMap;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::sync::Arc;
 
 pub use prompt_runner::PromptHookRequest;
@@ -80,6 +83,48 @@ pub(crate) enum ConfiguredHandlerKind {
 pub(crate) struct ConfiguredPromptFilter {
     pub command: String,
     pub timeout_sec: u64,
+}
+
+#[derive(Debug)]
+pub(crate) enum HandlerRunResult {
+    Completed(CommandRunResult),
+    PromptFilterSkipped(CommandRunResult),
+}
+
+impl HandlerRunResult {
+    pub(crate) fn completed(run_result: CommandRunResult) -> Self {
+        Self::Completed(run_result)
+    }
+
+    pub(crate) fn prompt_filter_skipped(run_result: CommandRunResult) -> Self {
+        Self::PromptFilterSkipped(run_result)
+    }
+
+    pub(crate) fn is_prompt_filter_skipped(&self) -> bool {
+        matches!(self, Self::PromptFilterSkipped(_))
+    }
+
+    pub(crate) fn run_result(&self) -> &CommandRunResult {
+        match self {
+            Self::Completed(run_result) | Self::PromptFilterSkipped(run_result) => run_result,
+        }
+    }
+}
+
+impl Deref for HandlerRunResult {
+    type Target = CommandRunResult;
+
+    fn deref(&self) -> &Self::Target {
+        self.run_result()
+    }
+}
+
+impl DerefMut for HandlerRunResult {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Self::Completed(run_result) | Self::PromptFilterSkipped(run_result) => run_result,
+        }
+    }
 }
 
 impl ConfiguredHandler {

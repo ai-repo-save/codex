@@ -189,6 +189,7 @@ pub struct PromptHookFilterConfig {
     pub command: String,
     #[serde(default, rename = "commandWindows", alias = "command_windows")]
     pub command_windows: Option<String>,
+    #[schemars(range(min = 1, max = 60))]
     #[serde(default, rename = "timeout")]
     pub timeout_sec: Option<u64>,
 }

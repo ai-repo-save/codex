@@ -13,6 +13,7 @@ use serde_json::json;
 
 use super::*;
 use crate::engine::ConfiguredHandlerKind;
+use crate::engine::HandlerRunResult;
 use crate::engine::PromptHookRequest;
 
 #[derive(Clone)]
@@ -64,6 +65,28 @@ fn fail_closed_prompt_failure_forces_user_over_static_aggregation() {
         resolve_approval_review_route_decision(handler_data),
         Some(ApprovalReviewRouteDecision::User)
     );
+}
+
+#[test]
+fn filtered_prompt_route_is_a_completed_noop_when_fail_closed() {
+    let parsed = parse_completed(
+        &prompt_handler(/*fail_closed*/ true),
+        HandlerRunResult::prompt_filter_skipped(CommandRunResult {
+            started_at: 1,
+            completed_at: 2,
+            duration_ms: 1,
+            exit_code: Some(0),
+            stdout: String::new(),
+            stderr: String::new(),
+            error: None,
+        }),
+        Some("turn-1".to_string()),
+    );
+
+    assert_eq!(parsed.completed.run.status, HookRunStatus::Completed);
+    assert_eq!(parsed.completed.run.entries, Vec::new());
+    assert_eq!(parsed.data, route_data(None));
+    assert_eq!(resolve_approval_review_route_decision([parsed.data]), None);
 }
 
 #[tokio::test]
@@ -311,8 +334,8 @@ fn route_output(reviewer: &str) -> String {
     .to_string()
 }
 
-fn command_result(stdout: String) -> CommandRunResult {
-    CommandRunResult {
+fn command_result(stdout: String) -> HandlerRunResult {
+    HandlerRunResult::completed(CommandRunResult {
         started_at: 1,
         completed_at: 2,
         duration_ms: 1,
@@ -320,7 +343,7 @@ fn command_result(stdout: String) -> CommandRunResult {
         stdout,
         stderr: String::new(),
         error: None,
-    }
+    })
 }
 
 fn route_data(decision: Option<ApprovalReviewRouteDecision>) -> ApprovalReviewRouteHandlerData {

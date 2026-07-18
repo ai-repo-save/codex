@@ -13,7 +13,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
-use crate::engine::command_runner::CommandRunResult;
+use crate::engine::HandlerRunResult;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
 use crate::schema::NullableString;
@@ -204,9 +204,13 @@ pub(crate) async fn run(
 
 fn parse_completed(
     handler: &ConfiguredHandler,
-    run_result: CommandRunResult,
+    run_result: HandlerRunResult,
     turn_id: Option<String>,
 ) -> dispatcher::ParsedHandler<StopHandlerData> {
+    if run_result.is_prompt_filter_skipped() {
+        return dispatcher::prompt_filter_skipped(handler, &run_result, turn_id);
+    }
+
     let mut entries = Vec::new();
     let mut status = HookRunStatus::Completed;
     let mut should_stop = false;
@@ -437,6 +441,7 @@ mod tests {
     use super::parse_completed;
     use crate::engine::ConfiguredHandler;
     use crate::engine::ConfiguredHandlerKind;
+    use crate::engine::HandlerRunResult;
     use crate::engine::command_runner::CommandRunResult;
 
     #[test]
@@ -648,8 +653,8 @@ mod tests {
         }
     }
 
-    fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> CommandRunResult {
-        CommandRunResult {
+    fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> HandlerRunResult {
+        HandlerRunResult::completed(CommandRunResult {
             started_at: 1,
             completed_at: 2,
             duration_ms: 1,
@@ -657,6 +662,6 @@ mod tests {
             stdout: stdout.to_string(),
             stderr: stderr.to_string(),
             error: None,
-        }
+        })
     }
 }

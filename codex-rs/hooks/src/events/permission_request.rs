@@ -18,8 +18,8 @@ use std::path::PathBuf;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
+use crate::engine::HandlerRunResult;
 use crate::engine::PromptHookRunner;
-use crate::engine::command_runner::CommandRunResult;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
 use crate::schema::PermissionRequestCommandInput;
@@ -194,9 +194,13 @@ fn build_command_input(request: &PermissionRequestRequest) -> PermissionRequestC
 
 fn parse_completed(
     handler: &ConfiguredHandler,
-    run_result: CommandRunResult,
+    run_result: HandlerRunResult,
     turn_id: Option<String>,
 ) -> dispatcher::ParsedHandler<PermissionRequestHandlerData> {
+    if run_result.is_prompt_filter_skipped() {
+        return dispatcher::prompt_filter_skipped(handler, &run_result, turn_id);
+    }
+
     let mut entries = Vec::new();
     let mut status = HookRunStatus::Completed;
     let mut decision = None;

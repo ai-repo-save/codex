@@ -9,7 +9,10 @@ use super::super::CommandShell;
 use super::super::ConfiguredHandler;
 use super::super::ConfiguredHandlerKind;
 use super::super::ConfiguredPromptFilter;
+use super::super::command_runner::ShellCommandRequest;
+use super::super::command_runner::run_shell_command;
 use super::PromptFilterOutcome;
+use super::FILTER_OUTPUT_LIMIT;
 use super::run_prompt_filter;
 
 const FILTER_INPUT: &str = "{}";
@@ -52,16 +55,68 @@ async fn prompt_filter_falls_back_for_invalid_or_unsuccessful_output() {
 }
 
 #[tokio::test]
-async fn prompt_filter_falls_back_for_timeout_and_unbounded_streams() {
-    for command in [
-        timeout_command(),
-        oversized_stdout_command(FILTER_OUTPUT_BYTES),
-        oversized_stderr_command(FILTER_OUTPUT_BYTES),
+async fn prompt_filter_falls_back_for_unknown_protocol_version() {
+    assert_eq!(
+        run_filter(
+            stdout_command(r#"{"version":2,"decision":"skip"}"#),
+            FILTER_COMMAND_TIMEOUT_SEC,
+        )
+        .await,
+        PromptFilterOutcome::Run
+    );
+}
+
+#[tokio::test]
+async fn prompt_filter_timeout_is_reported_by_the_shared_runner() {
+    let completion = run_filter_command(timeout_command(), FILTER_COMMAND_TIMEOUT_SEC).await;
+
+    assert_eq!(completion.outcome, "timeout");
+    assert_eq!(
+        completion.error,
+        Some(format!(
+            "prompt hook filter timed out after {FILTER_COMMAND_TIMEOUT_SEC}s"
+        ))
+    );
+    assert_eq!(completion.stdout_len, 0);
+    assert_eq!(completion.stderr_len, 0);
+    assert_eq!(completion.stdout, "");
+    assert_eq!(completion.stderr, "");
+}
+
+#[tokio::test]
+async fn prompt_filter_output_limits_are_reported_by_the_shared_runner() {
+    let truncated_output = "x".repeat(FILTER_OUTPUT_LIMIT);
+    for (command, expected_stdout_len, expected_stderr_len, expected_stdout, expected_stderr) in [
+        (
+            oversized_stdout_command(FILTER_OUTPUT_BYTES),
+            FILTER_OUTPUT_BYTES,
+            0,
+            truncated_output.clone(),
+            String::new(),
+        ),
+        (
+            oversized_stderr_command(FILTER_OUTPUT_BYTES),
+            0,
+            FILTER_OUTPUT_BYTES,
+            String::new(),
+            truncated_output.clone(),
+        ),
     ] {
+        let completion = run_filter_command(command, FILTER_COMMAND_TIMEOUT_SEC).await;
+
+        assert_eq!(completion.outcome, "output_limit");
         assert_eq!(
-            run_filter(command, FILTER_COMMAND_TIMEOUT_SEC).await,
-            PromptFilterOutcome::Run
+            completion.error,
+            Some(format!(
+                "hook output exceeded {FILTER_OUTPUT_LIMIT} bytes (stdout: {expected_stdout_len}, stderr: {expected_stderr_len})"
+            ))
         );
+        assert_eq!(completion.stdout_len, expected_stdout_len);
+        assert_eq!(completion.stderr_len, expected_stderr_len);
+        assert_eq!(completion.stdout.len(), expected_stdout.len());
+        assert_eq!(completion.stderr.len(), expected_stderr.len());
+        assert_eq!(completion.stdout, expected_stdout);
+        assert_eq!(completion.stderr, expected_stderr);
     }
 }
 
@@ -72,6 +127,32 @@ async fn run_filter(command: String, timeout_sec: u64) -> PromptFilterOutcome {
         FILTER_INPUT,
         Path::new("."),
     )
+    .await
+}
+
+async fn run_filter_command(
+    command: String,
+    timeout_sec: u64,
+) -> super::super::command_runner::CommandRunCompletion {
+    let handler = filter_handler(command, timeout_sec);
+    let ConfiguredHandlerKind::Prompt {
+        filter: Some(filter),
+        ..
+    } = &handler.kind
+    else {
+        panic!("filter handler must contain a filter");
+    };
+    let command_shell = shell();
+    run_shell_command(ShellCommandRequest {
+        shell: &command_shell,
+        command_text: &filter.command,
+        env: &handler.env,
+        input_json: FILTER_INPUT,
+        cwd: Path::new("."),
+        timeout_sec: filter.timeout_sec,
+        output_limit: Some(FILTER_OUTPUT_LIMIT),
+        timeout_error: format!("prompt hook filter timed out after {}s", filter.timeout_sec),
+    })
     .await
 }
 

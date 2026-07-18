@@ -14,8 +14,8 @@ use serde_json::Value;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
+use crate::engine::HandlerRunResult;
 use crate::engine::PromptHookRunner;
-use crate::engine::command_runner::CommandRunResult;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
 use crate::schema::PreToolUseCommandInput;
@@ -193,9 +193,13 @@ fn command_input_json(request: &PreToolUseRequest) -> Result<String, serde_json:
 
 fn parse_completed(
     handler: &ConfiguredHandler,
-    run_result: CommandRunResult,
+    run_result: HandlerRunResult,
     turn_id: Option<String>,
 ) -> dispatcher::ParsedHandler<PreToolUseHandlerData> {
+    if run_result.is_prompt_filter_skipped() {
+        return dispatcher::prompt_filter_skipped(handler, &run_result, turn_id);
+    }
+
     let mut entries = Vec::new();
     let mut status = HookRunStatus::Completed;
     let mut should_block = false;
@@ -353,6 +357,7 @@ mod tests {
     use super::preview;
     use crate::engine::ConfiguredHandler;
     use crate::engine::ConfiguredHandlerKind;
+    use crate::engine::HandlerRunResult;
     use crate::engine::command_runner::CommandRunResult;
     use crate::events::common;
 
@@ -826,8 +831,8 @@ mod tests {
         }
     }
 
-    fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> CommandRunResult {
-        CommandRunResult {
+    fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> HandlerRunResult {
+        HandlerRunResult::completed(CommandRunResult {
             started_at: 1,
             completed_at: 2,
             duration_ms: 1,
@@ -835,7 +840,7 @@ mod tests {
             stdout: stdout.to_string(),
             stderr: stderr.to_string(),
             error: None,
-        }
+        })
     }
 
     fn request_for_tool_use(tool_use_id: &str) -> super::PreToolUseRequest {

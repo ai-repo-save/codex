@@ -12,6 +12,7 @@ use tokio::time::timeout;
 use super::CommandShell;
 use super::ConfiguredHandler;
 use super::ConfiguredHandlerKind;
+use super::HandlerRunResult;
 use super::command_runner::CommandRunResult;
 use super::filter_runner::PromptFilterOutcome;
 use super::filter_runner::run_prompt_filter;
@@ -58,7 +59,7 @@ pub(crate) async fn run_prompt(
     handler: &ConfiguredHandler,
     input_json: &str,
     cwd: &Path,
-) -> CommandRunResult {
+) -> HandlerRunResult {
     let started_at = chrono::Utc::now().timestamp();
     let started = Instant::now();
     let ConfiguredHandlerKind::Prompt {
@@ -69,25 +70,33 @@ pub(crate) async fn run_prompt(
         ..
     } = &handler.kind
     else {
-        return failed_prompt_run(
+        return HandlerRunResult::completed(failed_prompt_run(
             started_at,
             started,
             "command handler cannot run as a prompt hook".to_string(),
-        );
+        ));
     };
     if run_prompt_filter(shell, handler, input_json, cwd).await == PromptFilterOutcome::Skip {
-        return prompt_run_result(started_at, started, Some(0), "{}".to_string(), None);
+        return HandlerRunResult::prompt_filter_skipped(prompt_run_result(
+            started_at,
+            started,
+            Some(0),
+            String::new(),
+            None,
+        ));
     }
     let Some(runner) = runner else {
-        return failed_prompt_run(
+        return HandlerRunResult::completed(failed_prompt_run(
             started_at,
             started,
             "prompt hook cannot run because no prompt runner is configured".to_string(),
-        );
+        ));
     };
     let rendered_prompt = match render_prompt(prompt, input_json) {
         Ok(rendered_prompt) => rendered_prompt,
-        Err(error) => return failed_prompt_run(started_at, started, error),
+        Err(error) => {
+            return HandlerRunResult::completed(failed_prompt_run(started_at, started, error));
+        }
     };
     let schemas = super::schema_loader::generated_hook_schemas();
     let output_schema = match handler.event_name {
@@ -102,14 +111,14 @@ pub(crate) async fn run_prompt(
         | HookEventName::SubagentStop
         | HookEventName::PostCompact
         | HookEventName::Stop => {
-            return failed_prompt_run(
+            return HandlerRunResult::completed(failed_prompt_run(
                 started_at,
                 started,
                 format!(
                     "prompt hooks are not supported for {}",
                     super::dispatcher::hook_event_name_label(handler.event_name)
                 ),
-            );
+            ));
         }
     };
     let request = PromptHookRequest {
@@ -121,13 +130,23 @@ pub(crate) async fn run_prompt(
     };
 
     match timeout(Duration::from_secs(*timeout_sec), runner.run(request)).await {
-        Ok(Ok(stdout)) => prompt_run_result(started_at, started, Some(0), stdout, None),
-        Ok(Err(error)) => failed_prompt_run(started_at, started, error.to_string()),
-        Err(_) => failed_prompt_run(
+        Ok(Ok(stdout)) => HandlerRunResult::completed(prompt_run_result(
+            started_at,
+            started,
+            Some(0),
+            stdout,
+            None,
+        )),
+        Ok(Err(error)) => HandlerRunResult::completed(failed_prompt_run(
+            started_at,
+            started,
+            error.to_string(),
+        )),
+        Err(_) => HandlerRunResult::completed(failed_prompt_run(
             started_at,
             started,
             format!("prompt hook timed out after {timeout_sec}s"),
-        ),
+        )),
     }
 }
 

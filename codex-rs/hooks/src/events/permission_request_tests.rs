@@ -9,6 +9,7 @@ use super::parse_completed;
 use super::resolve_permission_request_decision;
 use crate::engine::ConfiguredHandler;
 use crate::engine::ConfiguredHandlerKind;
+use crate::engine::HandlerRunResult;
 use crate::engine::command_runner::CommandRunResult;
 
 const RUNTIME_FAILURE: &str = "model request failed";
@@ -163,14 +164,14 @@ fn prompt_handler(fail_closed: bool) -> ConfiguredHandler {
     }
 }
 
-fn failed_run(error: &str) -> CommandRunResult {
+fn failed_run(error: &str) -> HandlerRunResult {
     let mut result = run_result(/*exit_code*/ None, "", "");
     result.error = Some(error.to_string());
     result
 }
 
-fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> CommandRunResult {
-    CommandRunResult {
+fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> HandlerRunResult {
+    HandlerRunResult::completed(CommandRunResult {
         started_at: 1,
         completed_at: 2,
         duration_ms: 1,
@@ -178,5 +179,5 @@ fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> CommandRunR
         stdout: stdout.to_string(),
         stderr: stderr.to_string(),
         error: None,
-    }
+    })
 }

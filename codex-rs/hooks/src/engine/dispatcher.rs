@@ -14,6 +14,7 @@ use codex_protocol::protocol::HookScope;
 use super::CommandShell;
 use super::ConfiguredHandler;
 use super::ConfiguredHandlerKind;
+use super::HandlerRunResult;
 use super::command_runner::CommandRunResult;
 use super::command_runner::run_command;
 use super::prompt_runner::PromptHookRunner;
@@ -94,7 +95,7 @@ pub(crate) async fn execute_handlers<T>(
     handlers: Vec<ConfiguredHandler>,
     input_json: String,
     context: HandlerExecutionContext<'_>,
-    parse: fn(&ConfiguredHandler, CommandRunResult, Option<String>) -> ParsedHandler<T>,
+    parse: fn(&ConfiguredHandler, HandlerRunResult, Option<String>) -> ParsedHandler<T>,
 ) -> Vec<ParsedHandler<T>> {
     let HandlerExecutionContext {
         shell,
@@ -109,7 +110,9 @@ pub(crate) async fn execute_handlers<T>(
         pending.push(async move {
             let result = match &handler.kind {
                 ConfiguredHandlerKind::Command { .. } => {
-                    run_command(shell, &handler, configured_order, &input_json, cwd).await
+                    HandlerRunResult::completed(
+                        run_command(shell, &handler, configured_order, &input_json, cwd).await,
+                    )
                 }
                 ConfiguredHandlerKind::Prompt { .. } => {
                     run_prompt(prompt_runner, shell, &handler, &input_json, cwd).await
@@ -128,6 +131,28 @@ pub(crate) async fn execute_handlers<T>(
     }
     completed.sort_by_key(|(configured_order, _)| *configured_order);
     completed.into_iter().map(|(_, parsed)| parsed).collect()
+}
+
+pub(crate) fn prompt_filter_skipped<T: Default>(
+    handler: &ConfiguredHandler,
+    run_result: &HandlerRunResult,
+    turn_id: Option<String>,
+) -> ParsedHandler<T> {
+    debug_assert!(run_result.is_prompt_filter_skipped());
+
+    ParsedHandler {
+        completed: HookCompletedEvent {
+            turn_id,
+            run: completed_summary(
+                handler,
+                run_result.run_result(),
+                HookRunStatus::Completed,
+                Vec::new(),
+            ),
+        },
+        data: T::default(),
+        completion_order: 0,
+    }
 }
 
 pub(crate) struct HandlerExecutionContext<'a> {

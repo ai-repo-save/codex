@@ -138,6 +138,50 @@ async fn prompt_runner_receives_raw_event_and_event_output_schema() {
     );
 }
 
+#[tokio::test]
+async fn prompt_filter_skip_is_an_explicit_noop_for_all_supported_events() {
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let runner = RecordingRunner {
+        requests: requests.clone(),
+        output: "{}".to_string(),
+    };
+
+    for event_name in [
+        HookEventName::PreToolUse,
+        HookEventName::PermissionRequest,
+        HookEventName::ApprovalReviewRoute,
+        HookEventName::PreCompact,
+        HookEventName::SessionStart,
+        HookEventName::UserPromptSubmit,
+        HookEventName::SubagentStart,
+    ] {
+        let mut handler = prompt_handler(event_name, /*fail_closed*/ true);
+        let super::super::ConfiguredHandlerKind::Prompt { filter, .. } = &mut handler.kind else {
+            unreachable!("prompt handler expected");
+        };
+        *filter = Some(super::super::ConfiguredPromptFilter {
+            command: skip_filter_command(),
+            timeout_sec: 1,
+        });
+
+        let result = run_prompt(
+            Some(&runner),
+            &filter_shell(),
+            &handler,
+            "{}",
+            cwd().as_path(),
+        )
+        .await;
+
+        assert!(result.is_prompt_filter_skipped());
+        assert_eq!(result.exit_code, Some(0));
+        assert_eq!(result.stdout, "");
+        assert_eq!(result.error, None);
+    }
+
+    assert!(requests.lock().expect("request lock").is_empty());
+}
+
 fn prompt_request(event_name: HookEventName, output_schema: Value) -> PromptHookRequest {
     PromptHookRequest {
         rendered_prompt: "Review <untrusted-hook-event-json>\n{}\n</untrusted-hook-event-json>"
@@ -174,6 +218,32 @@ fn shell() -> CommandShell {
         program: String::new(),
         args: Vec::new(),
     }
+}
+
+#[cfg(not(windows))]
+fn filter_shell() -> CommandShell {
+    CommandShell {
+        program: "sh".to_string(),
+        args: vec!["-c".to_string()],
+    }
+}
+
+#[cfg(windows)]
+fn filter_shell() -> CommandShell {
+    CommandShell {
+        program: "cmd.exe".to_string(),
+        args: vec!["/D".to_string(), "/S".to_string(), "/C".to_string()],
+    }
+}
+
+#[cfg(not(windows))]
+fn skip_filter_command() -> String {
+    "printf '%s' '{\"version\":1,\"decision\":\"skip\"}'".to_string()
+}
+
+#[cfg(windows)]
+fn skip_filter_command() -> String {
+    "echo|set /p={\"version\":1,\"decision\":\"skip\"}".to_string()
 }
 
 fn cwd() -> codex_utils_absolute_path::AbsolutePathBuf {

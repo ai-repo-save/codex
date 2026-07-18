@@ -2923,7 +2923,19 @@ async fn pre_tool_use_prompt_hook_filter_skip_executes_tool_without_evaluator_re
         .with_pre_build_hook(|home| {
             write_pre_tool_use_prompt_hook_with_filter(
                 home,
-                r#"print('{"version":1,"decision":"skip"}')"#,
+                r#"import json
+import sys
+
+event = json.load(sys.stdin)
+if (
+    event["hook_event_name"] == "PreToolUse"
+    and event["tool_name"] == "Bash"
+    and event["tool_input"]["command"].startswith("printf allowed > ")
+):
+    print(json.dumps({"version": 1, "decision": "skip"}))
+else:
+    print(json.dumps({"version": 1, "decision": "run"}))
+"#,
             )
             .expect("write filtered prompt hook fixture");
         })

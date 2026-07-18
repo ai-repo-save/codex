@@ -13,8 +13,8 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
+use crate::engine::HandlerRunResult;
 use crate::engine::PromptHookRunner;
-use crate::engine::command_runner::CommandRunResult;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
 use crate::schema::PostCompactCommandInput;
@@ -251,9 +251,13 @@ struct CompactHandlerData {
 
 fn parse_pre_completed(
     handler: &ConfiguredHandler,
-    run_result: CommandRunResult,
+    run_result: HandlerRunResult,
     turn_id: Option<String>,
 ) -> dispatcher::ParsedHandler<CompactHandlerData> {
+    if run_result.is_prompt_filter_skipped() {
+        return dispatcher::prompt_filter_skipped(handler, &run_result, turn_id);
+    }
+
     let mut entries = Vec::new();
     let mut status = HookRunStatus::Completed;
     let mut should_stop = false;
@@ -356,7 +360,7 @@ fn parse_pre_completed(
 
 fn parse_post_completed(
     handler: &ConfiguredHandler,
-    run_result: CommandRunResult,
+    run_result: HandlerRunResult,
     turn_id: Option<String>,
 ) -> dispatcher::ParsedHandler<CompactHandlerData> {
     parse_completed(
@@ -370,11 +374,15 @@ fn parse_post_completed(
 
 fn parse_completed(
     handler: &ConfiguredHandler,
-    run_result: CommandRunResult,
+    run_result: HandlerRunResult,
     turn_id: Option<String>,
     event_label: &'static str,
     parse_output: fn(&str) -> Option<output_parser::StatelessHookOutput>,
 ) -> dispatcher::ParsedHandler<CompactHandlerData> {
+    if run_result.is_prompt_filter_skipped() {
+        return dispatcher::prompt_filter_skipped(handler, &run_result, turn_id);
+    }
+
     let mut entries = Vec::new();
     let mut status = HookRunStatus::Completed;
     let mut should_stop = false;
@@ -480,6 +488,7 @@ mod tests {
     use super::pre_command_input_json;
     use crate::engine::ConfiguredHandler;
     use crate::engine::ConfiguredHandlerKind;
+    use crate::engine::HandlerRunResult;
     use crate::engine::command_runner::CommandRunResult;
 
     #[test]
@@ -738,8 +747,8 @@ mod tests {
         }
     }
 
-    fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> CommandRunResult {
-        CommandRunResult {
+    fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> HandlerRunResult {
+        HandlerRunResult::completed(CommandRunResult {
             started_at: 1_700_000_000,
             completed_at: 1_700_000_001,
             duration_ms: 12,
@@ -747,6 +756,6 @@ mod tests {
             stdout: stdout.to_string(),
             stderr: stderr.to_string(),
             error: None,
-        }
+        })
     }
 }
