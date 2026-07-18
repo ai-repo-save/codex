@@ -1,4 +1,5 @@
 use super::*;
+use codex_app_server_protocol::ConfiguredPromptHookFilter;
 use codex_core::config::permission_profile_catalog;
 use futures::StreamExt;
 
