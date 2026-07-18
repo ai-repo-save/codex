@@ -1371,6 +1371,9 @@
               "default": false,
               "type": "boolean"
             },
+            "filter": {
+              "$ref": "#/definitions/PromptHookFilterConfig"
+            },
             "model": {
               "default": null,
               "type": "string"
@@ -2699,6 +2702,28 @@
           "$ref": "#/definitions/TrustLevel"
         }
       },
+      "type": "object"
+    },
+    "PromptHookFilterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "commandWindows": {
+          "default": null,
+          "type": "string"
+        },
+        "timeout": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "command"
+      ],
       "type": "object"
     },
     "RawMcpServerConfig": {
