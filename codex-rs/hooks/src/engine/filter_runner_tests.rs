@@ -247,7 +247,7 @@ fn oversized_stdout_command(bytes: usize) -> String {
 
 #[cfg(not(windows))]
 fn oversized_stderr_command(bytes: usize) -> String {
-    format!("head -c {bytes} /dev/zero >&2")
+    format!("head -c {bytes} /dev/zero | tr '\\0' x >&2")
 }
 
 #[cfg(windows)]
