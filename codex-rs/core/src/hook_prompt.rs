@@ -129,7 +129,10 @@ impl PromptHookEvaluator {
                 &InferenceTraceContext::disabled(),
             )
             .await
-            .map_err(|_| PromptHookEvaluationError::Request)?;
+            .map_err(|error| {
+                tracing::warn!(?error, "prompt hook model request failed");
+                PromptHookEvaluationError::Request
+            })?;
         collect_final_json(&mut stream)
             .await
             .map_err(anyhow::Error::new)
@@ -383,7 +386,10 @@ async fn collect_final_json(
     let mut final_text = None;
     let mut completed = false;
     while let Some(event) = stream.next().await {
-        match event.map_err(|_| PromptHookEvaluationError::Stream)? {
+        match event.map_err(|error| {
+            tracing::warn!(?error, "prompt hook response stream failed");
+            PromptHookEvaluationError::Stream
+        })? {
             ResponseEvent::OutputTextDelta(delta) => append_output(&mut delta_text, &delta)?,
             ResponseEvent::OutputItemDone(item) => {
                 if let Some(text) = raw_assistant_output_text_from_item(&item) {
