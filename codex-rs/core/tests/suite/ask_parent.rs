@@ -382,10 +382,7 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
     assert_eq!(activity.id, REPLY_CALL_ID);
     assert_eq!(activity.agent_path.as_str(), CHILD_PATH);
     assert_eq!(activity.kind, SubAgentActivityKind::Interacted);
-    assert_eq!(
-        activity.outcome,
-        Some(SubAgentActivityOutcome::Succeeded)
-    );
+    assert_eq!(activity.outcome, Some(SubAgentActivityOutcome::Succeeded));
     assert_eq!(activity.model, None);
 
     Ok(())

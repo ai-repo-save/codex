@@ -64,9 +64,7 @@ impl Handler {
         .await;
         let inspected_agent = result?;
 
-        Ok(boxed_tool_output(InspectAgentResult {
-            inspected_agent,
-        }))
+        Ok(boxed_tool_output(InspectAgentResult { inspected_agent }))
     }
 }
 

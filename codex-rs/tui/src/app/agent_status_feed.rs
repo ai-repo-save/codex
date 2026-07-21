@@ -140,10 +140,7 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
             agent_path,
             ..
         } => Some(sub_agent_activity_summary(
-            *kind,
-            *operation,
-            *outcome,
-            agent_path,
+            *kind, *operation, *outcome, agent_path,
         )),
         _ => None,
     }

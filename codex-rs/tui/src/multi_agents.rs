@@ -209,13 +209,10 @@ pub(crate) fn tool_call_history_cell(
             if matches!(status, CollabAgentToolCallStatus::InProgress) {
                 return None;
             }
-            first_receiver.map(|receiver_thread_id| interaction_end(receiver_thread_id, &mut agent_metadata))
+            first_receiver
+                .map(|receiver_thread_id| interaction_end(receiver_thread_id, &mut agent_metadata))
         }
-        CollabAgentTool::AskParent => Some(parent_decision(
-            status,
-            mode.as_ref(),
-            agents_states,
-        )),
+        CollabAgentTool::AskParent => Some(parent_decision(status, mode.as_ref(), agents_states)),
         CollabAgentTool::ResumeAgent => first_receiver.map(|receiver_thread_id| {
             if matches!(status, CollabAgentToolCallStatus::InProgress) {
                 resume_begin(receiver_thread_id, &mut agent_metadata)
@@ -385,7 +382,9 @@ fn sub_agent_activity_action(
             SubAgentActivityAction::FailedToSendFollowup
         }
         Some(SubAgentActivityOperation::FollowupTask) => SubAgentActivityAction::SentFollowup,
-        Some(SubAgentActivityOperation::ParentReply) if failed => SubAgentActivityAction::FailedToReply,
+        Some(SubAgentActivityOperation::ParentReply) if failed => {
+            SubAgentActivityAction::FailedToReply
+        }
         Some(SubAgentActivityOperation::ParentReply) => SubAgentActivityAction::Replied,
         Some(SubAgentActivityOperation::InspectAgent) if failed => {
             SubAgentActivityAction::FailedToInspect
@@ -412,7 +411,10 @@ fn sub_agent_activity_is_running_hint(
         && (matches!(kind, SubAgentActivityKind::Started)
             || matches!(
                 operation,
-                Some(SubAgentActivityOperation::FollowupTask | SubAgentActivityOperation::ParentReply)
+                Some(
+                    SubAgentActivityOperation::FollowupTask
+                        | SubAgentActivityOperation::ParentReply
+                )
             ))
 }
 
@@ -521,10 +523,7 @@ fn parent_consultation(
                 .yellow()
                 .into(),
         ];
-        return collab_event(
-            title_text(title),
-            details,
-        );
+        return collab_event(title_text(title), details);
     }
 
     if matches!(title, "Advisory from parent context snapshot") {
@@ -582,10 +581,9 @@ fn waiting_begin(
         .collect::<Vec<_>>();
 
     let title = match receiver_agents.as_slice() {
-        [(thread_id, metadata)] => title_with_agent(
-            "Waiting for",
-            agent_label(*thread_id, metadata),
-        ),
+        [(thread_id, metadata)] => {
+            title_with_agent("Waiting for", agent_label(*thread_id, metadata))
+        }
         [] => title_text("Waiting for agents"),
         _ => title_text(format!("Waiting for {} agents", receiver_agents.len())),
     };
@@ -1183,12 +1181,7 @@ mod tests {
                     outcome,
                     agent_path,
                     ..
-                } => sub_agent_activity_summary(
-                    *kind,
-                    *operation,
-                    *outcome,
-                    agent_path,
-                ),
+                } => sub_agent_activity_summary(*kind, *operation, *outcome, agent_path),
                 _ => unreachable!("activity item"),
             })
             .collect::<Vec<_>>()
