@@ -1,13 +1,30 @@
 ---
 source: tui/src/multi_agents.rs
+assertion_line: 1190
 expression: snapshot
 ---
 History:
-• Started `/root/task` (gpt-5.6)
+• Started `/root/task`
 • Interacted with `/root/task`
 • Interrupted `/root/task`
+• Sent message to `/root/task`
+• Failed to send message to `/root/task`
+• Sent follow-up to `/root/task`
+• Failed to send follow-up to `/root/task`
+• Replied to `/root/task`
+• Failed to reply to `/root/task`
+• Inspected `/root/task`
+• Failed to inspect `/root/task`
 
 Transcript:
-Started `/root/task` (gpt-5.6)
-Interacted with `/root/task`
-Interrupted `/root/task`
+Started /root/task
+Interacted with /root/task
+Interrupted /root/task
+Sent message to /root/task
+Failed to send message to /root/task
+Sent follow-up to /root/task
+Failed to send follow-up to /root/task
+Replied to /root/task
+Failed to reply to /root/task
+Inspected /root/task
+Failed to inspect /root/task
