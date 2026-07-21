@@ -182,8 +182,7 @@ where
 fn completed_sub_agent_activities(
     receiver: &async_channel::Receiver<codex_protocol::protocol::Event>,
 ) -> Vec<SubAgentActivityItem> {
-    receiver
-        .try_iter()
+    std::iter::from_fn(|| receiver.try_recv().ok())
         .filter_map(|event| match event.msg {
             EventMsg::ItemCompleted(event) => match event.item {
                 TurnItem::SubAgentActivity(activity) => Some(activity),
@@ -481,10 +480,7 @@ async fn multi_agent_v2_spawn_defaults_to_full_fork_and_rejects_child_model_over
         .features
         .enable(Feature::MultiAgentV2)
         .expect("test config should allow feature update");
-    set_turn_config(
-        Arc::get_mut(&mut turn).expect("turn should not have additional references"),
-        config,
-    );
+    set_turn_config(&mut turn, config);
 
     let err = SpawnAgentHandlerV2::default()
         .handle(invocation(
