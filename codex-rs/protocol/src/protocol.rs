@@ -5665,9 +5665,13 @@ mod tests {
             }),
         };
 
+        let events = completed.as_legacy_events(/*show_raw_agent_reasoning*/ false);
+        let [EventMsg::SubAgentActivity(activity)] = events.as_slice() else {
+            panic!("expected one sub-agent activity event");
+        };
         assert_eq!(
-            completed.as_legacy_events(/*show_raw_agent_reasoning*/ false),
-            vec![EventMsg::SubAgentActivity(SubAgentActivityEvent {
+            activity,
+            &SubAgentActivityEvent {
                 event_id: "spawn-1".into(),
                 occurred_at_ms: 42,
                 agent_thread_id,
@@ -5676,7 +5680,7 @@ mod tests {
                 model: Some("gpt-5.4".into()),
                 operation: Some(SubAgentActivityOperation::SendMessage),
                 outcome: Some(SubAgentActivityOutcome::Succeeded),
-            })]
+            }
         );
     }
 
@@ -5684,7 +5688,7 @@ mod tests {
     fn sub_agent_activity_deserializes_without_optional_metadata() {
         let agent_thread_id = ThreadId::new();
         let agent_path = AgentPath::try_from("/root/worker").expect("valid agent path");
-        let expected_item = TurnItem::SubAgentActivity(SubAgentActivityItem {
+        let expected_item = SubAgentActivityItem {
             id: "activity-1".into(),
             kind: SubAgentActivityKind::Interacted,
             agent_thread_id,
@@ -5692,8 +5696,8 @@ mod tests {
             model: None,
             operation: None,
             outcome: None,
-        });
-        let expected_event = EventMsg::SubAgentActivity(SubAgentActivityEvent {
+        };
+        let expected_event = SubAgentActivityEvent {
             event_id: "activity-1".into(),
             occurred_at_ms: 42,
             agent_thread_id,
@@ -5702,16 +5706,26 @@ mod tests {
             model: None,
             operation: None,
             outcome: None,
-        });
+        };
 
+        let item = serde_json::from_value::<TurnItem>(
+            serde_json::to_value(TurnItem::SubAgentActivity(expected_item.clone())).unwrap(),
+        )
+        .unwrap();
+        let TurnItem::SubAgentActivity(item) = item else {
+            panic!("expected sub-agent activity item");
+        };
+        assert_eq!(item, expected_item);
+
+        let event = serde_json::from_value::<EventMsg>(
+            serde_json::to_value(EventMsg::SubAgentActivity(expected_event.clone())).unwrap(),
+        )
+        .unwrap();
+        let EventMsg::SubAgentActivity(event) = event else {
+            panic!("expected sub-agent activity event");
+        };
         assert_eq!(
-            serde_json::from_value::<TurnItem>(serde_json::to_value(&expected_item).unwrap())
-                .unwrap(),
-            expected_item
-        );
-        assert_eq!(
-            serde_json::from_value::<EventMsg>(serde_json::to_value(&expected_event).unwrap())
-                .unwrap(),
+            event,
             expected_event
         );
     }
