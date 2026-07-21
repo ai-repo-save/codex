@@ -5724,10 +5724,7 @@ mod tests {
         let EventMsg::SubAgentActivity(event) = event else {
             panic!("expected sub-agent activity event");
         };
-        assert_eq!(
-            event,
-            expected_event
-        );
+        assert_eq!(event, expected_event);
     }
 
     #[test]
