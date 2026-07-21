@@ -113,49 +113,88 @@ async fn wait_for_model_available(manager: &SharedModelsManager, slug: &str) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() -> Result<()> {
     let server = start_mock_server().await;
+    let mut picker_visible_models = vec![test_model_info(
+        "visible-model",
+        "Visible Model",
+        "Fast and capable",
+        ModelVisibility::List,
+        ReasoningEffort::Medium,
+        vec![
+            ReasoningEffortPreset {
+                effort: ReasoningEffort::Low,
+                description: "Quick scan".to_string(),
+            },
+            ReasoningEffortPreset {
+                effort: ReasoningEffort::Medium,
+                description: "Balanced".to_string(),
+            },
+            ReasoningEffortPreset {
+                effort: ReasoningEffort::High,
+                description: "Deep dive".to_string(),
+            },
+        ],
+        vec![ModelServiceTier {
+            id: "priority".to_string(),
+            name: "Fast".to_string(),
+            description: "1.5x speed, increased usage".to_string(),
+        }],
+    )];
+    picker_visible_models.extend((1..=5).map(|index| {
+        test_model_info(
+            &format!("filler-model-{index}"),
+            &format!("Filler Model {index}"),
+            "Picker-visible filler",
+            ModelVisibility::List,
+            ReasoningEffort::Medium,
+            vec![ReasoningEffortPreset {
+                effort: ReasoningEffort::Medium,
+                description: "Balanced".to_string(),
+            }],
+            Vec::new(),
+        )
+    }));
+    picker_visible_models.push(test_model_info(
+        "gpt-5.3-codex-spark",
+        "GPT-5.3 Codex Spark",
+        "Ultra-fast coding model.",
+        ModelVisibility::List,
+        ReasoningEffort::High,
+        vec![
+            ReasoningEffortPreset {
+                effort: ReasoningEffort::Low,
+                description: "Low reasoning effort".to_string(),
+            },
+            ReasoningEffortPreset {
+                effort: ReasoningEffort::Medium,
+                description: "Medium reasoning effort".to_string(),
+            },
+            ReasoningEffortPreset {
+                effort: ReasoningEffort::High,
+                description: "High reasoning effort".to_string(),
+            },
+            ReasoningEffortPreset {
+                effort: ReasoningEffort::XHigh,
+                description: "Extra-high reasoning effort".to_string(),
+            },
+        ],
+        Vec::new(),
+    ));
+    picker_visible_models.push(test_model_info(
+        "hidden-model",
+        "Hidden Model",
+        "Should not be shown",
+        ModelVisibility::Hide,
+        ReasoningEffort::Low,
+        vec![ReasoningEffortPreset {
+            effort: ReasoningEffort::Low,
+            description: "Not visible".to_string(),
+        }],
+        Vec::new(),
+    ));
     mount_models_once(
         &server,
         ModelsResponse {
-            models: vec![
-                test_model_info(
-                    "visible-model",
-                    "Visible Model",
-                    "Fast and capable",
-                    ModelVisibility::List,
-                    ReasoningEffort::Medium,
-                    vec![
-                        ReasoningEffortPreset {
-                            effort: ReasoningEffort::Low,
-                            description: "Quick scan".to_string(),
-                        },
-                        ReasoningEffortPreset {
-                            effort: ReasoningEffort::Medium,
-                            description: "Balanced".to_string(),
-                        },
-                        ReasoningEffortPreset {
-                            effort: ReasoningEffort::High,
-                            description: "Deep dive".to_string(),
-                        },
-                    ],
-                    vec![ModelServiceTier {
-                        id: "priority".to_string(),
-                        name: "Fast".to_string(),
-                        description: "1.5x speed, increased usage".to_string(),
-                    }],
-                ),
-                test_model_info(
-                    "hidden-model",
-                    "Hidden Model",
-                    "Should not be shown",
-                    ModelVisibility::Hide,
-                    ReasoningEffort::Low,
-                    vec![ReasoningEffortPreset {
-                        effort: ReasoningEffort::Low,
-                        description: "Not visible".to_string(),
-                    }],
-                    Vec::new(),
-                ),
-            ],
+            models: picker_visible_models,
         },
     )
     .await;
@@ -212,6 +251,12 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
     assert!(
         description.contains("Service tiers: priority."),
         "expected service tier guidance in spawn_agent description: {description:?}"
+    );
+    assert!(
+        description.contains(
+            "- `gpt-5.3-codex-spark`: Ultra-fast coding model. Reasoning efforts: low, medium, high (default), xhigh. Service tier override is not supported."
+        ),
+        "expected seventh picker-visible Spark model and unsupported service tier override guidance in spawn_agent description: {description:?}"
     );
     assert!(
         !description.contains("hidden-model"),

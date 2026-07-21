@@ -16,7 +16,7 @@ const SPAWN_AGENT_MODEL_OVERRIDE_DESCRIPTION: &str =
     "Model override for the new agent. Omit unless an explicit override is needed.";
 const SPAWN_AGENT_SERVICE_TIER_OVERRIDE_DESCRIPTION: &str =
     "Service tier override for the new agent. Omit unless explicitly requested.";
-const MAX_MODEL_OVERRIDES_IN_SPAWN_AGENT_DESCRIPTION: usize = 5;
+const MAX_MODEL_OVERRIDES_IN_SPAWN_AGENT_DESCRIPTION: usize = 7;
 const MAX_REASONING_EFFORT_CHARS_IN_SPAWN_AGENT_DESCRIPTION: usize = 64;
 
 #[derive(Debug, Clone, Default)]
@@ -996,7 +996,7 @@ fn spawn_agent_models_description(models: &[ModelPreset]) -> String {
                 .collect::<Vec<_>>()
                 .join(", ");
             let service_tiers_suffix = if service_tiers.is_empty() {
-                String::new()
+                " Service tier override is not supported.".to_string()
             } else {
                 format!(" Service tiers: {service_tiers}.")
             };

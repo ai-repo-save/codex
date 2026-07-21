@@ -177,6 +177,8 @@ fn spawn_agent_tool_caps_visible_model_summaries() {
             model_preset("fourth", /*show_in_picker*/ true),
             model_preset("fifth", /*show_in_picker*/ true),
             model_preset("sixth", /*show_in_picker*/ true),
+            model_preset("seventh", /*show_in_picker*/ true),
+            model_preset("eighth", /*show_in_picker*/ true),
         ],
         agent_type_description: "role help".to_string(),
         hide_agent_type_model_reasoning: false,
@@ -189,13 +191,15 @@ fn spawn_agent_tool_caps_visible_model_summaries() {
         panic!("spawn_agent should be a function tool");
     };
 
-    for model in ["first", "second", "third", "fourth", "fifth"] {
+    for model in [
+        "first", "second", "third", "fourth", "fifth", "sixth", "seventh",
+    ] {
         assert!(
             description.contains(&format!("`{model}-model`")),
             "expected {model} model summary in spawn_agent description: {description:?}"
         );
     }
-    assert!(!description.contains("`sixth-model`"));
+    assert!(!description.contains("`eighth-model`"));
 }
 
 #[test]
@@ -216,6 +220,17 @@ fn spawn_agent_tool_caps_reasoning_effort_value_length() {
             "Available model overrides (optional; inherited parent model is preferred):\n- `visible-model`: visible description Reasoning efforts: {} (default). Service tiers: priority.",
             "é".repeat(MAX_REASONING_EFFORT_CHARS_IN_SPAWN_AGENT_DESCRIPTION)
         )
+    );
+}
+
+#[test]
+fn spawn_agent_tool_marks_models_without_service_tiers_as_unsupported() {
+    let mut model = model_preset("visible", /*show_in_picker*/ true);
+    model.service_tiers.clear();
+
+    assert_eq!(
+        spawn_agent_models_description(&[model]),
+        "Available model overrides (optional; inherited parent model is preferred):\n- `visible-model`: visible description Reasoning efforts: medium (default). Service tier override is not supported."
     );
 }
 
