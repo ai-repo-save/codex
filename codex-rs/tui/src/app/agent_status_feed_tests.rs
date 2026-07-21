@@ -6,6 +6,9 @@ use codex_app_server_protocol::CommandExecutionStatus;
 use codex_app_server_protocol::ItemCompletedNotification;
 use codex_app_server_protocol::ItemStartedNotification;
 use codex_app_server_protocol::SkillLoadStatus;
+use codex_app_server_protocol::SubAgentActivityKind;
+use codex_app_server_protocol::SubAgentActivityOperation;
+use codex_app_server_protocol::SubAgentActivityOutcome;
 use codex_utils_absolute_path::AbsolutePathBuf;
 
 #[test]
@@ -44,7 +47,7 @@ fn agent_status_describes_pending_parent_decision() {
     Sub-agents running
 
       • `/root/worker`
-        Waiting for parent agent decision
+        Waiting for parent decision
     "###);
 }
 
@@ -94,12 +97,12 @@ fn agent_status_distinguishes_parent_decision_timeout() {
     Sub-agents running
 
       • `/root/worker`
-        Parent agent decision timed out
+        Parent decision timed out
     "###);
 }
 
 #[test]
-fn agent_status_uses_bounded_buffered_activity() {
+fn agent_status_excludes_command_and_message_bodies() {
     let mut store = ThreadEventStore::new(/*capacity*/ 8);
     store.push_notification(ServerNotification::ItemCompleted(
         ItemCompletedNotification {
@@ -150,14 +153,15 @@ fn agent_status_uses_bounded_buffered_activity() {
     Sub-agents running
 
       • `/root/reviewer`
-        $ cargo test -p codex-tui
-        Finished checking the focused TUI tests.
+        No recent activity yet.
     "###);
+    assert!(!rendered.contains("cargo test -p codex-tui"));
+    assert!(!rendered.contains("Finished checking the focused TUI tests."));
     assert!(!rendered.contains("unbounded output"));
 }
 
 #[test]
-fn agent_status_uses_reasoning_summaries_only() {
+fn agent_status_excludes_reasoning_bodies() {
     let mut store = ThreadEventStore::new(/*capacity*/ 8);
     store.push_notification(ServerNotification::ItemCompleted(
         ItemCompletedNotification {
@@ -198,14 +202,15 @@ fn agent_status_uses_reasoning_summaries_only() {
     Sub-agents running
 
       • `/root/reviewer`
-        safe summary
+        No recent activity yet.
     "###);
+    assert!(!rendered.contains("safe summary"));
     assert!(!rendered.contains("hidden raw reasoning"));
     assert!(!rendered.contains("raw-only reasoning"));
 }
 
 #[test]
-fn agent_status_summarizes_skill_load_items() {
+fn agent_status_excludes_skill_details() {
     let mut store = ThreadEventStore::new(/*capacity*/ 8);
     store.push_notification(ServerNotification::ItemCompleted(
         ItemCompletedNotification {
@@ -252,15 +257,16 @@ fn agent_status_summarizes_skill_load_items() {
     Sub-agents running
 
       • `/root/reviewer`
-        Read skill code-review
-        Failed to read skill missing-skill
+        No recent activity yet.
     "###);
+    assert!(!rendered.contains("code-review"));
+    assert!(!rendered.contains("missing-skill"));
     assert!(!rendered.contains("/skills/code-review"));
     assert!(!rendered.contains("not found"));
 }
 
 #[test]
-fn agent_status_includes_started_agent_model() {
+fn agent_status_describes_started_agent_without_model_detail() {
     let mut store = ThreadEventStore::new(/*capacity*/ 8);
     store.push_notification(ServerNotification::ItemCompleted(
         ItemCompletedNotification {
@@ -269,6 +275,8 @@ fn agent_status_includes_started_agent_model() {
                 kind: SubAgentActivityKind::Started,
                 agent_thread_id: "thread-child".to_string(),
                 agent_path: "/root/reviewer".to_string(),
+                operation: None,
+                outcome: None,
                 model: Some("gpt-5.6".to_string()),
             },
             thread_id: "thread-child".to_string(),
@@ -291,6 +299,85 @@ fn agent_status_includes_started_agent_model() {
     Sub-agents running
 
       • `/root/reviewer`
-        Started /root/reviewer (gpt-5.6)
+        Started /root/reviewer
     "###);
+}
+
+#[test]
+fn agent_status_summarizes_sub_agent_activity_operations() {
+    let items = [
+        sub_agent_activity_item(
+            "send-message",
+            SubAgentActivityOperation::SendMessage,
+            SubAgentActivityOutcome::Succeeded,
+        ),
+        sub_agent_activity_item(
+            "send-message-failed",
+            SubAgentActivityOperation::SendMessage,
+            SubAgentActivityOutcome::Failed,
+        ),
+        sub_agent_activity_item(
+            "followup",
+            SubAgentActivityOperation::FollowupTask,
+            SubAgentActivityOutcome::Succeeded,
+        ),
+        sub_agent_activity_item(
+            "followup-failed",
+            SubAgentActivityOperation::FollowupTask,
+            SubAgentActivityOutcome::Failed,
+        ),
+        sub_agent_activity_item(
+            "reply",
+            SubAgentActivityOperation::ParentReply,
+            SubAgentActivityOutcome::Succeeded,
+        ),
+        sub_agent_activity_item(
+            "reply-failed",
+            SubAgentActivityOperation::ParentReply,
+            SubAgentActivityOutcome::Failed,
+        ),
+        sub_agent_activity_item(
+            "inspect",
+            SubAgentActivityOperation::InspectAgent,
+            SubAgentActivityOutcome::Succeeded,
+        ),
+        sub_agent_activity_item(
+            "inspect-failed",
+            SubAgentActivityOperation::InspectAgent,
+            SubAgentActivityOutcome::Failed,
+        ),
+    ];
+
+    let rendered = items
+        .iter()
+        .filter_map(activity_summary)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    insta::assert_snapshot!(rendered, @r###"
+    Sent message to /root/reviewer
+    Failed to send message to /root/reviewer
+    Sent follow-up to /root/reviewer
+    Failed to send follow-up to /root/reviewer
+    Replied to /root/reviewer
+    Failed to reply to /root/reviewer
+    Inspected /root/reviewer
+    Failed to inspect /root/reviewer
+    "###);
+}
+
+fn sub_agent_activity_item(
+    id: &str,
+    operation: SubAgentActivityOperation,
+    outcome: SubAgentActivityOutcome,
+) -> ThreadItem {
+    ThreadItem::SubAgentActivity {
+        id: id.to_string(),
+        kind: SubAgentActivityKind::Interacted,
+        agent_thread_id: "thread-child".to_string(),
+        agent_path: "/root/reviewer".to_string(),
+        operation: Some(operation),
+        outcome: Some(outcome),
+        model: None,
+    }
 }

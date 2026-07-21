@@ -6,17 +6,17 @@
 
 use crate::history_cell::PlainHistoryCell;
 use crate::render::line_utils::prefix_lines;
-use crate::text_formatting::truncate_text;
 use codex_app_server_protocol::AskParentMode;
 use codex_app_server_protocol::CollabAgentState;
 use codex_app_server_protocol::CollabAgentStatus;
 use codex_app_server_protocol::CollabAgentTool;
 use codex_app_server_protocol::CollabAgentToolCallStatus;
 use codex_app_server_protocol::SubAgentActivityKind;
+use codex_app_server_protocol::SubAgentActivityOperation;
+use codex_app_server_protocol::SubAgentActivityOutcome;
 use codex_app_server_protocol::ThreadItem;
 use codex_protocol::ThreadId;
 use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
-use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 #[cfg(target_os = "macos")]
@@ -28,10 +28,6 @@ use ratatui::text::Line;
 use ratatui::text::Span;
 use std::collections::HashMap;
 use std::collections::HashSet;
-
-const COLLAB_PROMPT_PREVIEW_GRAPHEMES: usize = 160;
-const COLLAB_AGENT_ERROR_PREVIEW_GRAPHEMES: usize = 160;
-const COLLAB_AGENT_RESPONSE_PREVIEW_GRAPHEMES: usize = 240;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AgentPickerThreadEntry {
@@ -67,12 +63,6 @@ struct AgentLabel<'a> {
     thread_id: Option<ThreadId>,
     nickname: Option<&'a str>,
     role: Option<&'a str>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SpawnRequestSummary {
-    pub(crate) model: String,
-    pub(crate) reasoning_effort: ReasoningEffortConfig,
 }
 
 pub(crate) fn agent_picker_status_dot_spans(is_closed: bool) -> Vec<Span<'static>> {
@@ -188,33 +178,15 @@ fn next_agent_word_motion_fallback(
     false
 }
 
-pub(crate) fn spawn_request_summary(item: &ThreadItem) -> Option<SpawnRequestSummary> {
-    match item {
-        ThreadItem::CollabAgentToolCall {
-            tool: CollabAgentTool::SpawnAgent,
-            model: Some(model),
-            reasoning_effort: Some(reasoning_effort),
-            ..
-        } => Some(SpawnRequestSummary {
-            model: model.clone(),
-            reasoning_effort: reasoning_effort.clone(),
-        }),
-        _ => None,
-    }
-}
-
 pub(crate) fn tool_call_history_cell(
     item: &ThreadItem,
-    cached_spawn_request: Option<&SpawnRequestSummary>,
     mut agent_metadata: impl FnMut(ThreadId) -> AgentMetadata,
 ) -> Option<PlainHistoryCell> {
     let ThreadItem::CollabAgentToolCall {
         tool,
         status,
         receiver_thread_ids,
-        prompt,
         mode,
-        snapshot_revision,
         agents_states,
         ..
     } = item
@@ -225,35 +197,23 @@ pub(crate) fn tool_call_history_cell(
     let first_receiver = receiver_thread_ids
         .first()
         .and_then(|id| parse_thread_id(id));
-    let prompt = prompt.as_deref().unwrap_or_default();
 
     match tool {
         CollabAgentTool::SpawnAgent => {
             if matches!(status, CollabAgentToolCallStatus::InProgress) {
                 return None;
             }
-            let fallback_spawn_request = spawn_request_summary(item);
-            let spawn_request = cached_spawn_request.or(fallback_spawn_request.as_ref());
-            Some(spawn_end(
-                first_receiver,
-                prompt,
-                spawn_request,
-                &mut agent_metadata,
-            ))
+            Some(spawn_end(first_receiver, &mut agent_metadata))
         }
         CollabAgentTool::SendInput => {
             if matches!(status, CollabAgentToolCallStatus::InProgress) {
                 return None;
             }
-            first_receiver.map(|receiver_thread_id| {
-                interaction_end(receiver_thread_id, prompt, &mut agent_metadata)
-            })
+            first_receiver.map(|receiver_thread_id| interaction_end(receiver_thread_id, &mut agent_metadata))
         }
         CollabAgentTool::AskParent => Some(parent_decision(
-            prompt,
             status,
             mode.as_ref(),
-            snapshot_revision.as_deref(),
             agents_states,
         )),
         CollabAgentTool::ResumeAgent => first_receiver.map(|receiver_thread_id| {
@@ -261,12 +221,7 @@ pub(crate) fn tool_call_history_cell(
                 resume_begin(receiver_thread_id, &mut agent_metadata)
             } else {
                 let state = first_agent_state(receiver_thread_ids, agents_states);
-                resume_end(
-                    receiver_thread_id,
-                    state,
-                    "Agent resume failed",
-                    &mut agent_metadata,
-                )
+                resume_end(receiver_thread_id, state, &mut agent_metadata)
             }
         }),
         CollabAgentTool::Wait => {
@@ -290,9 +245,54 @@ pub(crate) fn tool_call_history_cell(
     }
 }
 
+pub(crate) fn collab_tool_summary(item: &ThreadItem) -> Option<String> {
+    let ThreadItem::CollabAgentToolCall {
+        tool,
+        status,
+        mode,
+        agents_states,
+        ..
+    } = item
+    else {
+        return None;
+    };
+
+    let summary = match tool {
+        CollabAgentTool::SpawnAgent => match status {
+            CollabAgentToolCallStatus::InProgress => "Spawning an agent".to_string(),
+            CollabAgentToolCallStatus::Completed => "Spawned an agent".to_string(),
+            CollabAgentToolCallStatus::Failed => "Agent spawn failed".to_string(),
+        },
+        CollabAgentTool::SendInput => match status {
+            CollabAgentToolCallStatus::InProgress => "Sending input to an agent".to_string(),
+            CollabAgentToolCallStatus::Completed => "Sent input to an agent".to_string(),
+            CollabAgentToolCallStatus::Failed => "Failed to send input to an agent".to_string(),
+        },
+        CollabAgentTool::AskParent => parent_decision_summary(status, mode.as_ref(), agents_states),
+        CollabAgentTool::ResumeAgent => match status {
+            CollabAgentToolCallStatus::InProgress => "Resuming an agent".to_string(),
+            CollabAgentToolCallStatus::Completed => "Resumed an agent".to_string(),
+            CollabAgentToolCallStatus::Failed => "Failed to resume an agent".to_string(),
+        },
+        CollabAgentTool::Wait => match status {
+            CollabAgentToolCallStatus::InProgress => "Waiting for an agent".to_string(),
+            CollabAgentToolCallStatus::Completed => "Finished waiting for an agent".to_string(),
+            CollabAgentToolCallStatus::Failed => "Failed while waiting for an agent".to_string(),
+        },
+        CollabAgentTool::CloseAgent => match status {
+            CollabAgentToolCallStatus::InProgress => "Closing an agent".to_string(),
+            CollabAgentToolCallStatus::Completed => "Closed an agent".to_string(),
+            CollabAgentToolCallStatus::Failed => "Failed to close an agent".to_string(),
+        },
+    };
+    Some(summary)
+}
+
 pub(crate) fn sub_agent_activity_display(item: &ThreadItem) -> Option<SubAgentActivityDisplay> {
     let ThreadItem::SubAgentActivity {
         kind,
+        operation,
+        outcome,
         agent_thread_id,
         agent_path,
         ..
@@ -303,120 +303,178 @@ pub(crate) fn sub_agent_activity_display(item: &ThreadItem) -> Option<SubAgentAc
     Some(SubAgentActivityDisplay {
         thread_id: parse_thread_id(agent_thread_id)?,
         agent_path: agent_path.clone(),
-        is_running_hint: !matches!(kind, SubAgentActivityKind::Interrupted),
+        is_running_hint: sub_agent_activity_is_running_hint(*kind, *operation, *outcome),
     })
 }
 
 pub(crate) fn sub_agent_activity_history_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
     let ThreadItem::SubAgentActivity {
         kind,
+        operation,
+        outcome,
         agent_path,
-        model,
         ..
     } = item
     else {
         return None;
     };
     Some(collab_event(
-        sub_agent_activity_title(*kind, agent_path, model.as_deref()),
+        sub_agent_activity_title(
+            sub_agent_activity_action(*kind, *operation, *outcome),
+            agent_path,
+        ),
         Vec::new(),
     ))
 }
 
 pub(crate) fn sub_agent_activity_summary(
     kind: SubAgentActivityKind,
+    operation: Option<SubAgentActivityOperation>,
+    outcome: Option<SubAgentActivityOutcome>,
     agent_path: &str,
-    model: Option<&str>,
 ) -> String {
-    match kind {
-        SubAgentActivityKind::Started => {
-            let mut summary = format!("Started `{agent_path}`");
-            if let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) {
-                summary.push_str(&format!(" ({model})"));
-            }
-            summary
+    let action = sub_agent_activity_action(kind, operation, outcome);
+    format!("{} {agent_path}", action.title_prefix())
+}
+
+#[derive(Clone, Copy)]
+enum SubAgentActivityAction {
+    Started,
+    Interacted,
+    Interrupted,
+    SentMessage,
+    FailedToSendMessage,
+    SentFollowup,
+    FailedToSendFollowup,
+    Replied,
+    FailedToReply,
+    Inspected,
+    FailedToInspect,
+}
+
+impl SubAgentActivityAction {
+    fn title_prefix(self) -> &'static str {
+        match self {
+            Self::Started => "Started",
+            Self::Interacted => "Interacted with",
+            Self::Interrupted => "Interrupted",
+            Self::SentMessage => "Sent message to",
+            Self::FailedToSendMessage => "Failed to send message to",
+            Self::SentFollowup => "Sent follow-up to",
+            Self::FailedToSendFollowup => "Failed to send follow-up to",
+            Self::Replied => "Replied to",
+            Self::FailedToReply => "Failed to reply to",
+            Self::Inspected => "Inspected",
+            Self::FailedToInspect => "Failed to inspect",
         }
-        SubAgentActivityKind::Interacted => format!("Interacted with `{agent_path}`"),
-        SubAgentActivityKind::Interrupted => format!("Interrupted `{agent_path}`"),
     }
 }
 
-fn sub_agent_activity_title(
+fn sub_agent_activity_action(
     kind: SubAgentActivityKind,
-    agent_path: &str,
-    model: Option<&str>,
-) -> Line<'static> {
-    let (prefix, path) = match kind {
-        SubAgentActivityKind::Started => ("Started ", agent_path),
-        SubAgentActivityKind::Interacted => ("Interacted with ", agent_path),
-        SubAgentActivityKind::Interrupted => ("Interrupted ", agent_path),
-    };
-    let mut spans = vec![
-        Span::from(prefix).bold(),
-        Span::from(format!("`{path}`")).cyan(),
-    ];
-    if matches!(kind, SubAgentActivityKind::Started)
-        && let Some(model) = model.map(str::trim).filter(|model| !model.is_empty())
-    {
-        spans.push(Span::from(" ").dim());
-        spans.push(Span::from(format!("({model})")).magenta());
+    operation: Option<SubAgentActivityOperation>,
+    outcome: Option<SubAgentActivityOutcome>,
+) -> SubAgentActivityAction {
+    let failed = matches!(outcome, Some(SubAgentActivityOutcome::Failed));
+    match operation {
+        Some(SubAgentActivityOperation::SendMessage) if failed => {
+            SubAgentActivityAction::FailedToSendMessage
+        }
+        Some(SubAgentActivityOperation::SendMessage) => SubAgentActivityAction::SentMessage,
+        Some(SubAgentActivityOperation::FollowupTask) if failed => {
+            SubAgentActivityAction::FailedToSendFollowup
+        }
+        Some(SubAgentActivityOperation::FollowupTask) => SubAgentActivityAction::SentFollowup,
+        Some(SubAgentActivityOperation::ParentReply) if failed => SubAgentActivityAction::FailedToReply,
+        Some(SubAgentActivityOperation::ParentReply) => SubAgentActivityAction::Replied,
+        Some(SubAgentActivityOperation::InspectAgent) if failed => {
+            SubAgentActivityAction::FailedToInspect
+        }
+        Some(SubAgentActivityOperation::InspectAgent) => SubAgentActivityAction::Inspected,
+        None => match kind {
+            SubAgentActivityKind::Started => SubAgentActivityAction::Started,
+            SubAgentActivityKind::Interacted => SubAgentActivityAction::Interacted,
+            SubAgentActivityKind::Interrupted => SubAgentActivityAction::Interrupted,
+        },
     }
+}
+
+fn sub_agent_activity_is_running_hint(
+    kind: SubAgentActivityKind,
+    operation: Option<SubAgentActivityOperation>,
+    outcome: Option<SubAgentActivityOutcome>,
+) -> bool {
+    if operation.is_none() && outcome.is_none() {
+        return !matches!(kind, SubAgentActivityKind::Interrupted);
+    }
+
+    matches!(outcome, Some(SubAgentActivityOutcome::Succeeded))
+        && (matches!(kind, SubAgentActivityKind::Started)
+            || matches!(
+                operation,
+                Some(SubAgentActivityOperation::FollowupTask | SubAgentActivityOperation::ParentReply)
+            ))
+}
+
+fn sub_agent_activity_title(action: SubAgentActivityAction, agent_path: &str) -> Line<'static> {
+    let spans = vec![
+        Span::from(format!("{} ", action.title_prefix())).bold(),
+        Span::from(format!("`{agent_path}`")).cyan(),
+    ];
     title_spans_line(spans)
 }
 
 fn spawn_end(
     new_thread_id: Option<ThreadId>,
-    prompt: &str,
-    spawn_request: Option<&SpawnRequestSummary>,
     agent_metadata: &mut impl FnMut(ThreadId) -> AgentMetadata,
 ) -> PlainHistoryCell {
     let title = match new_thread_id {
         Some(thread_id) => title_with_agent(
             "Spawned",
             agent_label(thread_id, &agent_metadata(thread_id)),
-            spawn_request,
         ),
         None => title_text("Agent spawn failed"),
     };
 
-    let mut details = Vec::new();
-    if let Some(line) = prompt_line(prompt) {
-        details.push(line);
-    }
-    collab_event(title, details)
+    collab_event(title, Vec::new())
 }
 
 fn interaction_end(
     receiver_thread_id: ThreadId,
-    prompt: &str,
     agent_metadata: &mut impl FnMut(ThreadId) -> AgentMetadata,
 ) -> PlainHistoryCell {
     let title = title_with_agent(
         "Sent input to",
         agent_label(receiver_thread_id, &agent_metadata(receiver_thread_id)),
-        /*spawn_request*/ None,
     );
 
-    let mut details = Vec::new();
-    if let Some(line) = prompt_line(prompt) {
-        details.push(line);
-    }
-    collab_event(title, details)
+    collab_event(title, Vec::new())
 }
 
 fn parent_decision(
-    prompt: &str,
     status: &CollabAgentToolCallStatus,
     mode: Option<&AskParentMode>,
-    snapshot_revision: Option<&str>,
     agents_states: &HashMap<String, CollabAgentState>,
 ) -> PlainHistoryCell {
     if matches!(mode, Some(AskParentMode::Consult)) {
-        return parent_consultation(prompt, status, snapshot_revision, agents_states);
+        return parent_consultation(status, agents_states);
+    }
+
+    let title = parent_decision_title(status, mode, agents_states);
+    collab_event(title_text(title), Vec::new())
+}
+
+fn parent_decision_title(
+    status: &CollabAgentToolCallStatus,
+    mode: Option<&AskParentMode>,
+    agents_states: &HashMap<String, CollabAgentState>,
+) -> &'static str {
+    if matches!(mode, Some(AskParentMode::Consult)) {
+        return parent_consultation_title(status, agents_states);
     }
 
     let parent_status = agents_states.values().next().map(|state| &state.status);
-    let title = match (status, parent_status) {
+    match (status, parent_status) {
         (CollabAgentToolCallStatus::InProgress, _) => "Waiting for parent decision",
         (_, Some(CollabAgentStatus::Completed)) => "Received parent decision",
         (_, Some(CollabAgentStatus::Interrupted)) => "Parent decision timed out",
@@ -425,59 +483,83 @@ fn parent_decision(
         }
         (CollabAgentToolCallStatus::Completed, _) => "Received parent decision",
         (CollabAgentToolCallStatus::Failed, _) => "Parent decision unavailable",
-    };
-    let details = prompt_line(prompt).into_iter().collect();
-    collab_event(title_text(title), details)
+    }
+}
+
+fn parent_decision_summary(
+    status: &CollabAgentToolCallStatus,
+    mode: Option<&AskParentMode>,
+    agents_states: &HashMap<String, CollabAgentState>,
+) -> String {
+    let title = parent_decision_title(status, mode, agents_states);
+    if matches!(mode, Some(AskParentMode::Consult))
+        && matches!(title, "Advisory from parent context snapshot")
+    {
+        return format!("{title} (may be stale; not authoritative)");
+    }
+    if matches!(mode, Some(AskParentMode::Consult))
+        && matches!(title, "Parent context requires an authoritative decision")
+    {
+        return format!("{title}; use ask_parent with mode: authoritative");
+    }
+    title.to_string()
 }
 
 fn parent_consultation(
-    prompt: &str,
     status: &CollabAgentToolCallStatus,
-    snapshot_revision: Option<&str>,
     agents_states: &HashMap<String, CollabAgentState>,
 ) -> PlainHistoryCell {
+    let title = parent_consultation_title(status, agents_states);
     if matches!(status, CollabAgentToolCallStatus::InProgress) {
-        let mut details = prompt_line(prompt).into_iter().collect::<Vec<_>>();
-        details.push("Consulting a snapshot of the parent context".dim().into());
-        return collab_event(title_text("Consulting parent context snapshot"), details);
+        let details = vec!["Consulting a snapshot of the parent context".dim().into()];
+        return collab_event(title_text(title), details);
     }
 
     if parent_requires_authoritative_decision(agents_states) {
-        let mut details = prompt_line(prompt).into_iter().collect::<Vec<_>>();
-        details.push(
+        let details = vec![
             "Use ask_parent with mode: authoritative for a parent decision"
                 .yellow()
                 .into(),
-        );
+        ];
         return collab_event(
-            title_text("Parent context requires an authoritative decision"),
+            title_text(title),
             details,
         );
     }
 
+    if matches!(title, "Advisory from parent context snapshot") {
+        let details = vec![
+            "May be stale; this is not an authoritative parent decision"
+                .yellow()
+                .into(),
+        ];
+        return collab_event(title_text(title), details);
+    }
+
+    collab_event(title_text(title), Vec::new())
+}
+
+fn parent_consultation_title(
+    status: &CollabAgentToolCallStatus,
+    agents_states: &HashMap<String, CollabAgentState>,
+) -> &'static str {
+    if matches!(status, CollabAgentToolCallStatus::InProgress) {
+        return "Consulting parent context snapshot";
+    }
+
+    if parent_requires_authoritative_decision(agents_states) {
+        return "Parent context requires an authoritative decision";
+    }
+
     let parent_status = agents_states.values().next().map(|state| &state.status);
-    let title = match (status, parent_status) {
+    match (status, parent_status) {
         (_, Some(CollabAgentStatus::Interrupted)) => "Parent context consultation timed out",
         (_, Some(CollabAgentStatus::NotFound | CollabAgentStatus::Shutdown)) => {
             "Parent context consultation unavailable"
         }
         (CollabAgentToolCallStatus::Failed, _) => "Parent context consultation unavailable",
         _ => "Advisory from parent context snapshot",
-    };
-    let mut details = prompt_line(prompt).into_iter().collect::<Vec<_>>();
-    if matches!(title, "Advisory from parent context snapshot") {
-        let revision = snapshot_revision
-            .map(str::trim)
-            .filter(|revision| !revision.is_empty())
-            .unwrap_or("unavailable");
-        details.push(format!("Snapshot revision: {revision}").dim().into());
-        details.push(
-            "May be stale; this is not an authoritative parent decision"
-                .yellow()
-                .into(),
-        );
     }
-    collab_event(title_text(title), details)
 }
 
 fn parent_requires_authoritative_decision(
@@ -503,7 +585,6 @@ fn waiting_begin(
         [(thread_id, metadata)] => title_with_agent(
             "Waiting for",
             agent_label(*thread_id, metadata),
-            /*spawn_request*/ None,
         ),
         [] => title_text("Waiting for agents"),
         _ => title_text(format!("Waiting for {} agents", receiver_agents.len())),
@@ -538,7 +619,6 @@ fn close_end(
         title_with_agent(
             "Closed",
             agent_label(receiver_thread_id, &agent_metadata(receiver_thread_id)),
-            /*spawn_request*/ None,
         ),
         Vec::new(),
     )
@@ -552,7 +632,6 @@ fn resume_begin(
         title_with_agent(
             "Resuming",
             agent_label(receiver_thread_id, &agent_metadata(receiver_thread_id)),
-            /*spawn_request*/ None,
         ),
         Vec::new(),
     )
@@ -561,16 +640,14 @@ fn resume_begin(
 fn resume_end(
     receiver_thread_id: ThreadId,
     status: Option<&CollabAgentState>,
-    fallback_error: &str,
     agent_metadata: &mut impl FnMut(ThreadId) -> AgentMetadata,
 ) -> PlainHistoryCell {
     collab_event(
         title_with_agent(
             "Resumed",
             agent_label(receiver_thread_id, &agent_metadata(receiver_thread_id)),
-            /*spawn_request*/ None,
         ),
-        vec![status_summary_line(status, fallback_error)],
+        vec![status_summary_line(status)],
     )
 }
 
@@ -586,14 +663,9 @@ fn title_text(title: impl Into<String>) -> Line<'static> {
     title_spans_line(vec![Span::from(title.into()).bold()])
 }
 
-fn title_with_agent(
-    prefix: &str,
-    agent: AgentLabel<'_>,
-    spawn_request: Option<&SpawnRequestSummary>,
-) -> Line<'static> {
+fn title_with_agent(prefix: &str, agent: AgentLabel<'_>) -> Line<'static> {
     let mut spans = vec![Span::from(format!("{prefix} ")).bold()];
     spans.extend(agent_label_spans(agent));
-    spans.extend(spawn_request_spans(spawn_request));
     title_spans_line(spans)
 }
 
@@ -642,37 +714,6 @@ fn agent_label_spans(agent: AgentLabel<'_>) -> Vec<Span<'static>> {
     }
 
     spans
-}
-
-fn spawn_request_spans(spawn_request: Option<&SpawnRequestSummary>) -> Vec<Span<'static>> {
-    let Some(spawn_request) = spawn_request else {
-        return Vec::new();
-    };
-
-    let model = spawn_request.model.trim();
-    if model.is_empty() && spawn_request.reasoning_effort == ReasoningEffortConfig::default() {
-        return Vec::new();
-    }
-
-    let details = if model.is_empty() {
-        format!("({})", spawn_request.reasoning_effort)
-    } else {
-        format!("({model} {})", spawn_request.reasoning_effort)
-    };
-
-    vec![Span::from(" ").dim(), Span::from(details).magenta()]
-}
-
-fn prompt_line(prompt: &str) -> Option<Line<'static>> {
-    let trimmed = prompt.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(Line::from(Span::from(truncate_text(
-            trimmed,
-            COLLAB_PROMPT_PREVIEW_GRAPHEMES,
-        ))))
-    }
 }
 
 fn wait_complete_lines(
@@ -732,10 +773,10 @@ fn first_agent_state<'a>(
         })
 }
 
-fn status_summary_line(status: Option<&CollabAgentState>, fallback_error: &str) -> Line<'static> {
+fn status_summary_line(status: Option<&CollabAgentState>) -> Line<'static> {
     match status {
         Some(status) => status_summary_spans(status).into(),
-        None => error_summary_spans(fallback_error).into(),
+        None => error_summary_spans().into(),
     }
 }
 
@@ -746,39 +787,15 @@ fn status_summary_spans(status: &CollabAgentState) -> Vec<Span<'static>> {
         // Allow `.yellow()`
         #[allow(clippy::disallowed_methods)]
         CollabAgentStatus::Interrupted => vec![Span::from("Interrupted").yellow()],
-        CollabAgentStatus::Completed => {
-            let mut spans = vec![Span::from("Completed").green()];
-            if let Some(message) = status.message.as_ref() {
-                let message_preview = truncate_text(
-                    &message.split_whitespace().collect::<Vec<_>>().join(" "),
-                    COLLAB_AGENT_RESPONSE_PREVIEW_GRAPHEMES,
-                );
-                if !message_preview.is_empty() {
-                    spans.push(Span::from(" - ").dim());
-                    spans.push(Span::from(message_preview));
-                }
-            }
-            spans
-        }
-        CollabAgentStatus::Errored => {
-            error_summary_spans(status.message.as_deref().unwrap_or("Agent errored"))
-        }
+        CollabAgentStatus::Completed => vec![Span::from("Completed").green()],
+        CollabAgentStatus::Errored => error_summary_spans(),
         CollabAgentStatus::Shutdown => vec![Span::from("Shutdown")],
         CollabAgentStatus::NotFound => vec![Span::from("Not found").red()],
     }
 }
 
-fn error_summary_spans(error: &str) -> Vec<Span<'static>> {
-    let mut spans = vec![Span::from("Error").red()];
-    let error_preview = truncate_text(
-        &error.split_whitespace().collect::<Vec<_>>().join(" "),
-        COLLAB_AGENT_ERROR_PREVIEW_GRAPHEMES,
-    );
-    if !error_preview.is_empty() {
-        spans.push(Span::from(" - ").dim());
-        spans.push(Span::from(error_preview));
-    }
-    spans
+fn error_summary_spans() -> Vec<Span<'static>> {
+    vec![Span::from("Error").red()]
 }
 
 #[cfg(test)]
@@ -812,8 +829,8 @@ mod tests {
                 sender_thread_id: sender_thread_id.to_string(),
                 receiver_thread_ids: vec![robie_id.to_string()],
                 prompt: Some("Compute 11! and reply with just the integer result.".to_string()),
-                model: Some("gpt-5".to_string()),
-                reasoning_effort: Some(ReasoningEffortConfig::High),
+                model: None,
+                reasoning_effort: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -821,7 +838,6 @@ mod tests {
                     agent_state(CollabAgentStatus::PendingInit, /*message*/ None),
                 )]),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
         )
         .expect("spawn item renders");
@@ -843,7 +859,6 @@ mod tests {
                     agent_state(CollabAgentStatus::Running, /*message*/ None),
                 )]),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
         )
         .expect("send-input item renders");
@@ -862,7 +877,6 @@ mod tests {
                 snapshot_revision: None,
                 agents_states: HashMap::new(),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
         )
         .expect("ask-parent item renders");
@@ -884,7 +898,6 @@ mod tests {
                     agent_state(CollabAgentStatus::Completed, Some("Yes.")),
                 )]),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
         )
         .expect("answered ask-parent item renders");
@@ -906,7 +919,6 @@ mod tests {
                     agent_state(CollabAgentStatus::Interrupted, /*message*/ None),
                 )]),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
         )
         .expect("timed-out ask-parent item renders");
@@ -928,7 +940,6 @@ mod tests {
                     agent_state(CollabAgentStatus::NotFound, /*message*/ None),
                 )]),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
         )
         .expect("unavailable ask-parent item renders");
@@ -947,7 +958,6 @@ mod tests {
                 snapshot_revision: Some("history-18/items-42".to_string()),
                 agents_states: HashMap::new(),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
         )
         .expect("consult-parent item renders");
@@ -972,7 +982,6 @@ mod tests {
                     ),
                 )]),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
         )
         .expect("answered consult-parent item renders");
@@ -997,7 +1006,6 @@ mod tests {
                     ),
                 )]),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
         )
         .expect("consult-parent requires-authoritative item renders");
@@ -1016,7 +1024,6 @@ mod tests {
                 snapshot_revision: None,
                 agents_states: HashMap::new(),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
         )
         .expect("wait begin item renders");
@@ -1044,7 +1051,6 @@ mod tests {
                     ),
                 ]),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
         )
         .expect("wait end item renders");
@@ -1066,7 +1072,6 @@ mod tests {
                     agent_state(CollabAgentStatus::Completed, Some("39916800")),
                 )]),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
         )
         .expect("close item renders");
@@ -1094,56 +1099,191 @@ mod tests {
 
     #[test]
     fn sub_agent_activity_snapshot() {
-        let started = sub_agent_activity_history_cell(&ThreadItem::SubAgentActivity {
-            id: "activity-started".to_string(),
-            kind: SubAgentActivityKind::Started,
-            agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
-            agent_path: "/root/task".to_string(),
-            model: Some("gpt-5.6".to_string()),
-        })
-        .expect("started activity renders");
-        let interacted = sub_agent_activity_history_cell(&ThreadItem::SubAgentActivity {
-            id: "activity-interacted".to_string(),
-            kind: SubAgentActivityKind::Interacted,
-            agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
-            agent_path: "/root/task".to_string(),
-            model: Some("gpt-5.6".to_string()),
-        })
-        .expect("interacted activity renders");
-        let interrupted = sub_agent_activity_history_cell(&ThreadItem::SubAgentActivity {
-            id: "activity-interrupted".to_string(),
-            kind: SubAgentActivityKind::Interrupted,
-            agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
-            agent_path: "/root/task".to_string(),
-            model: Some("gpt-5.6".to_string()),
-        })
-        .expect("interrupted activity renders");
+        let activities = [
+            sub_agent_activity_item(
+                "activity-started",
+                SubAgentActivityKind::Started,
+                None,
+                None,
+            ),
+            sub_agent_activity_item(
+                "activity-interacted",
+                SubAgentActivityKind::Interacted,
+                None,
+                None,
+            ),
+            sub_agent_activity_item(
+                "activity-interrupted",
+                SubAgentActivityKind::Interrupted,
+                None,
+                None,
+            ),
+            sub_agent_activity_item(
+                "activity-send-message",
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::SendMessage),
+                Some(SubAgentActivityOutcome::Succeeded),
+            ),
+            sub_agent_activity_item(
+                "activity-send-message-failed",
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::SendMessage),
+                Some(SubAgentActivityOutcome::Failed),
+            ),
+            sub_agent_activity_item(
+                "activity-followup",
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::FollowupTask),
+                Some(SubAgentActivityOutcome::Succeeded),
+            ),
+            sub_agent_activity_item(
+                "activity-followup-failed",
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::FollowupTask),
+                Some(SubAgentActivityOutcome::Failed),
+            ),
+            sub_agent_activity_item(
+                "activity-reply",
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::ParentReply),
+                Some(SubAgentActivityOutcome::Succeeded),
+            ),
+            sub_agent_activity_item(
+                "activity-reply-failed",
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::ParentReply),
+                Some(SubAgentActivityOutcome::Failed),
+            ),
+            sub_agent_activity_item(
+                "activity-inspect",
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::InspectAgent),
+                Some(SubAgentActivityOutcome::Succeeded),
+            ),
+            sub_agent_activity_item(
+                "activity-inspect-failed",
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::InspectAgent),
+                Some(SubAgentActivityOutcome::Failed),
+            ),
+        ];
 
-        let history = [started, interacted, interrupted]
+        let history = activities
             .iter()
-            .map(cell_to_text)
+            .filter_map(sub_agent_activity_history_cell)
+            .map(|cell| cell_to_text(&cell))
             .collect::<Vec<_>>()
             .join("\n");
-        let transcript = [
-            sub_agent_activity_summary(
-                SubAgentActivityKind::Started,
-                "/root/task",
-                Some("gpt-5.6"),
-            ),
-            sub_agent_activity_summary(
-                SubAgentActivityKind::Interacted,
-                "/root/task",
-                Some("gpt-5.6"),
-            ),
-            sub_agent_activity_summary(
-                SubAgentActivityKind::Interrupted,
-                "/root/task",
-                Some("gpt-5.6"),
-            ),
-        ]
-        .join("\n");
+        let transcript = activities
+            .iter()
+            .map(|item| match item {
+                ThreadItem::SubAgentActivity {
+                    kind,
+                    operation,
+                    outcome,
+                    agent_path,
+                    ..
+                } => sub_agent_activity_summary(
+                    *kind,
+                    *operation,
+                    *outcome,
+                    agent_path,
+                ),
+                _ => unreachable!("activity item"),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
         let snapshot = format!("History:\n{history}\n\nTranscript:\n{transcript}");
         assert_snapshot!("sub_agent_activity", snapshot);
+    }
+
+    #[test]
+    fn sub_agent_activity_running_hints_distinguish_successful_work_from_terminal_activity() {
+        let cases = [
+            (
+                SubAgentActivityKind::Started,
+                None,
+                None,
+                /*expected*/ true,
+            ),
+            (
+                SubAgentActivityKind::Started,
+                None,
+                Some(SubAgentActivityOutcome::Succeeded),
+                /*expected*/ true,
+            ),
+            (
+                SubAgentActivityKind::Interacted,
+                None,
+                None,
+                /*expected*/ true,
+            ),
+            (
+                SubAgentActivityKind::Interrupted,
+                None,
+                None,
+                /*expected*/ false,
+            ),
+            (
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::SendMessage),
+                Some(SubAgentActivityOutcome::Succeeded),
+                /*expected*/ false,
+            ),
+            (
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::FollowupTask),
+                Some(SubAgentActivityOutcome::Succeeded),
+                /*expected*/ true,
+            ),
+            (
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::ParentReply),
+                Some(SubAgentActivityOutcome::Succeeded),
+                /*expected*/ true,
+            ),
+            (
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::InspectAgent),
+                Some(SubAgentActivityOutcome::Succeeded),
+                /*expected*/ false,
+            ),
+            (
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::SendMessage),
+                Some(SubAgentActivityOutcome::Failed),
+                /*expected*/ false,
+            ),
+            (
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::FollowupTask),
+                Some(SubAgentActivityOutcome::Failed),
+                /*expected*/ false,
+            ),
+            (
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::ParentReply),
+                Some(SubAgentActivityOutcome::Failed),
+                /*expected*/ false,
+            ),
+            (
+                SubAgentActivityKind::Interacted,
+                Some(SubAgentActivityOperation::InspectAgent),
+                Some(SubAgentActivityOutcome::Failed),
+                /*expected*/ false,
+            ),
+        ];
+
+        for (index, (kind, operation, outcome, expected)) in cases.into_iter().enumerate() {
+            let item = sub_agent_activity_item(
+                &format!("activity-running-{index}"),
+                kind,
+                operation,
+                outcome,
+            );
+            let display = sub_agent_activity_display(&item).expect("activity display");
+            assert_eq!(display.is_running_hint, expected);
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -1210,8 +1350,8 @@ mod tests {
                 sender_thread_id: sender_thread_id.to_string(),
                 receiver_thread_ids: vec![robie_id.to_string()],
                 prompt: Some(String::new()),
-                model: Some("gpt-5".to_string()),
-                reasoning_effort: Some(ReasoningEffortConfig::High),
+                model: None,
+                reasoning_effort: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1219,7 +1359,6 @@ mod tests {
                     agent_state(CollabAgentStatus::PendingInit, /*message*/ None),
                 )]),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, ThreadId::new()),
         )
         .expect("spawn item renders");
@@ -1232,8 +1371,6 @@ mod tests {
         assert_eq!(title.spans[4].content.as_ref(), "[explorer]");
         assert_eq!(title.spans[4].style.fg, None);
         assert!(!title.spans[4].style.add_modifier.contains(Modifier::DIM));
-        assert_eq!(title.spans[6].content.as_ref(), "(gpt-5 high)");
-        assert_eq!(title.spans[6].style.fg, Some(Color::Magenta));
     }
 
     #[test]
@@ -1260,7 +1397,6 @@ mod tests {
                     agent_state(CollabAgentStatus::Interrupted, /*message*/ None),
                 )]),
             },
-            /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, ThreadId::new()),
         )
         .expect("resume item renders");
@@ -1288,6 +1424,23 @@ mod tests {
             }
         } else {
             AgentMetadata::default()
+        }
+    }
+
+    fn sub_agent_activity_item(
+        id: &str,
+        kind: SubAgentActivityKind,
+        operation: Option<SubAgentActivityOperation>,
+        outcome: Option<SubAgentActivityOutcome>,
+    ) -> ThreadItem {
+        ThreadItem::SubAgentActivity {
+            id: id.to_string(),
+            kind,
+            agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
+            agent_path: "/root/task".to_string(),
+            operation,
+            outcome,
+            model: Some("gpt-5.6".to_string()),
         }
     }
 

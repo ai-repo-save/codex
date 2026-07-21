@@ -9,6 +9,7 @@ use crate::history_cell::HistoryCell;
 use crate::history_cell::PlainHistoryCell;
 use crate::history_cell::ReasoningSummaryCell;
 use crate::history_cell::UserHistoryCell;
+use crate::multi_agents::collab_tool_summary;
 use crate::multi_agents::sub_agent_activity_summary;
 use codex_app_server_protocol::Thread;
 use codex_app_server_protocol::ThreadItem;
@@ -194,17 +195,18 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
                 .unwrap_or_else(|| tool.clone());
             vec![format!("tool: {name} · {status:?}").dim().into()]
         }
-        ThreadItem::CollabAgentToolCall { tool, status, .. } => {
-            vec![format!("agent tool: {tool:?} · {status:?}").dim().into()]
+        ThreadItem::CollabAgentToolCall { .. } => {
+            vec![collab_tool_summary(item)?.dim().into()]
         }
         ThreadItem::SubAgentActivity {
             kind,
+            operation,
+            outcome,
             agent_path,
-            model,
             ..
         } => {
             vec![
-                sub_agent_activity_summary(*kind, agent_path, model.as_deref())
+                sub_agent_activity_summary(*kind, *operation, *outcome, agent_path)
                     .dim()
                     .into(),
             ]
