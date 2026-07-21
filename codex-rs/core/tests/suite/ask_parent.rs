@@ -1,12 +1,12 @@
 use anyhow::Context;
 use anyhow::Result;
 use codex_features::Feature;
+use codex_protocol::AgentPath;
 use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
 use codex_protocol::items::CollabAgentTool;
 use codex_protocol::items::CollabAgentToolCallStatus;
 use codex_protocol::items::SubAgentActivityItem;
 use codex_protocol::items::TurnItem;
-use codex_protocol::AgentPath;
 use codex_protocol::protocol::ENVIRONMENT_CONTEXT_OPEN_TAG;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::Op;

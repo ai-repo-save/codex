@@ -433,9 +433,7 @@ mod tests {
         let thread_id =
             ThreadId::from_string("00000000-0000-0000-0000-000000000104").expect("valid thread");
         state.upsert(
-            thread_id,
-            /*agent_nickname*/ None,
-            /*agent_role*/ None,
+            thread_id, /*agent_nickname*/ None, /*agent_role*/ None,
             /*is_closed*/ false,
         );
         state.set_running(thread_id, true);

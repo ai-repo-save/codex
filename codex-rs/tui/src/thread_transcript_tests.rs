@@ -1,4 +1,7 @@
 use super::*;
+use crate::history_cell::HistoryCell;
+use crate::test_support::PathBufExt;
+use crate::test_support::test_path_buf;
 use codex_app_server_protocol::CollabAgentTool;
 use codex_app_server_protocol::CollabAgentToolCallStatus;
 use codex_app_server_protocol::SubAgentActivityKind;
@@ -8,9 +11,6 @@ use codex_app_server_protocol::ThreadStatus;
 use codex_app_server_protocol::Turn;
 use codex_app_server_protocol::TurnItemsView;
 use codex_app_server_protocol::TurnStatus;
-use crate::history_cell::HistoryCell;
-use crate::test_support::PathBufExt;
-use crate::test_support::test_path_buf;
 
 #[test]
 fn persisted_multi_agent_items_render_safe_transcript_summaries() {

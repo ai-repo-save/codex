@@ -1653,7 +1653,6 @@ async fn multi_agent_v2_followup_task_rejects_root_target_from_child() {
             model: None,
         }],
     );
-
 }
 
 #[tokio::test]
