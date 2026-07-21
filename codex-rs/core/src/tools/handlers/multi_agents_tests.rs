@@ -193,6 +193,27 @@ fn completed_sub_agent_activities(
         .collect()
 }
 
+fn assert_single_interaction(
+    receiver: &async_channel::Receiver<codex_protocol::protocol::Event>,
+    agent_thread_id: ThreadId,
+    agent_path: AgentPath,
+    operation: SubAgentActivityOperation,
+    outcome: SubAgentActivityOutcome,
+) {
+    assert_eq!(
+        completed_sub_agent_activities(receiver),
+        vec![SubAgentActivityItem {
+            id: "call-1".to_string(),
+            agent_thread_id,
+            agent_path,
+            kind: SubAgentActivityKind::Interacted,
+            operation: Some(operation),
+            outcome: Some(outcome),
+            model: None,
+        }],
+    );
+}
+
 #[derive(Debug, Deserialize)]
 struct ListAgentsResult {
     agents: Vec<ListedAgentResult>,
@@ -1291,17 +1312,44 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
                         && !communication.trigger_turn
             )
     }));
-    assert_eq!(
-        completed_sub_agent_activities(&receiver),
-        vec![SubAgentActivityItem {
-            id: "call-1".to_string(),
-            agent_thread_id: child_thread_id,
-            agent_path: AgentPath::try_from("/root/test_process").expect("agent path"),
-            kind: SubAgentActivityKind::Interacted,
-            operation: Some(SubAgentActivityOperation::SendMessage),
-            outcome: Some(SubAgentActivityOutcome::Succeeded),
-            model: None,
-        }],
+    assert_single_interaction(
+        &receiver,
+        child_thread_id,
+        AgentPath::try_from("/root/test_process").expect("agent path"),
+        SubAgentActivityOperation::SendMessage,
+        SubAgentActivityOutcome::Succeeded,
+    );
+
+    let stale_thread = manager
+        .remove_thread(&child_thread_id)
+        .await
+        .expect("child thread should be loaded before removal");
+    stale_thread
+        .submit(Op::Shutdown {})
+        .await
+        .expect("removed child thread should accept shutdown");
+    stale_thread.wait_until_terminated().await;
+
+    let Err(_) = SendMessageHandlerV2::default()
+        .handle(invocation(
+            session.clone(),
+            turn.clone(),
+            "send_message",
+            function_payload(json!({
+                "target": "test_process",
+                "message": "send-message-after-unload"
+            })),
+        ))
+        .await
+    else {
+        panic!("send_message should fail after its resolved target unloads");
+    };
+    assert_single_interaction(
+        &receiver,
+        child_thread_id,
+        AgentPath::try_from("/root/test_process").expect("agent path"),
+        SubAgentActivityOperation::SendMessage,
+        SubAgentActivityOutcome::Failed,
     );
 }
 
@@ -1604,6 +1652,95 @@ async fn multi_agent_v2_followup_task_rejects_root_target_from_child() {
             outcome: Some(SubAgentActivityOutcome::Failed),
             model: None,
         }],
+    );
+
+}
+
+#[tokio::test]
+async fn multi_agent_v2_parent_reply_failure_emits_resolved_target_activity() {
+    let (mut session, mut turn, receiver) = make_session_and_context_with_rx().await;
+    let manager = thread_manager();
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .enable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    set_turn_config(
+        Arc::get_mut(&mut turn).expect("turn should not have additional references"),
+        config,
+    );
+    let root = manager
+        .start_thread((*turn.config).clone())
+        .await
+        .expect("root thread should start");
+    Arc::get_mut(&mut session)
+        .expect("session should not have additional references")
+        .services
+        .agent_control = manager.agent_control();
+    Arc::get_mut(&mut session)
+        .expect("session should not have additional references")
+        .thread_id = root.thread_id;
+    session
+        .services
+        .agent_control
+        .register_session_root(root.thread_id, None);
+
+    let child_path = AgentPath::try_from("/root/worker").expect("agent path");
+    let child_thread_id = session
+        .services
+        .agent_control
+        .spawn_agent_with_metadata(
+            (*turn.config).clone(),
+            vec![UserInput::Text {
+                text: "inspect this repo".to_string(),
+                text_elements: Vec::new(),
+            }],
+            Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                parent_thread_id: root.thread_id,
+                depth: 1,
+                agent_path: Some(child_path.clone()),
+                agent_nickname: None,
+                agent_role: None,
+            })),
+            crate::agent::control::SpawnAgentOptions::default(),
+        )
+        .await
+        .expect("worker spawn should succeed")
+        .thread_id;
+    Arc::get_mut(&mut session)
+        .expect("session should not have additional references")
+        .thread_id = child_thread_id;
+    Arc::get_mut(&mut turn)
+        .expect("turn should not have additional references")
+        .session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+        parent_thread_id: root.thread_id,
+        depth: 1,
+        agent_path: Some(child_path),
+        agent_nickname: None,
+        agent_role: None,
+    });
+
+    let Err(_) = SendMessageHandlerV2::default()
+        .handle(invocation(
+            session,
+            turn,
+            "send_message",
+            function_payload(json!({
+                "target": "/root",
+                "message": "late reply",
+                "in_reply_to": "missing-request"
+            })),
+        ))
+        .await
+    else {
+        panic!("send_message should reject an unmatched parent reply");
+    };
+    assert_single_interaction(
+        &receiver,
+        root.thread_id,
+        AgentPath::root(),
+        SubAgentActivityOperation::ParentReply,
+        SubAgentActivityOutcome::Failed,
     );
 }
 
@@ -1971,6 +2108,35 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
             model: None,
         }],
     );
+
+    let stale_thread = manager
+        .remove_thread(&agent_id)
+        .await
+        .expect("worker thread should be loaded before removal");
+    stale_thread
+        .submit(Op::Shutdown {})
+        .await
+        .expect("removed worker thread should accept shutdown");
+    stale_thread.wait_until_terminated().await;
+
+    let Err(_) = InspectAgentHandlerV2
+        .handle(invocation(
+            session,
+            turn,
+            "inspect_agent",
+            function_payload(json!({"target": "worker"})),
+        ))
+        .await
+    else {
+        panic!("inspect_agent should fail after its resolved target unloads");
+    };
+    assert_single_interaction(
+        &receiver,
+        agent_id,
+        AgentPath::try_from("/root/worker").expect("agent path"),
+        SubAgentActivityOperation::InspectAgent,
+        SubAgentActivityOutcome::Failed,
+    );
 }
 
 #[tokio::test]
@@ -2331,7 +2497,7 @@ async fn multi_agent_v2_send_message_rejects_interrupt_parameter() {
 
 #[tokio::test]
 async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn() {
-    let (mut session, mut turn) = make_session_and_context().await;
+    let (mut session, mut turn, receiver) = make_session_and_context_with_rx().await;
     let manager = thread_manager();
     let mut config = turn.config.as_ref().clone();
     let _ = config.features.enable(Feature::MultiAgentV2);
@@ -2360,6 +2526,7 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
         ))
         .await
         .expect("spawn worker");
+    let _ = completed_sub_agent_activities(&receiver);
     let agent_id = session
         .services
         .agent_control
@@ -2400,6 +2567,13 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
         ))
         .await
         .expect("followup_task should succeed");
+    assert_single_interaction(
+        &receiver,
+        agent_id,
+        worker_path.clone(),
+        SubAgentActivityOperation::FollowupTask,
+        SubAgentActivityOutcome::Succeeded,
+    );
 
     assert!(manager.captured_ops().iter().any(|(id, op)| {
         *id == agent_id

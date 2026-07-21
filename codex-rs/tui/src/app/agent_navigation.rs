@@ -105,6 +105,13 @@ impl AgentNavigationState {
     }
 
     pub(crate) fn record_sub_agent_activity(&mut self, activity: SubAgentActivityDisplay) {
+        let Some(is_running) = activity.running_update else {
+            if let Some(entry) = self.threads.get_mut(&activity.thread_id) {
+                entry.agent_path = Some(activity.agent_path);
+            }
+            return;
+        };
+
         if !self.threads.contains_key(&activity.thread_id) {
             self.order.push(activity.thread_id);
         }
@@ -119,8 +126,10 @@ impl AgentNavigationState {
                     is_closed: false,
                 });
         entry.agent_path = Some(activity.agent_path);
-        entry.is_running = activity.is_running_hint;
-        entry.is_closed = false;
+        entry.is_running = is_running;
+        if is_running {
+            entry.is_closed = false;
+        }
     }
 
     pub(crate) fn set_running(&mut self, thread_id: ThreadId, is_running: bool) {
@@ -416,5 +425,64 @@ mod tests {
             state.active_agent_label(Some(main_thread_id), Some(main_thread_id)),
             Some("Main [default]".to_string())
         );
+    }
+
+    #[test]
+    fn informational_activity_preserves_a_running_agent() {
+        let mut state = AgentNavigationState::default();
+        let thread_id =
+            ThreadId::from_string("00000000-0000-0000-0000-000000000104").expect("valid thread");
+        state.upsert(
+            thread_id,
+            /*agent_nickname*/ None,
+            /*agent_role*/ None,
+            /*is_closed*/ false,
+        );
+        state.set_running(thread_id, true);
+
+        for agent_path in ["/root/send", "/root/inspect"] {
+            state.record_sub_agent_activity(SubAgentActivityDisplay {
+                thread_id,
+                agent_path: agent_path.to_string(),
+                running_update: None,
+            });
+        }
+
+        let entry = state.get(&thread_id).expect("tracked agent");
+        assert!(entry.is_running);
+        assert!(!entry.is_closed);
+    }
+
+    #[test]
+    fn failed_activity_preserves_a_closed_agent() {
+        let mut state = AgentNavigationState::default();
+        let thread_id =
+            ThreadId::from_string("00000000-0000-0000-0000-000000000105").expect("valid thread");
+        state.mark_closed(thread_id);
+
+        state.record_sub_agent_activity(SubAgentActivityDisplay {
+            thread_id,
+            agent_path: "/root/failed".to_string(),
+            running_update: None,
+        });
+
+        let entry = state.get(&thread_id).expect("tracked agent");
+        assert!(!entry.is_running);
+        assert!(entry.is_closed);
+    }
+
+    #[test]
+    fn informational_activity_does_not_create_an_agent_entry() {
+        let mut state = AgentNavigationState::default();
+        let thread_id =
+            ThreadId::from_string("00000000-0000-0000-0000-000000000106").expect("valid thread");
+
+        state.record_sub_agent_activity(SubAgentActivityDisplay {
+            thread_id,
+            agent_path: "/root/unknown".to_string(),
+            running_update: None,
+        });
+
+        assert!(state.is_empty());
     }
 }

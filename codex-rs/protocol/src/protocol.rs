@@ -5686,7 +5686,8 @@ mod tests {
 
     #[test]
     fn sub_agent_activity_deserializes_without_optional_metadata() {
-        let agent_thread_id = ThreadId::new();
+        let agent_thread_id =
+            ThreadId::from_string("019c5c55-4bf9-7ade-ae3c-0d6079c3c941").expect("valid thread ID");
         let agent_path = AgentPath::try_from("/root/worker").expect("valid agent path");
         let expected_item = SubAgentActivityItem {
             id: "activity-1".into(),
@@ -5708,18 +5709,27 @@ mod tests {
             outcome: None,
         };
 
-        let item = serde_json::from_value::<TurnItem>(
-            serde_json::to_value(TurnItem::SubAgentActivity(expected_item.clone())).unwrap(),
-        )
+        let item = serde_json::from_value::<TurnItem>(json!({
+            "type": "SubAgentActivity",
+            "id": "activity-1",
+            "kind": "interacted",
+            "agent_thread_id": "019c5c55-4bf9-7ade-ae3c-0d6079c3c941",
+            "agent_path": "/root/worker"
+        }))
         .unwrap();
         let TurnItem::SubAgentActivity(item) = item else {
             panic!("expected sub-agent activity item");
         };
         assert_eq!(item, expected_item);
 
-        let event = serde_json::from_value::<EventMsg>(
-            serde_json::to_value(EventMsg::SubAgentActivity(expected_event.clone())).unwrap(),
-        )
+        let event = serde_json::from_value::<EventMsg>(json!({
+            "type": "sub_agent_activity",
+            "event_id": "activity-1",
+            "occurred_at_ms": 42,
+            "agent_thread_id": "019c5c55-4bf9-7ade-ae3c-0d6079c3c941",
+            "agent_path": "/root/worker",
+            "kind": "interacted"
+        }))
         .unwrap();
         let EventMsg::SubAgentActivity(event) = event else {
             panic!("expected sub-agent activity event");

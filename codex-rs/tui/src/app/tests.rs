@@ -1305,7 +1305,7 @@ async fn open_agent_picker_clears_completed_path_backed_agent_running_state() ->
         .record_sub_agent_activity(SubAgentActivityDisplay {
             thread_id,
             agent_path: "/root/child".to_string(),
-            is_running_hint: true,
+            running_update: Some(true),
         });
 
     Box::pin(app.open_agent_picker(&mut app_server)).await;
@@ -1343,7 +1343,7 @@ async fn open_agent_picker_refreshes_replay_only_path_backed_liveness() -> Resul
         .record_sub_agent_activity(SubAgentActivityDisplay {
             thread_id,
             agent_path: "/root/child".to_string(),
-            is_running_hint: true,
+            running_update: Some(true),
         });
 
     Box::pin(app.open_agent_picker(&mut app_server)).await;

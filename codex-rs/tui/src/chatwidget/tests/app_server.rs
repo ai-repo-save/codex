@@ -1,4 +1,7 @@
 use super::*;
+use codex_app_server_protocol::SubAgentActivityKind;
+use codex_app_server_protocol::SubAgentActivityOperation;
+use codex_app_server_protocol::SubAgentActivityOutcome;
 use pretty_assertions::assert_eq;
 
 fn thread_settings_for_test(
@@ -907,6 +910,40 @@ async fn live_app_server_collab_wait_items_render_history() {
         .collect::<Vec<_>>()
         .join("\n");
     assert_chatwidget_snapshot!("app_server_collab_wait_items_render_history", combined);
+}
+
+#[tokio::test]
+async fn live_app_server_sub_agent_activity_renders_history() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    chat.handle_server_notification(
+        ServerNotification::ItemStarted(ItemStartedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            started_at_ms: 0,
+            item: AppServerThreadItem::SubAgentActivity {
+                id: "activity-1".to_string(),
+                kind: SubAgentActivityKind::Interacted,
+                agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
+                agent_path: "/root/research".to_string(),
+                operation: Some(SubAgentActivityOperation::FollowupTask),
+                outcome: Some(SubAgentActivityOutcome::Succeeded),
+                model: Some("gpt-5.6".to_string()),
+            },
+        }),
+        /*replay_kind*/ None,
+    );
+
+    let combined = drain_insert_history(&mut rx)
+        .into_iter()
+        .map(|lines| lines_to_single_string(&lines))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_chatwidget_snapshot!(
+        "live_app_server_sub_agent_activity_renders_history",
+        combined,
+        @r###"• Sent follow-up to `/root/research`"###,
+    );
 }
 
 #[tokio::test]

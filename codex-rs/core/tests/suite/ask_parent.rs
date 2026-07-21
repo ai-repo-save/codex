@@ -4,7 +4,9 @@ use codex_features::Feature;
 use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
 use codex_protocol::items::CollabAgentTool;
 use codex_protocol::items::CollabAgentToolCallStatus;
+use codex_protocol::items::SubAgentActivityItem;
 use codex_protocol::items::TurnItem;
+use codex_protocol::AgentPath;
 use codex_protocol::protocol::ENVIRONMENT_CONTEXT_OPEN_TAG;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::Op;
@@ -362,6 +364,13 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
         .find(|body| parent_request_id(body).is_some())
         .expect("active parent should receive the child request");
     assert!(has_call_output(&parent_request, WAIT_CALL_ID));
+    let child_thread_id = test
+        .thread_manager
+        .list_thread_ids()
+        .await
+        .into_iter()
+        .find(|thread_id| *thread_id != test.session_configured.thread_id)
+        .expect("worker thread should be registered");
     let parent_reply_activities = root_events
         .into_iter()
         .filter_map(|event| match event {
@@ -371,19 +380,20 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
             },
             _ => None,
         })
-        .filter(|activity| activity.operation == Some(SubAgentActivityOperation::ParentReply))
+        .filter(|activity| activity.id == REPLY_CALL_ID)
         .collect::<Vec<_>>();
     assert_eq!(
-        parent_reply_activities.len(),
-        1,
-        "correlated reply should emit exactly one activity"
+        parent_reply_activities,
+        vec![SubAgentActivityItem {
+            id: REPLY_CALL_ID.to_string(),
+            agent_thread_id: child_thread_id,
+            agent_path: AgentPath::try_from(CHILD_PATH).expect("child path should be valid"),
+            kind: SubAgentActivityKind::Interacted,
+            operation: Some(SubAgentActivityOperation::ParentReply),
+            outcome: Some(SubAgentActivityOutcome::Succeeded),
+            model: None,
+        }],
     );
-    let activity = &parent_reply_activities[0];
-    assert_eq!(activity.id, REPLY_CALL_ID);
-    assert_eq!(activity.agent_path.as_str(), CHILD_PATH);
-    assert_eq!(activity.kind, SubAgentActivityKind::Interacted);
-    assert_eq!(activity.outcome, Some(SubAgentActivityOutcome::Succeeded));
-    assert_eq!(activity.model, None);
 
     Ok(())
 }

@@ -47,7 +47,11 @@ pub(crate) struct AgentPickerThreadEntry {
 pub(crate) struct SubAgentActivityDisplay {
     pub(crate) thread_id: ThreadId,
     pub(crate) agent_path: String,
-    pub(crate) is_running_hint: bool,
+    /// An explicit liveness transition, when this activity represents one.
+    ///
+    /// `None` means that the activity is informational and must not affect the
+    /// existing picker entry's liveness or closed state.
+    pub(crate) running_update: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -300,7 +304,7 @@ pub(crate) fn sub_agent_activity_display(item: &ThreadItem) -> Option<SubAgentAc
     Some(SubAgentActivityDisplay {
         thread_id: parse_thread_id(agent_thread_id)?,
         agent_path: agent_path.clone(),
-        is_running_hint: sub_agent_activity_is_running_hint(*kind, *operation, *outcome),
+        running_update: sub_agent_activity_running_update(*kind, *operation, *outcome),
     })
 }
 
@@ -398,24 +402,28 @@ fn sub_agent_activity_action(
     }
 }
 
-fn sub_agent_activity_is_running_hint(
+fn sub_agent_activity_running_update(
     kind: SubAgentActivityKind,
     operation: Option<SubAgentActivityOperation>,
     outcome: Option<SubAgentActivityOutcome>,
-) -> bool {
-    if operation.is_none() && outcome.is_none() {
-        return !matches!(kind, SubAgentActivityKind::Interrupted);
+) -> Option<bool> {
+    if matches!(outcome, Some(SubAgentActivityOutcome::Failed)) {
+        return None;
     }
 
-    matches!(outcome, Some(SubAgentActivityOutcome::Succeeded))
-        && (matches!(kind, SubAgentActivityKind::Started)
-            || matches!(
-                operation,
-                Some(
-                    SubAgentActivityOperation::FollowupTask
-                        | SubAgentActivityOperation::ParentReply
-                )
-            ))
+    match kind {
+        SubAgentActivityKind::Started => Some(true),
+        SubAgentActivityKind::Interrupted => Some(false),
+        SubAgentActivityKind::Interacted => match operation {
+            Some(
+                SubAgentActivityOperation::FollowupTask | SubAgentActivityOperation::ParentReply,
+            ) if matches!(outcome, Some(SubAgentActivityOutcome::Succeeded)) => Some(true),
+            Some(_) => None,
+            // Preserve the legacy operation-free activity behavior.
+            None if outcome.is_none() => Some(true),
+            None => Some(false),
+        },
+    }
 }
 
 fn sub_agent_activity_title(action: SubAgentActivityAction, agent_path: &str) -> Line<'static> {
@@ -1191,79 +1199,79 @@ mod tests {
     }
 
     #[test]
-    fn sub_agent_activity_running_hints_distinguish_successful_work_from_terminal_activity() {
+    fn sub_agent_activity_running_updates_distinguish_liveness_from_informational_activity() {
         let cases = [
             (
                 SubAgentActivityKind::Started,
                 None,
                 None,
-                /*expected*/ true,
+                /*expected*/ Some(true),
             ),
             (
                 SubAgentActivityKind::Started,
                 None,
                 Some(SubAgentActivityOutcome::Succeeded),
-                /*expected*/ true,
+                /*expected*/ Some(true),
             ),
             (
                 SubAgentActivityKind::Interacted,
                 None,
                 None,
-                /*expected*/ true,
+                /*expected*/ Some(true),
             ),
             (
                 SubAgentActivityKind::Interrupted,
                 None,
                 None,
-                /*expected*/ false,
+                /*expected*/ Some(false),
             ),
             (
                 SubAgentActivityKind::Interacted,
                 Some(SubAgentActivityOperation::SendMessage),
                 Some(SubAgentActivityOutcome::Succeeded),
-                /*expected*/ false,
+                /*expected*/ None,
             ),
             (
                 SubAgentActivityKind::Interacted,
                 Some(SubAgentActivityOperation::FollowupTask),
                 Some(SubAgentActivityOutcome::Succeeded),
-                /*expected*/ true,
+                /*expected*/ Some(true),
             ),
             (
                 SubAgentActivityKind::Interacted,
                 Some(SubAgentActivityOperation::ParentReply),
                 Some(SubAgentActivityOutcome::Succeeded),
-                /*expected*/ true,
+                /*expected*/ Some(true),
             ),
             (
                 SubAgentActivityKind::Interacted,
                 Some(SubAgentActivityOperation::InspectAgent),
                 Some(SubAgentActivityOutcome::Succeeded),
-                /*expected*/ false,
+                /*expected*/ None,
             ),
             (
                 SubAgentActivityKind::Interacted,
                 Some(SubAgentActivityOperation::SendMessage),
                 Some(SubAgentActivityOutcome::Failed),
-                /*expected*/ false,
+                /*expected*/ None,
             ),
             (
                 SubAgentActivityKind::Interacted,
                 Some(SubAgentActivityOperation::FollowupTask),
                 Some(SubAgentActivityOutcome::Failed),
-                /*expected*/ false,
+                /*expected*/ None,
             ),
             (
                 SubAgentActivityKind::Interacted,
                 Some(SubAgentActivityOperation::ParentReply),
                 Some(SubAgentActivityOutcome::Failed),
-                /*expected*/ false,
+                /*expected*/ None,
             ),
             (
                 SubAgentActivityKind::Interacted,
                 Some(SubAgentActivityOperation::InspectAgent),
                 Some(SubAgentActivityOutcome::Failed),
-                /*expected*/ false,
+                /*expected*/ None,
             ),
         ];
 
@@ -1275,7 +1283,7 @@ mod tests {
                 outcome,
             );
             let display = sub_agent_activity_display(&item).expect("activity display");
-            assert_eq!(display.is_running_hint, expected);
+            assert_eq!(display.running_update, expected);
         }
     }
 

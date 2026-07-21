@@ -2,6 +2,9 @@ use super::*;
 use crate::app_event::HistoryLookupResponse;
 use codex_app_server_protocol::NetworkAccess;
 use codex_app_server_protocol::SandboxPolicy;
+use codex_app_server_protocol::SubAgentActivityKind;
+use codex_app_server_protocol::SubAgentActivityOperation;
+use codex_app_server_protocol::SubAgentActivityOutcome;
 use codex_protocol::models::ManagedFileSystemPermissions;
 use codex_protocol::permissions::FileSystemAccessMode;
 use codex_protocol::permissions::FileSystemPath;
@@ -113,6 +116,36 @@ async fn context_anchor_items_render_history_snapshot() {
         .join("\n");
 
     assert_chatwidget_snapshot!("context_anchor_items_history", combined);
+}
+
+#[tokio::test]
+async fn replayed_sub_agent_activity_renders_history() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    chat.replay_thread_item(
+        AppServerThreadItem::SubAgentActivity {
+            id: "activity-1".to_string(),
+            kind: SubAgentActivityKind::Interacted,
+            agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
+            agent_path: "/root/research".to_string(),
+            operation: Some(SubAgentActivityOperation::FollowupTask),
+            outcome: Some(SubAgentActivityOutcome::Succeeded),
+            model: Some("gpt-5.6".to_string()),
+        },
+        "turn-1".to_string(),
+        ReplayKind::ThreadSnapshot,
+    );
+
+    let combined = drain_insert_history(&mut rx)
+        .into_iter()
+        .map(|lines| lines_to_single_string(&lines))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_chatwidget_snapshot!(
+        "replayed_sub_agent_activity_renders_history",
+        combined,
+        @r###"• Sent follow-up to `/root/research`"###,
+    );
 }
 
 #[tokio::test]
