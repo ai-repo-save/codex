@@ -939,11 +939,7 @@ async fn live_app_server_sub_agent_activity_renders_history() {
         .map(|lines| lines_to_single_string(&lines))
         .collect::<Vec<_>>()
         .join("\n");
-    assert_chatwidget_snapshot!(
-        "live_app_server_sub_agent_activity_renders_history",
-        combined,
-        @r###"• Sent follow-up to `/root/research`"###,
-    );
+    insta::assert_snapshot!(combined, @r###"• Sent follow-up to `/root/research`"###);
 }
 
 #[tokio::test]

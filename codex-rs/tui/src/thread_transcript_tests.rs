@@ -1,5 +1,4 @@
 use super::*;
-use crate::history_cell::HistoryCell;
 use crate::test_support::PathBufExt;
 use crate::test_support::test_path_buf;
 use codex_app_server_protocol::CollabAgentTool;
