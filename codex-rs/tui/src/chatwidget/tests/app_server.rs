@@ -917,10 +917,10 @@ async fn live_app_server_sub_agent_activity_renders_history() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 
     chat.handle_server_notification(
-        ServerNotification::ItemStarted(ItemStartedNotification {
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
             thread_id: "thread-1".to_string(),
             turn_id: "turn-1".to_string(),
-            started_at_ms: 0,
+            completed_at_ms: 0,
             item: AppServerThreadItem::SubAgentActivity {
                 id: "activity-1".to_string(),
                 kind: SubAgentActivityKind::Interacted,
