@@ -953,6 +953,22 @@
       ],
       "type": "string"
     },
+    "SubAgentActivityOperation": {
+      "enum": [
+        "sendMessage",
+        "followupTask",
+        "parentReply",
+        "inspectAgent"
+      ],
+      "type": "string"
+    },
+    "SubAgentActivityOutcome": {
+      "enum": [
+        "succeeded",
+        "failed"
+      ],
+      "type": "string"
+    },
     "SubAgentSource": {
       "oneOf": [
         {
@@ -1820,6 +1836,26 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "operation": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SubAgentActivityOperation"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SubAgentActivityOutcome"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "type": {
