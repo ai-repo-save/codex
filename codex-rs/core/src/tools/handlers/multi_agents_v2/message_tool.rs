@@ -168,6 +168,7 @@ pub(crate) async fn handle_message_string_tool(
                             context,
                         )
                         .await
+                        .map(|_| ())
                         .map_err(|err| collab_agent_error(receiver_thread_id, err))
                 }
                 Err(err) => Err(err),
