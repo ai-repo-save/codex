@@ -2500,7 +2500,10 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
     let manager = thread_manager();
     let mut config = turn.config.as_ref().clone();
     let _ = config.features.enable(Feature::MultiAgentV2);
-    set_turn_config(&mut turn, config);
+    set_turn_config(
+        Arc::get_mut(&mut turn).expect("turn should not have additional references"),
+        config,
+    );
     let root = manager
         .start_thread((*turn.config).clone())
         .await
@@ -2508,10 +2511,13 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
     // Production spawn_agent calls happen after the parent turn has resolved
     // and stored its runtime; mirror that before using the synthetic handler.
     root.thread.codex.session.new_default_turn().await;
-    session.services.agent_control = manager.agent_control();
-    session.thread_id = root.thread_id;
-    let session = Arc::new(session);
-    let turn = Arc::new(turn);
+    Arc::get_mut(&mut session)
+        .expect("session should not have additional references")
+        .services
+        .agent_control = manager.agent_control();
+    Arc::get_mut(&mut session)
+        .expect("session should not have additional references")
+        .thread_id = root.thread_id;
 
     SpawnAgentHandlerV2::default()
         .handle(invocation(
