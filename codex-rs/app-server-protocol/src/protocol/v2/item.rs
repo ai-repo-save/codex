@@ -42,6 +42,8 @@ use codex_protocol::protocol::GuardianUserAuthorization as CoreGuardianUserAutho
 use codex_protocol::protocol::PatchApplyStatus as CorePatchApplyStatus;
 use codex_protocol::protocol::ReviewDecision as CoreReviewDecision;
 use codex_protocol::protocol::SubAgentActivityKind as CoreSubAgentActivityKind;
+use codex_protocol::protocol::SubAgentActivityOperation as CoreSubAgentActivityOperation;
+use codex_protocol::protocol::SubAgentActivityOutcome as CoreSubAgentActivityOutcome;
 use codex_shell_command::parse_command::shlex_join;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::LegacyAppPathString;
@@ -375,6 +377,8 @@ pub enum ThreadItem {
         kind: SubAgentActivityKind,
         agent_thread_id: String,
         agent_path: String,
+        operation: Option<SubAgentActivityOperation>,
+        outcome: Option<SubAgentActivityOutcome>,
         model: Option<String>,
     },
     WebSearch(WebSearchItem),
@@ -939,6 +943,8 @@ impl From<CoreTurnItem> for ThreadItem {
                 kind: activity.kind.into(),
                 agent_thread_id: activity.agent_thread_id.to_string(),
                 agent_path: String::from(activity.agent_path),
+                operation: activity.operation.map(Into::into),
+                outcome: activity.outcome.map(Into::into),
                 model: activity.model,
             },
             CoreTurnItem::WebSearch(search) => ThreadItem::WebSearch(WebSearchItem {
@@ -1257,6 +1263,46 @@ impl From<CoreSubAgentActivityKind> for SubAgentActivityKind {
             CoreSubAgentActivityKind::Started => SubAgentActivityKind::Started,
             CoreSubAgentActivityKind::Interacted => SubAgentActivityKind::Interacted,
             CoreSubAgentActivityKind::Interrupted => SubAgentActivityKind::Interrupted,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum SubAgentActivityOperation {
+    SendMessage,
+    FollowupTask,
+    ParentReply,
+    InspectAgent,
+}
+
+impl From<CoreSubAgentActivityOperation> for SubAgentActivityOperation {
+    fn from(value: CoreSubAgentActivityOperation) -> Self {
+        match value {
+            CoreSubAgentActivityOperation::SendMessage => Self::SendMessage,
+            CoreSubAgentActivityOperation::FollowupTask => Self::FollowupTask,
+            CoreSubAgentActivityOperation::ParentReply => Self::ParentReply,
+            CoreSubAgentActivityOperation::InspectAgent => Self::InspectAgent,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum SubAgentActivityOutcome {
+    Succeeded,
+    Failed,
+}
+
+impl From<CoreSubAgentActivityOutcome> for SubAgentActivityOutcome {
+    fn from(value: CoreSubAgentActivityOutcome) -> Self {
+        match value {
+            CoreSubAgentActivityOutcome::Succeeded => Self::Succeeded,
+            CoreSubAgentActivityOutcome::Failed => Self::Failed,
         }
     }
 }

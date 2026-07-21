@@ -44,6 +44,8 @@ use codex_protocol::protocol::ExecCommandSource as CoreExecCommandSource;
 use codex_protocol::protocol::GranularApprovalConfig as CoreGranularApprovalConfig;
 use codex_protocol::protocol::NetworkAccess as CoreNetworkAccess;
 use codex_protocol::protocol::SubAgentActivityKind as CoreSubAgentActivityKind;
+use codex_protocol::protocol::SubAgentActivityOperation as CoreSubAgentActivityOperation;
+use codex_protocol::protocol::SubAgentActivityOutcome as CoreSubAgentActivityOutcome;
 use codex_protocol::request_permissions::RequestPermissionProfile as CoreRequestPermissionProfile;
 use codex_protocol::user_input::UserInput as CoreUserInput;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -2764,6 +2766,8 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         agent_path: codex_protocol::AgentPath::root()
             .join("worker")
             .expect("worker path"),
+        operation: Some(CoreSubAgentActivityOperation::InspectAgent),
+        outcome: Some(CoreSubAgentActivityOutcome::Failed),
         model: Some("gpt-5.4".to_string()),
     });
 
@@ -2774,6 +2778,8 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             kind: SubAgentActivityKind::Started,
             agent_thread_id: receiver_thread_id.to_string(),
             agent_path: "/root/worker".to_string(),
+            operation: Some(SubAgentActivityOperation::InspectAgent),
+            outcome: Some(SubAgentActivityOutcome::Failed),
             model: Some("gpt-5.4".to_string()),
         }
     );
@@ -2785,6 +2791,8 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         agent_path: codex_protocol::AgentPath::root()
             .join("worker")
             .expect("worker path"),
+        operation: None,
+        outcome: None,
         model: None,
     });
 
@@ -2795,6 +2803,8 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             kind: SubAgentActivityKind::Interrupted,
             agent_thread_id: receiver_thread_id.to_string(),
             agent_path: "/root/worker".to_string(),
+            operation: None,
+            outcome: None,
             model: None,
         }
     );

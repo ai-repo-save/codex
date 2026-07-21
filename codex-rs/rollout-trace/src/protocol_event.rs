@@ -22,6 +22,7 @@ use codex_protocol::protocol::PatchApplyBeginEvent;
 use codex_protocol::protocol::PatchApplyEndEvent;
 use codex_protocol::protocol::PatchApplyStatus;
 use codex_protocol::protocol::SubAgentActivityEvent;
+use codex_protocol::protocol::SubAgentActivityOutcome;
 use codex_protocol::protocol::TurnAbortReason;
 use serde::Serialize;
 use std::time::Duration;
@@ -338,7 +339,10 @@ pub(crate) fn tool_runtime_trace_event(event: &EventMsg) -> Option<ToolRuntimeTr
         }),
         EventMsg::SubAgentActivity(event) => Some(ToolRuntimeTraceEvent::Ended {
             tool_call_id: &event.event_id,
-            status: ExecutionStatus::Completed,
+            status: match event.outcome {
+                Some(SubAgentActivityOutcome::Failed) => ExecutionStatus::Failed,
+                Some(SubAgentActivityOutcome::Succeeded) | None => ExecutionStatus::Completed,
+            },
             payload: ToolRuntimePayload::SubAgentActivity(event),
         }),
         EventMsg::Error(_)

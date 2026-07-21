@@ -28,19 +28,45 @@ impl Handler {
             session,
             turn,
             payload,
+            call_id,
             ..
         } = invocation;
         let arguments = function_arguments(payload)?;
         let args: InspectAgentArgs = parse_arguments(&arguments)?;
         let agent_id = resolve_agent_target(&session, &turn, &args.target).await?;
-        let inspected_agent = session
+        let receiver_agent = session
+            .services
+            .agent_control
+            .ensure_agent_known(agent_id)
+            .map_err(|err| collab_agent_error(agent_id, err))?;
+        let receiver_agent_path = receiver_agent.agent_path.clone().ok_or_else(|| {
+            FunctionCallError::RespondToModel("target agent is missing an agent_path".to_string())
+        })?;
+        let result = session
             .services
             .agent_control
             .inspect_agent(agent_id, args.tail_items)
             .await
-            .map_err(collab_spawn_error)?;
+            .map_err(collab_spawn_error);
+        emit_sub_agent_interaction(
+            &session,
+            &turn,
+            call_id,
+            agent_id,
+            receiver_agent_path,
+            SubAgentActivityOperation::InspectAgent,
+            if result.is_ok() {
+                SubAgentActivityOutcome::Succeeded
+            } else {
+                SubAgentActivityOutcome::Failed
+            },
+        )
+        .await;
+        let inspected_agent = result?;
 
-        Ok(boxed_tool_output(InspectAgentResult { inspected_agent }))
+        Ok(boxed_tool_output(InspectAgentResult {
+            inspected_agent,
+        }))
     }
 }
 

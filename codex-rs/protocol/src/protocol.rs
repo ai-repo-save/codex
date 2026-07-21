@@ -4293,6 +4293,26 @@ pub enum SubAgentActivityKind {
     Interrupted,
 }
 
+/// The multi-agent operation that emitted a sub-agent activity event.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum SubAgentActivityOperation {
+    SendMessage,
+    FollowupTask,
+    ParentReply,
+    InspectAgent,
+}
+
+/// Whether the associated sub-agent operation completed successfully.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum SubAgentActivityOutcome {
+    Succeeded,
+    Failed,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
 pub struct SubAgentActivityEvent {
     pub event_id: String,
@@ -4303,6 +4323,12 @@ pub struct SubAgentActivityEvent {
     /// Canonical v2 path of the affected sub-agent.
     pub agent_path: AgentPath,
     pub kind: SubAgentActivityKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub operation: Option<SubAgentActivityOperation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub outcome: Option<SubAgentActivityOutcome>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub model: Option<String>,
@@ -5621,7 +5647,7 @@ mod tests {
     }
 
     #[test]
-    fn sub_agent_activity_model_survives_legacy_event_bridge() {
+    fn sub_agent_activity_metadata_survives_legacy_event_bridge() {
         let agent_thread_id = ThreadId::new();
         let agent_path = AgentPath::try_from("/root/worker").expect("valid agent path");
         let completed = ItemCompletedEvent {
@@ -5634,6 +5660,8 @@ mod tests {
                 agent_thread_id,
                 agent_path: agent_path.clone(),
                 model: Some("gpt-5.4".into()),
+                operation: Some(SubAgentActivityOperation::SendMessage),
+                outcome: Some(SubAgentActivityOutcome::Succeeded),
             }),
         };
 
@@ -5646,12 +5674,14 @@ mod tests {
                 agent_path,
                 kind: SubAgentActivityKind::Started,
                 model: Some("gpt-5.4".into()),
+                operation: Some(SubAgentActivityOperation::SendMessage),
+                outcome: Some(SubAgentActivityOutcome::Succeeded),
             })]
         );
     }
 
     #[test]
-    fn sub_agent_activity_deserializes_without_model() {
+    fn sub_agent_activity_deserializes_without_optional_metadata() {
         let agent_thread_id = ThreadId::new();
         let agent_path = AgentPath::try_from("/root/worker").expect("valid agent path");
         let expected_item = TurnItem::SubAgentActivity(SubAgentActivityItem {
@@ -5660,6 +5690,8 @@ mod tests {
             agent_thread_id,
             agent_path: agent_path.clone(),
             model: None,
+            operation: None,
+            outcome: None,
         });
         let expected_event = EventMsg::SubAgentActivity(SubAgentActivityEvent {
             event_id: "activity-1".into(),
@@ -5668,6 +5700,8 @@ mod tests {
             agent_path,
             kind: SubAgentActivityKind::Interacted,
             model: None,
+            operation: None,
+            outcome: None,
         });
 
         assert_eq!(

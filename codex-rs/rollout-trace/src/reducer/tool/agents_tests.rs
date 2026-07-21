@@ -430,7 +430,9 @@ fn send_message_activity_targets_delivered_child_message() -> anyhow::Result<()>
             "occurred_at_ms": 1234,
             "agent_thread_id": child_thread_id,
             "agent_path": "/root/child",
-            "kind": "interacted"
+            "kind": "interacted",
+            "operation": "send_message",
+            "outcome": "succeeded"
         }),
     )?;
     writer.append_with_context(
@@ -478,6 +480,52 @@ fn send_message_activity_targets_delivered_child_message() -> anyhow::Result<()>
 }
 
 #[test]
+fn parent_reply_activity_does_not_create_a_send_message_edge() -> anyhow::Result<()> {
+    let temp = TempDir::new()?;
+    let writer = create_started_agent_writer(&temp)?;
+    start_agent_turn(&writer, "turn-1")?;
+    append_sub_agent_activity_tool(
+        &writer,
+        "turn-1",
+        "call-parent-reply",
+        "parent_reply",
+        "succeeded",
+    )?;
+
+    let replayed = replay_bundle(temp.path())?;
+    assert!(
+        !replayed
+            .interaction_edges
+            .contains_key("edge:tool:call-parent-reply")
+    );
+
+    Ok(())
+}
+
+#[test]
+fn failed_sub_agent_activity_does_not_create_a_delivery_edge() -> anyhow::Result<()> {
+    let temp = TempDir::new()?;
+    let writer = create_started_agent_writer(&temp)?;
+    start_agent_turn(&writer, "turn-1")?;
+    append_sub_agent_activity_tool(
+        &writer,
+        "turn-1",
+        "call-failed-send",
+        "send_message",
+        "failed",
+    )?;
+
+    let replayed = replay_bundle(temp.path())?;
+    assert!(
+        !replayed
+            .interaction_edges
+            .contains_key("edge:tool:call-failed-send")
+    );
+
+    Ok(())
+}
+
+#[test]
 fn followup_activity_targets_delivered_child_message() -> anyhow::Result<()> {
     let temp = TempDir::new()?;
     let writer = create_started_agent_writer(&temp)?;
@@ -516,7 +564,9 @@ fn followup_activity_targets_delivered_child_message() -> anyhow::Result<()> {
             "occurred_at_ms": 1234,
             "agent_thread_id": child_thread_id,
             "agent_path": "/root/child",
-            "kind": "interacted"
+            "kind": "interacted",
+            "operation": "followup_task",
+            "outcome": "succeeded"
         }),
     )?;
     writer.append_with_context(
@@ -963,6 +1013,67 @@ fn append_spawn_agent_tool_lifecycle(
         end,
         result,
     })
+}
+
+fn append_sub_agent_activity_tool(
+    writer: &TraceWriter,
+    turn_id: &str,
+    tool_call_id: &str,
+    operation: &str,
+    outcome: &str,
+) -> anyhow::Result<()> {
+    let invocation_payload = writer.write_json_payload(
+        RawPayloadKind::ToolInvocation,
+        &json!({
+            "tool_name": "send_message",
+            "payload": {
+                "type": "function",
+                "arguments": r#"{"target":"/root/child","message":"hello"}"#
+            }
+        }),
+    )?;
+    writer.append_with_context(
+        trace_context_for_agent(turn_id),
+        RawTraceEventPayload::ToolCallStarted {
+            tool_call_id: tool_call_id.to_string(),
+            model_visible_call_id: Some(tool_call_id.to_string()),
+            code_mode_runtime_tool_id: None,
+            requester: RawToolCallRequester::Model,
+            kind: ToolCallKind::SendMessage,
+            summary: ToolCallSummary::Generic {
+                label: "send_message".to_string(),
+                input_preview: None,
+                output_preview: None,
+            },
+            invocation_payload: Some(invocation_payload),
+        },
+    )?;
+    let activity_payload = writer.write_json_payload(
+        RawPayloadKind::ToolRuntimeEvent,
+        &json!({
+            "event_id": tool_call_id,
+            "occurred_at_ms": 1234,
+            "agent_thread_id": "019d0000-0000-7000-8000-000000000002",
+            "agent_path": "/root/child",
+            "kind": "interacted",
+            "operation": operation,
+            "outcome": outcome,
+        }),
+    )?;
+    writer.append_with_context(
+        trace_context_for_agent(turn_id),
+        RawTraceEventPayload::ToolCallRuntimeEnded {
+            tool_call_id: tool_call_id.to_string(),
+            status: if outcome == "failed" {
+                ExecutionStatus::Failed
+            } else {
+                ExecutionStatus::Completed
+            },
+            runtime_payload: activity_payload,
+        },
+    )?;
+
+    Ok(())
 }
 
 fn inter_agent_message(author: &str, recipient: &str, content: &str, trigger_turn: bool) -> String {

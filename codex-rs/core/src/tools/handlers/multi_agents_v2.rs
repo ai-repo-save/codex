@@ -21,6 +21,8 @@ use codex_protocol::models::ResponseInputItem;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::InterAgentCommunication;
 use codex_protocol::protocol::SubAgentActivityKind;
+use codex_protocol::protocol::SubAgentActivityOperation;
+use codex_protocol::protocol::SubAgentActivityOutcome;
 use codex_tools::ToolName;
 use serde::Deserialize;
 use serde::Serialize;
@@ -54,6 +56,31 @@ pub(crate) async fn emit_sub_agent_activity(
     session
         .emit_turn_item_completed(turn, TurnItem::SubAgentActivity(item))
         .await;
+}
+
+pub(crate) async fn emit_sub_agent_interaction(
+    session: &crate::session::session::Session,
+    turn: &crate::session::turn_context::TurnContext,
+    id: String,
+    agent_thread_id: codex_protocol::ThreadId,
+    agent_path: AgentPath,
+    operation: SubAgentActivityOperation,
+    outcome: SubAgentActivityOutcome,
+) {
+    emit_sub_agent_activity(
+        session,
+        turn,
+        SubAgentActivityItem {
+            id,
+            agent_thread_id,
+            agent_path,
+            kind: SubAgentActivityKind::Interacted,
+            operation: Some(operation),
+            outcome: Some(outcome),
+            model: None,
+        },
+    )
+    .await;
 }
 
 pub(super) fn communication_from_tool_message(

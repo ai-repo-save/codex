@@ -192,6 +192,8 @@ pub fn item_event_to_server_notification(
                 kind: activity.kind.into(),
                 agent_thread_id: activity.agent_thread_id.to_string(),
                 agent_path: String::from(activity.agent_path),
+                operation: activity.operation.map(Into::into),
+                outcome: activity.outcome.map(Into::into),
                 model: activity.model,
             };
             ServerNotification::ItemCompleted(ItemCompletedNotification {
@@ -488,6 +490,8 @@ pub fn item_event_to_server_notification(
 mod tests {
     use super::*;
     use crate::protocol::v2::SubAgentActivityKind;
+    use crate::protocol::v2::SubAgentActivityOperation;
+    use crate::protocol::v2::SubAgentActivityOutcome;
     use codex_protocol::AgentPath;
     use codex_protocol::ThreadId;
     use codex_protocol::protocol::CollabResumeBeginEvent;
@@ -496,6 +500,8 @@ mod tests {
     use codex_protocol::protocol::ExecOutputStream;
     use codex_protocol::protocol::SubAgentActivityEvent;
     use codex_protocol::protocol::SubAgentActivityKind as CoreSubAgentActivityKind;
+    use codex_protocol::protocol::SubAgentActivityOperation as CoreSubAgentActivityOperation;
+    use codex_protocol::protocol::SubAgentActivityOutcome as CoreSubAgentActivityOutcome;
     use pretty_assertions::assert_eq;
 
     fn assert_item_started_server_notification(
@@ -623,6 +629,8 @@ mod tests {
             agent_thread_id: ThreadId::new(),
             agent_path: AgentPath::try_from("/root/worker").expect("valid agent path"),
             kind: CoreSubAgentActivityKind::Started,
+            operation: Some(CoreSubAgentActivityOperation::FollowupTask),
+            outcome: Some(CoreSubAgentActivityOutcome::Succeeded),
             model: Some("gpt-5.4".to_string()),
         };
 
@@ -642,6 +650,8 @@ mod tests {
                     kind: SubAgentActivityKind::Started,
                     agent_thread_id: event.agent_thread_id.to_string(),
                     agent_path: String::from(event.agent_path),
+                    operation: Some(SubAgentActivityOperation::FollowupTask),
+                    outcome: Some(SubAgentActivityOutcome::Succeeded),
                     model: event.model,
                 },
             },

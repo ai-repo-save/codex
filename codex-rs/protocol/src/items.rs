@@ -19,6 +19,8 @@ use crate::protocol::PatchApplyStatus;
 use crate::protocol::ReviewOutputEvent;
 use crate::protocol::ReviewTarget;
 use crate::protocol::SubAgentActivityKind;
+use crate::protocol::SubAgentActivityOperation;
+use crate::protocol::SubAgentActivityOutcome;
 use crate::user_input::ByteRange;
 use crate::user_input::TextElement;
 use crate::user_input::UserInput;
@@ -310,6 +312,12 @@ pub struct SubAgentActivityItem {
     pub kind: SubAgentActivityKind,
     pub agent_thread_id: ThreadId,
     pub agent_path: AgentPath,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub operation: Option<SubAgentActivityOperation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub outcome: Option<SubAgentActivityOutcome>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub model: Option<String>,

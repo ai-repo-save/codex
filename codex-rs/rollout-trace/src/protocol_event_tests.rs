@@ -7,6 +7,7 @@ use codex_protocol::protocol::ExecCommandSource;
 use codex_protocol::protocol::ExecCommandStatus;
 use codex_protocol::protocol::SubAgentActivityEvent;
 use codex_protocol::protocol::SubAgentActivityKind;
+use codex_protocol::protocol::SubAgentActivityOutcome;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 use std::time::Duration;
@@ -24,6 +25,8 @@ fn sub_agent_activity_is_a_terminal_tool_runtime_event() -> anyhow::Result<()> {
         agent_thread_id,
         agent_path: AgentPath::try_from("/root/reviewer").map_err(anyhow::Error::msg)?,
         kind: SubAgentActivityKind::Started,
+        operation: None,
+        outcome: None,
         model: Some("gpt-5.4".to_string()),
     });
 
@@ -49,6 +52,27 @@ fn sub_agent_activity_is_a_terminal_tool_runtime_event() -> anyhow::Result<()> {
             "model": "gpt-5.4"
         })
     );
+    Ok(())
+}
+
+#[test]
+fn failed_sub_agent_activity_is_a_failed_terminal_tool_runtime_event() -> anyhow::Result<()> {
+    let event = EventMsg::SubAgentActivity(SubAgentActivityEvent {
+        event_id: "call-send".to_string(),
+        occurred_at_ms: 1234,
+        agent_thread_id: ThreadId::new(),
+        agent_path: AgentPath::try_from("/root/worker").map_err(anyhow::Error::msg)?,
+        kind: SubAgentActivityKind::Interacted,
+        operation: None,
+        outcome: Some(SubAgentActivityOutcome::Failed),
+        model: None,
+    });
+
+    let Some(ToolRuntimeTraceEvent::Ended { status, .. }) = tool_runtime_trace_event(&event) else {
+        panic!("expected terminal tool runtime event");
+    };
+
+    assert_eq!(status, ExecutionStatus::Failed);
     Ok(())
 }
 

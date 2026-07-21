@@ -7,6 +7,11 @@ use codex_protocol::items::CollabAgentToolCallStatus;
 use codex_protocol::items::TurnItem;
 use codex_protocol::protocol::ENVIRONMENT_CONTEXT_OPEN_TAG;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::Op;
+use codex_protocol::protocol::SubAgentActivityKind;
+use codex_protocol::protocol::SubAgentActivityOperation;
+use codex_protocol::protocol::SubAgentActivityOutcome;
+use codex_protocol::user_input::UserInput;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
@@ -39,6 +44,7 @@ const SPAWN_CALL_ID: &str = "spawn-worker";
 const WAIT_CALL_ID: &str = "wait-for-worker";
 const ASK_PARENT_CALL_ID: &str = "ask-parent";
 const REPLY_CALL_ID: &str = "reply-to-child";
+const CHILD_PATH: &str = "/root/worker";
 const CONSULT_QUESTION: &str = "summarize the parent snapshot without deciding";
 const CONSULT_ADVISORY: &str = "the snapshot records the stable release channel";
 const AUTHORITATIVE_REQUIRED_ADVISORY: &str = "a live parent decision is required";
@@ -294,7 +300,31 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
         .build(&server)
         .await?;
 
-    test.submit_turn(ROOT_PROMPT).await?;
+    let turn_id = test
+        .codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: ROOT_PROMPT.to_string(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await?;
+    let mut root_events = Vec::new();
+    loop {
+        let event = test.codex.next_event().await?;
+        let is_turn_complete = matches!(
+            &event.msg,
+            EventMsg::TurnComplete(completed) if completed.turn_id == turn_id
+        );
+        root_events.push(event.msg);
+        if is_turn_complete {
+            break;
+        }
+    }
 
     let (requests, ask_parent_output) = tokio::time::timeout(Duration::from_secs(2), async {
         loop {
@@ -332,6 +362,31 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
         .find(|body| parent_request_id(body).is_some())
         .expect("active parent should receive the child request");
     assert!(has_call_output(&parent_request, WAIT_CALL_ID));
+    let parent_reply_activities = root_events
+        .into_iter()
+        .filter_map(|event| match event {
+            EventMsg::ItemCompleted(event) => match event.item {
+                TurnItem::SubAgentActivity(activity) => Some(activity),
+                _ => None,
+            },
+            _ => None,
+        })
+        .filter(|activity| activity.operation == Some(SubAgentActivityOperation::ParentReply))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        parent_reply_activities.len(),
+        1,
+        "correlated reply should emit exactly one activity"
+    );
+    let activity = &parent_reply_activities[0];
+    assert_eq!(activity.id, REPLY_CALL_ID);
+    assert_eq!(activity.agent_path.as_str(), CHILD_PATH);
+    assert_eq!(activity.kind, SubAgentActivityKind::Interacted);
+    assert_eq!(
+        activity.outcome,
+        Some(SubAgentActivityOutcome::Succeeded)
+    );
+    assert_eq!(activity.model, None);
 
     Ok(())
 }

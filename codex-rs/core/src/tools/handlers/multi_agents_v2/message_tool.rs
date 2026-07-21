@@ -78,81 +78,119 @@ pub(crate) async fn handle_message_string_tool(
         .agent_control
         .ensure_agent_known(receiver_thread_id)
         .map_err(|err| collab_agent_error(receiver_thread_id, err))?;
+    let receiver_agent_path = receiver_agent.agent_path.clone().ok_or_else(|| {
+        FunctionCallError::RespondToModel("target agent is missing an agent_path".to_string())
+    })?;
+    let operation = match (mode, in_reply_to.is_some()) {
+        (_, true) => SubAgentActivityOperation::ParentReply,
+        (MessageDeliveryMode::QueueOnly, false) => SubAgentActivityOperation::SendMessage,
+        (MessageDeliveryMode::TriggerTurn, false) => SubAgentActivityOperation::FollowupTask,
+    };
     if mode == MessageDeliveryMode::TriggerTurn
         && receiver_agent
             .agent_path
             .as_ref()
             .is_some_and(AgentPath::is_root)
     {
-        return Err(FunctionCallError::RespondToModel(
+        let error = FunctionCallError::RespondToModel(
             "Follow-up tasks can't target the root agent".to_string(),
-        ));
-    }
-    let receiver_agent_path = receiver_agent.agent_path.clone().ok_or_else(|| {
-        FunctionCallError::RespondToModel("target agent is missing an agent_path".to_string())
-    })?;
-    if let Some(request_id) = in_reply_to {
-        if mode != MessageDeliveryMode::QueueOnly {
-            return Err(FunctionCallError::RespondToModel(
-                "in_reply_to is only supported by send_message".to_string(),
-            ));
-        }
-        session
-            .services
-            .agent_control
-            .claim_parent_reply(&request_id, session.thread_id, receiver_thread_id)
-            .map_err(FunctionCallError::RespondToModel)?
-            .deliver(message)
-            .await
-            .map_err(FunctionCallError::RespondToModel)?;
-        crate::agent_communication::emit_parent_reply(
-            &request_id,
-            session.thread_id,
-            receiver_thread_id,
         );
-        return Ok(FunctionToolOutput::from_text(String::new(), Some(true)));
-    }
-    let resume_config = build_agent_resume_config(turn.as_ref())?;
-    session
-        .services
-        .agent_control
-        .ensure_v2_agent_loaded(resume_config, receiver_thread_id)
-        .await
-        .map_err(|err| collab_agent_error(receiver_thread_id, err))?;
-    let author = turn
-        .session_source
-        .get_agent_path()
-        .unwrap_or_else(AgentPath::root);
-    let communication = communication_from_tool_message(
-        author,
-        receiver_agent_path.clone(),
-        message,
-        turn.config.multi_agent_v2.encrypt_messages,
-    );
-    let kind = match mode {
-        MessageDeliveryMode::QueueOnly => AgentCommunicationKind::Message,
-        MessageDeliveryMode::TriggerTurn => AgentCommunicationKind::Followup,
+        emit_sub_agent_interaction(
+            &session,
+            &turn,
+            call_id,
+            receiver_thread_id,
+            receiver_agent_path,
+            operation,
+            SubAgentActivityOutcome::Failed,
+        )
+        .await;
+        return Err(error);
     };
-    let context = AgentCommunicationContext::new(kind, session.thread_id);
-    let result = session
-        .services
-        .agent_control
-        .send_inter_agent_communication(receiver_thread_id, mode.apply(communication), context)
-        .await
-        .map_err(|err| collab_agent_error(receiver_thread_id, err));
-    result?;
-    emit_sub_agent_activity(
+
+    let result = if let Some(request_id) = in_reply_to {
+        if mode != MessageDeliveryMode::QueueOnly {
+            Err(FunctionCallError::RespondToModel(
+                "in_reply_to is only supported by send_message".to_string(),
+            ))
+        } else {
+            match session
+                .services
+                .agent_control
+                .claim_parent_reply(&request_id, session.thread_id, receiver_thread_id)
+                .map_err(FunctionCallError::RespondToModel)
+            {
+                Ok(reply_claim) => match reply_claim.deliver(message).await {
+                    Ok(()) => {
+                        crate::agent_communication::emit_parent_reply(
+                            &request_id,
+                            session.thread_id,
+                            receiver_thread_id,
+                        );
+                        Ok(())
+                    }
+                    Err(err) => Err(FunctionCallError::RespondToModel(err)),
+                },
+                Err(err) => Err(err),
+            }
+        }
+    } else {
+        match build_agent_resume_config(turn.as_ref()) {
+            Ok(resume_config) => match session
+                .services
+                .agent_control
+                .ensure_v2_agent_loaded(resume_config, receiver_thread_id)
+                .await
+                .map_err(|err| collab_agent_error(receiver_thread_id, err))
+            {
+                Ok(()) => {
+                    let author = turn
+                        .session_source
+                        .get_agent_path()
+                        .unwrap_or_else(AgentPath::root);
+                    let communication = communication_from_tool_message(
+                        author,
+                        receiver_agent_path.clone(),
+                        message,
+                        turn.config.multi_agent_v2.encrypt_messages,
+                    );
+                    let kind = match mode {
+                        MessageDeliveryMode::QueueOnly => AgentCommunicationKind::Message,
+                        MessageDeliveryMode::TriggerTurn => AgentCommunicationKind::Followup,
+                    };
+                    let context = AgentCommunicationContext::new(kind, session.thread_id);
+                    session
+                        .services
+                        .agent_control
+                        .send_inter_agent_communication(
+                            receiver_thread_id,
+                            mode.apply(communication),
+                            context,
+                        )
+                        .await
+                        .map_err(|err| collab_agent_error(receiver_thread_id, err))
+                }
+                Err(err) => Err(err),
+            },
+            Err(err) => Err(err),
+        }
+    };
+    let outcome = if result.is_ok() {
+        SubAgentActivityOutcome::Succeeded
+    } else {
+        SubAgentActivityOutcome::Failed
+    };
+    emit_sub_agent_interaction(
         &session,
         &turn,
-        SubAgentActivityItem {
-            id: call_id,
-            agent_thread_id: receiver_thread_id,
-            agent_path: receiver_agent_path,
-            kind: SubAgentActivityKind::Interacted,
-            model: None,
-        },
+        call_id,
+        receiver_thread_id,
+        receiver_agent_path,
+        operation,
+        outcome,
     )
     .await;
+    result?;
 
     Ok(FunctionToolOutput::from_text(String::new(), Some(true)))
 }

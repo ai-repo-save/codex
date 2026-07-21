@@ -9,6 +9,8 @@ use codex_protocol::protocol::CollabCloseEndEvent;
 use codex_protocol::protocol::InterAgentCommunication;
 use codex_protocol::protocol::SubAgentActivityEvent;
 use codex_protocol::protocol::SubAgentActivityKind;
+use codex_protocol::protocol::SubAgentActivityOperation;
+use codex_protocol::protocol::SubAgentActivityOutcome;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -190,7 +192,37 @@ impl TraceReducer {
         tool_kind: &ToolCallKind,
         payload: &SubAgentActivityEvent,
     ) -> Result<()> {
+        if matches!(payload.outcome, Some(SubAgentActivityOutcome::Failed)) {
+            return Ok(());
+        }
+
         let target_thread_id = payload.agent_thread_id.to_string();
+        match payload.operation {
+            Some(SubAgentActivityOperation::ParentReply)
+            | Some(SubAgentActivityOperation::InspectAgent) => return Ok(()),
+            Some(SubAgentActivityOperation::SendMessage) => {
+                return self.queue_sub_agent_activity_message_edge(
+                    wall_time_unix_ms,
+                    tool_call_id,
+                    tool_edge_id(tool_call_id),
+                    InteractionEdgeKind::SendMessage,
+                    target_thread_id,
+                    /*unresolved_spawn_thread_id*/ None,
+                );
+            }
+            Some(SubAgentActivityOperation::FollowupTask) => {
+                return self.queue_sub_agent_activity_message_edge(
+                    wall_time_unix_ms,
+                    tool_call_id,
+                    tool_edge_id(tool_call_id),
+                    InteractionEdgeKind::AssignAgentTask,
+                    target_thread_id,
+                    /*unresolved_spawn_thread_id*/ None,
+                );
+            }
+            None => {}
+        }
+
         match (tool_kind, &payload.kind) {
             (ToolCallKind::SpawnAgent, SubAgentActivityKind::Started) => {
                 let parent_thread_id = self

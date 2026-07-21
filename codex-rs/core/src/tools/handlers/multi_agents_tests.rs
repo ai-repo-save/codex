@@ -7,6 +7,7 @@ use crate::init_state_db;
 use crate::local_agent_graph_store_from_state_db;
 use crate::session::step_context::StepContext;
 use crate::session::tests::make_session_and_context;
+use crate::session::tests::make_session_and_context_with_rx;
 use crate::session::turn_context::TurnContext;
 use crate::session_prefix::format_inter_agent_completion_message;
 use crate::thread_manager::thread_store_from_config;
@@ -27,6 +28,8 @@ use codex_model_provider::create_model_provider;
 use codex_model_provider_info::built_in_model_providers;
 use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
+use codex_protocol::items::SubAgentActivityItem;
+use codex_protocol::items::TurnItem;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::config_types::ShellEnvironmentPolicy;
@@ -53,6 +56,9 @@ use codex_protocol::protocol::Op;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::SubAgentActivityKind;
+use codex_protocol::protocol::SubAgentActivityOperation;
+use codex_protocol::protocol::SubAgentActivityOutcome;
 use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::protocol::TurnAbortReason;
 use codex_protocol::protocol::TurnAbortedEvent;
@@ -171,6 +177,21 @@ where
         }
         other => panic!("expected function output, got {other:?}"),
     }
+}
+
+fn completed_sub_agent_activities(
+    receiver: &async_channel::Receiver<codex_protocol::protocol::Event>,
+) -> Vec<SubAgentActivityItem> {
+    receiver
+        .try_iter()
+        .filter_map(|event| match event.msg {
+            EventMsg::ItemCompleted(event) => match event.item {
+                TurnItem::SubAgentActivity(activity) => Some(activity),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
 }
 
 #[derive(Debug, Deserialize)]
@@ -460,7 +481,10 @@ async fn multi_agent_v2_spawn_defaults_to_full_fork_and_rejects_child_model_over
         .features
         .enable(Feature::MultiAgentV2)
         .expect("test config should allow feature update");
-    set_turn_config(&mut turn, config);
+    set_turn_config(
+        Arc::get_mut(&mut turn).expect("turn should not have additional references"),
+        config,
+    );
 
     let err = SpawnAgentHandlerV2::default()
         .handle(invocation(
@@ -1158,23 +1182,28 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
         nickname: Option<String>,
     }
 
-    let (mut session, mut turn) = make_session_and_context().await;
+    let (mut session, mut turn, receiver) = make_session_and_context_with_rx().await;
     let manager = thread_manager();
     let root = manager
         .start_thread((*turn.config).clone())
         .await
         .expect("root thread should start");
-    session.services.agent_control = manager.agent_control();
-    session.thread_id = root.thread_id;
+    Arc::get_mut(&mut session)
+        .expect("session should not have additional references")
+        .services
+        .agent_control = manager.agent_control();
+    Arc::get_mut(&mut session)
+        .expect("session should not have additional references")
+        .thread_id = root.thread_id;
     let mut config = (*turn.config).clone();
     config
         .features
         .enable(Feature::MultiAgentV2)
         .expect("test config should allow feature update");
-    set_turn_config(&mut turn, config);
-
-    let session = Arc::new(session);
-    let turn = Arc::new(turn);
+    set_turn_config(
+        Arc::get_mut(&mut turn).expect("turn should not have additional references"),
+        config,
+    );
     let spawn_output = SpawnAgentHandlerV2::default()
         .handle(invocation(
             session.clone(),
@@ -1192,6 +1221,23 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
         serde_json::from_str(&content).expect("spawn result should parse");
     assert_eq!(spawn_result.task_name, "/root/test_process");
     assert_eq!(spawn_result.nickname, None);
+    assert_eq!(
+        completed_sub_agent_activities(&receiver),
+        vec![SubAgentActivityItem {
+            id: "call-1".to_string(),
+            agent_thread_id: session
+                .services
+                .agent_control
+                .resolve_agent_reference(session.thread_id, &turn.session_source, "test_process")
+                .await
+                .expect("relative path should resolve"),
+            agent_path: AgentPath::try_from("/root/test_process").expect("agent path"),
+            kind: SubAgentActivityKind::Started,
+            operation: None,
+            outcome: None,
+            model: turn.config.model.clone(),
+        }],
+    );
 
     let child_thread_id = session
         .services
@@ -1249,6 +1295,18 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
                         && !communication.trigger_turn
             )
     }));
+    assert_eq!(
+        completed_sub_agent_activities(&receiver),
+        vec![SubAgentActivityItem {
+            id: "call-1".to_string(),
+            agent_thread_id: child_thread_id,
+            agent_path: AgentPath::try_from("/root/test_process").expect("agent path"),
+            kind: SubAgentActivityKind::Interacted,
+            operation: Some(SubAgentActivityOperation::SendMessage),
+            outcome: Some(SubAgentActivityOutcome::Succeeded),
+            model: None,
+        }],
+    );
 }
 
 #[tokio::test]
@@ -1449,20 +1507,28 @@ async fn multi_agent_v2_send_message_accepts_root_target_from_child() {
 
 #[tokio::test]
 async fn multi_agent_v2_followup_task_rejects_root_target_from_child() {
-    let (mut session, mut turn) = make_session_and_context().await;
+    let (mut session, mut turn, receiver) = make_session_and_context_with_rx().await;
     let manager = thread_manager();
     let mut config = (*turn.config).clone();
     config
         .features
         .enable(Feature::MultiAgentV2)
         .expect("test config should allow feature update");
-    set_turn_config(&mut turn, config);
+    set_turn_config(
+        Arc::get_mut(&mut turn).expect("turn should not have additional references"),
+        config,
+    );
     let root = manager
         .start_thread((*turn.config).clone())
         .await
         .expect("root thread should start");
-    session.services.agent_control = manager.agent_control();
-    session.thread_id = root.thread_id;
+    Arc::get_mut(&mut session)
+        .expect("session should not have additional references")
+        .services
+        .agent_control = manager.agent_control();
+    Arc::get_mut(&mut session)
+        .expect("session should not have additional references")
+        .thread_id = root.thread_id;
 
     let child_path = AgentPath::try_from("/root/worker").expect("agent path");
     let child_thread_id = session
@@ -1486,8 +1552,12 @@ async fn multi_agent_v2_followup_task_rejects_root_target_from_child() {
         .await
         .expect("worker spawn should succeed")
         .thread_id;
-    session.thread_id = child_thread_id;
-    turn.session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+    Arc::get_mut(&mut session)
+        .expect("session should not have additional references")
+        .thread_id = child_thread_id;
+    Arc::get_mut(&mut turn)
+        .expect("turn should not have additional references")
+        .session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
         parent_thread_id: root.thread_id,
         depth: 1,
         agent_path: Some(child_path),
@@ -1497,8 +1567,8 @@ async fn multi_agent_v2_followup_task_rejects_root_target_from_child() {
 
     let Err(err) = FollowupTaskHandlerV2::default()
         .handle(invocation(
-            Arc::new(session),
-            Arc::new(turn),
+            session,
+            turn,
             "followup_task",
             function_payload(json!({
                 "target": "/root",
@@ -1526,6 +1596,18 @@ async fn multi_agent_v2_followup_task_rejects_root_target_from_child() {
         !root_ops
             .iter()
             .any(|op| matches!(op, Op::InterAgentCommunication { .. }))
+    );
+    assert_eq!(
+        completed_sub_agent_activities(&receiver),
+        vec![SubAgentActivityItem {
+            id: "call-1".to_string(),
+            agent_thread_id: root.thread_id,
+            agent_path: AgentPath::root(),
+            kind: SubAgentActivityKind::Interacted,
+            operation: Some(SubAgentActivityOperation::FollowupTask),
+            outcome: Some(SubAgentActivityOutcome::Failed),
+            model: None,
+        }],
     );
 }
 
@@ -1699,20 +1781,25 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
     const TOOL_ARGS: &str = "{\"cmd\":\"rg parser\"}";
     const TOOL_OUTPUT: &str = "parser.rs\nparser_tests.rs";
 
-    let (mut session, mut turn) = make_session_and_context().await;
+    let (mut session, mut turn, receiver) = make_session_and_context_with_rx().await;
     let manager = thread_manager();
     let root = manager
         .start_thread((*turn.config).clone())
         .await
         .expect("root thread should start");
-    session.services.agent_control = manager.agent_control();
-    session.thread_id = root.thread_id;
+    Arc::get_mut(&mut session)
+        .expect("session should not have additional references")
+        .services
+        .agent_control = manager.agent_control();
+    Arc::get_mut(&mut session)
+        .expect("session should not have additional references")
+        .thread_id = root.thread_id;
     let mut config = (*turn.config).clone();
     let _ = config.features.enable(Feature::MultiAgentV2);
-    set_turn_config(&mut turn, config);
-
-    let session = Arc::new(session);
-    let turn = Arc::new(turn);
+    set_turn_config(
+        Arc::get_mut(&mut turn).expect("turn should not have additional references"),
+        config,
+    );
     let spawn_output = SpawnAgentHandlerV2::default()
         .handle(invocation(
             session.clone(),
@@ -1726,6 +1813,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
         .await
         .expect("spawn_agent should succeed");
     let _ = expect_text_output(spawn_output);
+    let _ = completed_sub_agent_activities(&receiver);
 
     let agent_id = session
         .services
@@ -1825,6 +1913,18 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
         ]
     );
     assert_eq!(success, Some(true));
+    assert_eq!(
+        completed_sub_agent_activities(&receiver),
+        vec![SubAgentActivityItem {
+            id: "call-1".to_string(),
+            agent_thread_id: agent_id,
+            agent_path: AgentPath::try_from("/root/worker").expect("agent path"),
+            kind: SubAgentActivityKind::Interacted,
+            operation: Some(SubAgentActivityOperation::InspectAgent),
+            outcome: Some(SubAgentActivityOutcome::Succeeded),
+            model: None,
+        }],
+    );
 
     child_thread
         .codex
@@ -1863,6 +1963,18 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
     assert_eq!(capped_result.transcript_tail.len(), 100);
     assert_eq!(capped_result.transcript_tail[0].text, "entry-1");
     assert_eq!(capped_result.transcript_tail[99].text, "entry-100");
+    assert_eq!(
+        completed_sub_agent_activities(&receiver),
+        vec![SubAgentActivityItem {
+            id: "call-1".to_string(),
+            agent_thread_id: agent_id,
+            agent_path: AgentPath::try_from("/root/worker").expect("agent path"),
+            kind: SubAgentActivityKind::Interacted,
+            operation: Some(SubAgentActivityOperation::InspectAgent),
+            outcome: Some(SubAgentActivityOutcome::Succeeded),
+            model: None,
+        }],
+    );
 }
 
 #[tokio::test]

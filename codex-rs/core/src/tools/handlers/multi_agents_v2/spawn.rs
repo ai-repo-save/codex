@@ -157,6 +157,8 @@ async fn handle_spawn_agent(
             agent_thread_id: new_thread_id,
             agent_path: new_agent_path.clone(),
             kind: SubAgentActivityKind::Started,
+            operation: None,
+            outcome: None,
             model: Some(model),
         },
     )
