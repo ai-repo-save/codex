@@ -322,5 +322,4 @@ mod tests {
 
         assert_eq!(target, ServerNotificationThreadTarget::Thread(thread_id));
     }
-
 }

@@ -163,7 +163,6 @@ impl TurnTimingState {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
-
 }
 
 impl Drop for TurnProfileTimingGuard {
