@@ -1,6 +1,7 @@
 #![cfg(not(target_os = "windows"))]
 
 use core_test_support::test_codex::local_selections;
+use std::collections::HashMap;
 use std::fs;
 
 use assert_matches::assert_matches;
@@ -10,6 +11,8 @@ use codex_protocol::plan_tool::StepStatus;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::Op;
+use codex_protocol::request_user_input::RequestUserInputAnswer;
+use codex_protocol::request_user_input::RequestUserInputResponse;
 use codex_protocol::user_input::UserInput;
 use core_test_support::TempDirExt;
 use core_test_support::assert_regex_match;
@@ -149,18 +152,33 @@ async fn output_throughput_deactivates_before_blocking_tool_starts() -> anyhow::
         .with_model("test-gpt-5-codex")
         .build(&server)
         .await?;
-    let call_id = "throughput-blocking-call";
-    let command_args = json!({
-        "command": "sleep 60",
-        "login": false,
+    let call_id = "throughput-user-input-call";
+    let request_args = json!({
+        "questions": [{
+            "id": "continue",
+            "header": "Continue",
+            "question": "Continue the test?",
+            "options": [{
+                "label": "Continue",
+                "description": "Continue the test."
+            }]
+        }]
     })
     .to_string();
     responses::mount_sse_once(
         &server,
         sse(vec![
             ev_response_created("resp-throughput"),
-            ev_function_call(call_id, "shell_command", &command_args),
+            ev_function_call(call_id, "request_user_input", &request_args),
             ev_completed("resp-throughput"),
+        ]),
+    )
+    .await;
+    responses::mount_sse_once(
+        &server,
+        sse(vec![
+            ev_assistant_message("msg-throughput", "done"),
+            ev_completed("resp-throughput-follow-up"),
         ]),
     )
     .await;
@@ -184,7 +202,7 @@ async fn output_throughput_deactivates_before_blocking_tool_starts() -> anyhow::
                 sandbox_policy: Some(sandbox_policy),
                 permission_profile,
                 collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
-                    mode: codex_protocol::config_types::ModeKind::Default,
+                    mode: codex_protocol::config_types::ModeKind::Plan,
                     settings: codex_protocol::config_types::Settings {
                         model: session_model,
                         reasoning_effort: None,
@@ -219,12 +237,29 @@ async fn output_throughput_deactivates_before_blocking_tool_starts() -> anyhow::
     assert_eq!(completed.active_duration_ms, None);
     assert_eq!(completed.tokens_per_second, None);
 
-    wait_for_event(&codex, |event| {
-        matches!(event, EventMsg::ExecCommandBegin(_))
+    let request = wait_for_event(&codex, |event| {
+        matches!(event, EventMsg::RequestUserInput(_))
     })
     .await;
-    codex.submit(Op::Interrupt).await?;
-    wait_for_event(&codex, |event| matches!(event, EventMsg::TurnAborted(_))).await;
+    let EventMsg::RequestUserInput(request) = request else {
+        unreachable!();
+    };
+    assert_eq!(request.call_id, call_id);
+
+    codex
+        .submit(Op::UserInputAnswer {
+            id: request.turn_id,
+            response: RequestUserInputResponse {
+                answers: HashMap::from([(
+                    "continue".to_string(),
+                    RequestUserInputAnswer {
+                        answers: vec!["Continue".to_string()],
+                    },
+                )]),
+            },
+        })
+        .await?;
+    wait_for_event(&codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
 
     Ok(())
 }

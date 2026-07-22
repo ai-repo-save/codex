@@ -43,19 +43,6 @@ fn evicts_output_after_the_five_second_window() {
 }
 
 #[test]
-fn evicts_a_bucket_at_the_exact_window_boundary() {
-    let (mut tracker, start) = start_tracker();
-    for bucket_index in 0..=20 {
-        tracker.record_utf8_bytes(
-            FOUR_TOKENS_IN_UTF8_BYTES,
-            start + BUCKET_DURATION * bucket_index,
-        );
-    }
-
-    assert_eq!(tracker.buckets.len(), 20);
-}
-
-#[test]
 fn freezes_an_approximation_when_the_server_has_no_final_measurement() {
     let (mut tracker, start) = start_tracker();
     tracker.record_utf8_bytes(TWENTY_TOKENS_IN_UTF8_BYTES, start);

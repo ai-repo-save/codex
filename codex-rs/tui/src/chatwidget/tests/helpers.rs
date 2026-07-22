@@ -201,6 +201,10 @@ pub(super) async fn make_chatwidget_manual_with_auth(
         session_telemetry,
     };
     let mut widget = ChatWidget::new_with_op_target(common, super::CodexOpTarget::Direct(op_tx));
+    widget.status_line_project_root_name_cache = Some(CachedProjectRootName {
+        cwd: widget.config.cwd.to_path_buf(),
+        root_name: None,
+    });
     widget.transcript.active_cell = None;
     widget.transcript.active_cell_revision = 0;
     widget.normal_placeholder_text = "Ask Codex to do anything".to_string();

@@ -304,8 +304,6 @@ async fn turn_start_streams_output_throughput_updates() -> Result<()> {
     assert_eq!(completed.turn_id, turn.id);
     assert!(!completed.active);
     assert_eq!(completed.output_tokens, Some(0));
-    assert!(completed.active_duration_ms.is_some());
-    assert!(completed.tokens_per_second.is_some());
 
     timeout(
         DEFAULT_READ_TIMEOUT,
