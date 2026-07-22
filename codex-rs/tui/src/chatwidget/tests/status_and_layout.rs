@@ -110,7 +110,8 @@ async fn plan_delta_updates_the_active_throughput_status_line() {
         }),
         /*replay_kind*/ None,
     );
-    chat.advance_throughput_tracker(Instant::now() + Duration::from_secs(1));
+    chat.throughput_tracker
+        .freeze(Instant::now() + Duration::from_secs(1));
 
     assert!(matches!(
         chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
