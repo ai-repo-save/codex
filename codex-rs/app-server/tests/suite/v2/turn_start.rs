@@ -229,6 +229,7 @@ async fn received_response_input_images(server: &wiremock::MockServer) -> Result
 async fn turn_start_streams_output_throughput_updates() -> Result<()> {
     let server = create_mock_responses_server_sequence_unchecked(vec![responses::sse(vec![
         responses::ev_response_created("resp-throughput"),
+        responses::ev_message_item_added("msg-throughput", ""),
         responses::ev_output_text_delta("done"),
         responses::ev_completed("resp-throughput"),
     ])])
