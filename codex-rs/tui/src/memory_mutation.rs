@@ -1,5 +1,6 @@
 //! History-cell rendering for scoped memory mutations.
 
+use crate::history_cell::HistoryCell;
 use crate::history_cell::PlainHistoryCell;
 use crate::render::line_utils::prefix_lines;
 use codex_app_server_protocol::MemoryMutation;
@@ -9,11 +10,50 @@ use codex_app_server_protocol::MemoryMutationStatus;
 use codex_app_server_protocol::ThreadItem;
 use ratatui::style::Stylize;
 
-pub(crate) fn memory_mutation_history_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
+#[derive(Debug)]
+pub(crate) struct MemoryMutationCell {
+    mutation: MemoryMutation,
+}
+
+impl MemoryMutationCell {
+    pub(crate) fn id(&self) -> &str {
+        &self.mutation.id
+    }
+
+    pub(crate) fn mutation(&self) -> &MemoryMutation {
+        &self.mutation
+    }
+
+    pub(crate) fn update(&mut self, mutation: MemoryMutation) {
+        self.mutation = mutation;
+    }
+
+    fn plain_cell(&self) -> PlainHistoryCell {
+        PlainHistoryCell::new(memory_mutation_lines(&self.mutation))
+    }
+}
+
+impl HistoryCell for MemoryMutationCell {
+    fn display_lines(&self, width: u16) -> Vec<ratatui::text::Line<'static>> {
+        self.plain_cell().display_lines(width)
+    }
+
+    fn raw_lines(&self) -> Vec<ratatui::text::Line<'static>> {
+        self.plain_cell().raw_lines()
+    }
+}
+
+pub(crate) fn memory_mutation_history_cell(item: &ThreadItem) -> Option<MemoryMutationCell> {
     let ThreadItem::MemoryMutation(mutation) = item else {
         return None;
     };
 
+    Some(MemoryMutationCell {
+        mutation: mutation.clone(),
+    })
+}
+
+fn memory_mutation_lines(mutation: &MemoryMutation) -> Vec<ratatui::text::Line<'static>> {
     let mut lines = vec![vec!["• ".dim(), memory_mutation_title(mutation).bold()].into()];
     let mut details = vec![
         vec![
@@ -32,7 +72,7 @@ pub(crate) fn memory_mutation_history_cell(item: &ThreadItem) -> Option<PlainHis
         details.push(vec!["Preview: ".dim(), preview.to_string().into()].into());
     }
     lines.extend(prefix_lines(details, "  └ ".dim(), "    ".into()));
-    Some(PlainHistoryCell::new(lines))
+    lines
 }
 
 pub(crate) fn memory_mutation_summary(mutation: &MemoryMutation) -> String {

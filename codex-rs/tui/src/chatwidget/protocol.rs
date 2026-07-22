@@ -303,7 +303,7 @@ impl ChatWidget {
             ThreadItem::ImageGeneration(_) => {
                 self.on_image_generation_begin();
             }
-            item @ ThreadItem::MemoryMutation(_) => self.on_memory_mutation(item),
+            item @ ThreadItem::MemoryMutation(_) => self.on_memory_mutation_started(item),
             ThreadItem::CollabAgentToolCall {
                 id,
                 tool,

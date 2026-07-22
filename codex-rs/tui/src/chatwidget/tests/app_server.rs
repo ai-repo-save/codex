@@ -955,15 +955,17 @@ async fn live_app_server_memory_mutations_render_history() {
             preview: Some("Keep commits focused.".to_string()),
         })
     };
-    let delete = AppServerThreadItem::MemoryMutation(codex_app_server_protocol::MemoryMutation {
-        id: "memory-delete-1".to_string(),
-        action: codex_app_server_protocol::MemoryMutationAction::Delete,
-        scope: codex_app_server_protocol::MemoryMutationScope::Project,
-        status: codex_app_server_protocol::MemoryMutationStatus::Failed,
-        title: None,
-        path: Some("memories/project/session-notes.md".to_string()),
-        preview: None,
-    });
+    let delete = |status| {
+        AppServerThreadItem::MemoryMutation(codex_app_server_protocol::MemoryMutation {
+            id: "memory-delete-1".to_string(),
+            action: codex_app_server_protocol::MemoryMutationAction::Delete,
+            scope: codex_app_server_protocol::MemoryMutationScope::Project,
+            status,
+            title: None,
+            path: Some("memories/project/session-notes.md".to_string()),
+            preview: None,
+        })
+    };
 
     chat.handle_server_notification(
         ServerNotification::ItemStarted(ItemStartedNotification {
@@ -977,23 +979,44 @@ async fn live_app_server_memory_mutations_render_history() {
         }),
         /*replay_kind*/ None,
     );
+    assert!(drain_insert_history(&mut rx).is_empty());
+    let active = chat
+        .transcript
+        .active_cell
+        .as_ref()
+        .expect("memory mutation should remain active")
+        .display_lines(/*width*/ 80);
+    insta::assert_snapshot!(lines_to_single_string(&active), @r###"
+• Writing memory
+  └ Scope: session
+    Title: Session notes
+    Preview: Keep commits focused.
+"###);
 
-    for item in [
-        write(
-            codex_app_server_protocol::MemoryMutationStatus::Succeeded,
-            Some("memories/session/session-notes.md".to_string()),
-        ),
-        delete,
+    for notification in [
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: write(
+                codex_app_server_protocol::MemoryMutationStatus::Succeeded,
+                Some("memories/session/session-notes.md".to_string()),
+            ),
+        }),
+        ServerNotification::ItemStarted(ItemStartedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            started_at_ms: 0,
+            item: delete(codex_app_server_protocol::MemoryMutationStatus::InProgress),
+        }),
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: delete(codex_app_server_protocol::MemoryMutationStatus::Failed),
+        }),
     ] {
-        chat.handle_server_notification(
-            ServerNotification::ItemCompleted(ItemCompletedNotification {
-                thread_id: "thread-1".to_string(),
-                turn_id: "turn-1".to_string(),
-                completed_at_ms: 0,
-                item,
-            }),
-            /*replay_kind*/ None,
-        );
+        chat.handle_server_notification(notification, /*replay_kind*/ None);
     }
 
     let combined = drain_insert_history(&mut rx)
@@ -1002,12 +1025,6 @@ async fn live_app_server_memory_mutations_render_history() {
         .collect::<Vec<_>>()
         .join("\n");
     insta::assert_snapshot!(combined, @r###"
-• Writing memory
-  └ Scope: session
-    Title: Session notes
-    Preview: Keep commits focused.
-
-
 • Wrote memory
   └ Scope: session
     Title: Session notes

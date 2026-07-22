@@ -214,7 +214,11 @@ impl ChatWidget {
                 );
             }
             ThreadItem::HookPrompt { .. } => {}
-            item @ ThreadItem::MemoryMutation(_) => self.on_memory_mutation(item),
+            item @ ThreadItem::MemoryMutation {
+                status: codex_app_server_protocol::MemoryMutationStatus::InProgress,
+                ..
+            } => self.on_memory_mutation_started(item),
+            item @ ThreadItem::MemoryMutation { .. } => self.on_memory_mutation_completed(item),
             ThreadItem::CollabAgentToolCall {
                 id,
                 tool,

@@ -135,11 +135,47 @@ impl ChatWidget {
         }
     }
 
-    pub(super) fn on_memory_mutation(&mut self, item: ThreadItem) {
+    pub(super) fn on_memory_mutation_started(&mut self, item: ThreadItem) {
         self.record_visible_turn_activity();
         if let Some(cell) = crate::memory_mutation::memory_mutation_history_cell(&item) {
-            self.on_collab_event(cell);
+            self.flush_answer_stream_with_separator();
+            self.flush_active_cell();
+            self.transcript.active_cell = Some(Box::new(cell));
+            self.bump_active_cell_revision();
+            self.request_redraw();
         }
+    }
+
+    pub(super) fn on_memory_mutation_completed(&mut self, item: ThreadItem) {
+        self.record_visible_turn_activity();
+        let Some(completed_cell) = crate::memory_mutation::memory_mutation_history_cell(&item)
+        else {
+            return;
+        };
+
+        self.flush_answer_stream_with_separator();
+        let mut handled = false;
+        if let Some(active_cell) = self
+            .transcript
+            .active_cell
+            .as_mut()
+            .and_then(|cell| {
+                cell.as_any_mut()
+                    .downcast_mut::<crate::memory_mutation::MemoryMutationCell>()
+            })
+            && active_cell.id() == completed_cell.id()
+        {
+            active_cell.update(completed_cell.mutation().clone());
+            self.bump_active_cell_revision();
+            self.flush_active_cell();
+            handled = true;
+        }
+
+        if !handled {
+            self.add_to_history(completed_cell);
+        }
+        self.transcript.had_work_activity = true;
+        self.request_redraw();
     }
 
     pub(crate) fn handle_file_change_completed_now(&mut self, item: ThreadItem) {
