@@ -13373,26 +13373,6 @@
           "properties": {
             "method": {
               "enum": [
-                "turn/outputThroughput/updated"
-              ],
-              "title": "Turn/outputThroughput/updatedNotificationMethod",
-              "type": "string"
-            },
-            "params": {
-              "$ref": "#/definitions/TurnOutputThroughputUpdatedNotification"
-            }
-          },
-          "required": [
-            "method",
-            "params"
-          ],
-          "title": "Turn/outputThroughput/updatedNotification",
-          "type": "object"
-        },
-        {
-          "properties": {
-            "method": {
-              "enum": [
                 "item/started"
               ],
               "title": "Item/startedNotificationMethod",
@@ -18641,48 +18621,6 @@
         "turnId"
       ],
       "title": "TurnModerationMetadataNotification",
-      "type": "object"
-    },
-    "TurnOutputThroughputUpdatedNotification": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "properties": {
-        "active": {
-          "type": "boolean"
-        },
-        "activeDurationMs": {
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "outputTokens": {
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "tokensPerSecond": {
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "active",
-        "threadId",
-        "turnId"
-      ],
-      "title": "TurnOutputThroughputUpdatedNotification",
       "type": "object"
     },
     "TurnPlanStep": {
