@@ -12601,6 +12601,29 @@
         ],
         "type": "object"
       },
+      "MemoryMutationAction": {
+        "enum": [
+          "write",
+          "delete"
+        ],
+        "type": "string"
+      },
+      "MemoryMutationScope": {
+        "enum": [
+          "global",
+          "session",
+          "project"
+        ],
+        "type": "string"
+      },
+      "MemoryMutationStatus": {
+        "enum": [
+          "inProgress",
+          "succeeded",
+          "failed"
+        ],
+        "type": "string"
+      },
       "MergeStrategy": {
         "enum": [
           "replace",
@@ -18595,6 +18618,16 @@
                   }
                 ]
               },
+              "reasoningEffort": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/v2/ReasoningEffort"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "type": {
                 "enum": [
                   "subAgentActivity"
@@ -18611,6 +18644,56 @@
               "type"
             ],
             "title": "SubAgentActivityThreadItem",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "action": {
+                "$ref": "#/definitions/v2/MemoryMutationAction"
+              },
+              "id": {
+                "type": "string"
+              },
+              "path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "preview": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "scope": {
+                "$ref": "#/definitions/v2/MemoryMutationScope"
+              },
+              "status": {
+                "$ref": "#/definitions/v2/MemoryMutationStatus"
+              },
+              "title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "enum": [
+                  "memoryMutation"
+                ],
+                "title": "MemoryMutationThreadItemType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "id",
+              "scope",
+              "status",
+              "type"
+            ],
+            "title": "MemoryMutationThreadItem",
             "type": "object"
           },
           {

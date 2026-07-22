@@ -669,6 +669,29 @@
       ],
       "type": "object"
     },
+    "MemoryMutationAction": {
+      "enum": [
+        "write",
+        "delete"
+      ],
+      "type": "string"
+    },
+    "MemoryMutationScope": {
+      "enum": [
+        "global",
+        "session",
+        "project"
+      ],
+      "type": "string"
+    },
+    "MemoryMutationStatus": {
+      "enum": [
+        "inProgress",
+        "succeeded",
+        "failed"
+      ],
+      "type": "string"
+    },
     "MessagePhase": {
       "description": "Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as \"phase unknown\" and keep compatibility behavior for legacy models.",
       "oneOf": [
@@ -1833,6 +1856,16 @@
                 }
               ]
             },
+            "reasoningEffort": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ReasoningEffort"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "type": {
               "enum": [
                 "subAgentActivity"
@@ -1849,6 +1882,56 @@
             "type"
           ],
           "title": "SubAgentActivityThreadItem",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "action": {
+              "$ref": "#/definitions/MemoryMutationAction"
+            },
+            "id": {
+              "type": "string"
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "preview": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope": {
+              "$ref": "#/definitions/MemoryMutationScope"
+            },
+            "status": {
+              "$ref": "#/definitions/MemoryMutationStatus"
+            },
+            "title": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "memoryMutation"
+              ],
+              "title": "MemoryMutationThreadItemType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "id",
+            "scope",
+            "status",
+            "type"
+          ],
+          "title": "MemoryMutationThreadItem",
           "type": "object"
         },
         {

@@ -3036,6 +3036,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ts-rs",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -3479,6 +3480,7 @@ dependencies = [
  "codex-context-fragments",
  "codex-core",
  "codex-extension-api",
+ "codex-extension-items",
  "codex-features",
  "codex-otel",
  "codex-tools",
