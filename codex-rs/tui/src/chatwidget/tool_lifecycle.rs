@@ -155,15 +155,10 @@ impl ChatWidget {
 
         self.flush_answer_stream_with_separator();
         let mut handled = false;
-        if let Some(active_cell) = self
-            .transcript
-            .active_cell
-            .as_mut()
-            .and_then(|cell| {
-                cell.as_any_mut()
-                    .downcast_mut::<crate::memory_mutation::MemoryMutationCell>()
-            })
-            && active_cell.id() == completed_cell.id()
+        if let Some(active_cell) = self.transcript.active_cell.as_mut().and_then(|cell| {
+            cell.as_any_mut()
+                .downcast_mut::<crate::memory_mutation::MemoryMutationCell>()
+        }) && active_cell.id() == completed_cell.id()
         {
             active_cell.update(completed_cell.mutation().clone());
             self.bump_active_cell_revision();
