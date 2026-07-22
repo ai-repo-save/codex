@@ -371,9 +371,12 @@ impl TurnProfileState {
 
 impl OutputThroughputState {
     fn begin_sample(&mut self) -> OutputThroughputUpdatedEvent {
-        if self.active_sample.replace(OutputThroughputSample {
-            first_output_at: None,
-        }).is_some()
+        if self
+            .active_sample
+            .replace(OutputThroughputSample {
+                first_output_at: None,
+            })
+            .is_some()
         {
             self.aggregate_is_exact = false;
         }
@@ -446,8 +449,8 @@ fn output_throughput_event(
     active_duration: Duration,
 ) -> OutputThroughputUpdatedEvent {
     let active_duration_ms = i64::try_from(active_duration.as_millis()).unwrap_or(i64::MAX);
-    let tokens_per_second = (!active_duration.is_zero())
-        .then(|| output_tokens as f64 / active_duration.as_secs_f64());
+    let tokens_per_second =
+        (!active_duration.is_zero()).then(|| output_tokens as f64 / active_duration.as_secs_f64());
     OutputThroughputUpdatedEvent {
         active: false,
         output_tokens: Some(output_tokens),

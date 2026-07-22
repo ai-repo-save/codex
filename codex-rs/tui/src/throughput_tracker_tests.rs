@@ -62,7 +62,10 @@ fn freezes_an_approximation_when_the_server_has_no_final_measurement() {
     let measured_at = start + MINIMUM_SAMPLE_DURATION;
 
     tracker.finish_sampling(/*tokens_per_second*/ None, measured_at);
-    tracker.record_utf8_bytes(TWENTY_TOKENS_IN_UTF8_BYTES, measured_at + Duration::from_secs(1));
+    tracker.record_utf8_bytes(
+        TWENTY_TOKENS_IN_UTF8_BYTES,
+        measured_at + Duration::from_secs(1),
+    );
 
     assert_eq!(
         tracker.display(measured_at + WINDOW_DURATION),
@@ -77,7 +80,10 @@ fn freezes_an_approximation_when_a_turn_is_aborted() {
     let frozen_at = start + MINIMUM_SAMPLE_DURATION;
 
     tracker.freeze(frozen_at);
-    tracker.record_utf8_bytes(TWENTY_TOKENS_IN_UTF8_BYTES, frozen_at + Duration::from_secs(1));
+    tracker.record_utf8_bytes(
+        TWENTY_TOKENS_IN_UTF8_BYTES,
+        frozen_at + Duration::from_secs(1),
+    );
 
     assert_eq!(
         tracker.display(frozen_at + WINDOW_DURATION),

@@ -19,7 +19,8 @@ impl ChatWidget {
         if active {
             self.throughput_tracker.begin_sampling(now);
         } else {
-            self.throughput_tracker.finish_sampling(tokens_per_second, now);
+            self.throughput_tracker
+                .finish_sampling(tokens_per_second, now);
         }
         self.refresh_status_line();
         self.schedule_throughput_update(now);

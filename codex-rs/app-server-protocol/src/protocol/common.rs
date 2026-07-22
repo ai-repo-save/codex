@@ -3488,8 +3488,8 @@ mod tests {
     }
 
     #[test]
-    fn serialize_turn_output_throughput_updated_notification_with_populated_metrics(
-    ) -> Result<()> {
+    fn serialize_turn_output_throughput_updated_notification_with_populated_metrics() -> Result<()>
+    {
         let notification = ServerNotification::TurnOutputThroughputUpdated(
             v2::TurnOutputThroughputUpdatedNotification {
                 thread_id: "thr_123".to_string(),

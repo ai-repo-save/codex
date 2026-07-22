@@ -11,10 +11,10 @@ use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use super::OutputThroughputVisibleDelta;
 use super::TurnProfilePhase;
 use super::TurnProfileState;
 use super::TurnTimingState;
-use super::OutputThroughputVisibleDelta;
 use super::response_item_records_turn_ttft;
 use crate::ResponseEvent;
 

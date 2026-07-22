@@ -126,7 +126,9 @@ impl ThroughputTracker {
     }
 
     fn refresh_live_display(&mut self, now: Instant) {
-        if self.sampling_started_at.is_none() || matches!(self.display, Some(ThroughputDisplay::Exact(_))) {
+        if self.sampling_started_at.is_none()
+            || matches!(self.display, Some(ThroughputDisplay::Exact(_)))
+        {
             return;
         }
 
@@ -135,10 +137,9 @@ impl ThroughputTracker {
             self.display = Some(ThroughputDisplay::Waiting);
             return;
         };
-        if self
-            .last_delta_at
-            .is_some_and(|last_delta_at| now.saturating_duration_since(last_delta_at) >= WINDOW_DURATION)
-        {
+        if self.last_delta_at.is_some_and(|last_delta_at| {
+            now.saturating_duration_since(last_delta_at) >= WINDOW_DURATION
+        }) {
             self.display = Some(ThroughputDisplay::Approximate(0.0));
             return;
         }
@@ -162,11 +163,9 @@ impl ThroughputTracker {
     }
 
     fn evict_expired_buckets(&mut self, now: Instant) {
-        while self
-            .buckets
-            .front()
-            .is_some_and(|bucket| now.saturating_duration_since(bucket.started_at) >= WINDOW_DURATION)
-        {
+        while self.buckets.front().is_some_and(|bucket| {
+            now.saturating_duration_since(bucket.started_at) >= WINDOW_DURATION
+        }) {
             self.buckets.pop_front();
         }
     }

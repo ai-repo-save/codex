@@ -24,11 +24,7 @@ fn take_workspace_headline_request_id(
     }
 }
 
-fn apply_throughput_update(
-    chat: &mut ChatWidget,
-    active: bool,
-    tokens_per_second: Option<f64>,
-) {
+fn apply_throughput_update(chat: &mut ChatWidget, active: bool, tokens_per_second: Option<f64>) {
     chat.handle_server_notification(
         ServerNotification::TurnOutputThroughputUpdated(TurnOutputThroughputUpdatedNotification {
             thread_id: "thr_test".to_string(),
@@ -76,7 +72,9 @@ async fn token_count_none_resets_context_indicator() {
 async fn throughput_notification_updates_the_status_line() {
     let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 
-    apply_throughput_update(&mut chat, /*active*/ true, /*tokens_per_second*/ None);
+    apply_throughput_update(
+        &mut chat, /*active*/ true, /*tokens_per_second*/ None,
+    );
     assert_eq!(
         chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
         Some("— tok/s".to_string())
@@ -99,7 +97,9 @@ async fn throughput_notification_updates_the_status_line() {
 async fn throughput_footer_renders_active_and_final_values_at_regular_and_narrow_widths() {
     let (mut active_chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
     let first_delta_at = Instant::now() - Duration::from_secs(1);
-    active_chat.throughput_tracker.begin_sampling(first_delta_at);
+    active_chat
+        .throughput_tracker
+        .begin_sampling(first_delta_at);
     active_chat
         .throughput_tracker
         .record_utf8_bytes(/*byte_count*/ 80, first_delta_at);

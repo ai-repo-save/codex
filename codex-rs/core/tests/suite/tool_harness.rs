@@ -145,7 +145,10 @@ async fn output_throughput_deactivates_before_blocking_tool_starts() -> anyhow::
         cwd,
         session_configured,
         ..
-    } = test_codex().with_model("test-gpt-5-codex").build(&server).await?;
+    } = test_codex()
+        .with_model("test-gpt-5-codex")
+        .build(&server)
+        .await?;
     let call_id = "throughput-blocking-call";
     let command_args = json!({
         "command": "sleep 60",
@@ -193,9 +196,10 @@ async fn output_throughput_deactivates_before_blocking_tool_starts() -> anyhow::
         })
         .await?;
 
-    let active = wait_for_event(&codex, |event| {
-        matches!(event, EventMsg::OutputThroughputUpdated(event) if event.active)
-    })
+    let active = wait_for_event(
+        &codex,
+        |event| matches!(event, EventMsg::OutputThroughputUpdated(event) if event.active),
+    )
     .await;
     let EventMsg::OutputThroughputUpdated(active) = active else {
         unreachable!();
@@ -203,9 +207,10 @@ async fn output_throughput_deactivates_before_blocking_tool_starts() -> anyhow::
     assert_eq!(active.output_tokens, None);
     assert_eq!(active.active_duration_ms, None);
     assert_eq!(active.tokens_per_second, None);
-    let completed = wait_for_event(&codex, |event| {
-        matches!(event, EventMsg::OutputThroughputUpdated(event) if !event.active)
-    })
+    let completed = wait_for_event(
+        &codex,
+        |event| matches!(event, EventMsg::OutputThroughputUpdated(event) if !event.active),
+    )
     .await;
     let EventMsg::OutputThroughputUpdated(completed) = completed else {
         unreachable!();
@@ -214,7 +219,10 @@ async fn output_throughput_deactivates_before_blocking_tool_starts() -> anyhow::
     assert_eq!(completed.active_duration_ms, None);
     assert_eq!(completed.tokens_per_second, None);
 
-    wait_for_event(&codex, |event| matches!(event, EventMsg::ExecCommandBegin(_))).await;
+    wait_for_event(&codex, |event| {
+        matches!(event, EventMsg::ExecCommandBegin(_))
+    })
+    .await;
     codex.submit(Op::Interrupt).await?;
     wait_for_event(&codex, |event| matches!(event, EventMsg::TurnAborted(_))).await;
 
