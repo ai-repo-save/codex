@@ -1660,7 +1660,7 @@ async fn spawn_agent_started_activity_uses_role_effective_model_and_reasoning_ef
                 "custom".to_string(),
                 AgentRoleConfig {
                     description: Some("Custom role".to_string()),
-                    config_file: Some(role_path),
+                    config_file: Some(role_path.to_path_buf()),
                     nickname_candidates: None,
                 },
             );
