@@ -408,11 +408,15 @@ use self::status_state::TerminalTitleStatusKind;
 mod status_controls;
 mod status_surfaces;
 mod streaming;
+#[path = "throughput_tracker.rs"]
+mod throughput_tracker;
 use self::status_surfaces::CachedProjectRootName;
+use self::throughput_tracker::ThroughputTracker;
 mod tokens;
 pub(crate) use self::tokens::TokenActivityView;
 mod tool_lifecycle;
 mod tool_requests;
+mod throughput;
 mod transcript;
 use self::transcript::TranscriptState;
 mod turn_lifecycle;
@@ -472,7 +476,7 @@ const ASK_FOR_APPROVAL_LABEL: &str = "Ask for approval";
 const APPROVE_FOR_ME_LABEL: &str = "Approve for me";
 const AUTO_REVIEW_DESCRIPTION: &str = "Only ask for actions detected as potentially unsafe.";
 const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
-const DEFAULT_STATUS_LINE_ITEMS: [&str; 2] = ["model-with-reasoning", "current-dir"];
+const DEFAULT_STATUS_LINE_ITEMS: [&str; 3] = ["model-with-reasoning", "tps", "current-dir"];
 const MAX_AGENT_COPY_HISTORY: usize = 32;
 
 /// Common initialization parameters shared by all `ChatWidget` constructors.
@@ -679,6 +683,7 @@ pub(crate) struct ChatWidget {
     quit_shortcut_key: Option<KeyBinding>,
     // Runtime metrics accumulated across delta snapshots for the active turn.
     turn_runtime_metrics: RuntimeMetricsSummary,
+    throughput_tracker: ThroughputTracker,
     last_rendered_width: std::cell::Cell<Option<usize>>,
     // Feedback sink for /feedback
     feedback: codex_feedback::CodexFeedback,
@@ -1183,6 +1188,7 @@ impl ChatWidget {
     }
 
     pub(crate) fn pre_draw_tick(&mut self) {
+        self.advance_throughput_tracker(Instant::now());
         self.update_due_hook_visibility();
         self.schedule_hook_timer_if_needed();
         self.bottom_pane.pre_draw_tick();

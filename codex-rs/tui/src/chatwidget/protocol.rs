@@ -74,15 +74,32 @@ impl ChatWidget {
                 self.handle_item_completed_notification(notification, replay_kind);
             }
             ServerNotification::AgentMessageDelta(notification) => {
+                if !from_replay {
+                    self.record_throughput_delta(&notification.delta);
+                }
                 self.on_agent_message_delta(notification.delta);
             }
             ServerNotification::PlanDelta(notification) => self.on_plan_delta(notification.delta),
             ServerNotification::ReasoningSummaryTextDelta(notification) => {
+                if !from_replay {
+                    self.record_throughput_delta(&notification.delta);
+                }
                 self.on_agent_reasoning_delta(notification.delta);
             }
             ServerNotification::ReasoningTextDelta(notification) => {
+                if !from_replay {
+                    self.record_throughput_delta(&notification.delta);
+                }
                 if self.config.show_raw_agent_reasoning {
                     self.on_agent_reasoning_delta(notification.delta);
+                }
+            }
+            ServerNotification::TurnOutputThroughputUpdated(notification) => {
+                if !from_replay {
+                    self.update_throughput_sampling(
+                        notification.active,
+                        notification.tokens_per_second,
+                    );
                 }
             }
             ServerNotification::ReasoningSummaryPartAdded(_) => self.on_reasoning_section_break(),
