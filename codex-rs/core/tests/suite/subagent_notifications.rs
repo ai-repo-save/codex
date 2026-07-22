@@ -1587,7 +1587,8 @@ async fn skills_toggle_skips_instructions_for_parent_and_spawned_child() -> Resu
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn spawn_agent_started_activity_uses_role_effective_model_and_reasoning_effort() -> Result<()> {
+async fn spawn_agent_started_activity_uses_role_effective_model_and_reasoning_effort() -> Result<()>
+{
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
