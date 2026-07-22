@@ -412,6 +412,7 @@ use self::status_surfaces::CachedProjectRootName;
 mod tokens;
 pub(crate) use self::tokens::TokenActivityView;
 mod throughput;
+use self::throughput::ThroughputDisplay;
 mod tool_lifecycle;
 mod tool_requests;
 mod transcript;
