@@ -1638,6 +1638,7 @@ server_notification_definitions! {
     HookCompleted => "hook/completed" (v2::HookCompletedNotification),
     TurnDiffUpdated => "turn/diff/updated" (v2::TurnDiffUpdatedNotification),
     TurnPlanUpdated => "turn/plan/updated" (v2::TurnPlanUpdatedNotification),
+    TurnOutputThroughputUpdated => "turn/outputThroughput/updated" (v2::TurnOutputThroughputUpdatedNotification),
     ItemStarted => "item/started" (v2::ItemStartedNotification),
     ItemGuardianApprovalReviewStarted => "item/autoApprovalReview/started" (v2::ItemGuardianApprovalReviewStartedNotification),
     ItemGuardianApprovalReviewCompleted => "item/autoApprovalReview/completed" (v2::ItemGuardianApprovalReviewCompletedNotification),
@@ -3450,6 +3451,65 @@ mod tests {
                     "status": {
                         "type": "idle"
                     },
+                }
+            }),
+            serde_json::to_value(&notification)?,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn serialize_turn_output_throughput_updated_notification_with_null_metrics() -> Result<()> {
+        let notification = ServerNotification::TurnOutputThroughputUpdated(
+            v2::TurnOutputThroughputUpdatedNotification {
+                thread_id: "thr_123".to_string(),
+                turn_id: "turn_123".to_string(),
+                active: true,
+                output_tokens: None,
+                active_duration_ms: None,
+                tokens_per_second: None,
+            },
+        );
+        assert_eq!(
+            json!({
+                "method": "turn/outputThroughput/updated",
+                "params": {
+                    "threadId": "thr_123",
+                    "turnId": "turn_123",
+                    "active": true,
+                    "outputTokens": null,
+                    "activeDurationMs": null,
+                    "tokensPerSecond": null
+                }
+            }),
+            serde_json::to_value(&notification)?,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn serialize_turn_output_throughput_updated_notification_with_populated_metrics(
+    ) -> Result<()> {
+        let notification = ServerNotification::TurnOutputThroughputUpdated(
+            v2::TurnOutputThroughputUpdatedNotification {
+                thread_id: "thr_123".to_string(),
+                turn_id: "turn_123".to_string(),
+                active: false,
+                output_tokens: Some(42),
+                active_duration_ms: Some(1_200),
+                tokens_per_second: Some(35.0),
+            },
+        );
+        assert_eq!(
+            json!({
+                "method": "turn/outputThroughput/updated",
+                "params": {
+                    "threadId": "thr_123",
+                    "turnId": "turn_123",
+                    "active": false,
+                    "outputTokens": 42,
+                    "activeDurationMs": 1200,
+                    "tokensPerSecond": 35.0
                 }
             }),
             serde_json::to_value(&notification)?,

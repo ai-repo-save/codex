@@ -9,6 +9,8 @@ use codex_analytics::TurnProfile;
 use codex_otel::TURN_TTFM_DURATION_METRIC;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::OutputThroughputUpdatedEvent;
+use codex_protocol::protocol::TokenUsage;
 use tokio::sync::Mutex;
 
 use crate::ResponseEvent;
@@ -43,6 +45,14 @@ pub(crate) async fn record_turn_ttfm_metric(turn_context: &TurnContext, item: &T
 pub(crate) struct TurnTimingState {
     state: Mutex<TurnTimingStateInner>,
     profile: StdMutex<TurnProfileState>,
+    output_throughput: StdMutex<OutputThroughputState>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum OutputThroughputVisibleDelta<'a> {
+    AgentMessageText(&'a str),
+    ReasoningSummaryText(&'a str),
+    ReasoningText(&'a str),
 }
 
 #[derive(Debug, Default)]
@@ -67,6 +77,30 @@ struct TurnProfileState {
     sampling_request_count: u32,
     sampling_retry_count: u32,
     completed_profile: Option<TurnProfile>,
+}
+
+#[derive(Debug)]
+struct OutputThroughputState {
+    active_sample: Option<OutputThroughputSample>,
+    aggregate_output_tokens: i64,
+    aggregate_active_duration: Duration,
+    aggregate_is_exact: bool,
+}
+
+impl Default for OutputThroughputState {
+    fn default() -> Self {
+        Self {
+            active_sample: None,
+            aggregate_output_tokens: 0,
+            aggregate_active_duration: Duration::ZERO,
+            aggregate_is_exact: true,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct OutputThroughputSample {
+    first_output_at: Option<Instant>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -131,6 +165,33 @@ impl TurnTimingState {
         self.profile_state().record_sampling_retry();
     }
 
+    pub(crate) fn begin_output_throughput_sample(&self) -> OutputThroughputUpdatedEvent {
+        self.output_throughput_state().begin_sample()
+    }
+
+    pub(crate) fn record_output_throughput_first_visible_output(
+        &self,
+        delta: OutputThroughputVisibleDelta<'_>,
+        now: Instant,
+    ) {
+        if output_throughput_visible_delta_records_first_output(delta) {
+            self.output_throughput_state().record_first_output(now);
+        }
+    }
+
+    pub(crate) fn complete_output_throughput_sample(
+        &self,
+        token_usage: Option<&TokenUsage>,
+        now: Instant,
+    ) -> Option<OutputThroughputUpdatedEvent> {
+        self.output_throughput_state()
+            .complete_sample(token_usage, now)
+    }
+
+    pub(crate) fn abandon_output_throughput_sample(&self) -> Option<OutputThroughputUpdatedEvent> {
+        self.output_throughput_state().abandon_sample()
+    }
+
     pub(crate) fn begin_tool_blocking(self: &Arc<Self>) -> TurnProfileTimingGuard {
         let active = self.profile_state().begin_tool_blocking(Instant::now());
         TurnProfileTimingGuard {
@@ -161,6 +222,12 @@ impl TurnTimingState {
 
     fn profile_state(&self) -> std::sync::MutexGuard<'_, TurnProfileState> {
         self.profile
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn output_throughput_state(&self) -> std::sync::MutexGuard<'_, OutputThroughputState> {
+        self.output_throughput
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
@@ -302,6 +369,93 @@ impl TurnProfileState {
     }
 }
 
+impl OutputThroughputState {
+    fn begin_sample(&mut self) -> OutputThroughputUpdatedEvent {
+        if self.active_sample.replace(OutputThroughputSample {
+            first_output_at: None,
+        }).is_some()
+        {
+            self.aggregate_is_exact = false;
+        }
+        OutputThroughputUpdatedEvent {
+            active: true,
+            output_tokens: None,
+            active_duration_ms: None,
+            tokens_per_second: None,
+        }
+    }
+
+    fn record_first_output(&mut self, now: Instant) {
+        if let Some(sample) = self.active_sample.as_mut()
+            && sample.first_output_at.is_none()
+        {
+            sample.first_output_at = Some(now);
+        }
+    }
+
+    fn complete_sample(
+        &mut self,
+        token_usage: Option<&TokenUsage>,
+        now: Instant,
+    ) -> Option<OutputThroughputUpdatedEvent> {
+        let sample = self.active_sample.take()?;
+        let Some(first_output_at) = sample.first_output_at else {
+            self.aggregate_is_exact = false;
+            return Some(inactive_output_throughput_event());
+        };
+        let Some(token_usage) = token_usage else {
+            self.aggregate_is_exact = false;
+            return Some(inactive_output_throughput_event());
+        };
+        let active_duration = now.saturating_duration_since(first_output_at);
+        self.aggregate_output_tokens = self
+            .aggregate_output_tokens
+            .saturating_add(token_usage.output_tokens);
+        self.aggregate_active_duration = self
+            .aggregate_active_duration
+            .saturating_add(active_duration);
+
+        if !self.aggregate_is_exact {
+            return Some(inactive_output_throughput_event());
+        }
+
+        Some(output_throughput_event(
+            self.aggregate_output_tokens,
+            self.aggregate_active_duration,
+        ))
+    }
+
+    fn abandon_sample(&mut self) -> Option<OutputThroughputUpdatedEvent> {
+        self.active_sample.take()?;
+        self.aggregate_is_exact = false;
+        Some(inactive_output_throughput_event())
+    }
+}
+
+fn inactive_output_throughput_event() -> OutputThroughputUpdatedEvent {
+    OutputThroughputUpdatedEvent {
+        active: false,
+        output_tokens: None,
+        active_duration_ms: None,
+        tokens_per_second: None,
+    }
+}
+
+fn output_throughput_event(
+    output_tokens: i64,
+    active_duration: Duration,
+) -> OutputThroughputUpdatedEvent {
+    let active_duration_ms = i64::try_from(active_duration.as_millis()).unwrap_or(i64::MAX);
+    let tokens_per_second = (!active_duration.is_zero())
+        .then(|| output_tokens as f64 / active_duration.as_secs_f64());
+    OutputThroughputUpdatedEvent {
+        active: false,
+        output_tokens: Some(output_tokens),
+        active_duration_ms: Some(active_duration_ms),
+        tokens_per_second,
+    }
+}
+
 impl TurnTimingStateInner {
     fn time_to_first_token(&self) -> Option<Duration> {
         Some(self.first_token_at?.duration_since(self.started_at?))
@@ -387,6 +541,17 @@ fn response_item_records_turn_ttft(item: &ResponseItem) -> bool {
         | ResponseItem::ToolSearchOutput { .. }
         | ResponseItem::Other => false,
     }
+}
+
+fn output_throughput_visible_delta_records_first_output(
+    delta: OutputThroughputVisibleDelta<'_>,
+) -> bool {
+    let text = match delta {
+        OutputThroughputVisibleDelta::AgentMessageText(text)
+        | OutputThroughputVisibleDelta::ReasoningSummaryText(text)
+        | OutputThroughputVisibleDelta::ReasoningText(text) => text,
+    };
+    !text.is_empty()
 }
 
 #[cfg(test)]

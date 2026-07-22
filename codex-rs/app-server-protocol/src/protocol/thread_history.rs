@@ -381,7 +381,7 @@ impl ThreadHistoryBuilder {
             EventMsg::ItemCompleted(payload) => self.handle_item_completed(payload),
             EventMsg::HookStarted(_) | EventMsg::HookCompleted(_) => {}
             EventMsg::Error(payload) => self.handle_error(payload),
-            EventMsg::TokenCount(_) => {}
+            EventMsg::TokenCount(_) | EventMsg::OutputThroughputUpdated(_) => {}
             EventMsg::ThreadRolledBack(payload) => self.handle_thread_rollback(payload),
             EventMsg::TurnAborted(payload) => self.handle_turn_aborted(payload),
             EventMsg::TurnStarted(payload) => self.handle_turn_started(payload),

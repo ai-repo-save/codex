@@ -415,6 +415,18 @@ pub struct TurnPlanUpdatedNotification {
     pub plan: Vec<TurnPlanStep>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TurnOutputThroughputUpdatedNotification {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub active: bool,
+    pub output_tokens: Option<i64>,
+    pub active_duration_ms: Option<i64>,
+    pub tokens_per_second: Option<f64>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]

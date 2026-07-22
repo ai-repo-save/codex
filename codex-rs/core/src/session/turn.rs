@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::time::Instant;
 
 use crate::SkillInjections;
 use crate::build_skill_injections;
@@ -79,6 +80,7 @@ use crate::tools::spec_plan::search_tool_enabled;
 use crate::tools::spec_plan::tool_suggest_enabled;
 use crate::turn_diff_tracker::TurnDiffTracker;
 use crate::turn_timing::record_turn_ttft_metric;
+use crate::turn_timing::OutputThroughputVisibleDelta;
 use crate::util::error_or_panic;
 use codex_analytics::AppInvocation;
 use codex_analytics::CompactionPhase;
@@ -1594,6 +1596,7 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<(String, Option<
         | EventMsg::ThreadSettingsApplied(_)
         | EventMsg::TurnComplete(_)
         | EventMsg::TokenCount(_)
+        | EventMsg::OutputThroughputUpdated(_)
         | EventMsg::UserMessage(_)
         | EventMsg::AgentReasoning(_)
         | EventMsg::AgentReasoningRawContent(_)
@@ -1698,6 +1701,12 @@ async fn handle_plan_segments(
                     item_id: item_id.to_string(),
                     delta,
                 };
+                turn_context
+                    .turn_timing_state
+                    .record_output_throughput_first_visible_output(
+                        OutputThroughputVisibleDelta::AgentMessageText(&event.delta),
+                        Instant::now(),
+                    );
                 sess.send_event(turn_context, EventMsg::AgentMessageContentDelta(event))
                     .await;
             }
@@ -1752,6 +1761,12 @@ async fn emit_streamed_assistant_text_delta(
         item_id: item_id.to_string(),
         delta: parsed.visible_text,
     };
+    turn_context
+        .turn_timing_state
+        .record_output_throughput_first_visible_output(
+            OutputThroughputVisibleDelta::AgentMessageText(&event.delta),
+            Instant::now(),
+        );
     sess.send_event(turn_context, EventMsg::AgentMessageContentDelta(event))
         .await;
 }
@@ -2300,12 +2315,21 @@ async fn try_run_sampling_request(
         turn_context.provider.info().name.as_str(),
     );
     let sampling_timing_guard = turn_context.turn_timing_state.begin_sampling();
+    sess.send_event(
+        &turn_context,
+        EventMsg::OutputThroughputUpdated(
+            turn_context
+                .turn_timing_state
+                .begin_output_throughput_sample(),
+        ),
+    )
+    .await;
     let uses_sequential_cutoff_reasoning_summaries = turn_context
         .config
         .features
         .enabled(Feature::ConcurrentReasoningSummaries)
         && turn_context.provider.info().is_openai();
-    let mut stream = client_session
+    let stream_result = client_session
         .stream(
             prompt,
             &turn_context.model_info,
@@ -2318,7 +2342,30 @@ async fn try_run_sampling_request(
         )
         .instrument(trace_span!("stream_request"))
         .or_cancel(&cancellation_token)
-        .await??;
+        .await;
+    let mut stream = match stream_result {
+        Ok(Ok(stream)) => stream,
+        Ok(Err(err)) => {
+            if let Some(event) = turn_context
+                .turn_timing_state
+                .abandon_output_throughput_sample()
+            {
+                sess.send_event(&turn_context, EventMsg::OutputThroughputUpdated(event))
+                    .await;
+            }
+            return Err(err);
+        }
+        Err(codex_async_utils::CancelErr::Cancelled) => {
+            if let Some(event) = turn_context
+                .turn_timing_state
+                .abandon_output_throughput_sample()
+            {
+                sess.send_event(&turn_context, EventMsg::OutputThroughputUpdated(event))
+                    .await;
+            }
+            return Err(CodexErr::TurnAborted);
+        }
+    };
     let mut in_flight: FuturesOrdered<BoxFuture<'static, CodexResult<InFlightToolOutput>>> =
         FuturesOrdered::new();
     let mut needs_follow_up = false;
@@ -2374,6 +2421,17 @@ async fn try_run_sampling_request(
             }
         };
 
+        let event_received_at = Instant::now();
+        let completed_throughput_event = match &event {
+            ResponseEvent::Completed { token_usage, .. } => turn_context
+                .turn_timing_state
+                .complete_output_throughput_sample(token_usage.as_ref(), event_received_at),
+            _ => None,
+        };
+        if let Some(event) = completed_throughput_event {
+            sess.send_event(&turn_context, EventMsg::OutputThroughputUpdated(event))
+                .await;
+        }
         sess.services
             .session_telemetry
             .record_responses(&handle_responses, &event);
@@ -2666,6 +2724,12 @@ async fn try_run_sampling_request(
                             item_id,
                             delta,
                         };
+                        turn_context
+                            .turn_timing_state
+                            .record_output_throughput_first_visible_output(
+                                OutputThroughputVisibleDelta::AgentMessageText(&event.delta),
+                                event_received_at,
+                            );
                         sess.send_event(&turn_context, EventMsg::AgentMessageContentDelta(event))
                             .await;
                     }
@@ -2709,6 +2773,12 @@ async fn try_run_sampling_request(
                         delta,
                         summary_index,
                     };
+                    turn_context
+                        .turn_timing_state
+                        .record_output_throughput_first_visible_output(
+                            OutputThroughputVisibleDelta::ReasoningSummaryText(&event.delta),
+                            event_received_at,
+                        );
                     sess.send_event(&turn_context, EventMsg::ReasoningContentDelta(event))
                         .await;
                 } else {
@@ -2764,6 +2834,12 @@ async fn try_run_sampling_request(
                     delta: text,
                     summary_index,
                 };
+                turn_context
+                    .turn_timing_state
+                    .record_output_throughput_first_visible_output(
+                        OutputThroughputVisibleDelta::ReasoningSummaryText(&event.delta),
+                        event_received_at,
+                    );
                 sess.send_event(&turn_context, EventMsg::ReasoningContentDelta(event))
                     .await;
             }
@@ -2782,6 +2858,12 @@ async fn try_run_sampling_request(
                         delta,
                         content_index,
                     };
+                    turn_context
+                        .turn_timing_state
+                        .record_output_throughput_first_visible_output(
+                            OutputThroughputVisibleDelta::ReasoningText(&event.delta),
+                            event_received_at,
+                        );
                     sess.send_event(&turn_context, EventMsg::ReasoningRawContentDelta(event))
                         .await;
                 } else {
@@ -2790,6 +2872,13 @@ async fn try_run_sampling_request(
             }
         }
     };
+    if let Some(event) = turn_context
+        .turn_timing_state
+        .abandon_output_throughput_sample()
+    {
+        sess.send_event(&turn_context, EventMsg::OutputThroughputUpdated(event))
+            .await;
+    }
     drop(sampling_timing_guard);
 
     flush_assistant_text_segments_all(
