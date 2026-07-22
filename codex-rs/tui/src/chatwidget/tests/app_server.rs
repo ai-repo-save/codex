@@ -997,11 +997,15 @@ async fn live_app_server_memory_mutations_render_history() {
   └ Scope: session
     Title: Session notes
     Preview: Keep commits focused.
+
+
 • Wrote memory
   └ Scope: session
     Title: Session notes
     Path: memories/session/session-notes.md
     Preview: Keep commits focused.
+
+
 • Failed to delete memory
   └ Scope: project
     Path: memories/project/session-notes.md
