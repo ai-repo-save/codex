@@ -4,12 +4,11 @@ use crate::test_support::test_path_buf;
 use codex_app_server_protocol::CollabAgentTool;
 use codex_app_server_protocol::CollabAgentToolCallStatus;
 use codex_app_server_protocol::SubAgentActivityKind;
-use codex_app_server_protocol::SubAgentActivityOperation;
-use codex_app_server_protocol::SubAgentActivityOutcome;
 use codex_app_server_protocol::ThreadStatus;
 use codex_app_server_protocol::Turn;
 use codex_app_server_protocol::TurnItemsView;
 use codex_app_server_protocol::TurnStatus;
+use codex_protocol::openai_models::ReasoningEffort;
 
 #[test]
 fn persisted_multi_agent_items_render_safe_transcript_summaries() {
@@ -43,13 +42,23 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
             items: vec![
                 ThreadItem::SubAgentActivity {
                     id: "activity-1".to_string(),
-                    kind: SubAgentActivityKind::Interacted,
+                    kind: SubAgentActivityKind::Started,
                     agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
                     agent_path: "/root/research".to_string(),
-                    operation: Some(SubAgentActivityOperation::FollowupTask),
-                    outcome: Some(SubAgentActivityOutcome::Succeeded),
+                    operation: None,
+                    outcome: None,
                     model: Some("gpt-5.6".to_string()),
+                    reasoning_effort: Some(ReasoningEffort::High),
                 },
+                ThreadItem::MemoryMutation(codex_app_server_protocol::MemoryMutation {
+                    id: "memory-write-1".to_string(),
+                    action: codex_app_server_protocol::MemoryMutationAction::Write,
+                    scope: codex_app_server_protocol::MemoryMutationScope::Project,
+                    status: codex_app_server_protocol::MemoryMutationStatus::Succeeded,
+                    title: Some("Repository conventions".to_string()),
+                    path: Some("memories/project/repository-conventions.md".to_string()),
+                    preview: Some("Run focused tests remotely.".to_string()),
+                }),
                 ThreadItem::CollabAgentToolCall {
                     id: "spawn-1".to_string(),
                     tool: CollabAgentTool::SpawnAgent,
@@ -82,7 +91,8 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
     insta::assert_snapshot!(
         rendered,
         @r###"
-Sent follow-up to /root/research
+Started /root/research (gpt-5.6, high)
+Wrote memory · scope: project · title: Repository conventions · path: memories/project/repository-conventions.md · preview: Run focused tests remotely.
 Spawned an agent
 "###,
     );

@@ -81,6 +81,18 @@ async fn throughput_notification_updates_the_status_line() {
         Some("— tok/s".to_string())
     );
 
+    apply_throughput_update(&mut chat, /*active*/ true, Some(35.0));
+    assert_eq!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
+        Some("~35.0 tok/s".to_string())
+    );
+
+    apply_throughput_update(&mut chat, /*active*/ false, /*tokens_per_second*/ None);
+    assert_eq!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
+        Some("~35.0 tok/s".to_string())
+    );
+
     apply_throughput_update(&mut chat, /*active*/ false, Some(35.0));
     assert_eq!(
         chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
@@ -95,10 +107,10 @@ async fn throughput_notification_updates_the_status_line() {
 }
 
 #[tokio::test]
-async fn plan_delta_updates_the_active_throughput_status_line() {
+async fn plan_delta_preserves_the_active_throughput_status_line() {
     let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
     apply_throughput_update(
-        &mut chat, /*active*/ true, /*tokens_per_second*/ None,
+        &mut chat, /*active*/ true, Some(20.0),
     );
 
     chat.handle_server_notification(
@@ -110,28 +122,16 @@ async fn plan_delta_updates_the_active_throughput_status_line() {
         }),
         /*replay_kind*/ None,
     );
-    chat.throughput_tracker
-        .freeze(Instant::now() + Duration::from_secs(1));
-
-    assert!(matches!(
+    assert_eq!(
         chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
-        Some(value) if value.starts_with('~')
-    ));
+        Some("~20.0 tok/s".to_string())
+    );
 }
 
 #[tokio::test]
 async fn throughput_footer_renders_active_and_final_values_at_regular_and_narrow_widths() {
     let (mut active_chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-    let first_delta_at = Instant::now() - Duration::from_secs(4);
-    active_chat
-        .throughput_tracker
-        .begin_sampling(first_delta_at);
-    active_chat
-        .throughput_tracker
-        .record_utf8_bytes(/*byte_count*/ 160, first_delta_at);
-    active_chat
-        .throughput_tracker
-        .freeze(first_delta_at + Duration::from_secs(4));
+    apply_throughput_update(&mut active_chat, /*active*/ true, Some(10.0));
 
     assert_chatwidget_snapshot!(
         "status_line_active_throughput_footer",

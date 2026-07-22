@@ -987,6 +987,7 @@ impl ThreadHistoryBuilder {
             operation: payload.operation.map(Into::into),
             outcome: payload.outcome.map(Into::into),
             model: payload.model.clone(),
+            reasoning_effort: payload.reasoning_effort.clone(),
         });
     }
 
@@ -1696,6 +1697,10 @@ impl From<&PendingTurn> for Turn {
 mod tests {
     use super::*;
     use crate::protocol::v2::CommandExecutionSource;
+    use crate::protocol::v2::MemoryMutation;
+    use crate::protocol::v2::MemoryMutationAction;
+    use crate::protocol::v2::MemoryMutationScope;
+    use crate::protocol::v2::MemoryMutationStatus;
     use crate::protocol::v2::SubAgentActivityKind;
     use crate::protocol::v2::SubAgentActivityOperation;
     use crate::protocol::v2::SubAgentActivityOutcome;
@@ -2290,6 +2295,69 @@ mod tests {
                 revised_prompt: Some("A blue square".to_string()),
                 result: "cG5n".to_string(),
                 saved_path: Some(saved_path),
+            })]
+        );
+    }
+
+    #[test]
+    fn rebuilds_memory_mutation_from_persisted_lifecycle() {
+        let turn_id = "turn-1";
+        let thread_id = ThreadId::new();
+        let started = codex_extension_items::memory_mutation::MemoryMutation::write(
+            "memory-1".to_string(),
+            codex_extension_items::memory_mutation::MemoryMutationScope::Project,
+            Some("Preferred tools".to_string()),
+            "Use pnpm for JavaScript",
+        );
+        let completed = started
+            .clone()
+            .with_path("project/preferred-tools.md".to_string())
+            .with_status(codex_extension_items::memory_mutation::MemoryMutationStatus::Succeeded);
+        let events = vec![
+            EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: turn_id.to_string(),
+                trace_id: None,
+                started_at: None,
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            }),
+            EventMsg::ItemStarted(ItemStartedEvent {
+                thread_id,
+                turn_id: turn_id.to_string(),
+                item: CoreTurnItem::Extension(CoreExtensionItem::MemoryMutation(started)),
+                started_at_ms: 1_000,
+            }),
+            EventMsg::ItemCompleted(ItemCompletedEvent {
+                thread_id,
+                turn_id: turn_id.to_string(),
+                item: CoreTurnItem::Extension(CoreExtensionItem::MemoryMutation(completed)),
+                completed_at_ms: 2_000,
+            }),
+            EventMsg::TurnComplete(TurnCompleteEvent {
+                turn_id: turn_id.to_string(),
+                last_agent_message: None,
+                completed_at: None,
+                duration_ms: None,
+                time_to_first_token_ms: None,
+            }),
+        ];
+        let items = events
+            .into_iter()
+            .map(RolloutItem::EventMsg)
+            .collect::<Vec<_>>();
+
+        let turns = build_turns_from_rollout_items(&items);
+
+        assert_eq!(
+            turns[0].items,
+            vec![ThreadItem::MemoryMutation(MemoryMutation {
+                id: "memory-1".to_string(),
+                action: MemoryMutationAction::Write,
+                scope: MemoryMutationScope::Project,
+                status: MemoryMutationStatus::Succeeded,
+                title: Some("Preferred tools".to_string()),
+                path: Some("project/preferred-tools.md".to_string()),
+                preview: Some("Use pnpm for JavaScript".to_string()),
             })]
         );
     }
@@ -4026,6 +4094,7 @@ mod tests {
                 operation: Some(CoreSubAgentActivityOperation::SendMessage),
                 outcome: Some(CoreSubAgentActivityOutcome::Succeeded),
                 model: Some("gpt-5.4".into()),
+                reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
             }),
         ];
 
@@ -4044,6 +4113,58 @@ mod tests {
                 operation: Some(SubAgentActivityOperation::SendMessage),
                 outcome: Some(SubAgentActivityOutcome::Succeeded),
                 model: Some("gpt-5.4".into()),
+                reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
+            }
+        );
+    }
+
+    #[test]
+    fn reconstructs_legacy_sub_agent_activity_without_reasoning_effort() {
+        let agent_thread_id = ThreadId::new();
+        let event = SubAgentActivityEvent {
+            event_id: "activity-1".into(),
+            occurred_at_ms: 42,
+            agent_thread_id,
+            agent_path: codex_protocol::AgentPath::try_from("/root/worker")
+                .expect("valid agent path"),
+            kind: CoreSubAgentActivityKind::Started,
+            operation: Some(CoreSubAgentActivityOperation::SendMessage),
+            outcome: Some(CoreSubAgentActivityOutcome::Succeeded),
+            model: Some("gpt-5.4".into()),
+            reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
+        };
+        let mut serialized = serde_json::to_value(event).expect("serialize sub-agent activity");
+        serialized
+            .as_object_mut()
+            .expect("sub-agent activity serializes as an object")
+            .remove("reasoning_effort");
+        let legacy_event = serde_json::from_value(serialized)
+            .expect("legacy sub-agent activity deserializes without reasoning effort");
+        let items = vec![
+            RolloutItem::EventMsg(EventMsg::UserMessage(UserMessageEvent {
+                client_id: None,
+                message: "spawn agent".into(),
+                images: None,
+                text_elements: Vec::new(),
+                local_images: Vec::new(),
+                ..Default::default()
+            })),
+            RolloutItem::EventMsg(EventMsg::SubAgentActivity(legacy_event)),
+        ];
+
+        let turns = build_turns_from_rollout_items(&items);
+
+        assert_eq!(
+            turns[0].items[1],
+            ThreadItem::SubAgentActivity {
+                id: "activity-1".into(),
+                kind: SubAgentActivityKind::Started,
+                agent_thread_id: agent_thread_id.to_string(),
+                agent_path: "/root/worker".into(),
+                operation: Some(SubAgentActivityOperation::SendMessage),
+                outcome: Some(SubAgentActivityOutcome::Succeeded),
+                model: Some("gpt-5.4".into()),
+                reasoning_effort: None,
             }
         );
     }

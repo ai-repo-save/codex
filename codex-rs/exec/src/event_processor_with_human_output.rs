@@ -84,6 +84,14 @@ impl EventProcessorWithHumanOutput {
             ThreadItem::WebSearch(item) => {
                 eprintln!("{} {}", "web search:".style(self.bold), item.query);
             }
+            ThreadItem::MemoryMutation(item) => {
+                eprintln!(
+                    "{} {:?} {:?}",
+                    "memory:".style(self.bold),
+                    item.action,
+                    item.scope,
+                );
+            }
             ThreadItem::FileChange { .. } => {
                 eprintln!("{}", "apply patch".style(self.bold));
             }
@@ -199,6 +207,15 @@ impl EventProcessorWithHumanOutput {
             ThreadItem::WebSearch(item) => {
                 eprintln!("{} {}", "web search:".style(self.bold), item.query);
             }
+            ThreadItem::MemoryMutation(item) => {
+                eprintln!(
+                    "{} {:?} {:?} ({:?})",
+                    "memory:".style(self.bold),
+                    item.action,
+                    item.scope,
+                    item.status,
+                );
+            }
             ThreadItem::ContextCompaction { .. } => {
                 eprintln!("{}", "context compacted".style(self.dimmed));
             }
@@ -297,6 +314,7 @@ impl EventProcessor for EventProcessorWithHumanOutput {
                 self.last_total_token_usage = Some(notification.token_usage);
                 CodexStatus::Running
             }
+            ServerNotification::TurnOutputThroughputUpdated(_) => CodexStatus::Running,
             ServerNotification::TurnCompleted(notification) => match notification.turn.status {
                 TurnStatus::Completed => {
                     let rendered_message = self

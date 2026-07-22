@@ -138,9 +138,16 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
             operation,
             outcome,
             agent_path,
+            model,
+            reasoning_effort,
             ..
         } => Some(sub_agent_activity_summary(
-            *kind, *operation, *outcome, agent_path,
+            *kind,
+            *operation,
+            *outcome,
+            agent_path,
+            model.as_deref(),
+            reasoning_effort.as_ref(),
         )),
         _ => None,
     }

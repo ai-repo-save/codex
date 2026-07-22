@@ -4406,6 +4406,7 @@ async fn turn_event_counts_completed_tool_items() {
             operation: None,
             outcome: None,
             model: None,
+            reasoning_effort: None,
         },
         ThreadItem::WebSearch(WebSearchItem {
             id: "web-1".to_string(),

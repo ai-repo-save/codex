@@ -195,6 +195,7 @@ pub fn item_event_to_server_notification(
                 operation: activity.operation.map(Into::into),
                 outcome: activity.outcome.map(Into::into),
                 model: activity.model,
+                reasoning_effort: activity.reasoning_effort,
             };
             ServerNotification::ItemCompleted(ItemCompletedNotification {
                 thread_id,
@@ -632,6 +633,7 @@ mod tests {
             operation: Some(CoreSubAgentActivityOperation::FollowupTask),
             outcome: Some(CoreSubAgentActivityOutcome::Succeeded),
             model: Some("gpt-5.4".to_string()),
+            reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
         };
 
         let notification = item_event_to_server_notification(
@@ -653,6 +655,7 @@ mod tests {
                     operation: Some(SubAgentActivityOperation::FollowupTask),
                     outcome: Some(SubAgentActivityOutcome::Succeeded),
                     model: event.model,
+                    reasoning_effort: event.reasoning_effort,
                 },
             },
         );

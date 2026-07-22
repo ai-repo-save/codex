@@ -48,14 +48,6 @@ pub(crate) struct TurnTimingState {
     output_throughput: StdMutex<OutputThroughputState>,
 }
 
-#[derive(Clone, Copy)]
-pub(crate) enum OutputThroughputVisibleDelta<'a> {
-    AgentMessageText(&'a str),
-    PlanText(&'a str),
-    ReasoningSummaryText(&'a str),
-    ReasoningText(&'a str),
-}
-
 #[derive(Debug, Default)]
 struct TurnTimingStateInner {
     started_at: Option<Instant>,
@@ -82,7 +74,7 @@ struct TurnProfileState {
 
 #[derive(Debug)]
 struct OutputThroughputState {
-    active_sample: Option<OutputThroughputSample>,
+    phase: OutputThroughputPhase,
     aggregate_output_tokens: i64,
     aggregate_active_duration: Duration,
     aggregate_is_exact: bool,
@@ -91,7 +83,7 @@ struct OutputThroughputState {
 impl Default for OutputThroughputState {
     fn default() -> Self {
         Self {
-            active_sample: None,
+            phase: OutputThroughputPhase::Waiting,
             aggregate_output_tokens: 0,
             aggregate_active_duration: Duration::ZERO,
             aggregate_is_exact: true,
@@ -101,7 +93,17 @@ impl Default for OutputThroughputState {
 
 #[derive(Debug)]
 struct OutputThroughputSample {
-    first_output_at: Option<Instant>,
+    created_at: Instant,
+    output_bytes: u64,
+    last_reported_output_bytes: u64,
+    last_reported_at: Instant,
+}
+
+#[derive(Debug, Default)]
+enum OutputThroughputPhase {
+    #[default]
+    Waiting,
+    Active(OutputThroughputSample),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -166,18 +168,25 @@ impl TurnTimingState {
         self.profile_state().record_sampling_retry();
     }
 
-    pub(crate) fn begin_output_throughput_sample(&self) -> OutputThroughputUpdatedEvent {
-        self.output_throughput_state().begin_sample()
+    pub(crate) fn begin_output_throughput_sample(
+        &self,
+        now: Instant,
+    ) -> Option<OutputThroughputUpdatedEvent> {
+        self.output_throughput_state().begin_sample(now)
     }
 
-    pub(crate) fn record_output_throughput_first_visible_output(
+    pub(crate) fn record_output_throughput_response_event(
         &self,
-        delta: OutputThroughputVisibleDelta<'_>,
-        now: Instant,
+        event: &ResponseEvent,
     ) {
-        if output_throughput_visible_delta_records_first_output(delta) {
-            self.output_throughput_state().record_first_output(now);
-        }
+        self.output_throughput_state().record_response_event(event);
+    }
+
+    pub(crate) fn sample_output_throughput(
+        &self,
+        now: Instant,
+    ) -> Option<OutputThroughputUpdatedEvent> {
+        self.output_throughput_state().sample(now)
     }
 
     pub(crate) fn complete_output_throughput_sample(
@@ -371,30 +380,54 @@ impl TurnProfileState {
 }
 
 impl OutputThroughputState {
-    fn begin_sample(&mut self) -> OutputThroughputUpdatedEvent {
-        if self
-            .active_sample
-            .replace(OutputThroughputSample {
-                first_output_at: None,
-            })
-            .is_some()
-        {
-            self.aggregate_is_exact = false;
+    fn begin_sample(&mut self, now: Instant) -> Option<OutputThroughputUpdatedEvent> {
+        if !matches!(self.phase, OutputThroughputPhase::Waiting) {
+            return None;
         }
-        OutputThroughputUpdatedEvent {
+        self.phase = OutputThroughputPhase::Active(OutputThroughputSample {
+            created_at: now,
+            output_bytes: 0,
+            last_reported_output_bytes: 0,
+            last_reported_at: now,
+        });
+        Some(OutputThroughputUpdatedEvent {
             active: true,
             output_tokens: None,
             active_duration_ms: None,
             tokens_per_second: None,
+        })
+    }
+
+    fn record_response_event(&mut self, event: &ResponseEvent) {
+        let Some(delta) = output_throughput_delta(event) else {
+            return;
+        };
+        if let OutputThroughputPhase::Active(sample) = &mut self.phase {
+            sample.output_bytes = sample
+                .output_bytes
+                .saturating_add(u64::try_from(delta.len()).unwrap_or(u64::MAX));
         }
     }
 
-    fn record_first_output(&mut self, now: Instant) {
-        if let Some(sample) = self.active_sample.as_mut()
-            && sample.first_output_at.is_none()
-        {
-            sample.first_output_at = Some(now);
+    fn sample(&mut self, now: Instant) -> Option<OutputThroughputUpdatedEvent> {
+        let OutputThroughputPhase::Active(sample) = &mut self.phase else {
+            return None;
+        };
+        let elapsed = now.saturating_duration_since(sample.last_reported_at);
+        if elapsed < Duration::from_millis(500) {
+            return None;
         }
+        let output_bytes = sample
+            .output_bytes
+            .saturating_sub(sample.last_reported_output_bytes);
+        sample.last_reported_output_bytes = sample.output_bytes;
+        sample.last_reported_at = now;
+        Some(OutputThroughputUpdatedEvent {
+            active: true,
+            output_tokens: None,
+            active_duration_ms: None,
+            tokens_per_second: Some(output_bytes as f64 / 4.0 / elapsed.as_secs_f64()),
+        })
     }
 
     fn complete_sample(
@@ -402,16 +435,14 @@ impl OutputThroughputState {
         token_usage: Option<&TokenUsage>,
         now: Instant,
     ) -> Option<OutputThroughputUpdatedEvent> {
-        let sample = self.active_sample.take()?;
-        let Some(first_output_at) = sample.first_output_at else {
-            self.aggregate_is_exact = false;
-            return Some(inactive_output_throughput_event());
+        let OutputThroughputPhase::Active(sample) = std::mem::take(&mut self.phase) else {
+            return None;
         };
         let Some(token_usage) = token_usage else {
             self.aggregate_is_exact = false;
             return Some(inactive_output_throughput_event());
         };
-        let active_duration = now.saturating_duration_since(first_output_at);
+        let active_duration = now.saturating_duration_since(sample.created_at);
         self.aggregate_output_tokens = self
             .aggregate_output_tokens
             .saturating_add(token_usage.output_tokens);
@@ -430,7 +461,10 @@ impl OutputThroughputState {
     }
 
     fn abandon_sample(&mut self) -> Option<OutputThroughputUpdatedEvent> {
-        self.active_sample.take()?;
+        if !matches!(self.phase, OutputThroughputPhase::Active(_)) {
+            return None;
+        }
+        self.phase = OutputThroughputPhase::Waiting;
         self.aggregate_is_exact = false;
         Some(inactive_output_throughput_event())
     }
@@ -547,16 +581,14 @@ fn response_item_records_turn_ttft(item: &ResponseItem) -> bool {
     }
 }
 
-fn output_throughput_visible_delta_records_first_output(
-    delta: OutputThroughputVisibleDelta<'_>,
-) -> bool {
-    let text = match delta {
-        OutputThroughputVisibleDelta::AgentMessageText(text)
-        | OutputThroughputVisibleDelta::PlanText(text)
-        | OutputThroughputVisibleDelta::ReasoningSummaryText(text)
-        | OutputThroughputVisibleDelta::ReasoningText(text) => text,
-    };
-    !text.is_empty()
+fn output_throughput_delta(event: &ResponseEvent) -> Option<&str> {
+    match event {
+        ResponseEvent::OutputTextDelta(delta)
+        | ResponseEvent::ReasoningSummaryDelta { delta, .. }
+        | ResponseEvent::ReasoningContentDelta { delta, .. }
+        | ResponseEvent::ToolCallInputDelta { delta, .. } => Some(delta),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

@@ -8,6 +8,7 @@ use codex_protocol::protocol::ExecCommandStatus;
 use codex_protocol::protocol::SubAgentActivityEvent;
 use codex_protocol::protocol::SubAgentActivityKind;
 use codex_protocol::protocol::SubAgentActivityOutcome;
+use codex_protocol::openai_models::ReasoningEffort;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 use std::time::Duration;
@@ -28,6 +29,7 @@ fn sub_agent_activity_is_a_terminal_tool_runtime_event() -> anyhow::Result<()> {
         operation: None,
         outcome: None,
         model: Some("gpt-5.4".to_string()),
+        reasoning_effort: Some(ReasoningEffort::High),
     });
 
     let Some(ToolRuntimeTraceEvent::Ended {
@@ -49,7 +51,8 @@ fn sub_agent_activity_is_a_terminal_tool_runtime_event() -> anyhow::Result<()> {
             "agent_thread_id": agent_thread_id,
             "agent_path": "/root/reviewer",
             "kind": "started",
-            "model": "gpt-5.4"
+            "model": "gpt-5.4",
+            "reasoning_effort": "high"
         })
     );
     Ok(())
@@ -66,6 +69,7 @@ fn failed_sub_agent_activity_is_a_failed_terminal_tool_runtime_event() -> anyhow
         operation: None,
         outcome: Some(SubAgentActivityOutcome::Failed),
         model: None,
+        reasoning_effort: None,
     });
 
     let Some(ToolRuntimeTraceEvent::Ended { status, .. }) = tool_runtime_trace_event(&event) else {

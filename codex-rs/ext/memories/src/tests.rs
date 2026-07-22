@@ -1,9 +1,11 @@
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use codex_extension_api::ContextContributor;
 use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionRegistryBuilder;
+use codex_extension_api::ExtensionTurnItem;
 use codex_extension_api::NoopTurnItemEmitter;
 use codex_extension_api::PromptSlot;
 use codex_extension_api::ToolCall;
@@ -11,6 +13,12 @@ use codex_extension_api::ToolContributor;
 use codex_extension_api::ToolExecutor;
 use codex_extension_api::ToolName;
 use codex_extension_api::ToolPayload;
+use codex_extension_api::TurnItemEmissionFuture;
+use codex_extension_api::TurnItemEmitter;
+use codex_extension_items::ExtensionItem;
+use codex_extension_items::memory_mutation::MEMORY_MUTATION_PATH_MAX_GRAPHEMES;
+use codex_extension_items::memory_mutation::MEMORY_MUTATION_PREVIEW_MAX_GRAPHEMES;
+use codex_extension_items::memory_mutation::MEMORY_MUTATION_TITLE_MAX_GRAPHEMES;
 use codex_tools::ToolOutput;
 use codex_utils_absolute_path::test_support::PathBufExt;
 use codex_utils_absolute_path::test_support::PathExt;
@@ -18,6 +26,7 @@ use codex_utils_absolute_path::test_support::test_path_buf;
 use codex_utils_output_truncation::TruncationPolicy;
 use pretty_assertions::assert_eq;
 use serde_json::json;
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::extension::MemoriesExtension;
 use crate::extension::MemoriesExtensionConfig;
@@ -367,6 +376,223 @@ async fn add_ad_hoc_note_tool_creates_note_file() {
         .expect("read ad-hoc note"),
         "Remember to keep PR review comments concise."
     );
+}
+
+#[tokio::test]
+async fn memory_mutation_activities_cover_scopes_and_string_boundaries() {
+    const FILENAME: &str = "2026-05-26T13-42-08-memory-mutation.md";
+    const TITLE_GRAPHEME: &str = "👩‍💻";
+    const PREVIEW_GRAPHEME: &str = "é";
+
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let project_root = tempfile::tempdir().expect("project root");
+    let backends = MemoryToolBackends::new(
+        &tempdir.path().abs(),
+        /*global_enabled*/ true,
+        /*scoped_enabled*/ true,
+        "thread-1",
+        &project_root.path().abs(),
+    );
+    let emitter = Arc::new(RecordingTurnItemEmitter::default());
+    let title = TITLE_GRAPHEME.repeat(MEMORY_MUTATION_TITLE_MAX_GRAPHEMES + 1);
+    let preview = format!(
+        "\n  alpha\tbeta {}\nignored second line",
+        PREVIEW_GRAPHEME.repeat(MEMORY_MUTATION_PREVIEW_MAX_GRAPHEMES)
+    );
+
+    let ad_hoc_tool =
+        memory_tool_from_backends(backends.clone(), crate::ADD_AD_HOC_NOTE_TOOL_NAME);
+    run_memory_tool_with_emitter(
+        &ad_hoc_tool,
+        crate::ADD_AD_HOC_NOTE_TOOL_NAME,
+        "global-write",
+        ToolPayload::Function {
+            arguments: json!({ "filename": FILENAME, "note": preview }).to_string(),
+        },
+        emitter.clone(),
+    )
+    .await
+    .expect("global note should be written");
+
+    let write_tool = memory_tool_from_backends(backends.clone(), crate::WRITE_NOTE_TOOL_NAME);
+    for (scope, call_id) in [("session", "session-write"), ("project", "project-write")] {
+        run_memory_tool_with_emitter(
+            &write_tool,
+            crate::WRITE_NOTE_TOOL_NAME,
+            call_id,
+            ToolPayload::Function {
+                arguments: json!({ "scope": scope, "title": title, "note": preview }).to_string(),
+            },
+            emitter.clone(),
+        )
+        .await
+        .expect("scoped note should be written");
+    }
+
+    let delete_tool = memory_tool_from_backends(backends, crate::DELETE_TOOL_NAME);
+    run_memory_tool_with_emitter(
+        &delete_tool,
+        crate::DELETE_TOOL_NAME,
+        "global-delete",
+        ToolPayload::Function {
+            arguments: json!({
+                "scope": "global",
+                "path": format!("extensions/ad_hoc/notes/{FILENAME}"),
+            })
+            .to_string(),
+        },
+        emitter.clone(),
+    )
+    .await
+    .expect("global note should be deleted");
+
+    let long_path = "a".repeat(MEMORY_MUTATION_PATH_MAX_GRAPHEMES + 1);
+    let delete_error = run_memory_tool_with_emitter(
+        &delete_tool,
+        crate::DELETE_TOOL_NAME,
+        "path-boundary",
+        ToolPayload::Function {
+            arguments: json!({ "scope": "session", "path": long_path }).to_string(),
+        },
+        emitter.clone(),
+    )
+    .await
+    .expect_err("missing note should fail");
+    assert!(delete_error.to_string().contains("not found"));
+
+    let started = emitter.started();
+    let completed = emitter.completed();
+    assert_eq!(started.len(), 5);
+    assert_eq!(completed.len(), 5);
+    assert_eq!(
+        mutation_value(&started[0]),
+        json!({
+            "kind": "memory.mutation",
+            "id": "global-write",
+            "action": "write",
+            "scope": "global",
+            "status": "inProgress",
+            "title": null,
+            "path": null,
+            "preview": format!("alpha beta {}", PREVIEW_GRAPHEME.repeat(149)),
+        })
+    );
+    assert_eq!(mutation_value(&completed[0])["status"], json!("succeeded"));
+    assert_eq!(
+        mutation_value(&completed[0])["path"],
+        json!(format!("extensions/ad_hoc/notes/{FILENAME}"))
+    );
+    assert_eq!(mutation_value(&completed[1])["scope"], json!("session"));
+    assert_eq!(mutation_value(&completed[2])["scope"], json!("project"));
+    assert_eq!(mutation_value(&completed[3])["action"], json!("delete"));
+    assert_eq!(mutation_value(&completed[3])["status"], json!("succeeded"));
+    assert_eq!(mutation_value(&completed[4])["status"], json!("failed"));
+
+    for item in started.iter().chain(&completed) {
+        let value = mutation_value(item);
+        for field in ["title", "preview", "path"] {
+            let Some(value) = value[field].as_str() else {
+                continue;
+            };
+            let limit = match field {
+                "title" => MEMORY_MUTATION_TITLE_MAX_GRAPHEMES,
+                "preview" => MEMORY_MUTATION_PREVIEW_MAX_GRAPHEMES,
+                "path" => MEMORY_MUTATION_PATH_MAX_GRAPHEMES,
+                _ => unreachable!("checked mutation string field"),
+            };
+            assert!(value.graphemes(true).count() <= limit);
+        }
+    }
+    assert_eq!(
+        mutation_value(&completed[1])["title"],
+        json!(TITLE_GRAPHEME.repeat(MEMORY_MUTATION_TITLE_MAX_GRAPHEMES))
+    );
+    assert_eq!(
+        mutation_value(&completed[4])["path"],
+        json!("a".repeat(MEMORY_MUTATION_PATH_MAX_GRAPHEMES))
+    );
+}
+
+#[tokio::test]
+async fn memory_mutation_failure_item_omits_backend_error_body() {
+    const ERROR_SENTINEL: &str = "memory-mutation-error-sentinel";
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let memory_root = tempdir.path().join(ERROR_SENTINEL);
+    tokio::fs::write(&memory_root, "not a directory")
+        .await
+        .expect("write memory root file");
+    let tool = memory_tool(&memory_root, crate::ADD_AD_HOC_NOTE_TOOL_NAME);
+    let emitter = Arc::new(RecordingTurnItemEmitter::default());
+
+    let error = run_memory_tool_with_emitter(
+        &tool,
+        crate::ADD_AD_HOC_NOTE_TOOL_NAME,
+        "error-write",
+        ToolPayload::Function {
+            arguments: json!({
+                "filename": "2026-05-26T13-42-08-error.md",
+                "note": "ordinary note",
+            })
+            .to_string(),
+        },
+        emitter.clone(),
+    )
+    .await
+    .expect_err("non-directory root should fail");
+    assert!(error.to_string().contains(ERROR_SENTINEL));
+
+    let completed = emitter.completed();
+    assert_eq!(completed.len(), 1);
+    assert_eq!(mutation_value(&completed[0])["status"], json!("failed"));
+    let emitted_items = completed.iter().map(mutation_value).collect::<Vec<_>>();
+    assert!(!serde_json::to_string(&emitted_items)
+        .expect("serialize mutation items")
+        .contains(ERROR_SENTINEL));
+}
+
+#[tokio::test]
+async fn memory_read_operations_do_not_emit_mutation_activities() {
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let memory_root = tempdir.path().join("memories");
+    tokio::fs::create_dir_all(&memory_root)
+        .await
+        .expect("create memories dir");
+    tokio::fs::write(memory_root.join("MEMORY.md"), "Remember this memory.")
+        .await
+        .expect("write memory");
+    let emitter = Arc::new(RecordingTurnItemEmitter::default());
+
+    for (tool_name, call_id, payload) in [
+        (
+            crate::LIST_TOOL_NAME,
+            "list-memory",
+            ToolPayload::Function {
+                arguments: json!({}).to_string(),
+            },
+        ),
+        (
+            crate::READ_TOOL_NAME,
+            "read-memory",
+            ToolPayload::Function {
+                arguments: json!({ "path": "MEMORY.md" }).to_string(),
+            },
+        ),
+        (
+            crate::SEARCH_TOOL_NAME,
+            "search-memory",
+            ToolPayload::Function {
+                arguments: json!({ "queries": ["Remember"] }).to_string(),
+            },
+        ),
+    ] {
+        let tool = memory_tool(&memory_root, tool_name);
+        run_memory_tool_with_emitter(&tool, tool_name, call_id, payload, emitter.clone())
+            .await
+            .expect("memory read operation should succeed");
+    }
+
+    assert!(emitter.started().is_empty());
+    assert!(emitter.completed().is_empty());
 }
 
 #[tokio::test]
@@ -986,6 +1212,23 @@ async fn run_memory_tool(
     call_id: &str,
     payload: ToolPayload,
 ) -> Result<Option<serde_json::Value>, codex_extension_api::FunctionCallError> {
+    run_memory_tool_with_emitter(
+        tool,
+        tool_name,
+        call_id,
+        payload,
+        Arc::new(NoopTurnItemEmitter),
+    )
+    .await
+}
+
+async fn run_memory_tool_with_emitter(
+    tool: &Arc<dyn ToolExecutor<ToolCall>>,
+    tool_name: &str,
+    call_id: &str,
+    payload: ToolPayload,
+    turn_item_emitter: Arc<dyn TurnItemEmitter>,
+) -> Result<Option<serde_json::Value>, codex_extension_api::FunctionCallError> {
     let output = tool
         .handle(ToolCall {
             turn_id: "turn-1".to_string(),
@@ -994,13 +1237,50 @@ async fn run_memory_tool(
             model: "gpt-test".to_string(),
             truncation_policy: TruncationPolicy::Bytes(1024),
             conversation_history: codex_extension_api::ConversationHistory::default(),
-            turn_item_emitter: Arc::new(NoopTurnItemEmitter),
+            turn_item_emitter,
             environments: Vec::new(),
             payload: payload.clone(),
         })
         .await?;
 
     Ok(output.post_tool_use_response(call_id, &payload))
+}
+
+#[derive(Default)]
+struct RecordingTurnItemEmitter {
+    started: Mutex<Vec<ExtensionTurnItem>>,
+    completed: Mutex<Vec<ExtensionTurnItem>>,
+}
+
+impl RecordingTurnItemEmitter {
+    fn started(&self) -> Vec<ExtensionTurnItem> {
+        self.started.lock().expect("started item lock").clone()
+    }
+
+    fn completed(&self) -> Vec<ExtensionTurnItem> {
+        self.completed.lock().expect("completed item lock").clone()
+    }
+}
+
+impl TurnItemEmitter for RecordingTurnItemEmitter {
+    fn emit_started<'a>(&'a self, item: ExtensionTurnItem) -> TurnItemEmissionFuture<'a> {
+        Box::pin(async move {
+            self.started.lock().expect("started item lock").push(item);
+        })
+    }
+
+    fn emit_completed<'a>(&'a self, item: ExtensionTurnItem) -> TurnItemEmissionFuture<'a> {
+        Box::pin(async move {
+            self.completed.lock().expect("completed item lock").push(item);
+        })
+    }
+}
+
+fn mutation_value(item: &ExtensionTurnItem) -> serde_json::Value {
+    let ExtensionItem::MemoryMutation(_) = &item.item else {
+        panic!("memory tools should only emit memory mutation items");
+    };
+    serde_json::to_value(&item.item).expect("serialize mutation item")
 }
 
 fn memory_tool_name(tool_name: &str) -> ToolName {

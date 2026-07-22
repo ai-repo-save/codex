@@ -214,6 +214,7 @@ impl ChatWidget {
                 );
             }
             ThreadItem::HookPrompt { .. } => {}
+            item @ ThreadItem::MemoryMutation(_) => self.on_memory_mutation(item),
             ThreadItem::CollabAgentToolCall {
                 id,
                 tool,

@@ -3,6 +3,8 @@ use codex_extension_api::ToolCall;
 use codex_extension_api::ToolExecutor;
 use codex_extension_api::ToolName;
 use codex_extension_api::ToolSpec;
+use codex_extension_items::memory_mutation::MemoryMutation;
+use codex_extension_items::memory_mutation::MemoryMutationStatus;
 use codex_otel::MetricsClient;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -86,6 +88,15 @@ impl WriteNoteTool {
         let args: WriteNoteArgs = parse_args(&call)?;
         let memory_scope = args.scope.as_memory_scope();
         let scope = memory_scope.as_str();
+        let mutation = MemoryMutation::write(
+            call.call_id.clone(),
+            super::memory_mutation_scope(memory_scope),
+            Some(args.title.clone()),
+            &args.note,
+        );
+        call.turn_item_emitter
+            .emit_started(super::memory_mutation_turn_item(mutation.clone()))
+            .await;
         let response = backends
             .write_note(memory_scope, args.title, args.note)
             .await;
@@ -96,7 +107,25 @@ impl WriteNoteTool {
             response.is_ok(),
             "not_applicable",
         );
-        let response = response.map_err(backend_error_to_function_call)?;
-        Ok(Box::new(JsonToolOutput::new(json!(response))))
+        match response {
+            Ok(response) => {
+                call.turn_item_emitter
+                    .emit_completed(super::memory_mutation_turn_item(
+                        mutation
+                            .with_status(MemoryMutationStatus::Succeeded)
+                            .with_path(response.path.clone()),
+                    ))
+                    .await;
+                Ok(Box::new(JsonToolOutput::new(json!(response))))
+            }
+            Err(error) => {
+                call.turn_item_emitter
+                    .emit_completed(super::memory_mutation_turn_item(
+                        mutation.with_status(MemoryMutationStatus::Failed),
+                    ))
+                    .await;
+                Err(backend_error_to_function_call(error))
+            }
+        }
     }
 }

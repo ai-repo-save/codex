@@ -408,10 +408,7 @@ use self::status_state::TerminalTitleStatusKind;
 mod status_controls;
 mod status_surfaces;
 mod streaming;
-#[path = "throughput_tracker.rs"]
-mod throughput_tracker;
 use self::status_surfaces::CachedProjectRootName;
-use self::throughput_tracker::ThroughputTracker;
 mod tokens;
 pub(crate) use self::tokens::TokenActivityView;
 mod throughput;
@@ -683,7 +680,7 @@ pub(crate) struct ChatWidget {
     quit_shortcut_key: Option<KeyBinding>,
     // Runtime metrics accumulated across delta snapshots for the active turn.
     turn_runtime_metrics: RuntimeMetricsSummary,
-    throughput_tracker: ThroughputTracker,
+    throughput: Option<ThroughputDisplay>,
     last_rendered_width: std::cell::Cell<Option<usize>>,
     // Feedback sink for /feedback
     feedback: codex_feedback::CodexFeedback,
@@ -1188,7 +1185,6 @@ impl ChatWidget {
     }
 
     pub(crate) fn pre_draw_tick(&mut self) {
-        self.advance_throughput_tracker(Instant::now());
         self.update_due_hook_visibility();
         self.schedule_hook_timer_if_needed();
         self.bottom_pane.pre_draw_tick();

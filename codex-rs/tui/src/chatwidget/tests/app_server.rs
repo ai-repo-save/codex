@@ -1,7 +1,5 @@
 use super::*;
 use codex_app_server_protocol::SubAgentActivityKind;
-use codex_app_server_protocol::SubAgentActivityOperation;
-use codex_app_server_protocol::SubAgentActivityOutcome;
 use pretty_assertions::assert_eq;
 
 fn thread_settings_for_test(
@@ -923,12 +921,13 @@ async fn live_app_server_sub_agent_activity_renders_history() {
             completed_at_ms: 0,
             item: AppServerThreadItem::SubAgentActivity {
                 id: "activity-1".to_string(),
-                kind: SubAgentActivityKind::Interacted,
+                kind: SubAgentActivityKind::Started,
                 agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
                 agent_path: "/root/research".to_string(),
-                operation: Some(SubAgentActivityOperation::FollowupTask),
-                outcome: Some(SubAgentActivityOutcome::Succeeded),
+                operation: None,
+                outcome: None,
                 model: Some("gpt-5.6".to_string()),
+                reasoning_effort: Some(ReasoningEffortConfig::High),
             },
         }),
         /*replay_kind*/ None,
@@ -939,7 +938,74 @@ async fn live_app_server_sub_agent_activity_renders_history() {
         .map(|lines| lines_to_single_string(&lines))
         .collect::<Vec<_>>()
         .join("\n");
-    insta::assert_snapshot!(combined, @r###"• Sent follow-up to `/root/research`"###);
+    insta::assert_snapshot!(combined, @r###"• Started `/root/research` (gpt-5.6, high)"###);
+}
+
+#[tokio::test]
+async fn live_app_server_memory_mutations_render_history() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let write = |status, path| {
+        AppServerThreadItem::MemoryMutation(codex_app_server_protocol::MemoryMutation {
+            id: "memory-write-1".to_string(),
+            action: codex_app_server_protocol::MemoryMutationAction::Write,
+            scope: codex_app_server_protocol::MemoryMutationScope::Session,
+            status,
+            title: Some("Session notes".to_string()),
+            path,
+            preview: Some("Keep commits focused.".to_string()),
+        })
+    };
+    let delete = AppServerThreadItem::MemoryMutation(codex_app_server_protocol::MemoryMutation {
+        id: "memory-delete-1".to_string(),
+        action: codex_app_server_protocol::MemoryMutationAction::Delete,
+        scope: codex_app_server_protocol::MemoryMutationScope::Project,
+        status: codex_app_server_protocol::MemoryMutationStatus::Failed,
+        title: None,
+        path: Some("memories/project/session-notes.md".to_string()),
+        preview: None,
+    });
+
+    for item in [
+        write(
+            codex_app_server_protocol::MemoryMutationStatus::InProgress,
+            None,
+        ),
+        write(
+            codex_app_server_protocol::MemoryMutationStatus::Succeeded,
+            Some("memories/session/session-notes.md".to_string()),
+        ),
+        delete,
+    ] {
+        chat.handle_server_notification(
+            ServerNotification::ItemCompleted(ItemCompletedNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                completed_at_ms: 0,
+                item,
+            }),
+            /*replay_kind*/ None,
+        );
+    }
+
+    let combined = drain_insert_history(&mut rx)
+        .into_iter()
+        .map(|lines| lines_to_single_string(&lines))
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!(combined, @r###"
+• Writing memory
+  └ Scope: session
+    Title: Session notes
+    Preview: Keep commits focused.
+• Wrote memory
+  └ Scope: session
+    Title: Session notes
+    Path: memories/session/session-notes.md
+    Preview: Keep commits focused.
+• Failed to delete memory
+  └ Scope: project
+    Path: memories/project/session-notes.md
+"###);
 }
 
 #[tokio::test]

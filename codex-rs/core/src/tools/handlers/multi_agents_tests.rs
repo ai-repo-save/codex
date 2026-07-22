@@ -210,6 +210,7 @@ fn assert_single_interaction(
             operation: Some(operation),
             outcome: Some(outcome),
             model: None,
+            reasoning_effort: None,
         }],
     );
 }
@@ -1212,6 +1213,10 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
     Arc::get_mut(&mut session)
         .expect("session should not have additional references")
         .thread_id = root.thread_id;
+    let role_name = install_role_with_model_override(
+        Arc::get_mut(&mut turn).expect("turn should not have additional references"),
+    )
+    .await;
     let mut config = (*turn.config).clone();
     config
         .features
@@ -1228,7 +1233,11 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
             "spawn_agent",
             function_payload(json!({
                 "message": "spawn-message",
-                "task_name": "test_process"
+                "task_name": "test_process",
+                "agent_type": role_name,
+                "model": "gpt-5-requested",
+                "reasoning_effort": "high",
+                "fork_turns": "1"
             })),
         ))
         .await
@@ -1252,7 +1261,8 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
             kind: SubAgentActivityKind::Started,
             operation: None,
             outcome: None,
-            model: turn.config.model.clone(),
+            model: Some("gpt-5-role-override".to_string()),
+            reasoning_effort: Some(ReasoningEffort::Minimal),
         }],
     );
 
@@ -1272,6 +1282,8 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
         child_snapshot.session_source.get_agent_path().as_deref(),
         Some("/root/test_process")
     );
+    assert_eq!(child_snapshot.model, "gpt-5-role-override");
+    assert_eq!(child_snapshot.reasoning_effort, Some(ReasoningEffort::Minimal));
     assert!(manager.captured_ops().iter().any(|(id, op)| {
         *id == child_thread_id
             && matches!(
@@ -1651,6 +1663,7 @@ async fn multi_agent_v2_followup_task_rejects_root_target_from_child() {
             operation: Some(SubAgentActivityOperation::FollowupTask),
             outcome: Some(SubAgentActivityOutcome::Failed),
             model: None,
+            reasoning_effort: None,
         }],
     );
 }
@@ -2055,6 +2068,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
             operation: Some(SubAgentActivityOperation::InspectAgent),
             outcome: Some(SubAgentActivityOutcome::Succeeded),
             model: None,
+            reasoning_effort: None,
         }],
     );
 
@@ -2105,6 +2119,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
             operation: Some(SubAgentActivityOperation::InspectAgent),
             outcome: Some(SubAgentActivityOutcome::Succeeded),
             model: None,
+            reasoning_effort: None,
         }],
     );
 

@@ -8,6 +8,9 @@ use codex_app_server_protocol::CollabAgentTool;
 use codex_app_server_protocol::CollabAgentToolCallStatus;
 use codex_app_server_protocol::CommandExecutionStatus;
 use codex_app_server_protocol::McpToolCallStatus;
+use codex_app_server_protocol::MemoryMutationAction as ApiMemoryMutationAction;
+use codex_app_server_protocol::MemoryMutationScope as ApiMemoryMutationScope;
+use codex_app_server_protocol::MemoryMutationStatus as ApiMemoryMutationStatus;
 use codex_app_server_protocol::PatchApplyStatus;
 use codex_app_server_protocol::PatchChangeKind;
 use codex_app_server_protocol::ServerNotification;
@@ -41,6 +44,10 @@ use crate::exec_events::McpToolCallItem;
 use crate::exec_events::McpToolCallItemError;
 use crate::exec_events::McpToolCallItemResult;
 use crate::exec_events::McpToolCallStatus as ExecMcpToolCallStatus;
+use crate::exec_events::MemoryMutationAction;
+use crate::exec_events::MemoryMutationItem;
+use crate::exec_events::MemoryMutationScope;
+use crate::exec_events::MemoryMutationStatus;
 use crate::exec_events::PatchApplyStatus as ExecPatchApplyStatus;
 use crate::exec_events::PatchChangeKind as ExecPatchChangeKind;
 use crate::exec_events::ReasoningItem;
@@ -317,6 +324,28 @@ impl EventProcessorWithJsonOutput {
                     },
                 }),
             }),
+            ThreadItem::MemoryMutation(item) => Some(ExecThreadItem {
+                id: make_id(),
+                details: ThreadItemDetails::MemoryMutation(MemoryMutationItem {
+                    action: match item.action {
+                        ApiMemoryMutationAction::Write => MemoryMutationAction::Write,
+                        ApiMemoryMutationAction::Delete => MemoryMutationAction::Delete,
+                    },
+                    scope: match item.scope {
+                        ApiMemoryMutationScope::Global => MemoryMutationScope::Global,
+                        ApiMemoryMutationScope::Session => MemoryMutationScope::Session,
+                        ApiMemoryMutationScope::Project => MemoryMutationScope::Project,
+                    },
+                    status: match item.status {
+                        ApiMemoryMutationStatus::InProgress => MemoryMutationStatus::InProgress,
+                        ApiMemoryMutationStatus::Succeeded => MemoryMutationStatus::Succeeded,
+                        ApiMemoryMutationStatus::Failed => MemoryMutationStatus::Failed,
+                    },
+                    title: item.title,
+                    path: item.path,
+                    preview: item.preview,
+                }),
+            }),
             _ => None,
         }
     }
@@ -507,6 +536,7 @@ impl EventProcessorWithJsonOutput {
                 self.last_total_token_usage = Some(notification.token_usage);
                 CodexStatus::Running
             }
+            ServerNotification::TurnOutputThroughputUpdated(_) => CodexStatus::Running,
             ServerNotification::TurnCompleted(notification) => {
                 if let Some(running) = self.running_todo_list.take() {
                     events.push(ThreadEvent::ItemCompleted(ItemCompletedEvent {

@@ -9,6 +9,7 @@ use codex_app_server_protocol::SkillLoadStatus;
 use codex_app_server_protocol::SubAgentActivityKind;
 use codex_app_server_protocol::SubAgentActivityOperation;
 use codex_app_server_protocol::SubAgentActivityOutcome;
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_utils_absolute_path::AbsolutePathBuf;
 
 #[test]
@@ -266,7 +267,7 @@ fn agent_status_excludes_skill_details() {
 }
 
 #[test]
-fn agent_status_describes_started_agent_without_model_detail() {
+fn agent_status_describes_started_agent_with_model_and_effort() {
     let mut store = ThreadEventStore::new(/*capacity*/ 8);
     store.push_notification(ServerNotification::ItemCompleted(
         ItemCompletedNotification {
@@ -278,6 +279,7 @@ fn agent_status_describes_started_agent_without_model_detail() {
                 operation: None,
                 outcome: None,
                 model: Some("gpt-5.6".to_string()),
+                reasoning_effort: Some(ReasoningEffort::High),
             },
             thread_id: "thread-child".to_string(),
             turn_id: "turn-1".to_string(),
@@ -299,7 +301,7 @@ fn agent_status_describes_started_agent_without_model_detail() {
     Sub-agents running
 
       • `/root/reviewer`
-        Started /root/reviewer
+    Started /root/reviewer (gpt-5.6, high)
     "###);
 }
 
@@ -379,5 +381,6 @@ fn sub_agent_activity_item(
         operation: Some(operation),
         outcome: Some(outcome),
         model: None,
+        reasoning_effort: None,
     }
 }

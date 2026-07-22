@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use codex_extension_api::FunctionCallError;
+use codex_extension_api::ExtensionTurnItem;
 use codex_extension_api::ResponsesApiTool;
 use codex_extension_api::ToolCall;
 use codex_extension_api::ToolExecutor;
@@ -8,6 +9,9 @@ use codex_extension_api::ToolName;
 use codex_extension_api::ToolSpec;
 use codex_extension_api::parse_tool_input_schema;
 use codex_otel::MetricsClient;
+use codex_extension_items::ExtensionItem;
+use codex_extension_items::memory_mutation::MemoryMutation;
+use codex_extension_items::memory_mutation::MemoryMutationScope;
 use codex_tools::ResponsesApiNamespace;
 use codex_tools::ResponsesApiNamespaceTool;
 use codex_tools::default_namespace_description;
@@ -65,6 +69,21 @@ pub(crate) fn memory_tools(
 
 pub(super) fn memory_tool_name(name: &str) -> ToolName {
     ToolName::namespaced(MEMORY_TOOLS_NAMESPACE, name)
+}
+
+pub(super) fn memory_mutation_turn_item(item: MemoryMutation) -> ExtensionTurnItem {
+    ExtensionTurnItem {
+        item: ExtensionItem::MemoryMutation(item),
+        legacy_events: Vec::new(),
+    }
+}
+
+pub(super) fn memory_mutation_scope(scope: MemoryScope) -> MemoryMutationScope {
+    match scope {
+        MemoryScope::Global => MemoryMutationScope::Global,
+        MemoryScope::Session => MemoryMutationScope::Session,
+        MemoryScope::Project => MemoryMutationScope::Project,
+    }
 }
 
 pub(super) fn memory_function_tool<I: JsonSchema, O: JsonSchema>(

@@ -3,6 +3,9 @@ use codex_extension_api::ToolCall;
 use codex_extension_api::ToolExecutor;
 use codex_extension_api::ToolName;
 use codex_extension_api::ToolSpec;
+use codex_extension_items::memory_mutation::MemoryMutation;
+use codex_extension_items::memory_mutation::MemoryMutationScope;
+use codex_extension_items::memory_mutation::MemoryMutationStatus;
 use codex_otel::MetricsClient;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -66,6 +69,16 @@ impl AddAdHocNoteTool {
     {
         let backends = self.backends.clone();
         let args: AddAdHocNoteArgs = parse_args(&call)?;
+        let path = format!("extensions/ad_hoc/notes/{}", args.filename);
+        let mutation = MemoryMutation::write(
+            call.call_id.clone(),
+            MemoryMutationScope::Global,
+            None,
+            &args.note,
+        );
+        call.turn_item_emitter
+            .emit_started(super::memory_mutation_turn_item(mutation.clone()))
+            .await;
         let response = backends
             .add_global_ad_hoc_note(AddAdHocMemoryNoteRequest {
                 filename: args.filename,
@@ -79,7 +92,25 @@ impl AddAdHocNoteTool {
             response.is_ok(),
             "not_applicable",
         );
-        let response = response.map_err(backend_error_to_function_call)?;
-        Ok(Box::new(JsonToolOutput::new(json!(response))))
+        match response {
+            Ok(response) => {
+                call.turn_item_emitter
+                    .emit_completed(super::memory_mutation_turn_item(
+                        mutation
+                            .with_status(MemoryMutationStatus::Succeeded)
+                            .with_path(path),
+                    ))
+                    .await;
+                Ok(Box::new(JsonToolOutput::new(json!(response))))
+            }
+            Err(error) => {
+                call.turn_item_emitter
+                    .emit_completed(super::memory_mutation_turn_item(
+                        mutation.with_status(MemoryMutationStatus::Failed),
+                    ))
+                    .await;
+                Err(backend_error_to_function_call(error))
+            }
+        }
     }
 }

@@ -3,8 +3,6 @@ use crate::app_event::HistoryLookupResponse;
 use codex_app_server_protocol::NetworkAccess;
 use codex_app_server_protocol::SandboxPolicy;
 use codex_app_server_protocol::SubAgentActivityKind;
-use codex_app_server_protocol::SubAgentActivityOperation;
-use codex_app_server_protocol::SubAgentActivityOutcome;
 use codex_protocol::models::ManagedFileSystemPermissions;
 use codex_protocol::permissions::FileSystemAccessMode;
 use codex_protocol::permissions::FileSystemPath;
@@ -125,12 +123,13 @@ async fn replayed_sub_agent_activity_renders_history() {
     chat.replay_thread_item(
         AppServerThreadItem::SubAgentActivity {
             id: "activity-1".to_string(),
-            kind: SubAgentActivityKind::Interacted,
+            kind: SubAgentActivityKind::Started,
             agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
             agent_path: "/root/research".to_string(),
-            operation: Some(SubAgentActivityOperation::FollowupTask),
-            outcome: Some(SubAgentActivityOutcome::Succeeded),
+            operation: None,
+            outcome: None,
             model: Some("gpt-5.6".to_string()),
+            reasoning_effort: Some(ReasoningEffortConfig::High),
         },
         "turn-1".to_string(),
         ReplayKind::ThreadSnapshot,
@@ -141,7 +140,39 @@ async fn replayed_sub_agent_activity_renders_history() {
         .map(|lines| lines_to_single_string(&lines))
         .collect::<Vec<_>>()
         .join("\n");
-    insta::assert_snapshot!(combined, @r###"• Sent follow-up to `/root/research`"###);
+    insta::assert_snapshot!(combined, @r###"• Started `/root/research` (gpt-5.6, high)"###);
+}
+
+#[tokio::test]
+async fn replayed_memory_mutation_renders_history() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    chat.replay_thread_item(
+        AppServerThreadItem::MemoryMutation(codex_app_server_protocol::MemoryMutation {
+            id: "memory-write-1".to_string(),
+            action: codex_app_server_protocol::MemoryMutationAction::Write,
+            scope: codex_app_server_protocol::MemoryMutationScope::Project,
+            status: codex_app_server_protocol::MemoryMutationStatus::Succeeded,
+            title: Some("Repository conventions".to_string()),
+            path: Some("memories/project/repository-conventions.md".to_string()),
+            preview: Some("Run focused tests remotely.".to_string()),
+        }),
+        "turn-1".to_string(),
+        ReplayKind::ThreadSnapshot,
+    );
+
+    let combined = drain_insert_history(&mut rx)
+        .into_iter()
+        .map(|lines| lines_to_single_string(&lines))
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!(combined, @r###"
+• Wrote memory
+  └ Scope: project
+    Title: Repository conventions
+    Path: memories/project/repository-conventions.md
+    Preview: Run focused tests remotely.
+"###);
 }
 
 #[tokio::test]

@@ -9,6 +9,7 @@ use crate::history_cell::HistoryCell;
 use crate::history_cell::PlainHistoryCell;
 use crate::history_cell::ReasoningSummaryCell;
 use crate::history_cell::UserHistoryCell;
+use crate::memory_mutation::memory_mutation_summary;
 use crate::multi_agents::collab_tool_summary;
 use crate::multi_agents::sub_agent_activity_summary;
 use codex_app_server_protocol::Thread;
@@ -203,13 +204,25 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
             operation,
             outcome,
             agent_path,
+            model,
+            reasoning_effort,
             ..
         } => {
             vec![
-                sub_agent_activity_summary(*kind, *operation, *outcome, agent_path)
-                    .dim()
-                    .into(),
+                sub_agent_activity_summary(
+                    *kind,
+                    *operation,
+                    *outcome,
+                    agent_path,
+                    model.as_deref(),
+                    reasoning_effort.as_ref(),
+                )
+                .dim()
+                .into(),
             ]
+        }
+        ThreadItem::MemoryMutation(mutation) => {
+            vec![memory_mutation_summary(mutation).dim().into()]
         }
         ThreadItem::WebSearch(item) => {
             vec![vec!["web search: ".dim(), item.query.clone().into()].into()]

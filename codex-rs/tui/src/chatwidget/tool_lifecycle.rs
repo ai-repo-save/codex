@@ -135,6 +135,13 @@ impl ChatWidget {
         }
     }
 
+    pub(super) fn on_memory_mutation(&mut self, item: ThreadItem) {
+        self.record_visible_turn_activity();
+        if let Some(cell) = crate::memory_mutation::memory_mutation_history_cell(&item) {
+            self.on_collab_event(cell);
+        }
+    }
+
     pub(crate) fn handle_file_change_completed_now(&mut self, item: ThreadItem) {
         let ThreadItem::FileChange { status, .. } = item else {
             return;

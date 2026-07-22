@@ -3,6 +3,8 @@ use codex_extension_api::ToolCall;
 use codex_extension_api::ToolExecutor;
 use codex_extension_api::ToolName;
 use codex_extension_api::ToolSpec;
+use codex_extension_items::memory_mutation::MemoryMutation;
+use codex_extension_items::memory_mutation::MemoryMutationStatus;
 use codex_otel::MetricsClient;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -68,17 +70,53 @@ impl DeleteTool {
         let args: DeleteArgs = parse_args(&call)?;
         let path = args.path;
         let scope = scope_from_path(path.as_str());
+        let requested_scope = args.scope;
+        let memory_scope = requested_scope.unwrap_or(MemoryScope::Global);
+        let mutation = MemoryMutation::delete(
+            call.call_id.clone(),
+            super::memory_mutation_scope(memory_scope),
+            path.clone(),
+        );
+        call.turn_item_emitter
+            .emit_started(super::memory_mutation_turn_item(mutation.clone()))
+            .await;
         let response = backends
-            .delete(args.scope, DeleteMemoryRequest { path })
+            .delete(requested_scope, DeleteMemoryRequest { path })
             .await;
         record_tool_call(
             self.metrics_client.as_ref(),
             DELETE_TOOL_NAME,
             scope,
-            response.is_ok(),
+            response.as_ref().is_ok_and(|response| response.deleted),
             "not_applicable",
         );
-        let response = response.map_err(backend_error_to_function_call)?;
-        Ok(Box::new(JsonToolOutput::new(json!(response))))
+        match response {
+            Ok(response) if response.deleted => {
+                call.turn_item_emitter
+                    .emit_completed(super::memory_mutation_turn_item(
+                        mutation
+                            .with_status(MemoryMutationStatus::Succeeded)
+                            .with_path(response.path.clone()),
+                    ))
+                    .await;
+                Ok(Box::new(JsonToolOutput::new(json!(response))))
+            }
+            Ok(response) => {
+                call.turn_item_emitter
+                    .emit_completed(super::memory_mutation_turn_item(
+                        mutation.with_status(MemoryMutationStatus::Failed),
+                    ))
+                    .await;
+                Ok(Box::new(JsonToolOutput::new(json!(response))))
+            }
+            Err(error) => {
+                call.turn_item_emitter
+                    .emit_completed(super::memory_mutation_turn_item(
+                        mutation.with_status(MemoryMutationStatus::Failed),
+                    ))
+                    .await;
+                Err(backend_error_to_function_call(error))
+            }
+        }
     }
 }

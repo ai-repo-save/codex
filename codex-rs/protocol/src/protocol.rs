@@ -4350,6 +4350,9 @@ pub struct SubAgentActivityEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reasoning_effort: Option<ReasoningEffortConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
@@ -5678,6 +5681,7 @@ mod tests {
                 agent_thread_id,
                 agent_path: agent_path.clone(),
                 model: Some("gpt-5.4".into()),
+                reasoning_effort: Some(ReasoningEffortConfig::High),
                 operation: Some(SubAgentActivityOperation::SendMessage),
                 outcome: Some(SubAgentActivityOutcome::Succeeded),
             }),
@@ -5696,6 +5700,7 @@ mod tests {
                 agent_path,
                 kind: SubAgentActivityKind::Started,
                 model: Some("gpt-5.4".into()),
+                reasoning_effort: Some(ReasoningEffortConfig::High),
                 operation: Some(SubAgentActivityOperation::SendMessage),
                 outcome: Some(SubAgentActivityOutcome::Succeeded),
             }
@@ -5713,6 +5718,7 @@ mod tests {
             agent_thread_id,
             agent_path: agent_path.clone(),
             model: None,
+            reasoning_effort: None,
             operation: None,
             outcome: None,
         };
@@ -5723,6 +5729,7 @@ mod tests {
             agent_path,
             kind: SubAgentActivityKind::Interacted,
             model: None,
+            reasoning_effort: None,
             operation: None,
             outcome: None,
         };

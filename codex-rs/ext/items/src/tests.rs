@@ -3,6 +3,12 @@ use serde_json::json;
 
 use super::ExtensionItem;
 use super::image_generation::ImageGenerationItem;
+use super::memory_mutation::MemoryMutation;
+use super::memory_mutation::MemoryMutationScope;
+use super::memory_mutation::MemoryMutationStatus;
+use super::memory_mutation::MEMORY_MUTATION_PATH_MAX_GRAPHEMES;
+use super::memory_mutation::MEMORY_MUTATION_PREVIEW_MAX_GRAPHEMES;
+use super::memory_mutation::MEMORY_MUTATION_TITLE_MAX_GRAPHEMES;
 use super::web_search::WebSearchAction;
 use super::web_search::WebSearchItem;
 
@@ -65,6 +71,74 @@ fn web_search_item_preserves_stable_wire_shape() {
     assert_eq!(
         serde_json::from_value::<ExtensionItem>(value).expect("deserialize extension item"),
         item
+    );
+}
+
+#[test]
+fn memory_mutation_item_preserves_stable_wire_shape() {
+    let item = ExtensionItem::MemoryMutation(
+        MemoryMutation::write(
+            "memory-1".to_string(),
+            MemoryMutationScope::Session,
+            Some("Review Style".to_string()),
+            "Keep review comments concise.",
+        )
+        .with_status(MemoryMutationStatus::Succeeded)
+        .with_path("notes/review-style.md".to_string()),
+    );
+    let value = serde_json::to_value(&item).expect("serialize extension item");
+
+    assert_eq!(
+        value,
+        json!({
+            "kind": "memory.mutation",
+            "id": "memory-1",
+            "action": "write",
+            "scope": "session",
+            "status": "succeeded",
+            "title": "Review Style",
+            "path": "notes/review-style.md",
+            "preview": "Keep review comments concise.",
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<ExtensionItem>(value).expect("deserialize extension item"),
+        item
+    );
+}
+
+#[test]
+fn restored_memory_mutation_enforces_string_bounds() {
+    let title = "t".repeat(MEMORY_MUTATION_TITLE_MAX_GRAPHEMES + 1);
+    let path = "p".repeat(MEMORY_MUTATION_PATH_MAX_GRAPHEMES + 1);
+    let preview = format!(
+        "\n  {}\nignored",
+        "v".repeat(MEMORY_MUTATION_PREVIEW_MAX_GRAPHEMES + 1)
+    );
+    let item = serde_json::from_value::<ExtensionItem>(json!({
+        "kind": "memory.mutation",
+        "id": "memory-1",
+        "action": "write",
+        "scope": "project",
+        "status": "succeeded",
+        "title": title,
+        "path": path,
+        "preview": preview,
+    }))
+    .expect("deserialize memory mutation");
+    let value = serde_json::to_value(item).expect("serialize restored memory mutation");
+
+    assert_eq!(
+        value["title"],
+        json!("t".repeat(MEMORY_MUTATION_TITLE_MAX_GRAPHEMES))
+    );
+    assert_eq!(
+        value["path"],
+        json!("p".repeat(MEMORY_MUTATION_PATH_MAX_GRAPHEMES))
+    );
+    assert_eq!(
+        value["preview"],
+        json!("v".repeat(MEMORY_MUTATION_PREVIEW_MAX_GRAPHEMES))
     );
 }
 

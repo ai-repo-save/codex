@@ -657,10 +657,7 @@ impl ChatWidget {
             StatusLineItem::ModelName => Some(self.model_display_name().to_string()),
             StatusLineItem::ModelWithReasoning => Some(self.model_with_reasoning_display_name()),
             StatusLineItem::Reasoning => Some(self.reasoning_display_name()),
-            StatusLineItem::Tps => self
-                .throughput_tracker
-                .display(Instant::now())
-                .map(super::throughput_tracker::format_throughput_display),
+            StatusLineItem::Tps => self.throughput.map(super::throughput::format_throughput_display),
             StatusLineItem::CurrentDir => {
                 Some(format_directory_display(
                     self.status_line_cwd(),

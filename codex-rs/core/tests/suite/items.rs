@@ -1104,6 +1104,67 @@ async fn reasoning_content_delta_has_item_metadata() -> anyhow::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reasoning_only_response_reports_throughput_lifecycle() -> anyhow::Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let TestCodex { codex, .. } = test_codex().build(&server).await?;
+    const OUTPUT_TOKENS: i64 = 7;
+
+    let stream = sse(vec![
+        ev_response_created("resp-reasoning-throughput"),
+        ev_reasoning_item_added("reasoning-throughput", &[""]),
+        ev_reasoning_summary_text_delta("reasoning summary"),
+        ev_reasoning_text_delta("raw reasoning"),
+        ev_reasoning_item("reasoning-throughput", &["reasoning summary"], &["raw reasoning"]),
+        json!({
+            "type": "response.completed",
+            "response": {
+                "id": "resp-reasoning-throughput",
+                "usage": {
+                    "input_tokens": 0,
+                    "input_tokens_details": null,
+                    "output_tokens": OUTPUT_TOKENS,
+                    "output_tokens_details": null,
+                    "total_tokens": OUTPUT_TOKENS,
+                },
+            },
+        }),
+    ]);
+    mount_sse_once(&server, stream).await;
+
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "reason through it".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await?;
+
+    let active = wait_for_event_match(&codex, |event| match event {
+        EventMsg::OutputThroughputUpdated(event) if event.active => Some(event.clone()),
+        _ => None,
+    })
+    .await;
+    let completed = wait_for_event_match(&codex, |event| match event {
+        EventMsg::OutputThroughputUpdated(event) if !event.active => Some(event.clone()),
+        _ => None,
+    })
+    .await;
+
+    assert_eq!(active.output_tokens, None);
+    assert_eq!(completed.output_tokens, Some(OUTPUT_TOKENS));
+    assert!(completed.active_duration_ms.is_some());
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sequential_cutoff_renders_done_summaries_for_active_reasoning_item() -> anyhow::Result<()>
 {
     skip_if_no_network!(Ok(()));

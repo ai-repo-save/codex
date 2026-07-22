@@ -3459,7 +3459,7 @@ mod tests {
     }
 
     #[test]
-    fn serialize_turn_output_throughput_updated_notification_with_null_metrics() -> Result<()> {
+    fn serialize_active_turn_output_throughput_with_approximate_rate() -> Result<()> {
         let notification = ServerNotification::TurnOutputThroughputUpdated(
             v2::TurnOutputThroughputUpdatedNotification {
                 thread_id: "thr_123".to_string(),
@@ -3467,7 +3467,7 @@ mod tests {
                 active: true,
                 output_tokens: None,
                 active_duration_ms: None,
-                tokens_per_second: None,
+                tokens_per_second: Some(13.5),
             },
         );
         assert_eq!(
@@ -3479,7 +3479,7 @@ mod tests {
                     "active": true,
                     "outputTokens": null,
                     "activeDurationMs": null,
-                    "tokensPerSecond": null
+                    "tokensPerSecond": 13.5
                 }
             }),
             serde_json::to_value(&notification)?,
@@ -3513,6 +3513,111 @@ mod tests {
                 }
             }),
             serde_json::to_value(&notification)?,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn serialize_inactive_turn_output_throughput_with_unavailable_metrics() -> Result<()> {
+        let notification = ServerNotification::TurnOutputThroughputUpdated(
+            v2::TurnOutputThroughputUpdatedNotification {
+                thread_id: "thr_123".to_string(),
+                turn_id: "turn_123".to_string(),
+                active: false,
+                output_tokens: None,
+                active_duration_ms: None,
+                tokens_per_second: None,
+            },
+        );
+        assert_eq!(
+            json!({
+                "method": "turn/outputThroughput/updated",
+                "params": {
+                    "threadId": "thr_123",
+                    "turnId": "turn_123",
+                    "active": false,
+                    "outputTokens": null,
+                    "activeDurationMs": null,
+                    "tokensPerSecond": null
+                }
+            }),
+            serde_json::to_value(&notification)?,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn serialize_memory_mutation_item_lifecycle_notifications() -> Result<()> {
+        let started = ServerNotification::ItemStarted(v2::ItemStartedNotification {
+            thread_id: "thr_123".to_string(),
+            turn_id: "turn_123".to_string(),
+            item: v2::ThreadItem::MemoryMutation(v2::MemoryMutation {
+                id: "memory_123".to_string(),
+                action: v2::MemoryMutationAction::Write,
+                scope: v2::MemoryMutationScope::Project,
+                status: v2::MemoryMutationStatus::InProgress,
+                title: Some("Preferred tools".to_string()),
+                path: None,
+                preview: Some("Use pnpm for JavaScript".to_string()),
+            }),
+            started_at_ms: 100,
+        });
+        assert_eq!(
+            json!({
+                "method": "item/started",
+                "params": {
+                    "threadId": "thr_123",
+                    "turnId": "turn_123",
+                    "item": {
+                        "type": "memoryMutation",
+                        "id": "memory_123",
+                        "action": "write",
+                        "scope": "project",
+                        "status": "inProgress",
+                        "title": "Preferred tools",
+                        "path": null,
+                        "preview": "Use pnpm for JavaScript"
+                    },
+                    "startedAtMs": 100
+                }
+            }),
+            serde_json::to_value(&started)?,
+        );
+
+        let completed = ServerNotification::ItemCompleted(v2::ItemCompletedNotification {
+            thread_id: "thr_123".to_string(),
+            turn_id: "turn_123".to_string(),
+            item: v2::ThreadItem::MemoryMutation(v2::MemoryMutation {
+                id: "memory_123".to_string(),
+                action: v2::MemoryMutationAction::Write,
+                scope: v2::MemoryMutationScope::Project,
+                status: v2::MemoryMutationStatus::Succeeded,
+                title: Some("Preferred tools".to_string()),
+                path: Some("project/preferred-tools.md".to_string()),
+                preview: Some("Use pnpm for JavaScript".to_string()),
+            }),
+            completed_at_ms: 200,
+        });
+        assert_eq!(
+            json!({
+                "method": "item/completed",
+                "params": {
+                    "threadId": "thr_123",
+                    "turnId": "turn_123",
+                    "item": {
+                        "type": "memoryMutation",
+                        "id": "memory_123",
+                        "action": "write",
+                        "scope": "project",
+                        "status": "succeeded",
+                        "title": "Preferred tools",
+                        "path": "project/preferred-tools.md",
+                        "preview": "Use pnpm for JavaScript"
+                    },
+                    "completedAtMs": 200
+                }
+            }),
+            serde_json::to_value(&completed)?,
         );
         Ok(())
     }

@@ -78,6 +78,7 @@ pub(crate) async fn emit_sub_agent_interaction(
             operation: Some(operation),
             outcome: Some(outcome),
             model: None,
+            reasoning_effort: None,
         },
     )
     .await;

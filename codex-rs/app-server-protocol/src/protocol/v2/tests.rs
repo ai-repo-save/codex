@@ -2769,6 +2769,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         operation: Some(CoreSubAgentActivityOperation::InspectAgent),
         outcome: Some(CoreSubAgentActivityOutcome::Failed),
         model: Some("gpt-5.4".to_string()),
+        reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
     });
 
     assert_eq!(
@@ -2781,6 +2782,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             operation: Some(SubAgentActivityOperation::InspectAgent),
             outcome: Some(SubAgentActivityOutcome::Failed),
             model: Some("gpt-5.4".to_string()),
+            reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
         }
     );
 
@@ -2794,6 +2796,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         operation: None,
         outcome: None,
         model: None,
+        reasoning_effort: None,
     });
 
     assert_eq!(
@@ -2806,6 +2809,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             operation: None,
             outcome: None,
             model: None,
+            reasoning_effort: None,
         }
     );
 
@@ -2836,6 +2840,29 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             codex_extension_items::ExtensionItem::WebSearch(expected_search_item.clone()),
         )),
         ThreadItem::WebSearch(expected_search_item)
+    );
+
+    let memory_mutation = codex_extension_items::memory_mutation::MemoryMutation::write(
+        "memory-1".to_string(),
+        codex_extension_items::memory_mutation::MemoryMutationScope::Project,
+        Some("Preferred tools".to_string()),
+        "Use pnpm for JavaScript",
+    )
+    .with_path("project/preferred-tools.md".to_string())
+    .with_status(codex_extension_items::memory_mutation::MemoryMutationStatus::Succeeded);
+    assert_eq!(
+        ThreadItem::from(TurnItem::Extension(
+            codex_extension_items::ExtensionItem::MemoryMutation(memory_mutation),
+        )),
+        ThreadItem::MemoryMutation(MemoryMutation {
+            id: "memory-1".to_string(),
+            action: MemoryMutationAction::Write,
+            scope: MemoryMutationScope::Project,
+            status: MemoryMutationStatus::Succeeded,
+            title: Some("Preferred tools".to_string()),
+            path: Some("project/preferred-tools.md".to_string()),
+            preview: Some("Use pnpm for JavaScript".to_string()),
+        })
     );
 
     let image_view_item = TurnItem::ImageView(ImageViewItem {

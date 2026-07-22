@@ -406,6 +406,7 @@ impl SubAgentActivityItem {
             operation: self.operation,
             outcome: self.outcome,
             model: self.model.clone(),
+            reasoning_effort: self.reasoning_effort.clone(),
         })
     }
 }

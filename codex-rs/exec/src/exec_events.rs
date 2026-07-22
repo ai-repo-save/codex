@@ -122,6 +122,8 @@ pub enum ThreadItemDetails {
     /// Captures a web search request. It starts when the search is kicked off
     /// and completes when results are returned to the agent.
     WebSearch(WebSearchItem),
+    /// Records a scoped-memory write or deletion.
+    MemoryMutation(MemoryMutationItem),
     /// Tracks the agent's running to-do list. It starts when the plan is first
     /// issued, updates as steps change state, and completes when the turn ends.
     TodoList(TodoListItem),
@@ -140,6 +142,40 @@ pub struct AgentMessageItem {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct ReasoningItem {
     pub text: String,
+}
+
+/// A scoped-memory write or deletion.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+pub struct MemoryMutationItem {
+    pub action: MemoryMutationAction,
+    pub scope: MemoryMutationScope,
+    pub status: MemoryMutationStatus,
+    pub title: Option<String>,
+    pub path: Option<String>,
+    pub preview: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryMutationAction {
+    Write,
+    Delete,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryMutationScope {
+    Global,
+    Session,
+    Project,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryMutationStatus {
+    InProgress,
+    Succeeded,
+    Failed,
 }
 
 /// The status of a command execution.

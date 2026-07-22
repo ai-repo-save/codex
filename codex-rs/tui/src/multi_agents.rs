@@ -17,6 +17,7 @@ use codex_app_server_protocol::SubAgentActivityOutcome;
 use codex_app_server_protocol::ThreadItem;
 use codex_protocol::ThreadId;
 use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
+use codex_protocol::openai_models::ReasoningEffort;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 #[cfg(target_os = "macos")]
@@ -314,6 +315,8 @@ pub(crate) fn sub_agent_activity_history_cell(item: &ThreadItem) -> Option<Plain
         operation,
         outcome,
         agent_path,
+        model,
+        reasoning_effort,
         ..
     } = item
     else {
@@ -323,6 +326,8 @@ pub(crate) fn sub_agent_activity_history_cell(item: &ThreadItem) -> Option<Plain
         sub_agent_activity_title(
             sub_agent_activity_action(*kind, *operation, *outcome),
             agent_path,
+            model.as_deref(),
+            reasoning_effort.as_ref(),
         ),
         Vec::new(),
     ))
@@ -333,9 +338,12 @@ pub(crate) fn sub_agent_activity_summary(
     operation: Option<SubAgentActivityOperation>,
     outcome: Option<SubAgentActivityOutcome>,
     agent_path: &str,
+    model: Option<&str>,
+    reasoning_effort: Option<&ReasoningEffort>,
 ) -> String {
     let action = sub_agent_activity_action(kind, operation, outcome);
-    format!("{} {agent_path}", action.title_prefix())
+    let details = sub_agent_activity_execution_details(action, model, reasoning_effort);
+    format!("{} {agent_path}{}", action.title_prefix(), details.unwrap_or_default())
 }
 
 #[derive(Clone, Copy)]
@@ -426,12 +434,37 @@ fn sub_agent_activity_running_update(
     }
 }
 
-fn sub_agent_activity_title(action: SubAgentActivityAction, agent_path: &str) -> Line<'static> {
-    let spans = vec![
+fn sub_agent_activity_title(
+    action: SubAgentActivityAction,
+    agent_path: &str,
+    model: Option<&str>,
+    reasoning_effort: Option<&ReasoningEffort>,
+) -> Line<'static> {
+    let mut spans = vec![
         Span::from(format!("{} ", action.title_prefix())).bold(),
         Span::from(format!("`{agent_path}`")).cyan(),
     ];
+    if let Some(details) = sub_agent_activity_execution_details(action, model, reasoning_effort) {
+        spans.push(Span::from(details).dim());
+    }
     title_spans_line(spans)
+}
+
+fn sub_agent_activity_execution_details(
+    action: SubAgentActivityAction,
+    model: Option<&str>,
+    reasoning_effort: Option<&ReasoningEffort>,
+) -> Option<String> {
+    if !matches!(action, SubAgentActivityAction::Started) {
+        return None;
+    }
+
+    match (model.filter(|model| !model.is_empty()), reasoning_effort) {
+        (Some(model), Some(reasoning_effort)) => Some(format!(" ({model}, {reasoning_effort})")),
+        (Some(model), None) => Some(format!(" ({model})")),
+        (None, Some(reasoning_effort)) => Some(format!(" ({reasoning_effort})")),
+        (None, None) => None,
+    }
 }
 
 fn spawn_end(
@@ -1188,8 +1221,17 @@ mod tests {
                     operation,
                     outcome,
                     agent_path,
+                    model,
+                    reasoning_effort,
                     ..
-                } => sub_agent_activity_summary(*kind, *operation, *outcome, agent_path),
+                } => sub_agent_activity_summary(
+                    *kind,
+                    *operation,
+                    *outcome,
+                    agent_path,
+                    model.as_deref(),
+                    reasoning_effort.as_ref(),
+                ),
                 _ => unreachable!("activity item"),
             })
             .collect::<Vec<_>>()
@@ -1442,6 +1484,7 @@ mod tests {
             operation,
             outcome,
             model: Some("gpt-5.6".to_string()),
+            reasoning_effort: Some(ReasoningEffort::High),
         }
     }
 

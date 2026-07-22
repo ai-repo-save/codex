@@ -91,11 +91,12 @@ async fn handle_spawn_agent(
     )
     .await?;
     apply_spawn_agent_runtime_overrides(&mut config, turn.as_ref())?;
-    let model = config.model.clone().ok_or_else(|| {
+    let configured_model = config.model.clone().ok_or_else(|| {
         FunctionCallError::RespondToModel(
             "spawn_agent could not resolve the effective child model".to_string(),
         )
     })?;
+    let configured_reasoning_effort = config.model_reasoning_effort.clone();
 
     let spawn_source = thread_spawn_source(
         session.thread_id,
@@ -149,6 +150,14 @@ async fn handle_spawn_agent(
         .as_ref()
         .and_then(|snapshot| snapshot.session_source.get_nickname())
         .or(spawned_agent.metadata.agent_nickname);
+    let effective_model = agent_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.model.clone())
+        .unwrap_or(configured_model);
+    let effective_reasoning_effort = agent_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.reasoning_effort.clone())
+        .or(configured_reasoning_effort);
     emit_sub_agent_activity(
         &session,
         &turn,
@@ -159,7 +168,8 @@ async fn handle_spawn_agent(
             kind: SubAgentActivityKind::Started,
             operation: None,
             outcome: None,
-            model: Some(model),
+            model: Some(effective_model),
+            reasoning_effort: effective_reasoning_effort,
         },
     )
     .await;

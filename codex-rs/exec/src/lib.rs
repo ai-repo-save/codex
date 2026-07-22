@@ -123,6 +123,10 @@ pub use exec_events::McpToolCallItem;
 pub use exec_events::McpToolCallItemError;
 pub use exec_events::McpToolCallItemResult;
 pub use exec_events::McpToolCallStatus;
+pub use exec_events::MemoryMutationAction;
+pub use exec_events::MemoryMutationItem;
+pub use exec_events::MemoryMutationScope;
+pub use exec_events::MemoryMutationStatus;
 pub use exec_events::PatchApplyStatus;
 pub use exec_events::PatchChangeKind;
 pub use exec_events::ReasoningItem;
@@ -1326,6 +1330,9 @@ fn should_process_notification(
             notification.thread_id == thread_id && notification.turn_id == turn_id
         }
         ServerNotification::ThreadTokenUsageUpdated(notification) => {
+            notification.thread_id == thread_id && notification.turn_id == turn_id
+        }
+        ServerNotification::TurnOutputThroughputUpdated(notification) => {
             notification.thread_id == thread_id && notification.turn_id == turn_id
         }
         ServerNotification::TurnCompleted(notification) => {

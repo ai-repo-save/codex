@@ -2,6 +2,7 @@ use super::AdditionalPermissionProfile;
 use super::ExecPolicyAmendment;
 use super::McpToolCallError;
 use super::McpToolCallResult;
+use super::MemoryMutation;
 use super::NetworkApprovalContext;
 use super::NetworkApprovalProtocol;
 use super::NetworkPolicyAmendment;
@@ -380,7 +381,9 @@ pub enum ThreadItem {
         operation: Option<SubAgentActivityOperation>,
         outcome: Option<SubAgentActivityOutcome>,
         model: Option<String>,
+        reasoning_effort: Option<ReasoningEffort>,
     },
+    MemoryMutation(MemoryMutation),
     WebSearch(WebSearchItem),
     #[serde(rename_all = "camelCase")]
     #[ts(rename_all = "camelCase")]
@@ -478,6 +481,7 @@ impl ThreadItem {
             | ThreadItem::ContextCompaction { id, .. }
             | ThreadItem::ContextAnchorSaved { id, .. }
             | ThreadItem::ContextAnchorRewound { id, .. } => id,
+            ThreadItem::MemoryMutation(item) => &item.id,
             ThreadItem::WebSearch(item) => &item.id,
             ThreadItem::ImageGeneration(item) => &item.id,
         }
@@ -946,6 +950,7 @@ impl From<CoreTurnItem> for ThreadItem {
                 operation: activity.operation.map(Into::into),
                 outcome: activity.outcome.map(Into::into),
                 model: activity.model,
+                reasoning_effort: activity.reasoning_effort,
             },
             CoreTurnItem::WebSearch(search) => ThreadItem::WebSearch(WebSearchItem {
                 id: search.id,
@@ -963,6 +968,7 @@ impl From<CoreTurnItem> for ThreadItem {
             CoreTurnItem::Extension(extension) => match extension {
                 ExtensionItem::ImageGeneration(item) => ThreadItem::ImageGeneration(item),
                 ExtensionItem::WebSearch(item) => ThreadItem::WebSearch(item),
+                ExtensionItem::MemoryMutation(item) => ThreadItem::MemoryMutation(item.into()),
             },
             CoreTurnItem::ImageGeneration(image) => {
                 ThreadItem::ImageGeneration(ImageGenerationItem {
