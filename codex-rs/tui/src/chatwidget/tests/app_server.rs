@@ -1128,17 +1128,15 @@ async fn interrupted_memory_mutation_is_finalized_as_failed() {
             thread_id: "thread-1".to_string(),
             turn_id: "turn-1".to_string(),
             started_at_ms: 0,
-            item: AppServerThreadItem::MemoryMutation(
-                codex_app_server_protocol::MemoryMutation {
-                    id: "memory-interrupted".to_string(),
-                    action: codex_app_server_protocol::MemoryMutationAction::Delete,
-                    scope: codex_app_server_protocol::MemoryMutationScope::Project,
-                    status: codex_app_server_protocol::MemoryMutationStatus::InProgress,
-                    title: None,
-                    path: Some("notes/obsolete.md".to_string()),
-                    preview: None,
-                },
-            ),
+            item: AppServerThreadItem::MemoryMutation(codex_app_server_protocol::MemoryMutation {
+                id: "memory-interrupted".to_string(),
+                action: codex_app_server_protocol::MemoryMutationAction::Delete,
+                scope: codex_app_server_protocol::MemoryMutationScope::Project,
+                status: codex_app_server_protocol::MemoryMutationStatus::InProgress,
+                title: None,
+                path: Some("notes/obsolete.md".to_string()),
+                preview: None,
+            }),
         }),
         /*replay_kind*/ None,
     );
