@@ -196,6 +196,18 @@ async fn replayed_in_progress_memory_mutation_accepts_live_completion() {
         ReplayKind::ThreadSnapshot,
     );
     assert!(drain_insert_history(&mut rx).is_empty());
+    let active = chat
+        .transcript
+        .active_cell
+        .as_ref()
+        .expect("replayed in-progress memory mutation should remain active")
+        .display_lines(/*width*/ 80);
+    insta::assert_snapshot!(lines_to_single_string(&active), @r###"
+• Writing memory
+  └ Scope: project
+    Title: Repository conventions
+    Path: memories/project/repository-conventions.md
+"###);
 
     chat.handle_server_notification(
         ServerNotification::ItemCompleted(ItemCompletedNotification {
