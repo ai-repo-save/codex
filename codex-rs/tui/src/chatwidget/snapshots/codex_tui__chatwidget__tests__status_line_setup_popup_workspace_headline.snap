@@ -14,6 +14,7 @@ expression: status_line_popup_snapshot(&mut chat)
   [ ] model-with-reasoning  Current model name with reasoning level
   [ ] reasoning             Current reasoning level
   [ ] current-dir           Current working directory
+  [ ] project-name          Project name (omitted when unavailable)
 
   Workspace maintenance starts at 5pm
   Press space to toggle; ←/→ to move; enter to confirm and close; esc to close
