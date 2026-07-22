@@ -67,6 +67,7 @@ const REQUESTED_MODEL: &str = "gpt-5.4";
 const REQUESTED_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::Low;
 const ROLE_MODEL: &str = "gpt-5.4";
 const ROLE_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::High;
+const ACTIVITY_REQUESTED_MODEL: &str = "gpt-5.3-codex-spark";
 const SUBAGENT_START_CONTEXT: &str = "subagent start context reaches child";
 const SUBAGENT_STOP_CONTINUATION: &str = "continue only the child";
 const INTERNAL_SUBAGENT_PROMPT: &str = "internal subagent: review";
@@ -1596,7 +1597,7 @@ async fn spawn_agent_started_activity_uses_role_effective_model_and_reasoning_ef
         "message": CHILD_PROMPT,
         "task_name": "worker",
         "agent_type": "custom",
-        "model": INHERITED_MODEL,
+        "model": ACTIVITY_REQUESTED_MODEL,
         "reasoning_effort": REQUESTED_REASONING_EFFORT,
         "fork_turns": "none",
     }))?;
