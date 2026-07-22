@@ -11,6 +11,7 @@ use codex_protocol::plan_tool::StepStatus;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::Op;
+use codex_protocol::protocol::OutputThroughputUpdatedEvent;
 use codex_protocol::request_user_input::RequestUserInputAnswer;
 use codex_protocol::request_user_input::RequestUserInputResponse;
 use codex_protocol::user_input::UserInput;
@@ -222,9 +223,15 @@ async fn output_throughput_deactivates_before_blocking_tool_starts() -> anyhow::
     let EventMsg::OutputThroughputUpdated(active) = active else {
         unreachable!();
     };
-    assert_eq!(active.output_tokens, None);
-    assert_eq!(active.active_duration_ms, None);
-    assert_eq!(active.tokens_per_second, None);
+    assert_eq!(
+        active,
+        OutputThroughputUpdatedEvent {
+            active: true,
+            output_tokens: None,
+            active_duration_ms: None,
+            tokens_per_second: None,
+        }
+    );
     let completed = wait_for_event(
         &codex,
         |event| matches!(event, EventMsg::OutputThroughputUpdated(event) if !event.active),
@@ -233,9 +240,15 @@ async fn output_throughput_deactivates_before_blocking_tool_starts() -> anyhow::
     let EventMsg::OutputThroughputUpdated(completed) = completed else {
         unreachable!();
     };
-    assert_eq!(completed.output_tokens, Some(0));
-    assert_eq!(completed.active_duration_ms, Some(0));
-    assert_eq!(completed.tokens_per_second, None);
+    assert_eq!(
+        completed,
+        OutputThroughputUpdatedEvent {
+            active: false,
+            output_tokens: Some(0),
+            active_duration_ms: Some(0),
+            tokens_per_second: Some(0.0),
+        }
+    );
 
     let request = wait_for_event(&codex, |event| {
         matches!(event, EventMsg::RequestUserInput(_))
