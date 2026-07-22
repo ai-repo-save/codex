@@ -233,7 +233,7 @@ async fn output_throughput_deactivates_before_blocking_tool_starts() -> anyhow::
     let EventMsg::OutputThroughputUpdated(completed) = completed else {
         unreachable!();
     };
-    assert_eq!(completed.output_tokens, None);
+    assert_eq!(completed.output_tokens, Some(0));
     assert_eq!(completed.active_duration_ms, None);
     assert_eq!(completed.tokens_per_second, None);
 
