@@ -1044,7 +1044,7 @@ async fn live_app_server_memory_mutations_render_history() {
 #[tokio::test]
 async fn memory_completion_preserves_a_different_active_mutation() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    let mutation = |id, status, title| {
+    let mutation = |id: &str, status, title: &str| {
         AppServerThreadItem::MemoryMutation(codex_app_server_protocol::MemoryMutation {
             id: id.to_string(),
             action: codex_app_server_protocol::MemoryMutationAction::Write,
