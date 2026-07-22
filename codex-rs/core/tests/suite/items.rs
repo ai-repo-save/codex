@@ -1116,7 +1116,11 @@ async fn reasoning_only_response_reports_throughput_lifecycle() -> anyhow::Resul
         ev_reasoning_item_added("reasoning-throughput", &[""]),
         ev_reasoning_summary_text_delta("reasoning summary"),
         ev_reasoning_text_delta("raw reasoning"),
-        ev_reasoning_item("reasoning-throughput", &["reasoning summary"], &["raw reasoning"]),
+        ev_reasoning_item(
+            "reasoning-throughput",
+            &["reasoning summary"],
+            &["raw reasoning"],
+        ),
         json!({
             "type": "response.completed",
             "response": {

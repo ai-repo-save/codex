@@ -115,7 +115,8 @@ impl MemoryMutation {
             action,
             scope,
             status,
-            title: title.map(|title| truncate_graphemes(&title, MEMORY_MUTATION_TITLE_MAX_GRAPHEMES)),
+            title: title
+                .map(|title| truncate_graphemes(&title, MEMORY_MUTATION_TITLE_MAX_GRAPHEMES)),
             path: path.map(|path| truncate_graphemes(&path, MEMORY_MUTATION_PATH_MAX_GRAPHEMES)),
             preview: preview.map(|preview| normalize_preview(&preview)),
         }

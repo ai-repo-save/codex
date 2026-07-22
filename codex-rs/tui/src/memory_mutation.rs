@@ -14,11 +14,13 @@ pub(crate) fn memory_mutation_history_cell(item: &ThreadItem) -> Option<PlainHis
         return None;
     };
 
-    let mut lines = vec![
-        vec!["• ".dim(), memory_mutation_title(mutation).bold()].into(),
-    ];
+    let mut lines = vec![vec!["• ".dim(), memory_mutation_title(mutation).bold()].into()];
     let mut details = vec![
-        vec!["Scope: ".dim(), memory_mutation_scope(mutation.scope).into()].into(),
+        vec![
+            "Scope: ".dim(),
+            memory_mutation_scope(mutation.scope).into(),
+        ]
+        .into(),
     ];
     if let Some(title) = mutation.title.as_deref() {
         details.push(vec!["Title: ".dim(), title.to_string().into()].into());
@@ -44,7 +46,11 @@ pub(crate) fn memory_mutation_summary(mutation: &MemoryMutation) -> String {
     if let Some(preview) = mutation.preview.as_deref() {
         details.push(format!("preview: {preview}"));
     }
-    format!("{} · {}", memory_mutation_title(mutation), details.join(" · "))
+    format!(
+        "{} · {}",
+        memory_mutation_title(mutation),
+        details.join(" · ")
+    )
 }
 
 fn memory_mutation_title(mutation: &MemoryMutation) -> &'static str {

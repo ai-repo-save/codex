@@ -1283,7 +1283,10 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
         Some("/root/test_process")
     );
     assert_eq!(child_snapshot.model, "gpt-5-role-override");
-    assert_eq!(child_snapshot.reasoning_effort, Some(ReasoningEffort::Minimal));
+    assert_eq!(
+        child_snapshot.reasoning_effort,
+        Some(ReasoningEffort::Minimal)
+    );
     assert!(manager.captured_ops().iter().any(|(id, op)| {
         *id == child_thread_id
             && matches!(

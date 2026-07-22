@@ -175,10 +175,7 @@ impl TurnTimingState {
         self.output_throughput_state().begin_sample(now)
     }
 
-    pub(crate) fn record_output_throughput_response_event(
-        &self,
-        event: &ResponseEvent,
-    ) {
+    pub(crate) fn record_output_throughput_response_event(&self, event: &ResponseEvent) {
         self.output_throughput_state().record_response_event(event);
     }
 

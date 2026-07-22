@@ -87,7 +87,9 @@ async fn throughput_notification_updates_the_status_line() {
         Some("~35.0 tok/s".to_string())
     );
 
-    apply_throughput_update(&mut chat, /*active*/ false, /*tokens_per_second*/ None);
+    apply_throughput_update(
+        &mut chat, /*active*/ false, /*tokens_per_second*/ None,
+    );
     assert_eq!(
         chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
         Some("~35.0 tok/s".to_string())
@@ -109,9 +111,7 @@ async fn throughput_notification_updates_the_status_line() {
 #[tokio::test]
 async fn plan_delta_preserves_the_active_throughput_status_line() {
     let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-    apply_throughput_update(
-        &mut chat, /*active*/ true, Some(20.0),
-    );
+    apply_throughput_update(&mut chat, /*active*/ true, Some(20.0));
 
     chat.handle_server_notification(
         ServerNotification::PlanDelta(PlanDeltaNotification {

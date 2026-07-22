@@ -355,7 +355,6 @@ fn output_throughput_becomes_unknown_after_missing_sample_data() {
     assert_eq!(permanently_unknown.output_tokens, None);
     assert_eq!(permanently_unknown.active_duration_ms, None);
     assert_eq!(permanently_unknown.tokens_per_second, None);
-
 }
 
 #[test]

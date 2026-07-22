@@ -343,7 +343,11 @@ pub(crate) fn sub_agent_activity_summary(
 ) -> String {
     let action = sub_agent_activity_action(kind, operation, outcome);
     let details = sub_agent_activity_execution_details(action, model, reasoning_effort);
-    format!("{} {agent_path}{}", action.title_prefix(), details.unwrap_or_default())
+    format!(
+        "{} {agent_path}{}",
+        action.title_prefix(),
+        details.unwrap_or_default()
+    )
 }
 
 #[derive(Clone, Copy)]

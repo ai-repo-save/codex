@@ -400,8 +400,7 @@ async fn memory_mutation_activities_cover_scopes_and_string_boundaries() {
         PREVIEW_GRAPHEME.repeat(MEMORY_MUTATION_PREVIEW_MAX_GRAPHEMES)
     );
 
-    let ad_hoc_tool =
-        memory_tool_from_backends(backends.clone(), crate::ADD_AD_HOC_NOTE_TOOL_NAME);
+    let ad_hoc_tool = memory_tool_from_backends(backends.clone(), crate::ADD_AD_HOC_NOTE_TOOL_NAME);
     run_memory_tool_with_emitter(
         &ad_hoc_tool,
         crate::ADD_AD_HOC_NOTE_TOOL_NAME,
@@ -545,9 +544,11 @@ async fn memory_mutation_failure_item_omits_backend_error_body() {
     assert_eq!(completed.len(), 1);
     assert_eq!(mutation_value(&completed[0])["status"], json!("failed"));
     let emitted_items = completed.iter().map(mutation_value).collect::<Vec<_>>();
-    assert!(!serde_json::to_string(&emitted_items)
-        .expect("serialize mutation items")
-        .contains(ERROR_SENTINEL));
+    assert!(
+        !serde_json::to_string(&emitted_items)
+            .expect("serialize mutation items")
+            .contains(ERROR_SENTINEL)
+    );
 }
 
 #[tokio::test]
@@ -1271,7 +1272,10 @@ impl TurnItemEmitter for RecordingTurnItemEmitter {
 
     fn emit_completed<'a>(&'a self, item: ExtensionTurnItem) -> TurnItemEmissionFuture<'a> {
         Box::pin(async move {
-            self.completed.lock().expect("completed item lock").push(item);
+            self.completed
+                .lock()
+                .expect("completed item lock")
+                .push(item);
         })
     }
 }
