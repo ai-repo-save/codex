@@ -3,7 +3,10 @@ use codex_core::StartThreadOptions;
 use codex_core::ThreadConfigSnapshot;
 use codex_core::config::AgentRoleConfig;
 use codex_features::Feature;
+use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
+use codex_protocol::items::SubAgentActivityItem;
+use codex_protocol::items::TurnItem;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::AskForApproval;
@@ -11,6 +14,7 @@ use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::InitialHistory;
 use codex_protocol::protocol::Op;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::SubAgentActivityKind;
 use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::user_input::UserInput;
 use core_test_support::hooks::trust_discovered_hooks;
@@ -1578,6 +1582,147 @@ async fn skills_toggle_skips_instructions_for_parent_and_spawned_child() -> Resu
         .expect("child request log should capture at least one request");
     assert!(!child_request.body_contains_text("<skills_instructions>"));
     assert!(!child_request.body_contains_text("demo-skill"));
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn spawn_agent_started_activity_uses_role_effective_model_and_reasoning_effort() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let spawn_args = serde_json::to_string(&json!({
+        "message": CHILD_PROMPT,
+        "task_name": "worker",
+        "agent_type": "custom",
+        "model": INHERITED_MODEL,
+        "reasoning_effort": REQUESTED_REASONING_EFFORT,
+        "fork_turns": "none",
+    }))?;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, TURN_1_PROMPT),
+        sse(vec![
+            ev_response_created("resp-turn1-1"),
+            ev_function_call_with_namespace(
+                SPAWN_CALL_ID,
+                MULTI_AGENT_V2_NAMESPACE,
+                "spawn_agent",
+                &spawn_args,
+            ),
+            ev_completed("resp-turn1-1"),
+        ]),
+    )
+    .await;
+    let _child_request = mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| {
+            body_contains(req, CHILD_PROMPT) && !body_contains(req, SPAWN_CALL_ID)
+        },
+        sse(vec![
+            ev_response_created("resp-child-1"),
+            ev_completed("resp-child-1"),
+        ]),
+    )
+    .await;
+    let _turn_one_follow_up = mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, SPAWN_CALL_ID),
+        sse(vec![
+            ev_response_created("resp-turn1-2"),
+            ev_completed("resp-turn1-2"),
+        ]),
+    )
+    .await;
+
+    let test = test_codex()
+        .with_config(|config| {
+            config
+                .features
+                .enable(Feature::Collab)
+                .expect("test config should allow feature update");
+            config
+                .features
+                .enable(Feature::MultiAgentV2)
+                .expect("test config should allow feature update");
+            config.model = Some(INHERITED_MODEL.to_string());
+            config.model_reasoning_effort = Some(INHERITED_REASONING_EFFORT);
+            let role_path = config.codex_home.join("activity-role.toml");
+            std::fs::write(
+                &role_path,
+                format!(
+                    "model = \"{ROLE_MODEL}\"\nmodel_reasoning_effort = \"{ROLE_REASONING_EFFORT}\"\n",
+                ),
+            )
+            .expect("write role config");
+            config.agent_roles.insert(
+                "custom".to_string(),
+                AgentRoleConfig {
+                    description: Some("Custom role".to_string()),
+                    config_file: Some(role_path),
+                    nickname_candidates: None,
+                },
+            );
+        })
+        .build(&server)
+        .await?;
+    let turn_id = test
+        .codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: TURN_1_PROMPT.to_string(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await?;
+    let mut root_events = Vec::new();
+    loop {
+        let event = test.codex.next_event().await?;
+        let is_turn_complete = matches!(
+            &event.msg,
+            EventMsg::TurnComplete(completed) if completed.turn_id == turn_id
+        );
+        root_events.push(event.msg);
+        if is_turn_complete {
+            break;
+        }
+    }
+
+    let child_thread_id = test
+        .thread_manager
+        .list_thread_ids()
+        .await
+        .into_iter()
+        .find(|thread_id| *thread_id != test.session_configured.thread_id)
+        .expect("worker thread should be registered");
+    let started_activities = root_events
+        .into_iter()
+        .filter_map(|event| match event {
+            EventMsg::ItemCompleted(event) => match event.item {
+                TurnItem::SubAgentActivity(activity) => Some(activity),
+                _ => None,
+            },
+            _ => None,
+        })
+        .filter(|activity| activity.id == SPAWN_CALL_ID)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        started_activities,
+        vec![SubAgentActivityItem {
+            id: SPAWN_CALL_ID.to_string(),
+            agent_thread_id: child_thread_id,
+            agent_path: AgentPath::try_from("/root/worker").expect("child path should be valid"),
+            kind: SubAgentActivityKind::Started,
+            operation: None,
+            outcome: None,
+            model: Some(ROLE_MODEL.to_string()),
+            reasoning_effort: Some(ROLE_REASONING_EFFORT),
+        }],
+    );
 
     Ok(())
 }

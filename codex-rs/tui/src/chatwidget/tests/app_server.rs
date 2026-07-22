@@ -965,11 +965,20 @@ async fn live_app_server_memory_mutations_render_history() {
         preview: None,
     });
 
+    chat.handle_server_notification(
+        ServerNotification::ItemStarted(ItemStartedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            started_at_ms: 0,
+            item: write(
+                codex_app_server_protocol::MemoryMutationStatus::InProgress,
+                None,
+            ),
+        }),
+        /*replay_kind*/ None,
+    );
+
     for item in [
-        write(
-            codex_app_server_protocol::MemoryMutationStatus::InProgress,
-            None,
-        ),
         write(
             codex_app_server_protocol::MemoryMutationStatus::Succeeded,
             Some("memories/session/session-notes.md".to_string()),

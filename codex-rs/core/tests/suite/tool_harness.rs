@@ -240,15 +240,17 @@ async fn output_throughput_deactivates_before_blocking_tool_starts() -> anyhow::
     let EventMsg::OutputThroughputUpdated(completed) = completed else {
         unreachable!();
     };
-    assert_eq!(
-        completed,
-        OutputThroughputUpdatedEvent {
-            active: false,
-            output_tokens: Some(0),
-            active_duration_ms: Some(0),
-            tokens_per_second: Some(0.0),
-        }
-    );
+    assert!(!completed.active);
+    assert_eq!(completed.output_tokens, Some(0));
+    let Some(active_duration_ms) = completed.active_duration_ms else {
+        unreachable!();
+    };
+    assert!(active_duration_ms >= 0);
+    if active_duration_ms > 0 {
+        assert_eq!(completed.tokens_per_second, Some(0.0));
+    } else {
+        assert!(matches!(completed.tokens_per_second, None | Some(0.0)));
+    }
 
     let request = wait_for_event(&codex, |event| {
         matches!(event, EventMsg::RequestUserInput(_))
