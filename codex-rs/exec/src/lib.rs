@@ -1332,9 +1332,6 @@ fn should_process_notification(
         ServerNotification::ThreadTokenUsageUpdated(notification) => {
             notification.thread_id == thread_id && notification.turn_id == turn_id
         }
-        ServerNotification::TurnOutputThroughputUpdated(notification) => {
-            notification.thread_id == thread_id && notification.turn_id == turn_id
-        }
         ServerNotification::TurnCompleted(notification) => {
             notification.thread_id == thread_id && notification.turn.id == turn_id
         }

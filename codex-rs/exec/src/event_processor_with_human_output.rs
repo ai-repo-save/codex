@@ -314,7 +314,6 @@ impl EventProcessor for EventProcessorWithHumanOutput {
                 self.last_total_token_usage = Some(notification.token_usage);
                 CodexStatus::Running
             }
-            ServerNotification::TurnOutputThroughputUpdated(_) => CodexStatus::Running,
             ServerNotification::TurnCompleted(notification) => match notification.turn.status {
                 TurnStatus::Completed => {
                     let rendered_message = self

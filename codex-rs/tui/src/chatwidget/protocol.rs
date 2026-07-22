@@ -87,11 +87,6 @@ impl ChatWidget {
                     self.on_agent_reasoning_delta(notification.delta);
                 }
             }
-            ServerNotification::TurnOutputThroughputUpdated(notification) => {
-                if !from_replay {
-                    self.update_throughput(notification.active, notification.tokens_per_second);
-                }
-            }
             ServerNotification::ReasoningSummaryPartAdded(_) => self.on_reasoning_section_break(),
             ServerNotification::TerminalInteraction(notification) => {
                 self.on_terminal_interaction(notification.process_id, notification.stdin)

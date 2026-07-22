@@ -3,8 +3,6 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
-use std::time::Instant;
 
 use crate::SkillInjections;
 use crate::build_skill_injections;
@@ -131,7 +129,6 @@ use codex_utils_stream_parser::strip_citations;
 use futures::future::BoxFuture;
 use futures::prelude::*;
 use futures::stream::FuturesOrdered;
-use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use tracing::error;
@@ -1597,7 +1594,6 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<(String, Option<
         | EventMsg::ThreadSettingsApplied(_)
         | EventMsg::TurnComplete(_)
         | EventMsg::TokenCount(_)
-        | EventMsg::OutputThroughputUpdated(_)
         | EventMsg::UserMessage(_)
         | EventMsg::AgentReasoning(_)
         | EventMsg::AgentReasoningRawContent(_)
@@ -2325,30 +2321,9 @@ async fn try_run_sampling_request(
         .await;
     let mut stream = match stream_result {
         Ok(Ok(stream)) => stream,
-        Ok(Err(err)) => {
-            if let Some(event) = turn_context
-                .turn_timing_state
-                .abandon_output_throughput_sample()
-            {
-                sess.send_event(&turn_context, EventMsg::OutputThroughputUpdated(event))
-                    .await;
-            }
-            return Err(err);
-        }
-        Err(codex_async_utils::CancelErr::Cancelled) => {
-            if let Some(event) = turn_context
-                .turn_timing_state
-                .abandon_output_throughput_sample()
-            {
-                sess.send_event(&turn_context, EventMsg::OutputThroughputUpdated(event))
-                    .await;
-            }
-            return Err(CodexErr::TurnAborted);
-        }
+        Ok(Err(err)) => return Err(err),
+        Err(codex_async_utils::CancelErr::Cancelled) => return Err(CodexErr::TurnAborted),
     };
-    let mut throughput_ticker = tokio::time::interval(Duration::from_millis(500));
-    throughput_ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
-    throughput_ticker.tick().await;
     let mut in_flight: FuturesOrdered<BoxFuture<'static, CodexResult<InFlightToolOutput>>> =
         FuturesOrdered::new();
     let mut needs_follow_up = false;
@@ -2385,16 +2360,6 @@ async fn try_run_sampling_request(
 
         let event = tokio::select! {
             _ = cancellation_token.cancelled() => break Err(CodexErr::TurnAborted),
-            _ = throughput_ticker.tick() => {
-                if let Some(event) = turn_context
-                    .turn_timing_state
-                    .sample_output_throughput(Instant::now())
-                {
-                    sess.send_event(&turn_context, EventMsg::OutputThroughputUpdated(event))
-                        .await;
-                }
-                continue;
-            }
             event = stream.next().instrument(trace_span!(parent: &handle_responses, "receiving")) => event,
         };
 
@@ -2409,31 +2374,6 @@ async fn try_run_sampling_request(
             }
         };
 
-        let event_received_at = Instant::now();
-        if matches!(&event, ResponseEvent::Created) {
-            throughput_ticker.reset();
-            if let Some(event) = turn_context
-                .turn_timing_state
-                .begin_output_throughput_sample(event_received_at)
-            {
-                sess.send_event(&turn_context, EventMsg::OutputThroughputUpdated(event))
-                    .await;
-            }
-        } else {
-            turn_context
-                .turn_timing_state
-                .record_output_throughput_response_event(&event);
-        }
-        let completed_throughput_event = match &event {
-            ResponseEvent::Completed { token_usage, .. } => turn_context
-                .turn_timing_state
-                .complete_output_throughput_sample(token_usage.as_ref(), event_received_at),
-            _ => None,
-        };
-        if let Some(event) = completed_throughput_event {
-            sess.send_event(&turn_context, EventMsg::OutputThroughputUpdated(event))
-                .await;
-        }
         sess.services
             .session_telemetry
             .record_responses(&handle_responses, &event);
@@ -2850,13 +2790,6 @@ async fn try_run_sampling_request(
             }
         }
     };
-    if let Some(event) = turn_context
-        .turn_timing_state
-        .abandon_output_throughput_sample()
-    {
-        sess.send_event(&turn_context, EventMsg::OutputThroughputUpdated(event))
-            .await;
-    }
     drop(sampling_timing_guard);
 
     flush_assistant_text_segments_all(

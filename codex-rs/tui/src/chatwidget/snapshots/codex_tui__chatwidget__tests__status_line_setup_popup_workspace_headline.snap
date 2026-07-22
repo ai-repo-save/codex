@@ -13,7 +13,6 @@ expression: status_line_popup_snapshot(&mut chat)
   [ ] model                 Current model name
   [ ] model-with-reasoning  Current model name with reasoning level
   [ ] reasoning             Current reasoning level
-  [ ] tps                   Observed model output speed
   [ ] current-dir           Current working directory
 
   Workspace maintenance starts at 5pm

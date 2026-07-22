@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::sync::Mutex as StdMutex;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
@@ -9,8 +8,6 @@ use codex_analytics::TurnProfile;
 use codex_otel::TURN_TTFM_DURATION_METRIC;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::ResponseItem;
-use codex_protocol::protocol::OutputThroughputUpdatedEvent;
-use codex_protocol::protocol::TokenUsage;
 use tokio::sync::Mutex;
 
 use crate::ResponseEvent;
@@ -44,8 +41,7 @@ pub(crate) async fn record_turn_ttfm_metric(turn_context: &TurnContext, item: &T
 #[derive(Debug, Default)]
 pub(crate) struct TurnTimingState {
     state: Mutex<TurnTimingStateInner>,
-    profile: StdMutex<TurnProfileState>,
-    output_throughput: StdMutex<OutputThroughputState>,
+    profile: std::sync::Mutex<TurnProfileState>,
 }
 
 #[derive(Debug, Default)]
@@ -70,40 +66,6 @@ struct TurnProfileState {
     sampling_request_count: u32,
     sampling_retry_count: u32,
     completed_profile: Option<TurnProfile>,
-}
-
-#[derive(Debug)]
-struct OutputThroughputState {
-    phase: OutputThroughputPhase,
-    aggregate_output_tokens: i64,
-    aggregate_active_duration: Duration,
-    aggregate_is_exact: bool,
-}
-
-impl Default for OutputThroughputState {
-    fn default() -> Self {
-        Self {
-            phase: OutputThroughputPhase::Waiting,
-            aggregate_output_tokens: 0,
-            aggregate_active_duration: Duration::ZERO,
-            aggregate_is_exact: true,
-        }
-    }
-}
-
-#[derive(Debug)]
-struct OutputThroughputSample {
-    created_at: Instant,
-    output_bytes: u64,
-    last_reported_output_bytes: u64,
-    last_reported_at: Instant,
-}
-
-#[derive(Debug, Default)]
-enum OutputThroughputPhase {
-    #[default]
-    Waiting,
-    Active(OutputThroughputSample),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,37 +130,6 @@ impl TurnTimingState {
         self.profile_state().record_sampling_retry();
     }
 
-    pub(crate) fn begin_output_throughput_sample(
-        &self,
-        now: Instant,
-    ) -> Option<OutputThroughputUpdatedEvent> {
-        self.output_throughput_state().begin_sample(now)
-    }
-
-    pub(crate) fn record_output_throughput_response_event(&self, event: &ResponseEvent) {
-        self.output_throughput_state().record_response_event(event);
-    }
-
-    pub(crate) fn sample_output_throughput(
-        &self,
-        now: Instant,
-    ) -> Option<OutputThroughputUpdatedEvent> {
-        self.output_throughput_state().sample(now)
-    }
-
-    pub(crate) fn complete_output_throughput_sample(
-        &self,
-        token_usage: Option<&TokenUsage>,
-        now: Instant,
-    ) -> Option<OutputThroughputUpdatedEvent> {
-        self.output_throughput_state()
-            .complete_sample(token_usage, now)
-    }
-
-    pub(crate) fn abandon_output_throughput_sample(&self) -> Option<OutputThroughputUpdatedEvent> {
-        self.output_throughput_state().abandon_sample()
-    }
-
     pub(crate) fn begin_tool_blocking(self: &Arc<Self>) -> TurnProfileTimingGuard {
         let active = self.profile_state().begin_tool_blocking(Instant::now());
         TurnProfileTimingGuard {
@@ -233,11 +164,6 @@ impl TurnTimingState {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    fn output_throughput_state(&self) -> std::sync::MutexGuard<'_, OutputThroughputState> {
-        self.output_throughput
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
 }
 
 impl Drop for TurnProfileTimingGuard {
@@ -376,121 +302,6 @@ impl TurnProfileState {
     }
 }
 
-impl OutputThroughputState {
-    fn begin_sample(&mut self, now: Instant) -> Option<OutputThroughputUpdatedEvent> {
-        if !matches!(self.phase, OutputThroughputPhase::Waiting) {
-            return None;
-        }
-        self.phase = OutputThroughputPhase::Active(OutputThroughputSample {
-            created_at: now,
-            output_bytes: 0,
-            last_reported_output_bytes: 0,
-            last_reported_at: now,
-        });
-        Some(OutputThroughputUpdatedEvent {
-            active: true,
-            output_tokens: None,
-            active_duration_ms: None,
-            tokens_per_second: None,
-        })
-    }
-
-    fn record_response_event(&mut self, event: &ResponseEvent) {
-        let Some(delta) = output_throughput_delta(event) else {
-            return;
-        };
-        if let OutputThroughputPhase::Active(sample) = &mut self.phase {
-            sample.output_bytes = sample
-                .output_bytes
-                .saturating_add(u64::try_from(delta.len()).unwrap_or(u64::MAX));
-        }
-    }
-
-    fn sample(&mut self, now: Instant) -> Option<OutputThroughputUpdatedEvent> {
-        let OutputThroughputPhase::Active(sample) = &mut self.phase else {
-            return None;
-        };
-        let elapsed = now.saturating_duration_since(sample.last_reported_at);
-        if elapsed < Duration::from_millis(500) {
-            return None;
-        }
-        let output_bytes = sample
-            .output_bytes
-            .saturating_sub(sample.last_reported_output_bytes);
-        sample.last_reported_output_bytes = sample.output_bytes;
-        sample.last_reported_at = now;
-        Some(OutputThroughputUpdatedEvent {
-            active: true,
-            output_tokens: None,
-            active_duration_ms: None,
-            tokens_per_second: Some(output_bytes as f64 / 4.0 / elapsed.as_secs_f64()),
-        })
-    }
-
-    fn complete_sample(
-        &mut self,
-        token_usage: Option<&TokenUsage>,
-        now: Instant,
-    ) -> Option<OutputThroughputUpdatedEvent> {
-        let OutputThroughputPhase::Active(sample) = std::mem::take(&mut self.phase) else {
-            return None;
-        };
-        let Some(token_usage) = token_usage else {
-            self.aggregate_is_exact = false;
-            return Some(inactive_output_throughput_event());
-        };
-        let active_duration = now.saturating_duration_since(sample.created_at);
-        self.aggregate_output_tokens = self
-            .aggregate_output_tokens
-            .saturating_add(token_usage.output_tokens);
-        self.aggregate_active_duration = self
-            .aggregate_active_duration
-            .saturating_add(active_duration);
-
-        if !self.aggregate_is_exact {
-            return Some(inactive_output_throughput_event());
-        }
-
-        Some(output_throughput_event(
-            self.aggregate_output_tokens,
-            self.aggregate_active_duration,
-        ))
-    }
-
-    fn abandon_sample(&mut self) -> Option<OutputThroughputUpdatedEvent> {
-        if !matches!(self.phase, OutputThroughputPhase::Active(_)) {
-            return None;
-        }
-        self.phase = OutputThroughputPhase::Waiting;
-        self.aggregate_is_exact = false;
-        Some(inactive_output_throughput_event())
-    }
-}
-
-fn inactive_output_throughput_event() -> OutputThroughputUpdatedEvent {
-    OutputThroughputUpdatedEvent {
-        active: false,
-        output_tokens: None,
-        active_duration_ms: None,
-        tokens_per_second: None,
-    }
-}
-
-fn output_throughput_event(
-    output_tokens: i64,
-    active_duration: Duration,
-) -> OutputThroughputUpdatedEvent {
-    let active_duration_ms = i64::try_from(active_duration.as_millis()).unwrap_or(i64::MAX);
-    let tokens_per_second =
-        (!active_duration.is_zero()).then(|| output_tokens as f64 / active_duration.as_secs_f64());
-    OutputThroughputUpdatedEvent {
-        active: false,
-        output_tokens: Some(output_tokens),
-        active_duration_ms: Some(active_duration_ms),
-        tokens_per_second,
-    }
-}
-
 impl TurnTimingStateInner {
     fn time_to_first_token(&self) -> Option<Duration> {
         Some(self.first_token_at?.duration_since(self.started_at?))
@@ -575,16 +386,6 @@ fn response_item_records_turn_ttft(item: &ResponseItem) -> bool {
         | ResponseItem::CustomToolCallOutput { .. }
         | ResponseItem::ToolSearchOutput { .. }
         | ResponseItem::Other => false,
-    }
-}
-
-fn output_throughput_delta(event: &ResponseEvent) -> Option<&str> {
-    match event {
-        ResponseEvent::OutputTextDelta(delta)
-        | ResponseEvent::ReasoningSummaryDelta { delta, .. }
-        | ResponseEvent::ReasoningContentDelta { delta, .. }
-        | ResponseEvent::ToolCallInputDelta { delta, .. } => Some(delta),
-        _ => None,
     }
 }
 

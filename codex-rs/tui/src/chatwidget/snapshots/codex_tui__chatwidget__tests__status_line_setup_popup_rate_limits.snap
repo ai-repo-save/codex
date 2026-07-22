@@ -14,7 +14,6 @@ expression: status_line_popup_snapshot(&mut chat)
   [ ] model                 Current model name
   [ ] model-with-reasoning  Current model name with reasoning level
   [ ] reasoning             Current reasoning level
-  [ ] tps                   Observed model output speed
 
   monthly 65% left · weekly 50% left
   Press space to toggle; ←/→ to move; enter to confirm and close; esc to close

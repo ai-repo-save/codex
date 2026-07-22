@@ -340,7 +340,7 @@ pub fn process_responses_event(
                 return Ok(Some(ResponseEvent::OutputTextDelta(delta)));
             }
         }
-        "response.custom_tool_call_input.delta" | "response.function_call_arguments.delta" => {
+        "response.custom_tool_call_input.delta" => {
             if let (Some(delta), Some(item_id)) =
                 (event.delta, event.item_id.clone().or(event.call_id.clone()))
             {
@@ -905,19 +905,12 @@ mod tests {
                 "delta": "*** Begin",
             }),
             json!({
-                "type": "response.function_call_arguments.delta",
-                "item_id": "fc_1",
-                "call_id": "call_2",
-                "delta": "{\"input\":\"",
-            }),
-            json!({
                 "type": "response.completed",
                 "response": { "id": "resp1" }
             }),
         ])
         .await;
 
-        assert_eq!(events.len(), 3);
         assert_matches!(
             &events[0],
             ResponseEvent::ToolCallInputDelta {
@@ -926,15 +919,7 @@ mod tests {
                 delta,
             } if item_id == "ctc_1" && call_id == "call_1" && delta == "*** Begin"
         );
-        assert_matches!(
-            &events[1],
-            ResponseEvent::ToolCallInputDelta {
-                item_id,
-                call_id: Some(call_id),
-                delta,
-            } if item_id == "fc_1" && call_id == "call_2" && delta == "{\"input\":\""
-        );
-        assert_matches!(&events[2], ResponseEvent::Completed { .. });
+        assert_matches!(&events[1], ResponseEvent::Completed { .. });
     }
 
     #[tokio::test]

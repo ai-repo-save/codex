@@ -77,7 +77,6 @@ use codex_app_server_protocol::TurnError;
 use codex_app_server_protocol::TurnInterruptResponse;
 use codex_app_server_protocol::TurnItemsView;
 use codex_app_server_protocol::TurnModerationMetadataNotification;
-use codex_app_server_protocol::TurnOutputThroughputUpdatedNotification;
 use codex_app_server_protocol::TurnPlanStep;
 use codex_app_server_protocol::TurnPlanUpdatedNotification;
 use codex_app_server_protocol::TurnStartedNotification;
@@ -935,21 +934,6 @@ pub(crate) async fn apply_bespoke_event_handling(
         }
         EventMsg::TokenCount(token_count_event) => {
             handle_token_count_event(conversation_id, event_turn_id, token_count_event, &outgoing)
-                .await;
-        }
-        EventMsg::OutputThroughputUpdated(throughput_event) => {
-            let notification = TurnOutputThroughputUpdatedNotification {
-                thread_id: conversation_id.to_string(),
-                turn_id: event_turn_id,
-                active: throughput_event.active,
-                output_tokens: throughput_event.output_tokens,
-                active_duration_ms: throughput_event.active_duration_ms,
-                tokens_per_second: throughput_event.tokens_per_second,
-            };
-            outgoing
-                .send_server_notification(ServerNotification::TurnOutputThroughputUpdated(
-                    notification,
-                ))
                 .await;
         }
         EventMsg::Error(ev) => {
@@ -2162,7 +2146,6 @@ mod tests {
     use codex_protocol::protocol::GuardianAssessmentStatus;
     use codex_protocol::protocol::ItemCompletedEvent;
     use codex_protocol::protocol::ItemStartedEvent;
-    use codex_protocol::protocol::OutputThroughputUpdatedEvent;
     use codex_protocol::protocol::RateLimitSnapshot;
     use codex_protocol::protocol::RateLimitWindow;
     use codex_protocol::protocol::RolloutItem;
@@ -3745,81 +3728,6 @@ mod tests {
                 assert_eq!(n.plan[0].status, TurnPlanStepStatus::Pending);
                 assert_eq!(n.plan[1].step, "second");
                 assert_eq!(n.plan[1].status, TurnPlanStepStatus::Completed);
-            }
-            other => bail!("unexpected message: {other:?}"),
-        }
-        assert!(rx.try_recv().is_err(), "no extra messages expected");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn output_throughput_event_maps_to_turn_notification() -> Result<()> {
-        let codex_home = TempDir::new()?;
-        let config = load_default_config_for_test(&codex_home).await;
-        let thread_manager = Arc::new(
-            codex_core::test_support::thread_manager_with_models_provider_and_home(
-                CodexAuth::create_dummy_chatgpt_auth_for_testing(),
-                config.model_provider.clone(),
-                config.codex_home.to_path_buf(),
-                Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
-            ),
-        );
-        let codex_core::NewThread {
-            thread_id: conversation_id,
-            thread: conversation,
-            ..
-        } = thread_manager.start_thread(config).await?;
-        let expected_thread_id = conversation_id.to_string();
-        let thread_state = new_thread_state();
-        let thread_watch_manager = ThreadWatchManager::new();
-        let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
-        let outgoing = ThreadScopedOutgoingMessageSender::new(
-            outgoing,
-            vec![ConnectionId(1)],
-            conversation_id,
-        );
-
-        apply_bespoke_event_handling(
-            Event {
-                id: "turn-123".to_string(),
-                msg: EventMsg::OutputThroughputUpdated(OutputThroughputUpdatedEvent {
-                    active: false,
-                    output_tokens: Some(42),
-                    active_duration_ms: Some(1_200),
-                    tokens_per_second: Some(35.0),
-                }),
-            },
-            conversation_id,
-            conversation,
-            thread_manager,
-            outgoing,
-            thread_state,
-            thread_watch_manager,
-            Arc::new(tokio::sync::Semaphore::new(/*permits*/ 1)),
-            "test-provider".to_string(),
-        )
-        .await;
-
-        let message = recv_broadcast_message(&mut rx).await?;
-        match message {
-            OutgoingMessage::AppServerNotification(
-                ServerNotification::TurnOutputThroughputUpdated(notification),
-            ) => {
-                assert_eq!(
-                    notification,
-                    TurnOutputThroughputUpdatedNotification {
-                        thread_id: expected_thread_id,
-                        turn_id: "turn-123".to_string(),
-                        active: false,
-                        output_tokens: Some(42),
-                        active_duration_ms: Some(1_200),
-                        tokens_per_second: Some(35.0),
-                    }
-                );
             }
             other => bail!("unexpected message: {other:?}"),
         }

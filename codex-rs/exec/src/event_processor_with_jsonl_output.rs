@@ -536,7 +536,6 @@ impl EventProcessorWithJsonOutput {
                 self.last_total_token_usage = Some(notification.token_usage);
                 CodexStatus::Running
             }
-            ServerNotification::TurnOutputThroughputUpdated(_) => CodexStatus::Running,
             ServerNotification::TurnCompleted(notification) => {
                 if let Some(running) = self.running_todo_list.take() {
                     events.push(ThreadEvent::ItemCompleted(ItemCompletedEvent {

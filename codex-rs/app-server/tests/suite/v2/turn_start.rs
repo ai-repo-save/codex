@@ -54,7 +54,6 @@ use codex_app_server_protocol::ThreadStartResponse;
 use codex_app_server_protocol::TurnCompletedNotification;
 use codex_app_server_protocol::TurnEnvironmentParams;
 use codex_app_server_protocol::TurnItemsView;
-use codex_app_server_protocol::TurnOutputThroughputUpdatedNotification;
 use codex_app_server_protocol::TurnStartParams;
 use codex_app_server_protocol::TurnStartResponse;
 use codex_app_server_protocol::TurnStartedNotification;
@@ -223,95 +222,6 @@ async fn received_response_input_images(server: &wiremock::MockServer) -> Result
     }
 
     Ok(input_images)
-}
-
-#[tokio::test]
-async fn turn_start_streams_output_throughput_updates() -> Result<()> {
-    let server = create_mock_responses_server_sequence_unchecked(vec![responses::sse(vec![
-        responses::ev_response_created("resp-throughput"),
-        responses::ev_message_item_added("msg-throughput", ""),
-        responses::ev_output_text_delta("done"),
-        responses::ev_completed("resp-throughput"),
-    ])])
-    .await;
-
-    let codex_home = TempDir::new()?;
-    create_config_toml(
-        codex_home.path(),
-        &server.uri(),
-        "never",
-        &BTreeMap::default(),
-    )?;
-
-    let mut mcp = TestAppServer::builder()
-        .with_codex_home(codex_home.path())
-        .build()
-        .await?;
-    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
-
-    let thread_request_id = mcp
-        .send_thread_start_request_with_auto_env(ThreadStartParams::default())
-        .await?;
-    let thread_response: JSONRPCResponse = timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(thread_request_id)),
-    )
-    .await??;
-    let ThreadStartResponse { thread, .. } = to_response(thread_response)?;
-
-    let turn_request_id = mcp
-        .send_turn_start_request(TurnStartParams {
-            thread_id: thread.id.clone(),
-            client_user_message_id: None,
-            input: Vec::new(),
-            ..Default::default()
-        })
-        .await?;
-    let turn_response: JSONRPCResponse = timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(turn_request_id)),
-    )
-    .await??;
-    let TurnStartResponse { turn } = to_response(turn_response)?;
-
-    let active_notification = timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_notification_message("turn/outputThroughput/updated"),
-    )
-    .await??;
-    let active: TurnOutputThroughputUpdatedNotification =
-        serde_json::from_value(active_notification.params.expect("throughput params"))?;
-    assert_eq!(
-        active,
-        TurnOutputThroughputUpdatedNotification {
-            thread_id: thread.id.clone(),
-            turn_id: turn.id.clone(),
-            active: true,
-            output_tokens: None,
-            active_duration_ms: None,
-            tokens_per_second: None,
-        }
-    );
-
-    let completed_notification = timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_notification_message("turn/outputThroughput/updated"),
-    )
-    .await??;
-    let completed: TurnOutputThroughputUpdatedNotification =
-        serde_json::from_value(completed_notification.params.expect("throughput params"))?;
-    assert_eq!(completed.thread_id, thread.id);
-    assert_eq!(completed.turn_id, turn.id);
-    assert!(!completed.active);
-    assert_eq!(completed.output_tokens, Some(0));
-
-    timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_notification_message("turn/completed"),
-    )
-    .await??;
-
-    Ok(())
 }
 
 #[tokio::test]

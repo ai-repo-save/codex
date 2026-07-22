@@ -2,9 +2,7 @@ use super::*;
 use crate::bottom_pane::goal_status_indicator_line;
 use crate::chatwidget::rate_limits::NUDGE_MODEL_SLUG;
 use crate::chatwidget::rate_limits::get_limits_duration;
-use codex_app_server_protocol::PlanDeltaNotification;
 use codex_app_server_protocol::SpendControlLimitSnapshot;
-use codex_app_server_protocol::TurnOutputThroughputUpdatedNotification;
 use pretty_assertions::assert_eq;
 use ratatui::backend::TestBackend;
 use serial_test::serial;
@@ -25,32 +23,6 @@ fn take_workspace_headline_request_id(
     }
 }
 
-fn apply_throughput_update(chat: &mut ChatWidget, active: bool, tokens_per_second: Option<f64>) {
-    chat.handle_server_notification(
-        ServerNotification::TurnOutputThroughputUpdated(TurnOutputThroughputUpdatedNotification {
-            thread_id: "thr_test".to_string(),
-            turn_id: "turn_test".to_string(),
-            active,
-            output_tokens: None,
-            active_duration_ms: None,
-            tokens_per_second,
-        }),
-        /*replay_kind*/ None,
-    );
-}
-
-fn throughput_footer_snapshot(chat: &mut ChatWidget, width: u16) -> String {
-    chat.config.tui_status_line = Some(vec![crate::bottom_pane::StatusLineItem::Tps.to_string()]);
-    chat.refresh_status_line();
-
-    let height = chat.desired_height(width);
-    let mut terminal = ratatui::Terminal::new(TestBackend::new(width, height)).expect("terminal");
-    terminal
-        .draw(|frame| chat.render(frame.area(), frame.buffer_mut()))
-        .expect("draw throughput footer");
-    normalized_backend_snapshot(terminal.backend())
-}
-
 /// Receiving a token usage update without usage clears the context indicator.
 #[tokio::test]
 async fn token_count_none_resets_context_indicator() {
@@ -67,92 +39,6 @@ async fn token_count_none_resets_context_indicator() {
 
     handle_token_count(&mut chat, /*info*/ None);
     assert_eq!(chat.bottom_pane.context_window_percent(), None);
-}
-
-#[tokio::test]
-async fn throughput_notification_updates_the_status_line() {
-    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-
-    apply_throughput_update(
-        &mut chat, /*active*/ true, /*tokens_per_second*/ None,
-    );
-    assert_eq!(
-        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
-        Some("— tok/s".to_string())
-    );
-
-    apply_throughput_update(&mut chat, /*active*/ true, Some(35.0));
-    assert_eq!(
-        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
-        Some("~35.0 tok/s".to_string())
-    );
-
-    apply_throughput_update(
-        &mut chat, /*active*/ false, /*tokens_per_second*/ None,
-    );
-    assert_eq!(
-        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
-        Some("~35.0 tok/s".to_string())
-    );
-
-    apply_throughput_update(&mut chat, /*active*/ false, Some(35.0));
-    assert_eq!(
-        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
-        Some("35.0 tok/s".to_string())
-    );
-
-    chat.on_task_started();
-    assert_eq!(
-        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
-        None
-    );
-}
-
-#[tokio::test]
-async fn plan_delta_preserves_the_active_throughput_status_line() {
-    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-    apply_throughput_update(&mut chat, /*active*/ true, Some(20.0));
-
-    chat.handle_server_notification(
-        ServerNotification::PlanDelta(PlanDeltaNotification {
-            thread_id: "thr_test".to_string(),
-            turn_id: "turn_test".to_string(),
-            item_id: "item_test".to_string(),
-            delta: "计划".repeat(8),
-        }),
-        /*replay_kind*/ None,
-    );
-    assert_eq!(
-        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
-        Some("~20.0 tok/s".to_string())
-    );
-}
-
-#[tokio::test]
-async fn throughput_footer_renders_active_and_final_values_at_regular_and_narrow_widths() {
-    let (mut active_chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-    apply_throughput_update(&mut active_chat, /*active*/ true, Some(10.0));
-
-    assert_chatwidget_snapshot!(
-        "status_line_active_throughput_footer",
-        throughput_footer_snapshot(&mut active_chat, /*width*/ 80)
-    );
-    assert_chatwidget_snapshot!(
-        "status_line_active_throughput_narrow_footer",
-        throughput_footer_snapshot(&mut active_chat, /*width*/ 20)
-    );
-
-    let (mut final_chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-    apply_throughput_update(&mut final_chat, /*active*/ false, Some(35.0));
-
-    assert_chatwidget_snapshot!(
-        "status_line_final_throughput_footer",
-        throughput_footer_snapshot(&mut final_chat, /*width*/ 80)
-    );
-    assert_chatwidget_snapshot!(
-        "status_line_final_throughput_narrow_footer",
-        throughput_footer_snapshot(&mut final_chat, /*width*/ 20)
-    );
 }
 
 #[tokio::test]
@@ -3070,12 +2956,6 @@ async fn session_configured_clears_goal_status_footer() {
     chat.turn_lifecycle
         .budget_limited_turn_ids
         .insert("turn-1".to_string());
-    apply_throughput_update(&mut chat, /*active*/ false, Some(35.0));
-    assert_eq!(
-        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
-        Some("35.0 tok/s".to_string())
-    );
-
     let rollout_file = NamedTempFile::new().unwrap();
     chat.handle_thread_session(crate::session_state::ThreadSessionState {
         thread_id: ThreadId::new(),
@@ -3102,10 +2982,6 @@ async fn session_configured_clears_goal_status_footer() {
 
     assert_eq!(chat.current_goal_status_indicator, None);
     assert!(chat.turn_lifecycle.budget_limited_turn_ids.is_empty());
-    assert_eq!(
-        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
-        None
-    );
 }
 
 #[tokio::test]

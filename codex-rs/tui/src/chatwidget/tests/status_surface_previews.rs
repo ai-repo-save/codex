@@ -48,21 +48,20 @@ fn status_line_popup_snapshot(chat: &mut ChatWidget) -> String {
 }
 
 #[tokio::test]
-async fn default_status_line_configuration_includes_tps() {
+async fn default_status_line_configuration_has_model_and_directory() {
     let (chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 
     assert_eq!(
         chat.configured_status_line_items(),
         vec![
             "model-with-reasoning".to_string(),
-            "tps".to_string(),
             "current-dir".to_string(),
         ]
     );
 }
 
 #[tokio::test]
-async fn custom_status_line_configuration_does_not_add_tps() {
+async fn custom_status_line_configuration_preserves_selected_items() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.config.tui_status_line = Some(vec!["current-dir".to_string()]);
 

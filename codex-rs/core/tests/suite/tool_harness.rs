@@ -1,7 +1,6 @@
 #![cfg(not(target_os = "windows"))]
 
 use core_test_support::test_codex::local_selections;
-use std::collections::HashMap;
 use std::fs;
 
 use assert_matches::assert_matches;
@@ -11,9 +10,6 @@ use codex_protocol::plan_tool::StepStatus;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::Op;
-use codex_protocol::protocol::OutputThroughputUpdatedEvent;
-use codex_protocol::request_user_input::RequestUserInputAnswer;
-use codex_protocol::request_user_input::RequestUserInputResponse;
 use codex_protocol::user_input::UserInput;
 use core_test_support::TempDirExt;
 use core_test_support::assert_regex_match;
@@ -135,146 +131,6 @@ async fn shell_command_tool_executes_command_and_streams_output() -> anyhow::Res
         r"(?s)^Exit code: 0\nWall time: [0-9]+(?:\.[0-9]+)? seconds\nOutput:\ntool harness\n?$",
         &output_text,
     );
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn output_throughput_deactivates_before_blocking_tool_starts() -> anyhow::Result<()> {
-    skip_if_no_network!(Ok(()));
-
-    let server = start_mock_server().await;
-    let TestCodex {
-        codex,
-        cwd,
-        session_configured,
-        ..
-    } = test_codex()
-        .with_model("test-gpt-5-codex")
-        .build(&server)
-        .await?;
-    let call_id = "throughput-user-input-call";
-    let request_args = json!({
-        "questions": [{
-            "id": "continue",
-            "header": "Continue",
-            "question": "Continue the test?",
-            "options": [{
-                "label": "Continue",
-                "description": "Continue the test."
-            }]
-        }]
-    })
-    .to_string();
-    responses::mount_sse_once(
-        &server,
-        sse(vec![
-            ev_response_created("resp-throughput"),
-            ev_function_call(call_id, "request_user_input", &request_args),
-            ev_completed("resp-throughput"),
-        ]),
-    )
-    .await;
-    responses::mount_sse_once(
-        &server,
-        sse(vec![
-            ev_assistant_message("msg-throughput", "done"),
-            ev_completed("resp-throughput-follow-up"),
-        ]),
-    )
-    .await;
-
-    let session_model = session_configured.model.clone();
-    let cwd_path = cwd.abs();
-    let (sandbox_policy, permission_profile) =
-        turn_permission_fields(PermissionProfile::Disabled, cwd_path.as_path());
-    codex
-        .submit(Op::UserInput {
-            items: vec![UserInput::Text {
-                text: "start blocking command".into(),
-                text_elements: Vec::new(),
-            }],
-            final_output_json_schema: None,
-            responsesapi_client_metadata: None,
-            additional_context: Default::default(),
-            thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
-                environments: Some(local_selections(cwd_path)),
-                approval_policy: Some(AskForApproval::Never),
-                sandbox_policy: Some(sandbox_policy),
-                permission_profile,
-                collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
-                    mode: codex_protocol::config_types::ModeKind::Plan,
-                    settings: codex_protocol::config_types::Settings {
-                        model: session_model,
-                        reasoning_effort: None,
-                        developer_instructions: None,
-                    },
-                }),
-                ..Default::default()
-            },
-        })
-        .await?;
-
-    let active = wait_for_event(
-        &codex,
-        |event| matches!(event, EventMsg::OutputThroughputUpdated(event) if event.active),
-    )
-    .await;
-    let EventMsg::OutputThroughputUpdated(active) = active else {
-        unreachable!();
-    };
-    assert_eq!(
-        active,
-        OutputThroughputUpdatedEvent {
-            active: true,
-            output_tokens: None,
-            active_duration_ms: None,
-            tokens_per_second: None,
-        }
-    );
-    let completed = wait_for_event(
-        &codex,
-        |event| matches!(event, EventMsg::OutputThroughputUpdated(event) if !event.active),
-    )
-    .await;
-    let EventMsg::OutputThroughputUpdated(completed) = completed else {
-        unreachable!();
-    };
-    assert!(!completed.active);
-    assert_eq!(completed.output_tokens, Some(0));
-    let Some(active_duration_ms) = completed.active_duration_ms else {
-        unreachable!();
-    };
-    assert!(active_duration_ms >= 0);
-    if active_duration_ms > 0 {
-        assert_eq!(completed.tokens_per_second, Some(0.0));
-    } else {
-        assert!(matches!(completed.tokens_per_second, None | Some(0.0)));
-    }
-
-    let request = wait_for_event(&codex, |event| {
-        matches!(event, EventMsg::RequestUserInput(_))
-    })
-    .await;
-    let EventMsg::RequestUserInput(request) = request else {
-        unreachable!();
-    };
-    assert_eq!(request.call_id, call_id);
-
-    codex
-        .submit(Op::UserInputAnswer {
-            id: request.turn_id,
-            response: RequestUserInputResponse {
-                answers: HashMap::from([(
-                    "continue".to_string(),
-                    RequestUserInputAnswer {
-                        answers: vec!["Continue".to_string()],
-                    },
-                )]),
-            },
-        })
-        .await?;
-    wait_for_event(&codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
 
     Ok(())
 }

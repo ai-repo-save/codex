@@ -63,9 +63,6 @@ pub(crate) enum StatusLineItem {
     /// Current reasoning level.
     Reasoning,
 
-    /// Observed model output speed.
-    Tps,
-
     /// Current working directory path.
     CurrentDir,
 
@@ -154,7 +151,6 @@ impl StatusLineItem {
             StatusLineItem::ModelName => "Current model name",
             StatusLineItem::ModelWithReasoning => "Current model name with reasoning level",
             StatusLineItem::Reasoning => "Current reasoning level",
-            StatusLineItem::Tps => "Observed model output speed",
             StatusLineItem::CurrentDir => "Current working directory",
             StatusLineItem::ProjectRoot => "Project name (omitted when unavailable)",
             StatusLineItem::GitBranch => "Current Git branch (omitted when unavailable)",
@@ -206,7 +202,6 @@ impl StatusLineItem {
             StatusLineItem::ModelName => StatusSurfacePreviewItem::Model,
             StatusLineItem::ModelWithReasoning => StatusSurfacePreviewItem::ModelWithReasoning,
             StatusLineItem::Reasoning => StatusSurfacePreviewItem::Reasoning,
-            StatusLineItem::Tps => StatusSurfacePreviewItem::Tps,
             StatusLineItem::CurrentDir => StatusSurfacePreviewItem::CurrentDir,
             StatusLineItem::ProjectRoot => StatusSurfacePreviewItem::ProjectRoot,
             StatusLineItem::GitBranch => StatusSurfacePreviewItem::GitBranch,
@@ -468,14 +463,12 @@ mod tests {
     }
 
     #[test]
-    fn reasoning_and_tps_are_selectable_ids() {
+    fn reasoning_is_a_selectable_id() {
         assert_eq!(StatusLineItem::Reasoning.to_string(), "reasoning");
         assert_eq!(
             "reasoning".parse::<StatusLineItem>(),
             Ok(StatusLineItem::Reasoning)
         );
-        assert_eq!(StatusLineItem::Tps.to_string(), "tps");
-        assert_eq!("tps".parse::<StatusLineItem>(), Ok(StatusLineItem::Tps));
     }
 
     #[test]
@@ -523,10 +516,6 @@ mod tests {
                 "gpt-5".to_string(),
             ),
             (
-                StatusLineItem::Tps.preview_item(),
-                "~42.0 tok/s".to_string(),
-            ),
-            (
                 StatusLineItem::CurrentDir.preview_item(),
                 "/repo".to_string(),
             ),
@@ -534,14 +523,6 @@ mod tests {
         let items = [
             MultiSelectItem {
                 id: StatusLineItem::ModelName.to_string(),
-                name: String::new(),
-                description: None,
-                enabled: true,
-                orderable: true,
-                section_break_after: false,
-            },
-            MultiSelectItem {
-                id: StatusLineItem::Tps.to_string(),
                 name: String::new(),
                 description: None,
                 enabled: true,
@@ -567,7 +548,7 @@ mod tests {
                     /*use_theme_colors*/ true,
                 )
             ),
-            Some("gpt-5 · ~42.0 tok/s · /repo".to_string())
+            Some("gpt-5 · /repo".to_string())
         );
     }
 
@@ -659,7 +640,6 @@ mod tests {
         let view = StatusLineSetupView::new(
             Some(&[
                 StatusLineItem::ModelName.to_string(),
-                StatusLineItem::Tps.to_string(),
                 StatusLineItem::CurrentDir.to_string(),
                 StatusLineItem::GitBranch.to_string(),
             ]),
@@ -668,10 +648,6 @@ mod tests {
                 (
                     StatusLineItem::ModelName.preview_item(),
                     "gpt-5-codex".to_string(),
-                ),
-                (
-                    StatusLineItem::Tps.preview_item(),
-                    "~42.0 tok/s".to_string(),
                 ),
                 (
                     StatusLineItem::CurrentDir.preview_item(),
