@@ -768,6 +768,8 @@ fn collab_spawn_begin_and_end_emit_item_events() {
                         sender_thread_id: "thread-parent".to_string(),
                         receiver_thread_ids: Vec::new(),
                         prompt: Some("draft a plan".to_string()),
+                        mode: None,
+                        snapshot_revision: None,
                         agents_states: std::collections::HashMap::new(),
                         status: CollabToolCallStatus::InProgress,
                     },),
@@ -787,6 +789,8 @@ fn collab_spawn_begin_and_end_emit_item_events() {
                         sender_thread_id: "thread-parent".to_string(),
                         receiver_thread_ids: vec!["thread-child".to_string()],
                         prompt: Some("draft a plan".to_string()),
+                        mode: None,
+                        snapshot_revision: None,
                         agents_states: std::collections::HashMap::from([(
                             "thread-child".to_string(),
                             CollabAgentState {
