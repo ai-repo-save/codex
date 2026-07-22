@@ -1019,7 +1019,10 @@ async fn live_app_server_memory_mutations_render_history() {
         chat.handle_server_notification(notification, /*replay_kind*/ None);
     }
 
-    let combined = drain_insert_history(&mut rx)
+    let history = drain_insert_history(&mut rx);
+    assert_eq!(history.len(), 2);
+    assert!(chat.transcript.active_cell.is_none());
+    let combined = history
         .into_iter()
         .map(|lines| lines_to_single_string(&lines))
         .collect::<Vec<_>>()
