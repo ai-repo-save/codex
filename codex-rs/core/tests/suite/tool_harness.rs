@@ -234,7 +234,7 @@ async fn output_throughput_deactivates_before_blocking_tool_starts() -> anyhow::
         unreachable!();
     };
     assert_eq!(completed.output_tokens, Some(0));
-    assert_eq!(completed.active_duration_ms, None);
+    assert_eq!(completed.active_duration_ms, Some(0));
     assert_eq!(completed.tokens_per_second, None);
 
     let request = wait_for_event(&codex, |event| {
