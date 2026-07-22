@@ -355,7 +355,6 @@ fn output_throughput_becomes_unknown_after_missing_sample_data() {
 #[test]
 fn output_throughput_deactivates_once_after_stream_failure() {
     let state = TurnTimingState::default();
-    let started_at = Instant::now();
 
     state.begin_output_throughput_sample();
     let deactivated = state
