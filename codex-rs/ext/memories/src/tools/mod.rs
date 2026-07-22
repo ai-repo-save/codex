@@ -22,6 +22,7 @@ use serde_json::Value;
 use crate::MEMORY_TOOLS_NAMESPACE;
 use crate::backend::MemoriesBackendError;
 use crate::schema;
+use crate::scoped::MemoryScope;
 use crate::scoped::MemoryToolBackends;
 
 mod ad_hoc_note;
