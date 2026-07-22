@@ -1042,6 +1042,121 @@ async fn live_app_server_memory_mutations_render_history() {
 }
 
 #[tokio::test]
+async fn memory_completion_preserves_a_different_active_mutation() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let mutation = |id, status, title| {
+        AppServerThreadItem::MemoryMutation(codex_app_server_protocol::MemoryMutation {
+            id: id.to_string(),
+            action: codex_app_server_protocol::MemoryMutationAction::Write,
+            scope: codex_app_server_protocol::MemoryMutationScope::Session,
+            status,
+            title: Some(title.to_string()),
+            path: None,
+            preview: None,
+        })
+    };
+
+    chat.handle_server_notification(
+        ServerNotification::ItemStarted(ItemStartedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            started_at_ms: 0,
+            item: mutation(
+                "memory-active",
+                codex_app_server_protocol::MemoryMutationStatus::InProgress,
+                "Active note",
+            ),
+        }),
+        /*replay_kind*/ None,
+    );
+    chat.handle_server_notification(
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: mutation(
+                "memory-orphan",
+                codex_app_server_protocol::MemoryMutationStatus::Succeeded,
+                "Orphan note",
+            ),
+        }),
+        /*replay_kind*/ None,
+    );
+
+    let orphan_history = drain_insert_history(&mut rx);
+    assert_eq!(orphan_history.len(), 1);
+    insta::assert_snapshot!(lines_to_single_string(&orphan_history[0]), @r###"
+• Wrote memory
+  └ Scope: session
+    Title: Orphan note
+"###);
+    let active = chat
+        .transcript
+        .active_cell
+        .as_ref()
+        .expect("different memory mutation should remain active")
+        .display_lines(/*width*/ 80);
+    insta::assert_snapshot!(lines_to_single_string(&active), @r###"
+• Writing memory
+  └ Scope: session
+    Title: Active note
+"###);
+
+    chat.handle_server_notification(
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: mutation(
+                "memory-active",
+                codex_app_server_protocol::MemoryMutationStatus::Succeeded,
+                "Active note",
+            ),
+        }),
+        /*replay_kind*/ None,
+    );
+    let completed_history = drain_insert_history(&mut rx);
+    assert_eq!(completed_history.len(), 1);
+    assert!(chat.transcript.active_cell.is_none());
+}
+
+#[tokio::test]
+async fn interrupted_memory_mutation_is_finalized_as_failed() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.handle_server_notification(
+        ServerNotification::ItemStarted(ItemStartedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            started_at_ms: 0,
+            item: AppServerThreadItem::MemoryMutation(
+                codex_app_server_protocol::MemoryMutation {
+                    id: "memory-interrupted".to_string(),
+                    action: codex_app_server_protocol::MemoryMutationAction::Delete,
+                    scope: codex_app_server_protocol::MemoryMutationScope::Project,
+                    status: codex_app_server_protocol::MemoryMutationStatus::InProgress,
+                    title: None,
+                    path: Some("notes/obsolete.md".to_string()),
+                    preview: None,
+                },
+            ),
+        }),
+        /*replay_kind*/ None,
+    );
+    assert!(drain_insert_history(&mut rx).is_empty());
+
+    chat.finalize_turn();
+
+    let history = drain_insert_history(&mut rx);
+    assert_eq!(history.len(), 1);
+    assert!(chat.transcript.active_cell.is_none());
+    insta::assert_snapshot!(lines_to_single_string(&history[0]), @r###"
+• Failed to delete memory
+  └ Scope: project
+    Path: notes/obsolete.md
+"###);
+}
+
+#[tokio::test]
 async fn live_app_server_collab_spawn_completed_renders_requested_model_and_effort() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let sender_thread_id =

@@ -176,6 +176,49 @@ async fn replayed_memory_mutation_renders_history() {
 }
 
 #[tokio::test]
+async fn replayed_in_progress_memory_mutation_accepts_live_completion() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    let mutation = |status| {
+        AppServerThreadItem::MemoryMutation(codex_app_server_protocol::MemoryMutation {
+            id: "memory-write-1".to_string(),
+            action: codex_app_server_protocol::MemoryMutationAction::Write,
+            scope: codex_app_server_protocol::MemoryMutationScope::Project,
+            status,
+            title: Some("Repository conventions".to_string()),
+            path: Some("memories/project/repository-conventions.md".to_string()),
+            preview: None,
+        })
+    };
+
+    chat.replay_thread_item(
+        mutation(codex_app_server_protocol::MemoryMutationStatus::InProgress),
+        "turn-1".to_string(),
+        ReplayKind::ThreadSnapshot,
+    );
+    assert!(drain_insert_history(&mut rx).is_empty());
+
+    chat.handle_server_notification(
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: mutation(codex_app_server_protocol::MemoryMutationStatus::Succeeded),
+        }),
+        /*replay_kind*/ None,
+    );
+
+    let history = drain_insert_history(&mut rx);
+    assert_eq!(history.len(), 1);
+    assert!(chat.transcript.active_cell.is_none());
+    insta::assert_snapshot!(lines_to_single_string(&history[0]), @r###"
+• Wrote memory
+  └ Scope: project
+    Title: Repository conventions
+    Path: memories/project/repository-conventions.md
+"###);
+}
+
+#[tokio::test]
 async fn replayed_user_messages_seed_composer_history() {
     let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.bottom_pane.set_history_metadata(

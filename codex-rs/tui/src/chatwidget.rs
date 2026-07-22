@@ -1422,6 +1422,11 @@ impl ChatWidget {
                 exec.mark_failed();
             } else if let Some(tool) = cell.as_any_mut().downcast_mut::<McpToolCallCell>() {
                 tool.mark_failed();
+            } else if let Some(memory) = cell
+                .as_any_mut()
+                .downcast_mut::<crate::memory_mutation::MemoryMutationCell>()
+            {
+                memory.mark_failed();
             }
             self.add_boxed_history(cell);
             self.request_pending_usage_output_insertion();

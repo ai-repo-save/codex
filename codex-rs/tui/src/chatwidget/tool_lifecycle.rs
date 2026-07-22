@@ -167,7 +167,9 @@ impl ChatWidget {
         }
 
         if !handled {
-            self.add_to_history(completed_cell);
+            self.transcript.needs_final_message_separator = true;
+            self.app_event_tx
+                .send(AppEvent::InsertHistoryCell(Box::new(completed_cell)));
         }
         self.transcript.had_work_activity = true;
         self.request_redraw();

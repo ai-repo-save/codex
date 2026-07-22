@@ -28,6 +28,10 @@ impl MemoryMutationCell {
         self.mutation = mutation;
     }
 
+    pub(crate) fn mark_failed(&mut self) {
+        self.mutation.status = MemoryMutationStatus::Failed;
+    }
+
     fn plain_cell(&self) -> PlainHistoryCell {
         PlainHistoryCell::new(memory_mutation_lines(&self.mutation))
     }
