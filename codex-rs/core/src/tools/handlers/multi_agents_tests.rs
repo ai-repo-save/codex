@@ -1235,7 +1235,7 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
                 "message": "spawn-message",
                 "task_name": "test_process",
                 "agent_type": role_name,
-                "model": "gpt-5-requested",
+                "model": "gpt-5.4",
                 "reasoning_effort": "high",
                 "fork_turns": "1"
             })),
