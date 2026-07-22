@@ -19,6 +19,7 @@ use super::response_item_records_turn_ttft;
 use crate::ResponseEvent;
 
 const VISIBLE_AGENT_MESSAGE: &str = "response";
+const VISIBLE_PLAN: &str = "plan";
 const VISIBLE_REASONING_SUMMARY: &str = "reasoning summary";
 const VISIBLE_REASONING_TEXT: &str = "reasoning text";
 
@@ -237,6 +238,29 @@ fn output_throughput_reports_a_completed_sample() {
 }
 
 #[test]
+fn output_throughput_reports_a_plan_only_completed_sample() {
+    let state = TurnTimingState::default();
+    let started_at = Instant::now();
+
+    state.begin_output_throughput_sample();
+    state.record_output_throughput_first_visible_output(
+        OutputThroughputVisibleDelta::PlanText(VISIBLE_PLAN),
+        started_at + Duration::from_millis(100),
+    );
+    let completed = state
+        .complete_output_throughput_sample(
+            Some(&token_usage(50)),
+            started_at + Duration::from_millis(1_100),
+        )
+        .expect("active sample should complete");
+
+    assert_eq!(completed.active, false);
+    assert_eq!(completed.output_tokens, Some(50));
+    assert_eq!(completed.active_duration_ms, Some(1_000));
+    assert_eq!(completed.tokens_per_second, Some(50.0));
+}
+
+#[test]
 fn output_throughput_ignores_empty_visible_deltas() {
     let state = TurnTimingState::default();
     let started_at = Instant::now();
@@ -245,6 +269,10 @@ fn output_throughput_ignores_empty_visible_deltas() {
     state.record_output_throughput_first_visible_output(
         OutputThroughputVisibleDelta::AgentMessageText(""),
         started_at + Duration::from_millis(100),
+    );
+    state.record_output_throughput_first_visible_output(
+        OutputThroughputVisibleDelta::PlanText(""),
+        started_at + Duration::from_millis(150),
     );
     state.record_output_throughput_first_visible_output(
         OutputThroughputVisibleDelta::ReasoningSummaryText(""),

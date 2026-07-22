@@ -3,6 +3,7 @@ use crate::bottom_pane::goal_status_indicator_line;
 use crate::chatwidget::rate_limits::NUDGE_MODEL_SLUG;
 use crate::chatwidget::rate_limits::get_limits_duration;
 use codex_app_server_protocol::SpendControlLimitSnapshot;
+use codex_app_server_protocol::PlanDeltaNotification;
 use codex_app_server_protocol::TurnOutputThroughputUpdatedNotification;
 use pretty_assertions::assert_eq;
 use ratatui::backend::TestBackend;
@@ -94,6 +95,30 @@ async fn throughput_notification_updates_the_status_line() {
 }
 
 #[tokio::test]
+async fn plan_delta_updates_the_active_throughput_status_line() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    apply_throughput_update(
+        &mut chat, /*active*/ true, /*tokens_per_second*/ None,
+    );
+
+    chat.handle_server_notification(
+        ServerNotification::PlanDelta(PlanDeltaNotification {
+            thread_id: "thr_test".to_string(),
+            turn_id: "turn_test".to_string(),
+            item_id: "item_test".to_string(),
+            delta: "计划".repeat(8),
+        }),
+        /*replay_kind*/ None,
+    );
+    chat.advance_throughput_tracker(Instant::now() + Duration::from_secs(1));
+
+    assert!(matches!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::Tps),
+        Some(value) if value.starts_with('~')
+    ));
+}
+
+#[tokio::test]
 async fn throughput_footer_renders_active_and_final_values_at_regular_and_narrow_widths() {
     let (mut active_chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
     let first_delta_at = Instant::now() - Duration::from_secs(4);
@@ -103,6 +128,9 @@ async fn throughput_footer_renders_active_and_final_values_at_regular_and_narrow
     active_chat
         .throughput_tracker
         .record_utf8_bytes(/*byte_count*/ 160, first_delta_at);
+    active_chat
+        .throughput_tracker
+        .freeze(first_delta_at + Duration::from_secs(4));
 
     assert_chatwidget_snapshot!(
         "status_line_active_throughput_footer",

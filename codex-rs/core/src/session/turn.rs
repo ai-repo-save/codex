@@ -1720,6 +1720,12 @@ async fn handle_plan_segments(
                     if !state.plan_item_state.started {
                         state.plan_item_state.start(sess, turn_context).await;
                     }
+                    turn_context
+                        .turn_timing_state
+                        .record_output_throughput_first_visible_output(
+                            OutputThroughputVisibleDelta::PlanText(&delta),
+                            Instant::now(),
+                        );
                     state
                         .plan_item_state
                         .push_delta(sess, turn_context, &delta)

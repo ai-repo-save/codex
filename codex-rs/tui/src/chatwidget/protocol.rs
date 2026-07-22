@@ -79,7 +79,12 @@ impl ChatWidget {
                 }
                 self.on_agent_message_delta(notification.delta);
             }
-            ServerNotification::PlanDelta(notification) => self.on_plan_delta(notification.delta),
+            ServerNotification::PlanDelta(notification) => {
+                if !from_replay {
+                    self.record_throughput_delta(&notification.delta);
+                }
+                self.on_plan_delta(notification.delta);
+            }
             ServerNotification::ReasoningSummaryTextDelta(notification) => {
                 if !from_replay {
                     self.record_throughput_delta(&notification.delta);

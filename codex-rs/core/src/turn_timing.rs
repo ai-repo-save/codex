@@ -51,6 +51,7 @@ pub(crate) struct TurnTimingState {
 #[derive(Clone, Copy)]
 pub(crate) enum OutputThroughputVisibleDelta<'a> {
     AgentMessageText(&'a str),
+    PlanText(&'a str),
     ReasoningSummaryText(&'a str),
     ReasoningText(&'a str),
 }
@@ -551,6 +552,7 @@ fn output_throughput_visible_delta_records_first_output(
 ) -> bool {
     let text = match delta {
         OutputThroughputVisibleDelta::AgentMessageText(text)
+        | OutputThroughputVisibleDelta::PlanText(text)
         | OutputThroughputVisibleDelta::ReasoningSummaryText(text)
         | OutputThroughputVisibleDelta::ReasoningText(text) => text,
     };
