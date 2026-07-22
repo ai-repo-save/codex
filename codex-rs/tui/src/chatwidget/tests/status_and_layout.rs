@@ -96,13 +96,13 @@ async fn throughput_notification_updates_the_status_line() {
 #[tokio::test]
 async fn throughput_footer_renders_active_and_final_values_at_regular_and_narrow_widths() {
     let (mut active_chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-    let first_delta_at = Instant::now() - Duration::from_secs(1);
+    let first_delta_at = Instant::now() - Duration::from_secs(4);
     active_chat
         .throughput_tracker
         .begin_sampling(first_delta_at);
     active_chat
         .throughput_tracker
-        .record_utf8_bytes(/*byte_count*/ 80, first_delta_at);
+        .record_utf8_bytes(/*byte_count*/ 160, first_delta_at);
 
     assert_chatwidget_snapshot!(
         "status_line_active_throughput_footer",
