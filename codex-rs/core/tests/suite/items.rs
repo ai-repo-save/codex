@@ -40,6 +40,7 @@ use core_test_support::test_codex::turn_permission_fields;
 use core_test_support::wait_for_event;
 use core_test_support::wait_for_event_match;
 use pretty_assertions::assert_eq;
+use serde_json::json;
 
 fn disabled_plan_turn(
     text: &str,
@@ -519,6 +520,80 @@ async fn plan_mode_emits_plan_item_from_proposed_plan_block() -> anyhow::Result<
     );
     assert_eq!(plan_delta.delta, "- Step 1\n- Step 2\n");
     assert_eq!(plan_completed.text, "- Step 1\n- Step 2\n");
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn plan_mode_plan_delta_records_output_throughput() -> anyhow::Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+
+    let TestCodex {
+        codex,
+        session_configured,
+        ..
+    } = test_codex().build(&server).await?;
+
+    let output_tokens = 42;
+    let plan_text = "- Step 1\n";
+    let full_message = format!("<proposed_plan>\n{plan_text}</proposed_plan>\n");
+    let stream = sse(vec![
+        ev_response_created("resp-plan-throughput"),
+        ev_message_item_added("msg-plan-throughput", ""),
+        ev_output_text_delta(&full_message),
+        ev_assistant_message("msg-plan-throughput", &full_message),
+        json!({
+            "type": "response.completed",
+            "response": {
+                "id": "resp-plan-throughput",
+                "usage": {
+                    "input_tokens": 0,
+                    "input_tokens_details": null,
+                    "output_tokens": output_tokens,
+                    "output_tokens_details": null,
+                    "total_tokens": output_tokens,
+                },
+            },
+        }),
+    ]);
+    mount_sse_once(&server, stream).await;
+
+    let collaboration_mode = CollaborationMode {
+        mode: ModeKind::Plan,
+        settings: Settings {
+            model: session_configured.model.clone(),
+            reasoning_effort: None,
+            developer_instructions: None,
+        },
+    };
+
+    codex
+        .submit(disabled_plan_turn(
+            "please plan",
+            session_configured.model.clone(),
+            collaboration_mode,
+        )?)
+        .await?;
+
+    let mut plan_delta = None;
+    let mut completed_throughput = None;
+    while plan_delta.is_none() || completed_throughput.is_none() {
+        match wait_for_event(&codex, |_| true).await {
+            EventMsg::PlanDelta(event) => plan_delta = Some(event),
+            EventMsg::OutputThroughputUpdated(event) if !event.active => {
+                completed_throughput = Some(event);
+            }
+            _ => {}
+        }
+    }
+
+    assert_eq!(plan_delta.expect("plan delta").delta, plan_text);
+    let completed_throughput = completed_throughput.expect("completed throughput event");
+    assert!(!completed_throughput.active);
+    assert_eq!(completed_throughput.output_tokens, Some(output_tokens));
+    assert!(completed_throughput.active_duration_ms.is_some());
 
     Ok(())
 }
