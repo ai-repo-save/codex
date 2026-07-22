@@ -1,0 +1,10 @@
+---
+source: tui/src/chatwidget/tests/status_and_layout.rs
+assertion_line: 111
+expression: "throughput_footer_snapshot(&mut active_chat, 20)"
+---
+"                    "
+"                    "
+"› Ask Codex to do a "
+"                    "
+"  ~10.0 tok/s       "
