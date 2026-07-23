@@ -1763,6 +1763,7 @@ async fn started_thread_from_clear_history_response(
     config: &Config,
     thread_params_mode: ThreadParamsMode,
 ) -> Result<AppServerStartedThread> {
+    let blocks_direct_input = thread_blocks_direct_input(&response.thread);
     let session = thread_session_state_from_thread_clear_history_response(
         &response,
         config,
@@ -1773,6 +1774,7 @@ async fn started_thread_from_clear_history_response(
     Ok(AppServerStartedThread {
         session,
         turns: response.thread.turns,
+        blocks_direct_input,
     })
 }
 

@@ -347,6 +347,7 @@ WHERE thread_id = ? AND turn_id = ?
                 ..
             }
             | ThreadItem::HookPrompt { .. }
+            | ThreadItem::SkillLoad { .. }
             | ThreadItem::Plan { .. }
             | ThreadItem::Reasoning { .. }
             | ThreadItem::CommandExecution { .. }
@@ -355,12 +356,15 @@ WHERE thread_id = ? AND turn_id = ?
             | ThreadItem::DynamicToolCall { .. }
             | ThreadItem::CollabAgentToolCall { .. }
             | ThreadItem::SubAgentActivity { .. }
+            | ThreadItem::MemoryMutation(_)
             | ThreadItem::WebSearch(_)
             | ThreadItem::ImageView { .. }
             | ThreadItem::Sleep(_)
             | ThreadItem::ImageGeneration(_)
             | ThreadItem::EnteredReviewMode { .. }
             | ThreadItem::ExitedReviewMode { .. }
+            | ThreadItem::ContextAnchorSaved { .. }
+            | ThreadItem::ContextAnchorRewound { .. }
             | ThreadItem::ContextCompaction { .. } => {}
         }
     }

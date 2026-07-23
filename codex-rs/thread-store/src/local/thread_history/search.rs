@@ -257,6 +257,7 @@ fn searchable_text(item: &ThreadItem) -> Option<Cow<'_, str>> {
             (!text.is_empty()).then_some(Cow::Owned(text))
         }
         ThreadItem::HookPrompt { .. }
+        | ThreadItem::SkillLoad { .. }
         | ThreadItem::Plan { .. }
         | ThreadItem::Reasoning { .. }
         | ThreadItem::CommandExecution { .. }
@@ -265,12 +266,15 @@ fn searchable_text(item: &ThreadItem) -> Option<Cow<'_, str>> {
         | ThreadItem::DynamicToolCall { .. }
         | ThreadItem::CollabAgentToolCall { .. }
         | ThreadItem::SubAgentActivity { .. }
+        | ThreadItem::MemoryMutation(_)
         | ThreadItem::WebSearch(_)
         | ThreadItem::ImageView { .. }
         | ThreadItem::Sleep(_)
         | ThreadItem::ImageGeneration(_)
         | ThreadItem::EnteredReviewMode { .. }
         | ThreadItem::ExitedReviewMode { .. }
+        | ThreadItem::ContextAnchorSaved { .. }
+        | ThreadItem::ContextAnchorRewound { .. }
         | ThreadItem::ContextCompaction { .. } => None,
     }
 }
