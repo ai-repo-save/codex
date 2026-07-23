@@ -126,7 +126,7 @@ impl HookEventsToml {
         .sum()
     }
 
-    pub fn into_matcher_groups(self) -> [(HookEventName, Vec<MatcherGroup>); 11] {
+    pub fn into_matcher_groups(self) -> [(HookEventName, Vec<MatcherGroup>); 12] {
         [
             (HookEventName::PreToolUse, self.pre_tool_use),
             (HookEventName::PermissionRequest, self.permission_request),
