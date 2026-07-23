@@ -308,6 +308,7 @@ async fn hooks_list_returns_prompt_hook_definition() -> Result<()> {
                 fail_closed: true,
                 timeout_sec: 30,
                 status_message: Some("reviewing listed hook".to_string()),
+                additional_context_limit: None,
                 source_path: config_path,
                 source: HookSource::User,
                 plugin_id: None,

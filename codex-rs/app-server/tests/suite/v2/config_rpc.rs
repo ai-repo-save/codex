@@ -213,6 +213,7 @@ statusMessage = "checking managed policy"
             pre_compact: Vec::new(),
             post_compact: Vec::new(),
             session_start: Vec::new(),
+            session_end: Vec::new(),
             user_prompt_submit: Vec::new(),
             subagent_start: Vec::new(),
             subagent_stop: Vec::new(),
