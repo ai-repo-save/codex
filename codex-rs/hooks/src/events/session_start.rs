@@ -450,7 +450,7 @@ mod tests {
         };
         let expected_input = serde_json::to_string(&SessionStartCommandInput::new(
             session_id.to_string(),
-            None,
+            /*transcript_path*/ None,
             cwd.display().to_string(),
             "gpt-test".to_string(),
             "default".to_string(),

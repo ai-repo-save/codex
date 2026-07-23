@@ -35,7 +35,7 @@ impl PromptHookRunner for RecordingRunner {
 fn approval_review_route_uses_last_non_continue_reviewer() {
     let handler_data = [
         route_data(Some(ApprovalReviewRouteDecision::AutoReview)),
-        route_data(None),
+        route_data(/*decision*/ None),
         route_data(Some(ApprovalReviewRouteDecision::User)),
     ];
 
@@ -47,7 +47,7 @@ fn approval_review_route_uses_last_non_continue_reviewer() {
 
 #[test]
 fn approval_review_route_returns_none_when_handlers_continue() {
-    let handler_data = [route_data(None), route_data(None)];
+    let handler_data = [route_data(/*decision*/ None), route_data(/*decision*/ None)];
 
     assert_eq!(resolve_approval_review_route_decision(handler_data), None);
 }
@@ -86,7 +86,7 @@ fn filtered_prompt_route_is_a_completed_noop_when_fail_closed() {
 
     assert_eq!(parsed.completed.run.status, HookRunStatus::Completed);
     assert_eq!(parsed.completed.run.entries, Vec::new());
-    assert_eq!(parsed.data, route_data(None));
+    assert_eq!(parsed.data, route_data(/*decision*/ None));
     assert_eq!(resolve_approval_review_route_decision([parsed.data]), None);
 }
 

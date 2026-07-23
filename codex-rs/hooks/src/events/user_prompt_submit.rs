@@ -632,7 +632,7 @@ mod tests {
     }
 
     fn failed_run(error: &str) -> HandlerRunResult {
-        let mut result = run_result(None, "", "");
+        let mut result = run_result(/*exit_code*/ None, "", "");
         result.error = Some(error.to_string());
         result
     }

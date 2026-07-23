@@ -239,7 +239,7 @@ impl ClaudeHooksEngine {
             plugin_hook_sources,
             plugin_hook_load_warnings,
             shell,
-            None,
+            /*prompt_hook_runner*/ None,
         )
     }
 
