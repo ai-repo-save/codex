@@ -17,7 +17,7 @@ use ts_rs::TS;
 
 v2_enum_from_core!(
     pub enum HookEventName from CoreHookEventName {
-        PreToolUse, PermissionRequest, ApprovalReviewRoute, PostToolUse, PreCompact, PostCompact, SessionStart, UserPromptSubmit, SubagentStart, SubagentStop, Stop
+        PreToolUse, PermissionRequest, ApprovalReviewRoute, PostToolUse, PreCompact, PostCompact, SessionStart, SessionEnd, UserPromptSubmit, SubagentStart, SubagentStop, Stop
     }
 );
 

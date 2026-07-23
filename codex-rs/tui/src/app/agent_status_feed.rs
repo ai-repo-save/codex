@@ -6,6 +6,7 @@ use crate::history_cell::HistoryCell;
 use crate::history_cell::plain_lines;
 use crate::multi_agents::collab_tool_summary;
 use crate::multi_agents::sub_agent_activity_summary;
+use crate::text_formatting::truncate_text;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ThreadItem;
 use ratatui::style::Stylize;
@@ -14,6 +15,7 @@ use std::collections::HashSet;
 
 const AGENT_STATUS_PREVIEW_LINES: usize = 3;
 const AGENT_STATUS_PREVIEW_ITEMS: usize = 6;
+const AGENT_STATUS_PREVIEW_GRAPHEMES: usize = 240;
 const AGENT_STATUS_PREVIEW_INDENT: u16 = 4;
 
 #[derive(Debug)]
@@ -131,8 +133,37 @@ impl AgentStatusThreadPreview {
 }
 
 fn activity_summary(item: &ThreadItem) -> Option<String> {
-    match item {
-        ThreadItem::CollabAgentToolCall { .. } => collab_tool_summary(item),
+    let summary = match item {
+        ThreadItem::AgentMessage { text, .. } | ThreadItem::Plan { text, .. } => text,
+        ThreadItem::Reasoning { summary, .. } => summary.last()?,
+        ThreadItem::CommandExecution { command, .. } => {
+            let command = truncate_text(
+                command,
+                AGENT_STATUS_PREVIEW_GRAPHEMES.saturating_sub("$ ".len()),
+            );
+            return bounded_summary(&format!("$ {command}"));
+        }
+        ThreadItem::FileChange { changes, .. } => {
+            return bounded_summary(&format!("Updated {} file(s)", changes.len()));
+        }
+        ThreadItem::McpToolCall { server, tool, .. } => {
+            return bounded_summary(&format!("MCP {server}/{tool}"));
+        }
+        ThreadItem::SkillLoad { name, .. } => {
+            return bounded_summary(&format!("Read skill {name}"));
+        }
+        ThreadItem::DynamicToolCall {
+            namespace, tool, ..
+        } => {
+            let tool = namespace
+                .as_ref()
+                .map(|namespace| format!("{namespace}/{tool}"))
+                .unwrap_or_else(|| tool.clone());
+            return bounded_summary(&format!("Tool {tool}"));
+        }
+        ThreadItem::CollabAgentToolCall { .. } => {
+            return collab_tool_summary(item).and_then(|summary| bounded_summary(&summary));
+        }
         ThreadItem::SubAgentActivity {
             kind,
             operation,
@@ -141,16 +172,70 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
             model,
             reasoning_effort,
             ..
-        } => Some(sub_agent_activity_summary(
-            *kind,
-            *operation,
-            *outcome,
-            agent_path,
-            model.as_deref(),
-            reasoning_effort.as_ref(),
-        )),
-        _ => None,
-    }
+        } => {
+            let summary = sub_agent_activity_summary(
+                *kind,
+                *operation,
+                *outcome,
+                agent_path,
+                model.as_deref(),
+                reasoning_effort.as_ref(),
+            );
+            return bounded_summary(&summary);
+        }
+        ThreadItem::MemoryMutation(mutation) => {
+            return bounded_summary(&crate::memory_mutation::memory_mutation_summary(mutation));
+        }
+        ThreadItem::WebSearch(item) => {
+            return bounded_summary(&format!("Web search: {}", item.query));
+        }
+        ThreadItem::ImageView { path, .. } => {
+            let path = path.render_for_ui();
+            return bounded_summary(&format!("Viewed {path}"));
+        }
+        ThreadItem::ImageGeneration(_) => return Some("Generated an image".to_string()),
+        ThreadItem::EnteredReviewMode { .. } => return Some("Entered review mode".to_string()),
+        ThreadItem::ExitedReviewMode { .. } => return Some("Exited review mode".to_string()),
+        ThreadItem::ContextCompaction { .. } => return Some("Compacted context".to_string()),
+        ThreadItem::ContextAnchorSaved {
+            anchor_id, label, ..
+        } => {
+            return bounded_summary(
+                &crate::context_anchor_display::context_anchor_saved_summary(
+                    anchor_id,
+                    label.as_deref(),
+                ),
+            );
+        }
+        ThreadItem::ContextAnchorRewound {
+            anchor_id,
+            dropped_turns,
+            response_items_reclaimed,
+            approx_tokens_reclaimed,
+            reclaim_threshold_percent,
+            reclaim_threshold_met,
+            ..
+        } => {
+            return bounded_summary(
+                &crate::context_anchor_display::context_anchor_rewound_summary(
+                    anchor_id,
+                    *dropped_turns,
+                    *response_items_reclaimed,
+                    *approx_tokens_reclaimed,
+                    *reclaim_threshold_percent,
+                    *reclaim_threshold_met,
+                ),
+            );
+        }
+        _ => return None,
+    };
+    bounded_summary(summary)
+}
+
+fn bounded_summary(summary: &str) -> Option<String> {
+    let summary = truncate_text(summary, AGENT_STATUS_PREVIEW_GRAPHEMES);
+    let summary = summary.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!summary.is_empty()).then_some(summary)
 }
 
 fn indent_preview_line(mut line: Line<'static>) -> Line<'static> {

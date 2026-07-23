@@ -18,6 +18,8 @@ use crate::engine::HandlerRunResult;
 use crate::engine::PromptHookRunner;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
+use crate::output_spill::AdditionalContext;
+use crate::output_spill::HookOutputSpiller;
 use crate::schema::PreToolUseCommandInput;
 use crate::schema::SubagentCommandInputFields;
 
@@ -49,7 +51,7 @@ pub struct PreToolUseOutcome {
 struct PreToolUseHandlerData {
     should_block: bool,
     block_reason: Option<String>,
-    additional_contexts_for_model: Vec<String>,
+    additional_contexts_for_model: Vec<AdditionalContext>,
     updated_input: Option<Value>,
 }
 
@@ -73,9 +75,11 @@ pub(crate) fn preview(
 pub(crate) async fn run(
     handlers: &[ConfiguredHandler],
     shell: &CommandShell,
+    output_spiller: &HookOutputSpiller,
     prompt_runner: Option<&dyn PromptHookRunner>,
     request: PreToolUseRequest,
 ) -> PreToolUseOutcome {
+    let session_id = request.session_id;
     let matcher_inputs = common::matcher_inputs(&request.tool_name, &request.matcher_aliases);
     let matched = dispatcher::select_handlers_for_matcher_inputs(
         handlers,
@@ -127,6 +131,9 @@ pub(crate) async fn run(
             .iter()
             .map(|result| result.data.additional_contexts_for_model.as_slice()),
     );
+    let additional_contexts = output_spiller
+        .maybe_spill_additional_contexts(session_id, additional_contexts)
+        .await;
     let updated_input = if should_block {
         None
     } else {
@@ -244,6 +251,7 @@ fn parse_completed(
                             common::append_additional_context(
                                 &mut entries,
                                 &mut additional_contexts_for_model,
+                                handler,
                                 additional_context,
                             );
                         }
@@ -360,6 +368,8 @@ mod tests {
     use crate::engine::HandlerRunResult;
     use crate::engine::command_runner::CommandRunResult;
     use crate::events::common;
+    use crate::output_spill::AdditionalContext;
+    use crate::output_spill::AdditionalContextLimit;
 
     #[test]
     fn command_input_uses_request_tool_name() {
@@ -537,7 +547,10 @@ mod tests {
             PreToolUseHandlerData {
                 should_block: true,
                 block_reason: Some("do not run that".to_string()),
-                additional_contexts_for_model: vec!["remember this".to_string()],
+                additional_contexts_for_model: vec![AdditionalContext {
+                    text: "remember this".to_string(),
+                    limit: Default::default(),
+                }],
                 updated_input: None,
             }
         );
@@ -617,8 +630,10 @@ mod tests {
 
     #[test]
     fn additional_context_is_recorded() {
+        let mut handler = handler();
+        handler.additional_context_limit = AdditionalContextLimit::from_config(Some(13));
         let parsed = parse_completed(
-            &handler(),
+            &handler,
             run_result(
                 Some(0),
                 r#"{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"do not run that","additionalContext":"nope"}}"#,
@@ -632,7 +647,10 @@ mod tests {
             PreToolUseHandlerData {
                 should_block: true,
                 block_reason: Some("do not run that".to_string()),
-                additional_contexts_for_model: vec!["nope".to_string()],
+                additional_contexts_for_model: vec![AdditionalContext {
+                    text: "nope".to_string(),
+                    limit: AdditionalContextLimit::from_config(Some(13)),
+                }],
                 updated_input: None,
             }
         );
@@ -804,6 +822,7 @@ mod tests {
                 timeout_sec: 5,
             },
             status_message: None,
+            additional_context_limit: Default::default(),
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: codex_protocol::protocol::HookSource::User,
             display_order: 0,

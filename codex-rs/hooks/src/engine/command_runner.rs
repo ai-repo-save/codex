@@ -329,9 +329,22 @@ fn build_command(
         Command::new(&shell.program)
     };
     if shell.program.is_empty() {
+        #[cfg(windows)]
+        process.raw_arg(format!(r#""{command_text}""#));
+
+        #[cfg(not(windows))]
         process.arg(command_text);
     } else {
         process.args(&shell.args);
+
+        #[cfg(windows)]
+        if shell.args.iter().any(|arg| arg.eq_ignore_ascii_case("/c")) {
+            process.raw_arg(format!(r#""{command_text}""#));
+        } else {
+            process.arg(command_text);
+        }
+
+        #[cfg(not(windows))]
         process.arg(command_text);
     }
     process.envs(env);
@@ -356,6 +369,6 @@ fn default_shell_command() -> Command {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 #[path = "command_runner_tests.rs"]
 mod tests;

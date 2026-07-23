@@ -54,6 +54,7 @@ pub(crate) fn select_handlers_for_matcher_inputs(
             | HookEventName::ApprovalReviewRoute
             | HookEventName::PostToolUse
             | HookEventName::SessionStart
+            | HookEventName::SessionEnd
             | HookEventName::SubagentStart
             | HookEventName::SubagentStop
             | HookEventName::PreCompact
@@ -186,7 +187,9 @@ pub(crate) fn completed_summary(
 
 pub(crate) fn scope_for_event(event_name: HookEventName) -> HookScope {
     match event_name {
-        HookEventName::SessionStart | HookEventName::SubagentStart => HookScope::Thread,
+        HookEventName::SessionStart | HookEventName::SessionEnd | HookEventName::SubagentStart => {
+            HookScope::Thread
+        }
         HookEventName::PreToolUse
         | HookEventName::PermissionRequest
         | HookEventName::ApprovalReviewRoute
@@ -208,6 +211,7 @@ pub(crate) fn hook_event_name_label(event_name: HookEventName) -> &'static str {
         HookEventName::PreCompact => "PreCompact",
         HookEventName::PostCompact => "PostCompact",
         HookEventName::SessionStart => "SessionStart",
+        HookEventName::SessionEnd => "SessionEnd",
         HookEventName::UserPromptSubmit => "UserPromptSubmit",
         HookEventName::SubagentStart => "SubagentStart",
         HookEventName::SubagentStop => "SubagentStop",
@@ -282,6 +286,7 @@ mod tests {
                 timeout_sec: 5,
             },
             status_message: None,
+            additional_context_limit: Default::default(),
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: HookSource::User,
             display_order,

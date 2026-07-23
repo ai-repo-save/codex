@@ -19,7 +19,6 @@ mod review_session;
 
 use std::time::Duration;
 
-use codex_protocol::protocol::GuardianAssessmentDecisionSource;
 use codex_protocol::protocol::GuardianAssessmentOutcome;
 use serde::Deserialize;
 use serde::Serialize;
@@ -67,12 +66,6 @@ pub(crate) struct GuardianAssessment {
     pub(crate) user_authorization: codex_protocol::protocol::GuardianUserAuthorization,
     pub(crate) outcome: GuardianAssessmentOutcome,
     pub(crate) rationale: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct GuardianRejection {
-    pub(crate) rationale: String,
-    pub(crate) source: GuardianAssessmentDecisionSource,
 }
 
 #[derive(Debug, Default)]

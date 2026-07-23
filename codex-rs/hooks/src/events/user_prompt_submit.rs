@@ -17,6 +17,8 @@ use crate::engine::HandlerRunResult;
 use crate::engine::PromptHookRunner;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
+use crate::output_spill::AdditionalContext;
+use crate::output_spill::HookOutputSpiller;
 use crate::schema::NullableString;
 use crate::schema::SubagentCommandInputFields;
 use crate::schema::UserPromptSubmitCommandInput;
@@ -45,7 +47,7 @@ pub struct UserPromptSubmitOutcome {
 struct UserPromptSubmitHandlerData {
     should_stop: bool,
     stop_reason: Option<String>,
-    additional_contexts_for_model: Vec<String>,
+    additional_contexts_for_model: Vec<AdditionalContext>,
 }
 
 pub(crate) fn preview(
@@ -65,9 +67,11 @@ pub(crate) fn preview(
 pub(crate) async fn run(
     handlers: &[ConfiguredHandler],
     shell: &CommandShell,
+    output_spiller: &HookOutputSpiller,
     prompt_runner: Option<&dyn PromptHookRunner>,
     request: UserPromptSubmitRequest,
 ) -> UserPromptSubmitOutcome {
+    let session_id = request.session_id;
     let matched = dispatcher::select_handlers(
         handlers,
         HookEventName::UserPromptSubmit,
@@ -118,7 +122,11 @@ pub(crate) async fn run(
     )
     .await;
 
-    outcome_from_results(results)
+    let mut outcome = outcome_from_results(results);
+    outcome.additional_contexts = output_spiller
+        .maybe_spill_additional_contexts(session_id, outcome.additional_contexts)
+        .await;
+    outcome
 }
 
 fn outcome_from_results(
@@ -133,7 +141,6 @@ fn outcome_from_results(
             .iter()
             .map(|result| result.data.additional_contexts_for_model.as_slice()),
     );
-
     UserPromptSubmitOutcome {
         hook_events: results.into_iter().map(|result| result.completed).collect(),
         should_stop,
@@ -191,6 +198,7 @@ fn parse_completed(
                         common::append_additional_context(
                             &mut entries,
                             &mut additional_contexts_for_model,
+                            handler,
                             additional_context,
                         );
                     }
@@ -235,6 +243,7 @@ fn parse_completed(
                     common::append_additional_context(
                         &mut entries,
                         &mut additional_contexts_for_model,
+                        handler,
                         additional_context,
                     );
                 }
@@ -333,6 +342,7 @@ mod tests {
     use crate::engine::ConfiguredHandlerKind;
     use crate::engine::HandlerRunResult;
     use crate::engine::command_runner::CommandRunResult;
+    use crate::output_spill::AdditionalContext;
 
     #[test]
     fn continue_false_preserves_context_for_later_turns() {
@@ -351,7 +361,10 @@ mod tests {
             UserPromptSubmitHandlerData {
                 should_stop: true,
                 stop_reason: Some("pause".to_string()),
-                additional_contexts_for_model: vec!["do not inject".to_string()],
+                additional_contexts_for_model: vec![AdditionalContext {
+                    text: "do not inject".to_string(),
+                    limit: Default::default(),
+                }],
             }
         );
         assert_eq!(parsed.completed.run.status, HookRunStatus::Stopped);
@@ -387,7 +400,10 @@ mod tests {
             UserPromptSubmitHandlerData {
                 should_stop: true,
                 stop_reason: Some("slow down".to_string()),
-                additional_contexts_for_model: vec!["do not inject".to_string()],
+                additional_contexts_for_model: vec![AdditionalContext {
+                    text: "do not inject".to_string(),
+                    limit: Default::default(),
+                }],
             }
         );
         assert_eq!(parsed.completed.run.status, HookRunStatus::Blocked);
@@ -580,6 +596,7 @@ mod tests {
                 timeout_sec: 5,
             },
             status_message: None,
+            additional_context_limit: Default::default(),
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: codex_protocol::protocol::HookSource::User,
             display_order: 0,

@@ -1,18 +1,39 @@
 use std::collections::HashMap;
+#[cfg(unix)]
 use std::path::Path;
+#[cfg(unix)]
 use std::process::Command;
+#[cfg(unix)]
 use std::time::Duration;
 
+#[cfg(windows)]
+use codex_protocol::protocol::HookEventName;
+#[cfg(windows)]
+use codex_protocol::protocol::HookSource;
+#[cfg(windows)]
+use codex_utils_absolute_path::AbsolutePathBuf;
 use pretty_assertions::assert_eq;
+#[cfg(windows)]
+use tempfile::tempdir;
 
+use super::CommandShell;
+#[cfg(windows)]
+use super::ConfiguredHandler;
+#[cfg(unix)]
 use super::ShellCommandRequest;
+#[cfg(windows)]
+use super::run_command;
+#[cfg(unix)]
 use super::run_shell_command;
-use crate::engine::CommandShell;
 
+#[cfg(unix)]
 const GRANDCHILD_PID_ENV: &str = "CODEX_HOOK_TEST_GRANDCHILD_PID_FILE";
+#[cfg(unix)]
 const TIMEOUT_ERROR: &str = "test hook timed out";
+#[cfg(unix)]
 const TIMEOUT_OUTCOME: &str = "timeout";
 
+#[cfg(unix)]
 #[tokio::test]
 async fn timeout_kills_grandchild_process() {
     let temp_dir = tempfile::tempdir().expect("create temporary directory");
@@ -51,6 +72,7 @@ async fn timeout_kills_grandchild_process() {
     assert!(exited, "grandchild process survived command timeout");
 }
 
+#[cfg(unix)]
 async fn wait_for_process_exit(process_id: u32) -> bool {
     for _ in 0..20 {
         if !process_exists(process_id) {
@@ -61,9 +83,69 @@ async fn wait_for_process_exit(process_id: u32) -> bool {
     false
 }
 
+#[cfg(unix)]
 fn process_exists(process_id: u32) -> bool {
     Command::new("kill")
         .args(["-0", &process_id.to_string()])
         .status()
         .is_ok_and(|status| status.success())
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn cmd_shell_runs_quoted_hook_command_path() {
+    use std::fs;
+
+    use crate::engine::ConfiguredHandlerKind;
+
+    let temp = tempdir().expect("create temp dir");
+    let hook_dir = temp.path().join("hook with spaces");
+    fs::create_dir(&hook_dir).expect("create hook dir");
+    let hook_path = hook_dir.join("hook.cmd");
+    fs::write(
+        &hook_path,
+        "@echo off\r\nif not \"%~1\"==\"notify\" exit /B 7\r\necho hook-ran\r\n",
+    )
+    .expect("write hook command");
+    let source_path =
+        AbsolutePathBuf::try_from(hook_path.clone()).expect("absolute hook command path");
+    let handler = ConfiguredHandler {
+        event_name: HookEventName::SessionStart,
+        matcher: None,
+        kind: ConfiguredHandlerKind::Command {
+            command: format!(r#"\"{}\" notify"#, hook_path.display()),
+            timeout_sec: 10,
+        },
+        status_message: None,
+        additional_context_limit: Default::default(),
+        source_path,
+        source: HookSource::User,
+        display_order: 0,
+        env: HashMap::new(),
+    };
+    let shells = [
+        CommandShell {
+            program: String::new(),
+            args: Vec::new(),
+        },
+        CommandShell {
+            program: std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string()),
+            args: vec!["/c".to_string()],
+        },
+    ];
+
+    for shell in shells {
+        let result = run_command(
+            &shell,
+            &handler,
+            /*configured_order*/ 0,
+            "{}",
+            temp.path(),
+        )
+        .await;
+
+        assert_eq!(result.exit_code, Some(0), "stderr: {}", result.stderr);
+        assert_eq!(result.stdout.trim(), "hook-ran");
+        assert!(result.error.is_none());
+    }
 }

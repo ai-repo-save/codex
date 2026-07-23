@@ -49,6 +49,7 @@ fn command_hook_hash(
     command: &str,
     timeout_sec: u64,
     status_message: Option<&str>,
+    additional_context_limit: Option<usize>,
 ) -> String {
     let identity = NormalizedHookIdentity {
         event_name,
@@ -60,6 +61,7 @@ fn command_hook_hash(
                 timeout_sec: Some(timeout_sec),
                 r#async: false,
                 status_message: status_message.map(ToOwned::to_owned),
+                additional_context_limit,
             }],
         },
     };
@@ -119,6 +121,7 @@ type = "command"
 command = "python3 /tmp/listed-hook.py"
 timeout = 5
 statusMessage = "running listed hook"
+additionalContextLimit = 4096
 "#,
     )?;
     Ok(())
@@ -233,6 +236,7 @@ async fn hooks_list_shows_discovered_hook() -> Result<()> {
                 fail_closed: false,
                 timeout_sec: 5,
                 status_message: Some("running listed hook".to_string()),
+                additional_context_limit: Some(4_096),
                 source_path: config_path,
                 source: HookSource::User,
                 plugin_id: None,
@@ -245,6 +249,7 @@ async fn hooks_list_shows_discovered_hook() -> Result<()> {
                     "python3 /tmp/listed-hook.py",
                     /*timeout_sec*/ 5,
                     Some("running listed hook"),
+                    /*additional_context_limit*/ Some(4_096),
                 ),
                 trust_status: HookTrustStatus::Untrusted,
             }],
@@ -393,6 +398,7 @@ async fn hooks_list_shows_discovered_plugin_hook() -> Result<()> {
                 fail_closed: false,
                 timeout_sec: 7,
                 status_message: Some("running plugin hook".to_string()),
+                additional_context_limit: None,
                 source_path: plugin_hooks_path,
                 source: HookSource::Plugin,
                 plugin_id: Some("demo@test".to_string()),
@@ -405,6 +411,7 @@ async fn hooks_list_shows_discovered_plugin_hook() -> Result<()> {
                     "echo plugin hook",
                     /*timeout_sec*/ 7,
                     Some("running plugin hook"),
+                    /*additional_context_limit*/ None,
                 ),
                 trust_status: HookTrustStatus::Untrusted,
             }],
@@ -612,6 +619,7 @@ timeout = 5
                     fail_closed: false,
                     timeout_sec: 5,
                     status_message: None,
+                    additional_context_limit: None,
                     source_path: project_config_path,
                     source: HookSource::Project,
                     plugin_id: None,
@@ -624,6 +632,7 @@ timeout = 5
                         "echo project hook",
                         /*timeout_sec*/ 5,
                         /*status_message*/ None,
+                        /*additional_context_limit*/ None,
                     ),
                     trust_status: HookTrustStatus::Untrusted,
                 }],

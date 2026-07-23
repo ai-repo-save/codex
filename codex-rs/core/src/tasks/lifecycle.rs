@@ -13,12 +13,13 @@ impl Session {
         token_usage_at_turn_start: &TokenUsage,
         user_initiated: bool,
     ) {
+        let collaboration_mode = turn_context.collaboration_mode();
         for contributor in self.services.extensions.turn_lifecycle_contributors() {
             contributor
                 .on_turn_start(codex_extension_api::TurnStartInput {
                     turn_id: turn_context.sub_id.as_str(),
                     user_initiated,
-                    collaboration_mode: &turn_context.collaboration_mode,
+                    collaboration_mode: &collaboration_mode,
                     token_usage_at_turn_start,
                     session_store: &self.services.session_extension_data,
                     thread_store: &self.services.thread_extension_data,

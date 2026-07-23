@@ -4,4 +4,11 @@
 import type { ReasoningEffort } from "../ReasoningEffort";
 import type { ConfiguredPromptHookFilter } from "./ConfiguredPromptHookFilter";
 
-export type ConfiguredHookHandler = { "type": "command", command: string, commandWindows: string | null, timeoutSec: bigint | null, async: boolean, statusMessage: string | null, } | { "type": "prompt", prompt: string, model: string | null, filter: ConfiguredPromptHookFilter | null, reasoningEffort: ReasoningEffort | null, timeoutSec: bigint | null, failClosed: boolean, statusMessage: string | null, } | { "type": "agent", };
+export type ConfiguredHookHandler = { "type": "command", command: string, commandWindows: string | null, timeoutSec: bigint | null, async: boolean, statusMessage: string | null,
+/**
+ * Approximate token threshold for spilling this hook's `additionalContext` to disk.
+ * `null` uses 2,500 tokens; `0` disables spilling for this hook. The threshold is
+ * evaluated against the original context; a spilled preview also includes recovery
+ * metadata.
+ */
+additionalContextLimit: number | null, } | { "type": "prompt", prompt: string, model: string | null, filter: ConfiguredPromptHookFilter | null, reasoningEffort: ReasoningEffort | null, timeoutSec: bigint | null, failClosed: boolean, statusMessage: string | null, } | { "type": "agent", };

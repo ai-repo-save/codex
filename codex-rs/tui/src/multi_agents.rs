@@ -856,6 +856,25 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
+    fn interacted_sub_agent_activity_does_not_change_liveness() {
+        let item = ThreadItem::SubAgentActivity {
+            id: "activity-1".to_string(),
+            kind: SubAgentActivityKind::Interacted,
+            agent_thread_id: ThreadId::new().to_string(),
+            agent_path: "/root/child".to_string(),
+            operation: Some(SubAgentActivityOperation::SendMessage),
+            outcome: Some(SubAgentActivityOutcome::Succeeded),
+            model: None,
+            reasoning_effort: None,
+        };
+
+        assert_eq!(
+            sub_agent_activity_display(&item).and_then(|display| display.running_update),
+            None
+        );
+    }
+
+    #[test]
     fn collab_events_snapshot() {
         let sender_thread_id = ThreadId::from_string("00000000-0000-0000-0000-000000000001")
             .expect("valid sender thread id");

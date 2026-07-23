@@ -347,6 +347,9 @@ pub enum PluginShareUpdateDiscoverability {
     #[serde(rename = "PRIVATE")]
     #[ts(rename = "PRIVATE")]
     Private,
+    #[serde(rename = "LISTED")]
+    #[ts(rename = "LISTED")]
+    Listed,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
@@ -523,6 +526,9 @@ pub struct HookMetadata {
     pub fail_closed: bool,
     pub timeout_sec: u64,
     pub status_message: Option<String>,
+    /// Configured `additionalContext` spill threshold.
+    /// `null` uses 2,500 tokens; `0` disables spilling.
+    pub additional_context_limit: Option<usize>,
     pub source_path: AbsolutePathBuf,
     pub source: HookSource,
     pub plugin_id: Option<String>,
@@ -632,6 +638,8 @@ pub struct PluginSummary {
     pub enabled: bool,
     pub install_policy: PluginInstallPolicy,
     pub install_policy_source: Option<PluginInstallPolicySource>,
+    #[serde(default)]
+    pub must_show_installation_interstitial: Option<bool>,
     pub auth_policy: PluginAuthPolicy,
     /// Availability state for installing and using the plugin.
     #[serde(default)]
@@ -670,6 +678,55 @@ pub struct PluginDetail {
     pub apps: Vec<AppSummary>,
     pub app_templates: Vec<AppTemplateSummary>,
     pub mcp_servers: Vec<String>,
+    pub scheduled_tasks: Option<Vec<ScheduledTaskSummary>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ScheduledTaskSummary {
+    pub key: String,
+    pub name: String,
+    pub prompt: String,
+    pub schedule: ScheduledTaskSchedule,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(tag = "type", rename_all = "camelCase")]
+#[ts(tag = "type")]
+#[ts(export_to = "v2/")]
+pub enum ScheduledTaskSchedule {
+    #[serde(rename_all = "camelCase")]
+    #[ts(rename_all = "camelCase")]
+    Hourly {
+        interval_hours: u32,
+        days: Option<Vec<ScheduledTaskWeekday>>,
+    },
+    #[serde(rename_all = "camelCase")]
+    #[ts(rename_all = "camelCase")]
+    Daily { time: String },
+    #[serde(rename_all = "camelCase")]
+    #[ts(rename_all = "camelCase")]
+    Weekdays { time: String },
+    #[serde(rename_all = "camelCase")]
+    #[ts(rename_all = "camelCase")]
+    Weekly {
+        days: Vec<ScheduledTaskWeekday>,
+        time: String,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[ts(export_to = "v2/")]
+pub enum ScheduledTaskWeekday {
+    Mo,
+    Tu,
+    We,
+    Th,
+    Fr,
+    Sa,
+    Su,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]

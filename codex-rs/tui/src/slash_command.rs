@@ -98,7 +98,7 @@ impl SlashCommand {
             SlashCommand::Clear => "clear the terminal and start a new chat",
             SlashCommand::Fork => "fork the current chat",
             SlashCommand::ClearHistory => "clear history and continue in a new chat",
-            SlashCommand::App => "continue this session in Codex Desktop",
+            SlashCommand::App => "continue this session in the Desktop app",
             SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
             SlashCommand::Copy => "copy last response as markdown",
             SlashCommand::Raw => "toggle raw scrollback mode for copy-friendly terminal selection",
