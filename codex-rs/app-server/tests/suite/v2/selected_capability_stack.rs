@@ -52,6 +52,8 @@ use super::app_list::connector_tool;
 use super::app_list::start_apps_server_with_delays;
 
 const READ_TIMEOUT: Duration = Duration::from_secs(20);
+#[cfg(target_os = "linux")]
+const CODEX_LINUX_SANDBOX_EXE_ENV_VAR: &str = "CODEX_TEST_LINUX_SANDBOX_EXE";
 const EXECUTOR_ID: &str = "executor-1";
 const EXECUTOR_ENV_NAME: &str = "MCP_EXECUTOR_MARKER";
 const EXECUTOR_ENV_VALUE: &str = "executor-only";
@@ -167,9 +169,9 @@ async fn selected_capability_stack_tracks_environment_availability_and_resume() 
     let initial_requests = response_mock.requests();
     assert_selected_capabilities_absent(&initial_requests[0]);
 
-    let mut exec_server =
-        spawn_exec_server(fixture.codex_home.path(), &fixture.exec_server_url).await?;
-    add_environment(&mut app_server, &fixture.exec_server_url).await?;
+    let (mut exec_server, exec_server_url) =
+        spawn_exec_server(fixture.codex_home.path()).await?;
+    add_environment(&mut app_server, &exec_server_url).await?;
     wait_for_environment_ready(&mut app_server).await?;
     wait_for_selected_mcp_server(&mut app_server, &thread_id).await?;
 
@@ -231,8 +233,10 @@ async fn selected_capability_stack_tracks_environment_availability_and_resume() 
             .is_some_and(|text| text.contains(NO_SELECTED_SKILLS_MESSAGE))
     );
 
-    exec_server = spawn_exec_server(fixture.codex_home.path(), &fixture.exec_server_url).await?;
-    add_environment(&mut app_server, &fixture.exec_server_url).await?;
+    let (reattached_exec_server, exec_server_url) =
+        spawn_exec_server(fixture.codex_home.path()).await?;
+    exec_server = reattached_exec_server;
+    add_environment(&mut app_server, &exec_server_url).await?;
     wait_for_environment_ready(&mut app_server).await?;
     wait_for_selected_mcp_server(&mut app_server, &thread_id).await?;
 
@@ -398,9 +402,9 @@ async fn selected_capabilities_become_available_between_samples_in_one_turn() ->
     assert_eq!(1, requests.len());
     assert_selected_capabilities_absent(&requests[0]);
 
-    let mut exec_server =
-        spawn_exec_server(fixture.codex_home.path(), &fixture.exec_server_url).await?;
-    add_environment(&mut app_server, &fixture.exec_server_url).await?;
+    let (mut exec_server, exec_server_url) =
+        spawn_exec_server(fixture.codex_home.path()).await?;
+    add_environment(&mut app_server, &exec_server_url).await?;
     wait_for_environment_ready(&mut app_server).await?;
     app_server
         .send_response(
@@ -443,7 +447,6 @@ struct SelectedCapabilityFixture {
     codex_home: TempDir,
     _plugin: TempDir,
     pid_file: std::path::PathBuf,
-    exec_server_url: String,
     selected_root: SelectedCapabilityRoot,
     environment_cwd: AbsolutePathBuf,
 }
@@ -480,15 +483,15 @@ fn selected_capability_fixture(
         AuthCredentialsStoreMode::File,
     )?;
 
-    // Reserve the URL before app-server starts. The configured environment initially fails to
-    // connect, then environment/add points the same stable ID at the same URL once it is live.
+    // Reserve an unavailable URL before app-server starts. The configured environment initially
+    // fails to connect, then environment/add points the same stable ID at the live fixture URL.
     let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-    let exec_server_url = format!("ws://{}", listener.local_addr()?);
+    let unavailable_exec_server_url = format!("ws://{}", listener.local_addr()?);
     drop(listener);
     std::fs::write(
         codex_home.path().join("environments.toml"),
         format!(
-            "default = \"{EXECUTOR_ID}\"\ninclude_local = true\n\n[[environments]]\nid = \"{EXECUTOR_ID}\"\nurl = \"{exec_server_url}\"\nconnect_timeout_sec = 0.05\n"
+            "default = \"{EXECUTOR_ID}\"\ninclude_local = true\n\n[[environments]]\nid = \"{EXECUTOR_ID}\"\nurl = \"{unavailable_exec_server_url}\"\nconnect_timeout_sec = 0.05\n"
         ),
     )?;
 
@@ -549,7 +552,6 @@ fn selected_capability_fixture(
         codex_home,
         _plugin: plugin,
         pid_file,
-        exec_server_url,
         selected_root,
         environment_cwd,
     })
@@ -783,16 +785,22 @@ async fn wait_for_selected_mcp_server(
     Ok(())
 }
 
-async fn spawn_exec_server(codex_home: &std::path::Path, url: &str) -> Result<Child> {
-    let mut child = Command::new(codex_utils_cargo_bin::cargo_bin("codex")?)
-        .args(["exec-server", "--listen", url])
+async fn spawn_exec_server(codex_home: &std::path::Path) -> Result<(Child, String)> {
+    let mut command = Command::new(codex_utils_cargo_bin::cargo_bin("exec-server")?);
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .kill_on_drop(true)
         .env("CODEX_HOME", codex_home)
-        .env(EXECUTOR_ENV_NAME, EXECUTOR_ENV_VALUE)
-        .spawn()?;
+        .env(EXECUTOR_ENV_NAME, EXECUTOR_ENV_VALUE);
+    #[cfg(target_os = "linux")]
+    command.env(
+        CODEX_LINUX_SANDBOX_EXE_ENV_VAR,
+        core_test_support::find_codex_linux_sandbox_exe()
+            .context("should find binary for selected capability exec-server fixture")?,
+    );
+    let mut child = command.spawn()?;
     let stdout = child
         .stdout
         .take()
@@ -803,8 +811,9 @@ async fn spawn_exec_server(codex_home: &std::path::Path, url: &str) -> Result<Ch
             .await
             .context("timed out waiting for exec-server URL")??
             .context("exec-server exited before printing its URL")?;
-        if line.trim() == url {
-            return Ok(child);
+        let exec_server_url = line.trim();
+        if exec_server_url.starts_with("ws://") {
+            return Ok((child, exec_server_url.to_string()));
         }
     }
 }
