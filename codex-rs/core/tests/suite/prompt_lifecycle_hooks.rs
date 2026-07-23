@@ -485,23 +485,34 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_or_prewarm() -
     let evaluator_request_count = requests
         .iter()
         .filter(|request| {
-            request_body(request).is_some_and(|body| {
-                body["model"] == json!(EVALUATOR_MODEL)
-                    && body
-                        .get("tools")
-                        .is_none_or(|tools| tools.as_array().is_some_and(Vec::is_empty))
-            })
+            request.method == "POST"
+                && request.url.path().ends_with("/responses")
+                && request_body(request).is_some_and(|body| {
+                    body["model"] == json!(EVALUATOR_MODEL)
+                        && body
+                            .get("tools")
+                            .is_none_or(|tools| tools.as_array().is_some_and(Vec::is_empty))
+                })
         })
         .count();
-    let child_model_request_count = requests
+    let child_main_sampling_request_count = requests
         .iter()
         .filter(|request| {
-            request_header(request, "x-openai-subagent") == Some(COLLAB_SPAWN_HEADER_VALUE)
-                || request_body(request).is_some_and(|body| {
-                    body.pointer("/client_metadata/x-openai-subagent")
-                        .and_then(Value::as_str)
-                        == Some(COLLAB_SPAWN_HEADER_VALUE)
-                })
+            request.method == "POST"
+                && request.url.path().ends_with("/responses")
+                && request_header(request, "x-openai-subagent")
+                    == Some(COLLAB_SPAWN_HEADER_VALUE)
+                && request_body(request)
+                    .is_some_and(|body| body["model"] == json!(MAIN_MODEL))
+        })
+        .count();
+    let child_websocket_prewarm_request_count = requests
+        .iter()
+        .filter(|request| {
+            request.method == "GET"
+                && request.url.path().ends_with("/responses")
+                && request_header(request, "x-openai-subagent")
+                    == Some(COLLAB_SPAWN_HEADER_VALUE)
         })
         .count();
     assert_eq!(
@@ -509,8 +520,12 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_or_prewarm() -
         "unexpected child error: {child_error:?}"
     );
     assert_eq!(
-        child_model_request_count, 0,
-        "rejected child sent sampling or startup prewarm traffic"
+        child_main_sampling_request_count, 0,
+        "rejected child sent main-model sampling traffic"
+    );
+    assert_eq!(
+        child_websocket_prewarm_request_count, 0,
+        "rejected child sent websocket startup prewarm traffic"
     );
     Ok(())
 }

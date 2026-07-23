@@ -170,6 +170,7 @@ async fn selected_capability_stack_tracks_environment_availability_and_resume() 
     let mut exec_server =
         spawn_exec_server(fixture.codex_home.path(), &fixture.exec_server_url).await?;
     add_environment(&mut app_server, &fixture.exec_server_url).await?;
+    wait_for_environment_ready(&mut app_server).await?;
     wait_for_selected_mcp_server(&mut app_server, &thread_id).await?;
 
     run_turn(
@@ -232,6 +233,7 @@ async fn selected_capability_stack_tracks_environment_availability_and_resume() 
 
     exec_server = spawn_exec_server(fixture.codex_home.path(), &fixture.exec_server_url).await?;
     add_environment(&mut app_server, &fixture.exec_server_url).await?;
+    wait_for_environment_ready(&mut app_server).await?;
     wait_for_selected_mcp_server(&mut app_server, &thread_id).await?;
 
     run_turn(
