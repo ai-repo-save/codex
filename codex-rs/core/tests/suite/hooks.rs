@@ -2650,7 +2650,7 @@ async fn permission_request_prompt_hook_denies_tool_and_turn_continues() -> Resu
     .await;
     let continuation_response = core_test_support::responses::mount_sse_once_match(
         &server,
-        |request: &wiremock::Request| {
+        move |request: &wiremock::Request| {
             decoded_request_body(request).is_some_and(|body| {
                 body["model"] == PRE_TOOL_PROMPT_HOOK_MAIN_MODEL
                     && body.to_string().contains(call_id)
