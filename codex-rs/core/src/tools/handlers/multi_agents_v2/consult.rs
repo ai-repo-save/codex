@@ -2,9 +2,9 @@ use super::*;
 use crate::agent::control::LoadedAgentConsult;
 use crate::context::ConsultParentContext;
 use crate::context::ContextualUserFragment;
-use crate::session::Codex;
-use crate::session::CodexSpawnArgs;
-use crate::session::CodexSpawnOk;
+use crate::session::SessionIo;
+use crate::session::SessionSpawnArgs;
+use crate::session::session::Session;
 use crate::session::turn_context::ToolExecutionMode;
 use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::LoadedUserInstructions;
@@ -47,33 +47,33 @@ pub(super) enum ConsultRunOutcome {
 }
 
 struct ConsultResponderCleanup {
-    codex: Arc<tokio::sync::Mutex<Option<Codex>>>,
+    io: Arc<tokio::sync::Mutex<Option<SessionIo>>>,
     shutdown_token: CancellationToken,
     cleanup_task: Option<JoinHandle<()>>,
 }
 
 impl ConsultResponderCleanup {
-    fn new(codex: Codex) -> Self {
-        let codex = Arc::new(tokio::sync::Mutex::new(Some(codex)));
+    fn new(io: SessionIo) -> Self {
+        let io = Arc::new(tokio::sync::Mutex::new(Some(io)));
         let shutdown_token = CancellationToken::new();
-        let cleanup_codex = Arc::clone(&codex);
+        let cleanup_io = Arc::clone(&io);
         let cleanup_token = shutdown_token.clone();
         let cleanup_task = tokio::spawn(async move {
             cleanup_token.cancelled().await;
-            let mut codex = cleanup_codex.lock().await;
-            if let Some(codex) = codex.take() {
-                let _ = codex.shutdown_and_wait().await;
+            let mut io = cleanup_io.lock().await;
+            if let Some(io) = io.take() {
+                let _ = io.shutdown_and_wait().await;
             }
         });
         Self {
-            codex,
+            io,
             shutdown_token,
             cleanup_task: Some(cleanup_task),
         }
     }
 
     async fn next_event(&self) -> codex_protocol::error::Result<codex_protocol::protocol::Event> {
-        self.codex
+        self.io
             .lock()
             .await
             .as_ref()
@@ -83,7 +83,7 @@ impl ConsultResponderCleanup {
     }
 
     async fn submit(&self, op: Op) -> codex_protocol::error::Result<String> {
-        self.codex
+        self.io
             .lock()
             .await
             .as_ref()
@@ -140,20 +140,18 @@ pub(super) async fn consult_parent(
     };
     let environment_selections = snapshot
         .environments
-        .turn_environments
-        .iter()
+        .turn_environments()
         .map(crate::session::turn_context::TurnEnvironment::selection)
         .chain(
             snapshot
                 .environments
-                .starting
-                .iter()
+                .starting()
                 .map(|environment| environment.selection.clone()),
         )
         .collect();
     let inherited_environments = snapshot.environments.clone();
     let spawned = wait_for_consult_stage(
-        Codex::spawn(CodexSpawnArgs {
+        Session::spawn(SessionSpawnArgs {
             config: snapshot.config,
             tool_execution_mode: ToolExecutionMode::ConsultNoLocalTools,
             allow_provider_model_fallback: false,
@@ -211,7 +209,7 @@ pub(super) async fn consult_parent(
         deadline,
     )
     .await;
-    let CodexSpawnOk { codex, .. } = match spawned {
+    let (_session, io) = match spawned {
         ConsultStage::Completed(Ok(spawned)) => spawned,
         ConsultStage::Completed(Err(error)) => {
             return Err(FunctionCallError::RespondToModel(format!(
@@ -221,7 +219,7 @@ pub(super) async fn consult_parent(
         ConsultStage::TimedOut => return Ok((ConsultRunOutcome::TimedOut, revision)),
         ConsultStage::Cancelled => return Ok((ConsultRunOutcome::Cancelled, revision)),
     };
-    let cleanup = ConsultResponderCleanup::new(codex);
+    let cleanup = ConsultResponderCleanup::new(io);
     let configured =
         match wait_for_consult_stage(cleanup.next_event(), cancellation_token, deadline).await {
             ConsultStage::Completed(Ok(configured)) => configured,

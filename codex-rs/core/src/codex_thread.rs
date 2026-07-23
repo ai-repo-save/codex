@@ -255,13 +255,9 @@ impl CodexThread {
         sub_id: String,
         cancellation_token: tokio_util::sync::CancellationToken,
     ) -> CodexResult<()> {
-        let turn_context = self
-            .codex
-            .session
-            .new_default_turn_with_sub_id(sub_id)
-            .await;
+        let turn_context = self.session.new_default_turn_with_sub_id(sub_id).await;
         crate::tasks::run_manual_compact_task(
-            Arc::clone(&self.codex.session),
+            Arc::clone(&self.session),
             turn_context,
             cancellation_token,
         )
@@ -533,7 +529,7 @@ impl CodexThread {
     }
 
     pub async fn current_context_history(&self) -> Vec<ResponseItem> {
-        self.codex.session.clone_history().await.into_raw_items()
+        self.session.clone_history().await.into_raw_items()
     }
 
     pub async fn read_thread(

@@ -457,7 +457,7 @@ impl Session {
             label,
             history_boundary,
             created_at,
-            collaboration_mode_kind: Some(turn_context.collaboration_mode.mode),
+            collaboration_mode_kind: Some(turn_context.collaboration_mode().mode),
         };
         self.persist_rollout_items(&[RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(
             event.clone(),
@@ -504,13 +504,13 @@ impl Session {
             ));
         };
         if let Some(anchor_collaboration_mode) = active_anchor.collaboration_mode_kind
-            && anchor_collaboration_mode != turn_context.collaboration_mode.mode
+            && anchor_collaboration_mode != turn_context.collaboration_mode().mode
         {
             return Ok(RewindContextToAnchorResult::Rejected(
                 ContextRewindRejected::IncompatibleCollaborationMode {
                     anchor_id,
                     anchor_collaboration_mode,
-                    current_collaboration_mode: turn_context.collaboration_mode.mode,
+                    current_collaboration_mode: turn_context.collaboration_mode().mode,
                 },
             ));
         }
@@ -574,7 +574,7 @@ impl Session {
             history_boundary: u64::try_from(self.clone_history().await.raw_items().len())
                 .unwrap_or(u64::MAX),
             created_at: crate::turn_timing::now_unix_timestamp_ms() / 1000,
-            collaboration_mode_kind: Some(turn_context.collaboration_mode.mode),
+            collaboration_mode_kind: Some(turn_context.collaboration_mode().mode),
         };
         self.recompute_token_usage(turn_context).await;
 

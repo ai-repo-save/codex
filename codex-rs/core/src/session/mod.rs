@@ -1705,6 +1705,7 @@ impl Session {
                 TurnAbortedEvent {
                     turn_id: active_turn_id,
                     reason: TurnAbortReason::Interrupted,
+                    started_at: None,
                     completed_at: None,
                     duration_ms: None,
                 },

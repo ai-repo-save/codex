@@ -44,7 +44,8 @@ fn content_items_to_plain_text(content: &[ContentItem]) -> Option<String> {
             }
             ContentItem::InputText { .. }
             | ContentItem::OutputText { .. }
-            | ContentItem::InputImage { .. } => None,
+            | ContentItem::InputImage { .. }
+            | ContentItem::InputAudio { .. } => None,
         })
         .collect::<Vec<_>>();
     (!pieces.is_empty()).then(|| pieces.join("\n"))
