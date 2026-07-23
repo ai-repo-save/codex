@@ -1447,7 +1447,7 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
                 "list_agents",
                 "{}",
             ),
-            ev_completed_with_tokens("resp-child-reminder-1", 2),
+            ev_completed_with_tokens("resp-child-reminder-1", /*total_tokens*/ 2),
         ]),
     )
     .await;

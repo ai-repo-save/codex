@@ -403,7 +403,8 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
 async fn consult_uses_a_fixed_parent_snapshot_without_waking_the_parent() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
-    let (test, _server, requests, result) = run_consult(ConsultOutcome::Advisory, true).await?;
+    let (test, _server, requests, result) =
+        run_consult(ConsultOutcome::Advisory, /*request_local_tool*/ true).await?;
 
     assert_eq!(
         result.get("status"),
@@ -498,7 +499,11 @@ async fn consult_requires_authoritative_parent_without_automatic_escalation() ->
     skip_if_no_network!(Ok(()));
 
     let (_test, _server, requests, result) =
-        run_consult(ConsultOutcome::RequiresAuthoritativeParent, false).await?;
+        run_consult(
+            ConsultOutcome::RequiresAuthoritativeParent,
+            /*request_local_tool*/ false,
+        )
+        .await?;
 
     assert_eq!(
         result.get("status"),
@@ -531,7 +536,10 @@ async fn consult_failure_completes_the_collab_item_with_failed_status() -> Resul
     let server = start_mock_server().await;
     Mock::given(method("POST"))
         .and(path_regex(".*/responses$"))
-        .respond_with(ConsultResponder::new(ConsultOutcome::Invalid, false))
+        .respond_with(ConsultResponder::new(
+            ConsultOutcome::Invalid,
+            /*request_local_tool*/ false,
+        ))
         .mount(&server)
         .await;
     let test = test_codex()
@@ -595,7 +603,7 @@ async fn cancelling_consult_cleans_up_without_consuming_real_agent_capacity() ->
     Mock::given(method("POST"))
         .and(path_regex(".*/responses$"))
         .respond_with(
-            ConsultResponder::new(ConsultOutcome::Advisory, false)
+            ConsultResponder::new(ConsultOutcome::Advisory, /*request_local_tool*/ false)
                 .with_consult_response_delay(Duration::from_secs(30)),
         )
         .mount(&server)

@@ -247,7 +247,7 @@ async fn get_context_usage_tool_returns_usage_snapshot() -> anyhow::Result<()> {
     let seed_response = sse(vec![
         ev_response_created("resp-1"),
         ev_assistant_message("msg-1", "seeded"),
-        ev_completed_with_tokens("resp-1", 34_000),
+        ev_completed_with_tokens("resp-1", /*total_tokens*/ 34_000),
     ]);
     responses::mount_sse_once(&server, seed_response).await;
 
@@ -255,7 +255,7 @@ async fn get_context_usage_tool_returns_usage_snapshot() -> anyhow::Result<()> {
     let tool_response = sse(vec![
         ev_response_created("resp-2"),
         ev_function_call(call_id, "get_context_usage", "{}"),
-        ev_completed_with_tokens("resp-2", 34_000),
+        ev_completed_with_tokens("resp-2", /*total_tokens*/ 34_000),
     ]);
     responses::mount_sse_once(&server, tool_response).await;
 

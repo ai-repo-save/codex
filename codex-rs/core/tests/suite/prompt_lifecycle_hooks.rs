@@ -212,7 +212,7 @@ async fn pre_compact_invalid_prompt_output_fails_open_and_compacts() -> Result<(
     let test = test_codex()
         .with_model(MAIN_MODEL)
         .with_pre_build_hook(|home| {
-            write_prompt_hook(home, "PreCompact", Some("manual"), false)
+            write_prompt_hook(home, "PreCompact", Some("manual"), /*fail_closed*/ false)
                 .expect("write PreCompact prompt hook");
         })
         .with_config(|config| {
@@ -258,7 +258,7 @@ async fn pre_compact_fail_closed_aborts_only_compaction() -> Result<()> {
     let test = test_codex()
         .with_model(MAIN_MODEL)
         .with_pre_build_hook(|home| {
-            write_prompt_hook(home, "PreCompact", Some("manual"), true)
+            write_prompt_hook(home, "PreCompact", Some("manual"), /*fail_closed*/ true)
                 .expect("write PreCompact prompt hook");
         })
         .with_config(|config| {
@@ -327,7 +327,7 @@ async fn session_start_fail_closed_skips_first_sample_and_next_turn_continues() 
     let test = test_codex()
         .with_model(MAIN_MODEL)
         .with_pre_build_hook(|home| {
-            write_prompt_hook(home, "SessionStart", Some("startup"), true)
+            write_prompt_hook(home, "SessionStart", Some("startup"), /*fail_closed*/ true)
                 .expect("write SessionStart prompt hook");
         })
         .with_config(trust_discovered_hooks)
@@ -363,7 +363,12 @@ async fn user_prompt_submit_fail_closed_rejects_only_the_failed_input() -> Resul
     let test = test_codex()
         .with_model(MAIN_MODEL)
         .with_pre_build_hook(|home| {
-            write_prompt_hook(home, "UserPromptSubmit", None, true)
+            write_prompt_hook(
+                home,
+                "UserPromptSubmit",
+                /*matcher*/ None,
+                /*fail_closed*/ true,
+            )
                 .expect("write UserPromptSubmit prompt hook");
         })
         .with_config(trust_discovered_hooks)
@@ -444,7 +449,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_or_prewarm() -
     let test = test_codex()
         .with_model(MAIN_MODEL)
         .with_pre_build_hook(|home| {
-            write_prompt_hook(home, "SubagentStart", Some("default"), true)
+            write_prompt_hook(home, "SubagentStart", Some("default"), /*fail_closed*/ true)
                 .expect("write SubagentStart prompt hook");
         })
         .with_config(|config| {

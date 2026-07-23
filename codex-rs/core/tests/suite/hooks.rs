@@ -3572,7 +3572,7 @@ async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
 
 #[tokio::test]
 async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result<()> {
-    assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(None).await
+    assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(/*reasoning_effort*/ None).await
 }
 
 #[tokio::test]
