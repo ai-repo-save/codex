@@ -82,7 +82,7 @@ pub(crate) async fn run_prompt(
             started,
             Some(0),
             String::new(),
-            None,
+            /*error*/ None,
         ));
     }
     let Some(runner) = runner else {
@@ -136,7 +136,7 @@ pub(crate) async fn run_prompt(
             started,
             Some(0),
             stdout,
-            None,
+            /*error*/ None,
         )),
         Ok(Err(error)) => {
             HandlerRunResult::completed(failed_prompt_run(started_at, started, error.to_string()))
@@ -173,7 +173,13 @@ fn render_prompt(prompt: &str, input_json: &str) -> Result<String, String> {
 }
 
 fn failed_prompt_run(started_at: i64, started: Instant, error: String) -> CommandRunResult {
-    prompt_run_result(started_at, started, None, String::new(), Some(error))
+    prompt_run_result(
+        started_at,
+        started,
+        /*exit_code*/ None,
+        String::new(),
+        Some(error),
+    )
 }
 
 fn prompt_run_result(
