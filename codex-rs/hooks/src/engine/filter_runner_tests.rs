@@ -172,6 +172,7 @@ fn filter_handler(command: String, timeout_sec: u64) -> ConfiguredHandler {
             fail_closed: false,
         },
         status_message: None,
+        additional_context_limit: Default::default(),
         source_path: AbsolutePathBuf::current_dir().expect("current directory"),
         source: HookSource::User,
         display_order: 0,

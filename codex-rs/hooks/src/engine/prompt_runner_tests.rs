@@ -206,6 +206,7 @@ fn prompt_handler(event_name: HookEventName, fail_closed: bool) -> ConfiguredHan
             fail_closed,
         },
         status_message: None,
+        additional_context_limit: Default::default(),
         source_path: codex_utils_absolute_path::AbsolutePathBuf::current_dir().expect("cwd"),
         source: codex_protocol::protocol::HookSource::User,
         display_order: 0,

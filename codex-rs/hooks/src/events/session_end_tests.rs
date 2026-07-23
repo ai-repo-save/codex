@@ -10,6 +10,8 @@ use pretty_assertions::assert_eq;
 use super::parse_completed;
 use super::preview;
 use crate::engine::ConfiguredHandler;
+use crate::engine::ConfiguredHandlerKind;
+use crate::engine::HandlerRunResult;
 use crate::engine::command_runner::CommandRunResult;
 
 #[test]
@@ -42,7 +44,7 @@ fn session_end_matches_other_reason() {
 fn session_end_ignores_successful_output() {
     let completed = parse_completed(
         &handler(/*matcher*/ None),
-        CommandRunResult {
+        HandlerRunResult::completed(CommandRunResult {
             started_at: 1,
             completed_at: 2,
             duration_ms: 1,
@@ -50,7 +52,7 @@ fn session_end_ignores_successful_output() {
             stdout: r#"{"continue":false,"decision":"block","reason":"ignored"}"#.to_string(),
             stderr: String::new(),
             error: None,
-        },
+        }),
         /*turn_id*/ None,
     );
 
@@ -62,8 +64,10 @@ fn handler(matcher: Option<&str>) -> ConfiguredHandler {
     ConfiguredHandler {
         event_name: HookEventName::SessionEnd,
         matcher: matcher.map(str::to_string),
-        command: "echo hook".to_string(),
-        timeout_sec: 2,
+        kind: ConfiguredHandlerKind::Command {
+            command: "echo hook".to_string(),
+            timeout_sec: 2,
+        },
         status_message: None,
         additional_context_limit: Default::default(),
         source_path: test_path_buf("/tmp/hooks.json").abs(),

@@ -304,6 +304,7 @@ fn handler(kind: ConfiguredHandlerKind) -> ConfiguredHandler {
         matcher: None,
         kind,
         status_message: None,
+        additional_context_limit: Default::default(),
         source_path: codex_utils_absolute_path::AbsolutePathBuf::current_dir().expect("cwd"),
         source: HookSource::User,
         display_order: 0,
