@@ -1657,7 +1657,7 @@ async fn multi_agent_v2_parent_reply_failure_emits_resolved_target_activity() {
     session
         .services
         .agent_control
-        .register_session_root(root.thread_id, None);
+        .register_session_root(root.thread_id, /*current_parent_thread_id*/ None);
 
     let child_path = AgentPath::try_from("/root/worker").expect("agent path");
     let child_thread_id = session
@@ -1973,7 +1973,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
                     internal_chat_message_metadata_passthrough: None,
                 },
             ],
-            None,
+            /*reference_context_item*/ None,
         )
         .await;
 
@@ -2048,7 +2048,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
                     internal_chat_message_metadata_passthrough: None,
                 })
                 .collect(),
-            None,
+            /*reference_context_item*/ None,
         )
         .await;
     let capped_output = InspectAgentHandlerV2

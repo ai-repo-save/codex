@@ -2517,7 +2517,10 @@ async fn record_token_usage_info_adds_context_reminder_when_percent_threshold_cr
     configure_context_reminder_test_window(&mut turn_context);
 
     session
-        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(85_920)))
+        .record_token_usage_info(
+            &turn_context,
+            Some(&context_reminder_test_usage(/*total_tokens*/ 85_920)),
+        )
         .await
         .expect("record token usage");
     assert_eq!(
@@ -2526,12 +2529,15 @@ async fn record_token_usage_info_adds_context_reminder_when_percent_threshold_cr
     );
 
     session
-        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
+        .record_token_usage_info(
+            &turn_context,
+            Some(&context_reminder_test_usage(/*total_tokens*/ 86_800)),
+        )
         .await
         .expect("record token usage");
 
     assert_eq!(
-        vec![default_context_reminder(Some(15), 86_800)],
+        vec![default_context_reminder(Some(15), /*used_tokens*/ 86_800)],
         context_reminder_texts(&session, &turn_context).await
     );
 }
@@ -2551,7 +2557,10 @@ async fn record_token_usage_info_renders_all_configured_context_reminder_values(
     turn_context.config = Arc::new(config);
 
     session
-        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
+        .record_token_usage_info(
+            &turn_context,
+            Some(&context_reminder_test_usage(/*total_tokens*/ 86_800)),
+        )
         .await
         .expect("record token usage");
 
@@ -2571,16 +2580,22 @@ async fn record_token_usage_info_uses_one_crossing_for_percent_or_absolute_thres
     turn_context.config = Arc::new(config);
 
     session
-        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(80_000)))
+        .record_token_usage_info(
+            &turn_context,
+            Some(&context_reminder_test_usage(/*total_tokens*/ 80_000)),
+        )
         .await
         .expect("record token usage");
     session
-        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
+        .record_token_usage_info(
+            &turn_context,
+            Some(&context_reminder_test_usage(/*total_tokens*/ 86_800)),
+        )
         .await
         .expect("record token usage");
 
     assert_eq!(
-        vec![default_context_reminder(Some(23), 80_000)],
+        vec![default_context_reminder(Some(23), /*used_tokens*/ 80_000)],
         context_reminder_texts(&session, &turn_context).await
     );
 }
@@ -2595,22 +2610,31 @@ async fn record_token_usage_info_repeats_after_both_thresholds_recover() {
     turn_context.config = Arc::new(config);
 
     session
-        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
+        .record_token_usage_info(
+            &turn_context,
+            Some(&context_reminder_test_usage(/*total_tokens*/ 86_800)),
+        )
         .await
         .expect("record token usage");
     session
-        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(84_000)))
+        .record_token_usage_info(
+            &turn_context,
+            Some(&context_reminder_test_usage(/*total_tokens*/ 84_000)),
+        )
         .await
         .expect("record token usage");
     session
-        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(86_800)))
+        .record_token_usage_info(
+            &turn_context,
+            Some(&context_reminder_test_usage(/*total_tokens*/ 86_800)),
+        )
         .await
         .expect("record token usage");
 
     assert_eq!(
         vec![
-            default_context_reminder(Some(15), 86_800),
-            default_context_reminder(Some(15), 86_800),
+            default_context_reminder(Some(15), /*used_tokens*/ 86_800),
+            default_context_reminder(Some(15), /*used_tokens*/ 86_800),
         ],
         context_reminder_texts(&session, &turn_context).await
     );
@@ -2638,12 +2662,12 @@ async fn record_token_usage_info_adds_context_reminder_for_subagents_but_not_whe
     subagent_session
         .record_token_usage_info(
             &subagent_turn_context,
-            Some(&context_reminder_test_usage(86_800)),
+            Some(&context_reminder_test_usage(/*total_tokens*/ 86_800)),
         )
         .await
         .expect("record token usage");
     assert_eq!(
-        vec![default_context_reminder(Some(15), 86_800)],
+        vec![default_context_reminder(Some(15), /*used_tokens*/ 86_800)],
         context_reminder_texts(&subagent_session, &subagent_turn_context).await
     );
 
@@ -2657,7 +2681,7 @@ async fn record_token_usage_info_adds_context_reminder_for_subagents_but_not_whe
     disabled_session
         .record_token_usage_info(
             &disabled_turn_context,
-            Some(&context_reminder_test_usage(86_800)),
+            Some(&context_reminder_test_usage(/*total_tokens*/ 86_800)),
         )
         .await
         .expect("record token usage");
@@ -2684,7 +2708,10 @@ async fn record_token_usage_info_uses_absolute_threshold_without_known_context_w
     turn_context.config = Arc::new(config);
 
     session
-        .record_token_usage_info(&turn_context, Some(&context_reminder_test_usage(80_000)))
+        .record_token_usage_info(
+            &turn_context,
+            Some(&context_reminder_test_usage(/*total_tokens*/ 80_000)),
+        )
         .await
         .expect("record token usage");
 
