@@ -4079,7 +4079,7 @@ impl ThreadRequestProcessor {
             app_server_client_name,
             app_server_client_version,
             supports_openai_form_elicitation,
-            None,
+            /*source_history_override*/ None,
         )
         .await
     }
