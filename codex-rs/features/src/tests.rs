@@ -466,6 +466,7 @@ usage_hint_enabled = false
             multi_agent_mode_hint_text: None,
             tool_namespace: None,
             hide_spawn_agent_metadata: None,
+            expose_spawn_agent_model_overrides: None,
             non_code_mode_only: None,
             encrypt_messages: None,
         }))
