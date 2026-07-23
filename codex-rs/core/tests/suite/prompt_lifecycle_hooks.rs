@@ -457,7 +457,11 @@ async fn subagent_start_fail_closed_errors_child_without_sampling() -> Result<()
         _ => None,
     })
     .await;
-    assert_eq!(child_error.codex_error_info, Some(CodexErrorInfo::Other));
+    assert_eq!(
+        child_error.codex_error_info,
+        Some(CodexErrorInfo::Other),
+        "unexpected child error: {child_error:?}"
+    );
     assert!(matches!(
         child.agent_status().await,
         AgentStatus::Errored(_)
@@ -487,7 +491,10 @@ async fn subagent_start_fail_closed_errors_child_without_sampling() -> Result<()
             })
         })
         .count();
-    assert_eq!(evaluator_request_count, 1);
+    assert_eq!(
+        evaluator_request_count, 1,
+        "unexpected child error: {child_error:?}"
+    );
     assert_eq!(child_main_request_count, 0);
     Ok(())
 }
