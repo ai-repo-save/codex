@@ -256,6 +256,7 @@ fn preserves_all_buckets_and_backend_strings() {
                 remaining_percent: 50,
                 resets_at: 1,
             }),
+            spend_control_reached: None,
             plan_type: None,
             rate_limit_reached_type: None,
         })

@@ -3256,6 +3256,7 @@ async fn guardian_review_session_config_uses_full_auto_review_prompt_override() 
         /*live_network_config*/ None,
         "active-model",
         /*reasoning_effort*/ None,
+        /*model_messages*/ None,
     )
     .expect("guardian config");
 

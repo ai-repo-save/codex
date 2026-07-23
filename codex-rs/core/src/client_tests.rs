@@ -344,7 +344,7 @@ async fn isolated_session_uses_one_http_attempt_without_websocket_fallback() {
         .await;
     let client = isolated_test_client(&server);
     let mut model_info = test_model_info();
-    model_info.supports_reasoning_summaries = true;
+    model_info.supports_reasoning_summary_parameter = true;
 
     send_isolated_test_request(&client, &model_info, /*effort*/ None).await;
 
@@ -404,6 +404,7 @@ async fn isolated_stream_uses_independent_telemetry_and_preserves_completed_usag
     let usage = TokenUsage {
         input_tokens: 3,
         cached_input_tokens: 1,
+        cache_write_input_tokens: 0,
         output_tokens: 5,
         reasoning_output_tokens: 2,
         total_tokens: 9,
