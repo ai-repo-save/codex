@@ -71,7 +71,7 @@ impl MemoryMutation {
             scope,
             MemoryMutationStatus::InProgress,
             title,
-            None,
+            /*path*/ None,
             first_non_empty_line_preview(note),
         )
     }
@@ -82,9 +82,9 @@ impl MemoryMutation {
             MemoryMutationAction::Delete,
             scope,
             MemoryMutationStatus::InProgress,
-            None,
+            /*title*/ None,
             Some(path),
-            None,
+            /*preview*/ None,
         )
     }
 
