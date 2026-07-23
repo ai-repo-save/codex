@@ -2722,7 +2722,11 @@ async fn approval_review_route_prompt_runs_only_for_needs_approval() -> Result<(
     fs::write(&marker, "seed").context("create approval review route marker")?;
     let approval_command = format!("rm -f {}", marker.display());
     let skip_command = "printf route-skip";
-    let approval_args = serde_json::json!({ "command": approval_command });
+    let approval_args = serde_json::json!({
+        "command": approval_command,
+        "sandbox_permissions": "require_escalated",
+        "justification": "remove the test-owned approval route marker",
+    });
     let skip_args = serde_json::json!({ "command": skip_command });
     let route_output = serde_json::json!({
         "hookSpecificOutput": {
@@ -2847,35 +2851,12 @@ async fn approval_review_route_prompt_runs_only_for_needs_approval() -> Result<(
         .with_config(trust_discovered_hooks);
     let test = builder.build(&server).await?;
 
-    match timeout(
-        Duration::from_secs(5),
-        test.submit_turn_with_approval_and_permission_profile(
-            approval_turn_prompt,
-            AskForApproval::OnRequest,
-            PermissionProfile::Disabled,
-        ),
+    test.submit_turn_with_approval_and_permission_profile(
+        approval_turn_prompt,
+        AskForApproval::OnRequest,
+        PermissionProfile::Disabled,
     )
-    .await
-    {
-        Ok(result) => result?,
-        Err(error) => {
-            let requests = server.received_requests().await.unwrap_or_default();
-            let summaries = requests
-                .iter()
-                .filter_map(decoded_request_body)
-                .map(|body| {
-                    serde_json::json!({
-                        "model": body["model"],
-                        "subagent": body["client_metadata"]["x-openai-subagent"],
-                        "generate": body.get("generate"),
-                        "has_approval_call_id": body.to_string().contains(approval_call_id),
-                        "has_approval_prompt": body.to_string().contains(approval_turn_prompt),
-                    })
-                })
-                .collect::<Vec<_>>();
-            panic!("approval route timed out: {error}; requests: {summaries:#?}");
-        }
-    }
+    .await?;
     test.submit_turn_with_approval_and_permission_profile(
         skip_turn_prompt,
         AskForApproval::OnRequest,
