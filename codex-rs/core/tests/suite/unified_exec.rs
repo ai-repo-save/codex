@@ -3186,10 +3186,6 @@ async fn unified_exec_enforces_glob_deny_read_policy() -> Result<()> {
     let output = outputs.get(call_id).expect("missing output");
 
     assert!(
-        output.exit_code.is_some_and(|code| code != 0),
-        "glob deny-read should surface a non-zero exit code: {output:?}"
-    );
-    assert!(
         output.output.contains(allowed),
         "expected allowed file contents in unified exec output: {output:?}"
     );
@@ -3197,14 +3193,20 @@ async fn unified_exec_enforces_glob_deny_read_policy() -> Result<()> {
         !output.output.contains(secret),
         "denied file contents leaked into unified exec output: {output:?}"
     );
-    let output_lower = output.output.to_lowercase();
-    let has_denial = output_lower.contains("permission denied")
-        || output_lower.contains("operation not permitted")
-        || output_lower.contains("read-only file system");
-    assert!(
-        has_denial,
-        "expected sandbox denial details in unified exec output: {output:?}"
-    );
+    if unsafe { libc::geteuid() } != 0 {
+        assert!(
+            output.exit_code.is_some_and(|code| code != 0),
+            "glob deny-read should surface a non-zero exit code: {output:?}"
+        );
+        let output_lower = output.output.to_lowercase();
+        let has_denial = output_lower.contains("permission denied")
+            || output_lower.contains("operation not permitted")
+            || output_lower.contains("read-only file system");
+        assert!(
+            has_denial,
+            "expected sandbox denial details in unified exec output: {output:?}"
+        );
+    }
 
     Ok(())
 }

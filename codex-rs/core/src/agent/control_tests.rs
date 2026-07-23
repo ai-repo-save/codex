@@ -1268,8 +1268,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
     let mut parent_config = harness.config.clone();
     let _ = parent_config.features.enable(Feature::MultiAgentV2);
     parent_config.developer_instructions = Some("You are /root.".to_string());
-    parent_config.multi_agent_v2.root_agent_usage_hint_text =
-        Some("Parent root guidance.".to_string());
+    parent_config.multi_agent_v2.root_agent_usage_hint_text = Some("You are /root.".to_string());
     parent_config.multi_agent_v2.subagent_usage_hint_text =
         Some("Parent subagent guidance.".to_string());
     let mut child_config = harness.config.clone();
@@ -1415,7 +1414,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
     assert_eq!(
         history.raw_items(),
         &expected_history,
-        "full-history forked child history should preserve parent developer prefix and append child identity after the child subagent hint"
+        "full-history forked child history should strip the parent identity and append the child identity after the child subagent hint"
     );
     assert_eq!(
         serde_json::to_value(child_thread.session.reference_context_item().await)

@@ -147,7 +147,7 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
             description: "1.5x speed, increased usage".to_string(),
         }],
     )];
-    picker_visible_models.extend((1..=5).map(|index| {
+    picker_visible_models.extend((1..=3).map(|index| {
         test_model_info(
             &format!("filler-model-{index}"),
             &format!("Filler Model {index}"),
@@ -223,7 +223,11 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
             config.multi_agent_v2.hide_spawn_agent_metadata = false;
         });
     let test = builder.build(&server).await?;
-    wait_for_model_available(&test.thread_manager.get_models_manager(), "visible-model").await;
+    wait_for_model_available(
+        &test.thread_manager.get_models_manager(),
+        "gpt-5.3-codex-spark",
+    )
+    .await;
 
     test.submit_turn("hello").await?;
 
@@ -264,7 +268,7 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
         description.contains(
             "- `gpt-5.3-codex-spark`: Ultra-fast coding model. Reasoning efforts: low, medium, high (default), xhigh. Service tier override is not supported."
         ),
-        "expected seventh picker-visible Spark model and unsupported service tier override guidance in spawn_agent description: {description:?}"
+        "expected picker-visible Spark model and unsupported service tier override guidance in spawn_agent description: {description:?}"
     );
     assert!(
         !description.contains("hidden-model"),

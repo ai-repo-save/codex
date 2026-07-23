@@ -336,10 +336,9 @@ pub(crate) async fn handle_output_item_done(
             let rewinds_context_to_anchor = call.tool_name.namespace.is_none()
                 && call.tool_name.name == REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME;
             let tool_runtime = ctx.tool_runtime.clone();
+            let response_future = tool_runtime.handle_tool_call(call, cancellation_token);
             let tool_future: InFlightFuture<'static> = Box::pin(async move {
-                let response = tool_runtime
-                    .handle_tool_call(call, cancellation_token)
-                    .await?;
+                let response = response_future.await?;
                 if requests_context_compaction && response_input_succeeded(&response) {
                     Ok(InFlightToolOutput::RequestContextCompaction(response))
                 } else if saves_context_anchor && response_input_succeeded(&response) {
