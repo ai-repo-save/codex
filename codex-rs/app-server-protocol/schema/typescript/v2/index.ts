@@ -444,7 +444,6 @@ export type { ThreadHistoryMode } from "./ThreadHistoryMode";
 export type { ThreadInjectItemsParams } from "./ThreadInjectItemsParams";
 export type { ThreadInjectItemsResponse } from "./ThreadInjectItemsResponse";
 export type { ThreadItem } from "./ThreadItem";
-export type { ThreadItemEntry } from "./ThreadItemEntry";
 export type { ThreadListParams } from "./ThreadListParams";
 export type { ThreadListResponse } from "./ThreadListResponse";
 export type { ThreadLoadedListParams } from "./ThreadLoadedListParams";
