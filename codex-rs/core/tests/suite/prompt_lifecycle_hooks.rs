@@ -475,7 +475,6 @@ async fn subagent_start_fail_closed_errors_child_without_sampling() -> Result<()
         .filter(|request| {
             request_body(request).is_some_and(|body| {
                 body["model"] == json!(EVALUATOR_MODEL)
-                    && request_header(request, "x-codex-window-id") == Some("prompt-hook")
                     && body
                         .get("tools")
                         .is_none_or(|tools| tools.as_array().is_some_and(Vec::is_empty))
