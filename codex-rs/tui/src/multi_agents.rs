@@ -1165,20 +1165,20 @@ mod tests {
             sub_agent_activity_item(
                 "activity-started",
                 SubAgentActivityKind::Started,
-                None,
-                None,
+                /*operation*/ None,
+                /*outcome*/ None,
             ),
             sub_agent_activity_item(
                 "activity-interacted",
                 SubAgentActivityKind::Interacted,
-                None,
-                None,
+                /*operation*/ None,
+                /*outcome*/ None,
             ),
             sub_agent_activity_item(
                 "activity-interrupted",
                 SubAgentActivityKind::Interrupted,
-                None,
-                None,
+                /*operation*/ None,
+                /*outcome*/ None,
             ),
             sub_agent_activity_item(
                 "activity-send-message",

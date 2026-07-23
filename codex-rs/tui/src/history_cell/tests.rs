@@ -295,7 +295,7 @@ fn skill_load_cell_renders_completed_skill_name_and_path() {
         "test-quality".to_string(),
         Some(path.clone()),
         codex_app_server_protocol::SkillLoadStatus::Completed,
-        None,
+        /*error*/ None,
     );
 
     assert_eq!(
@@ -318,9 +318,9 @@ fn skill_load_cell_renders_completed_skill_name_and_path() {
 fn skill_load_cell_renders_failed_skill_error() {
     let cell = new_skill_load(
         "missing".to_string(),
-        None,
+        /*path*/ None,
         codex_app_server_protocol::SkillLoadStatus::Failed,
-        Some("skill `missing` was not found in the available skills list".to_string()),
+        /*error*/ Some("skill `missing` was not found in the available skills list".to_string()),
     );
 
     assert_eq!(

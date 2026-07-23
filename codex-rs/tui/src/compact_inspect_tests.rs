@@ -78,7 +78,10 @@ fn write_latest_compaction_report_preserves_absent_replacement_history() {
     let rollout_path = temp_dir.path().join("rollout.jsonl");
     fs::write(
         &rollout_path,
-        rollout_line(RolloutItem::Compacted(compacted("summary only", None))),
+        rollout_line(RolloutItem::Compacted(compacted(
+            "summary only",
+            /*replacement_history*/ None,
+        ))),
     )
     .expect("write rollout");
     let latest = read_latest_compaction(&rollout_path).expect("latest compaction");

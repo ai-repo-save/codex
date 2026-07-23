@@ -490,7 +490,7 @@ mod tests {
             thread_id, /*agent_nickname*/ None, /*agent_role*/ None,
             /*is_closed*/ false,
         );
-        state.set_running(thread_id, true);
+        state.set_running(thread_id, /*is_running*/ true);
 
         for agent_path in ["/root/send", "/root/inspect"] {
             state.record_sub_agent_activity(SubAgentActivityDisplay {
