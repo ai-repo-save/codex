@@ -7,27 +7,14 @@ import type { AskForApproval } from "./AskForApproval";
 import type { SandboxMode } from "./SandboxMode";
 import type { ThreadSource } from "./ThreadSource";
 
-export type ThreadResetContextParams = { threadId: string,
-/**
+export type ThreadResetContextParams = {threadId: string, /**
  * Configuration overrides for the reset thread, if any.
  */
-model?: string | null, modelProvider?: string | null, serviceTier?: string | null | null, cwd?: string | null,
-/**
- * Replace the thread's runtime workspace roots. Relative paths are
- * resolved against the effective cwd for the thread.
- */
-runtimeWorkspaceRoots?: Array<string> | null, approvalPolicy?: AskForApproval | null,
-/**
+model?: string | null, modelProvider?: string | null, serviceTier?: string | null | null, cwd?: string | null, approvalPolicy?: AskForApproval | null, /**
  * Override where approval requests are routed for review on this thread
  * and subsequent turns.
  */
-approvalsReviewer?: ApprovalsReviewer | null, sandbox?: SandboxMode | null,
-/**
- * Named profile id for the reset thread. Cannot be combined with
- * `sandbox`.
- */
-permissions?: string | null, config?: { [key in string]?: JsonValue } | null, baseInstructions?: string | null, developerInstructions?: string | null, ephemeral?: boolean,
-/**
+approvalsReviewer?: ApprovalsReviewer | null, sandbox?: SandboxMode | null, config?: { [key in string]?: JsonValue } | null, baseInstructions?: string | null, developerInstructions?: string | null, ephemeral?: boolean, /**
  * Optional client-supplied analytics source classification for this reset thread.
  */
-threadSource?: ThreadSource | null, };
+threadSource?: ThreadSource | null};

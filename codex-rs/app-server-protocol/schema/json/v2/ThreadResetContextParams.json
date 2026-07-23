@@ -134,23 +134,6 @@
         "null"
       ]
     },
-    "permissions": {
-      "description": "Named profile id for the reset thread. Cannot be combined with `sandbox`.",
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "runtimeWorkspaceRoots": {
-      "description": "Replace the thread's runtime workspace roots. Relative paths are resolved against the effective cwd for the thread.",
-      "items": {
-        "type": "string"
-      },
-      "type": [
-        "array",
-        "null"
-      ]
-    },
     "sandbox": {
       "anyOf": [
         {
