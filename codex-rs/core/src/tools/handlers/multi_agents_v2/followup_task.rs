@@ -45,7 +45,7 @@ impl Handler {
             MessageDeliveryMode::TriggerTurn,
             args.target,
             args.message,
-            None,
+            /*in_reply_to*/ None,
         )
         .await
         .map(boxed_tool_output)

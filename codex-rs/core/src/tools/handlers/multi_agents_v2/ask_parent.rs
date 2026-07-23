@@ -99,7 +99,7 @@ impl Handler {
             parent_ref.clone(),
             &question,
             AskParentMode::Authoritative,
-            None,
+            /*snapshot_revision*/ None,
         )
         .await;
         if let Err(err) = session
@@ -118,7 +118,7 @@ impl Handler {
                 parent_ref,
                 &question,
                 AskParentMode::Authoritative,
-                None,
+                /*snapshot_revision*/ None,
             )
             .await;
             return Err(collab_agent_error(parent_thread_id, err));
@@ -161,7 +161,7 @@ impl Handler {
                 parent_ref,
                 &question,
                 AskParentMode::Authoritative,
-                None,
+                /*snapshot_revision*/ None,
             )
             .await;
             return Err(collab_agent_error(parent_thread_id, err));
@@ -196,7 +196,7 @@ impl Handler {
                     parent_ref,
                     &question,
                     AskParentMode::Authoritative,
-                    None,
+                    /*snapshot_revision*/ None,
                 )
                 .await;
                 return Err(FunctionCallError::RespondToModel(
@@ -223,7 +223,7 @@ impl Handler {
             parent_ref,
             &question,
             AskParentMode::Authoritative,
-            None,
+            /*snapshot_revision*/ None,
         )
         .await;
         Ok(boxed_tool_output(AskParentResult {
@@ -262,7 +262,7 @@ impl Handler {
             parent_ref.clone(),
             &question,
             AskParentMode::Consult,
-            None,
+            /*snapshot_revision*/ None,
         )
         .await;
         let loaded_parent = match session
@@ -283,7 +283,7 @@ impl Handler {
                     parent_ref,
                     &question,
                     AskParentMode::Consult,
-                    None,
+                    /*snapshot_revision*/ None,
                 )
                 .await;
                 return Ok(boxed_tool_output(AskParentResult {
@@ -320,7 +320,7 @@ impl Handler {
                     parent_ref,
                     &question,
                     AskParentMode::Consult,
-                    None,
+                    /*snapshot_revision*/ None,
                 )
                 .await;
                 return Err(error);
