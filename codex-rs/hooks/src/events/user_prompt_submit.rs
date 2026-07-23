@@ -122,16 +122,16 @@ pub(crate) async fn run(
     )
     .await;
 
-    let mut outcome = outcome_from_results(results);
+    let (mut outcome, additional_contexts_for_model) = outcome_from_results(results);
     outcome.additional_contexts = output_spiller
-        .maybe_spill_additional_contexts(session_id, outcome.additional_contexts)
+        .maybe_spill_additional_contexts(session_id, additional_contexts_for_model)
         .await;
     outcome
 }
 
 fn outcome_from_results(
     results: Vec<dispatcher::ParsedHandler<UserPromptSubmitHandlerData>>,
-) -> UserPromptSubmitOutcome {
+) -> (UserPromptSubmitOutcome, Vec<AdditionalContext>) {
     let should_stop = results.iter().any(|result| result.data.should_stop);
     let stop_reason = results
         .iter()
@@ -141,12 +141,15 @@ fn outcome_from_results(
             .iter()
             .map(|result| result.data.additional_contexts_for_model.as_slice()),
     );
-    UserPromptSubmitOutcome {
-        hook_events: results.into_iter().map(|result| result.completed).collect(),
-        should_stop,
-        stop_reason,
+    (
+        UserPromptSubmitOutcome {
+            hook_events: results.into_iter().map(|result| result.completed).collect(),
+            should_stop,
+            stop_reason,
+            additional_contexts: Vec::new(),
+        },
         additional_contexts,
-    }
+    )
 }
 
 fn parse_completed(
@@ -549,7 +552,7 @@ mod tests {
         };
 
         assert_eq!(
-            outcome_from_results(vec![fail_open]),
+            outcome_from_results(vec![fail_open]).0,
             UserPromptSubmitOutcome {
                 hook_events: vec![expected_event.clone()],
                 should_stop: false,
@@ -558,7 +561,7 @@ mod tests {
             }
         );
         assert_eq!(
-            outcome_from_results(vec![fail_closed]),
+            outcome_from_results(vec![fail_closed]).0,
             UserPromptSubmitOutcome {
                 hook_events: vec![expected_event],
                 should_stop: true,
@@ -582,7 +585,10 @@ mod tests {
             UserPromptSubmitHandlerData {
                 should_stop: false,
                 stop_reason: None,
-                additional_contexts_for_model: vec!["additional context".to_string()],
+                additional_contexts_for_model: vec![AdditionalContext {
+                    text: "additional context".to_string(),
+                    limit: Default::default(),
+                }],
             }
         );
     }

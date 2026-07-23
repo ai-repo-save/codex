@@ -21,7 +21,7 @@ pub use events::approval_review_route::ApprovalReviewRouteOutcome;
 pub use events::approval_review_route::ApprovalReviewRouteRequest;
 pub use events::common::SubagentHookContext;
 /// Hook event names as they appear in hooks JSON and config files.
-pub const HOOK_EVENT_NAMES: [&str; 11] = [
+pub const HOOK_EVENT_NAMES: [&str; 12] = [
     "PreToolUse",
     "PermissionRequest",
     "ApprovalReviewRoute",
@@ -41,7 +41,7 @@ pub const HOOK_EVENT_NAMES: [&str; 11] = [
 /// Other events can appear in hooks JSON, but Codex ignores their matcher
 /// fields because those events do not dispatch against a tool, compaction
 /// trigger, session-start source, or session-end reason.
-pub const HOOK_EVENT_NAMES_WITH_MATCHERS: [&str; 9] = [
+pub const HOOK_EVENT_NAMES_WITH_MATCHERS: [&str; 10] = [
     "PreToolUse",
     "PermissionRequest",
     "ApprovalReviewRoute",

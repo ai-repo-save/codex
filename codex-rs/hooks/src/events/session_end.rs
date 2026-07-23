@@ -12,7 +12,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
-use crate::engine::command_runner::CommandRunResult;
+use crate::engine::HandlerRunResult;
 use crate::engine::dispatcher;
 use crate::schema::NullableString;
 use crate::schema::SessionEndCommandInput;
@@ -81,11 +81,14 @@ pub(crate) async fn run(
     };
 
     let results = dispatcher::execute_handlers(
-        shell,
         matched,
         input_json,
-        request.cwd.as_path(),
-        Some(request.turn_id),
+        dispatcher::HandlerExecutionContext {
+            shell,
+            prompt_runner: None,
+            cwd: request.cwd.as_path(),
+            turn_id: Some(request.turn_id),
+        },
         parse_completed,
     )
     .await;
@@ -96,7 +99,7 @@ pub(crate) async fn run(
 
 fn parse_completed(
     handler: &ConfiguredHandler,
-    run_result: CommandRunResult,
+    run_result: HandlerRunResult,
     turn_id: Option<String>,
 ) -> dispatcher::ParsedHandler<()> {
     let (status, entries) = match (run_result.error.as_deref(), run_result.exit_code) {
@@ -128,7 +131,7 @@ fn parse_completed(
     dispatcher::ParsedHandler {
         completed: HookCompletedEvent {
             turn_id,
-            run: dispatcher::completed_summary(handler, &run_result, status, entries),
+            run: dispatcher::completed_summary(handler, run_result.run_result(), status, entries),
         },
         data: (),
         completion_order: 0,

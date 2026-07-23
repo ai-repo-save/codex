@@ -108,6 +108,7 @@ pub(crate) async fn run_prompt(
         HookEventName::UserPromptSubmit => schemas.user_prompt_submit_command_output.clone(),
         HookEventName::SubagentStart => schemas.subagent_start_command_output.clone(),
         HookEventName::PostToolUse
+        | HookEventName::SessionEnd
         | HookEventName::SubagentStop
         | HookEventName::PostCompact
         | HookEventName::Stop => {
