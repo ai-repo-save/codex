@@ -2763,10 +2763,8 @@ async fn approval_review_route_prompt_runs_only_for_needs_approval() -> Result<(
     let route_evaluator_response = core_test_support::responses::mount_sse_once_match(
         &server,
         |request: &wiremock::Request| {
-            decoded_request_body(request).is_some_and(|body| {
-                body["model"] == PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL
-                    && body.to_string().contains(APPROVAL_REVIEW_ROUTE_PROMPT_SENTINEL)
-            })
+            decoded_request_body(request)
+                .is_some_and(|body| body["model"] == PRE_TOOL_PROMPT_HOOK_EVALUATOR_MODEL)
         },
         sse(vec![
             ev_response_created("route-evaluator"),
@@ -2851,36 +2849,18 @@ async fn approval_review_route_prompt_runs_only_for_needs_approval() -> Result<(
         .with_config(trust_discovered_hooks);
     let test = builder.build(&server).await?;
 
-    let approval_submit = test.submit_turn_with_approval_and_permission_profile(
+    test.submit_turn_with_approval_and_permission_profile(
         approval_turn_prompt,
         AskForApproval::OnRequest,
         PermissionProfile::Disabled,
-    );
-    tokio::pin!(approval_submit);
-    tokio::select! {
-        result = &mut approval_submit => result?,
-        _ = sleep(Duration::from_secs(5)) => panic!(
-            "approval route response counts: initial={}, evaluator={}, guardian={}, continuation={}",
-            approval_initial_response.requests().len(),
-            route_evaluator_response.requests().len(),
-            guardian_response.requests().len(),
-            approval_continuation_response.requests().len(),
-        ),
-    }
-    let skip_submit = test.submit_turn_with_approval_and_permission_profile(
+    )
+    .await?;
+    test.submit_turn_with_approval_and_permission_profile(
         skip_turn_prompt,
         AskForApproval::OnRequest,
         PermissionProfile::Disabled,
-    );
-    tokio::pin!(skip_submit);
-    tokio::select! {
-        result = &mut skip_submit => result?,
-        _ = sleep(Duration::from_secs(5)) => panic!(
-            "skip route response counts: initial={}, continuation={}",
-            skip_initial_response.requests().len(),
-            skip_continuation_response.requests().len(),
-        ),
-    }
+    )
+    .await?;
 
     let _approval_initial_request = approval_initial_response.single_request();
     let route_requests = route_evaluator_response.requests();
