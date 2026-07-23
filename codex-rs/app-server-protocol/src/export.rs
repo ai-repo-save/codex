@@ -3083,7 +3083,6 @@ permissionProfile?: string | null};
             "RemoteControlClientsListResponse.json",
             "RemoteControlClientsRevokeParams.json",
             "RemoteControlClientsRevokeResponse.json",
-            "ThreadItemEntry.json",
         ] {
             assert!(output_dir.join("v2").join(schema).exists());
         }

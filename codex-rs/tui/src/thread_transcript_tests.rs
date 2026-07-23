@@ -36,6 +36,7 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
         agent_role: None,
         git_info: None,
         name: None,
+        can_accept_direct_input: None,
         turns: vec![Turn {
             id: "turn-1".to_string(),
             items_view: TurnItemsView::Full,
@@ -81,7 +82,11 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
         }],
     };
 
-    let rendered = thread_to_transcript_cells(&thread, RawReasoningVisibility::Hidden)
+    let rendered = thread_to_transcript_cells(
+        thread,
+        RawReasoningVisibility::Hidden,
+        /*codex_home*/ None,
+    )
         .into_iter()
         .flat_map(|cell| cell.transcript_lines(/*width*/ 80))
         .map(|line| line.to_string())
