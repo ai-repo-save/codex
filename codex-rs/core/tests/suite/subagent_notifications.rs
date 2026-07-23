@@ -74,7 +74,6 @@ const V2_REQUESTED_MODEL: &str = "gpt-5.6-sol";
 const V2_REQUESTED_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::Low;
 const ROLE_MODEL: &str = "gpt-5.4";
 const ROLE_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::High;
-const ACTIVITY_REQUESTED_MODEL: &str = "gpt-5.4-mini";
 const SUBAGENT_START_CONTEXT: &str = "subagent start context reaches child";
 const SUBAGENT_STOP_CONTINUATION: &str = "continue only the child";
 const INTERNAL_SUBAGENT_PROMPT: &str = "internal subagent: review";
@@ -1895,7 +1894,7 @@ async fn spawn_agent_started_activity_uses_role_effective_model_and_reasoning_ef
         "message": CHILD_PROMPT,
         "task_name": "worker",
         "agent_type": "custom",
-        "model": ACTIVITY_REQUESTED_MODEL,
+        "model": V2_REQUESTED_MODEL,
         "reasoning_effort": REQUESTED_REASONING_EFFORT,
         "fork_turns": "none",
     }))?;
@@ -1951,7 +1950,7 @@ async fn spawn_agent_started_activity_uses_role_effective_model_and_reasoning_ef
             std::fs::write(
                 &role_path,
                 format!(
-                    "model = \"{ROLE_MODEL}\"\nmodel_reasoning_effort = \"{ROLE_REASONING_EFFORT}\"\n",
+                    "model = \"{V2_DEFAULT_MODEL}\"\nmodel_reasoning_effort = \"{ROLE_REASONING_EFFORT}\"\n",
                 ),
             )
             .expect("write role config");
@@ -2019,7 +2018,7 @@ async fn spawn_agent_started_activity_uses_role_effective_model_and_reasoning_ef
             kind: SubAgentActivityKind::Started,
             operation: None,
             outcome: None,
-            model: Some(ROLE_MODEL.to_string()),
+            model: Some(V2_DEFAULT_MODEL.to_string()),
             reasoning_effort: Some(ROLE_REASONING_EFFORT),
         }],
     );
