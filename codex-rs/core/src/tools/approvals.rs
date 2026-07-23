@@ -1,10 +1,10 @@
 //! Central approval policy-stage execution and reviewer routing.
 
+use crate::guardian::GuardianReviewAction;
 use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
 use crate::guardian::review_approval_request;
 use crate::guardian::routes_approval_action_to_guardian_with_reviewer;
-use crate::guardian::GuardianReviewAction;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::sandboxing::SandboxPermissions;
 use crate::session::turn_context::TurnContext;
@@ -137,10 +137,7 @@ pub(super) enum ApprovalReviewer {
 }
 
 impl ApprovalReviewer {
-    pub(super) fn for_turn(
-        turn: &TurnContext,
-        action: Option<GuardianReviewAction>,
-    ) -> Self {
+    pub(super) fn for_turn(turn: &TurnContext, action: Option<GuardianReviewAction>) -> Self {
         Self::for_reviewer(turn, turn.config.approvals_reviewer, action)
     }
 

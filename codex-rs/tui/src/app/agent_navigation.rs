@@ -141,10 +141,7 @@ impl AgentNavigationState {
                     is_closed: false,
                 });
         entry.agent_path = Some(activity.agent_path);
-        if is_running
-            && !entry.is_closed
-            && !self.stopped_threads.contains(&activity.thread_id)
-        {
+        if is_running && !entry.is_closed && !self.stopped_threads.contains(&activity.thread_id) {
             entry.is_running = true;
         } else {
             entry.is_running = false;

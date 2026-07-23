@@ -483,10 +483,7 @@ impl ModelClient {
             .unwrap_or_else(|| self.state.thread_id.to_string())
     }
 
-    fn prompt_cache_key_for_request(
-        &self,
-        responses_metadata: &CodexResponsesMetadata,
-    ) -> String {
+    fn prompt_cache_key_for_request(&self, responses_metadata: &CodexResponsesMetadata) -> String {
         self.prompt_cache_key_override
             .clone()
             .unwrap_or_else(|| responses_metadata.session_id.clone())

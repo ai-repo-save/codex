@@ -58,8 +58,8 @@ use super::prompt::BUNDLED_GUARDIAN_POLICY_TEMPLATE;
 use super::prompt::GuardianPromptMode;
 use super::prompt::GuardianTranscriptCursor;
 use super::prompt::build_guardian_prompt_items_with_parent_turn;
-use super::prompt::guardian_policy_prompt_with_template;
 use super::prompt::guardian_policy_prompt_with_config_and_template;
+use super::prompt::guardian_policy_prompt_with_template;
 use super::review::guardian_review_session_config;
 
 const GUARDIAN_INTERRUPT_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1023,7 +1023,10 @@ pub(crate) fn build_guardian_review_session_config(
                 let policy_template = catalog_auto_review
                     .and_then(|messages| messages.policy_template.as_deref())
                     .unwrap_or(BUNDLED_GUARDIAN_POLICY_TEMPLATE);
-                guardian_policy_prompt_with_config_and_template(tenant_policy_config, policy_template)
+                guardian_policy_prompt_with_config_and_template(
+                    tenant_policy_config,
+                    policy_template,
+                )
             }),
     );
     guardian_config.notify = None;
