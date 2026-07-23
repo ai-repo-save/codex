@@ -947,7 +947,7 @@ mod tests {
         expected_payload["previous_response_id"] = json!("resp-1");
         expected_payload["generate"] = json!(false);
         let request_text =
-            serialize_websocket_request(&websocket_request).expect("serialize websocket request");
+            serialize_websocket_request(&request).expect("serialize websocket request");
         let wire_payload =
             serde_json::from_str::<Value>(&request_text).expect("parse websocket request");
 

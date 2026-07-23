@@ -9,7 +9,7 @@ fn response_requests_omit_absent_reasoning_and_preserve_explicit_effort() {
     let websocket_without_reasoning = ResponseCreateWsRequest::from(&http_without_reasoning);
     assert_eq!(
         (
-            serde_json::to_value(http_without_reasoning)
+            serde_json::to_value(&http_without_reasoning)
                 .expect("serialize HTTP request")
                 .get("reasoning")
                 .cloned(),
@@ -30,7 +30,7 @@ fn response_requests_omit_absent_reasoning_and_preserve_explicit_effort() {
     let websocket_with_reasoning = ResponseCreateWsRequest::from(&http_with_reasoning);
     assert_eq!(
         (
-            serde_json::to_value(http_with_reasoning)
+            serde_json::to_value(&http_with_reasoning)
                 .expect("serialize HTTP request")
                 .get("reasoning")
                 .cloned(),
