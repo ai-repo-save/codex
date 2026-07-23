@@ -2679,9 +2679,9 @@ async fn permission_request_prompt_hook_denies_tool_and_turn_continues() -> Resu
     let _initial_request = initial_response.single_request();
     let evaluator_request = evaluator_response.single_request();
     assert_prompt_hook_request_is_isolated(&evaluator_request);
+    let hook_prompt_texts = request_hook_prompt_texts(&evaluator_request);
     let hook_input: Value = serde_json::from_str(
-        evaluator_request
-            .message_input_texts("user")
+        hook_prompt_texts
             .first()
             .context("permission request prompt input")?,
     )?;
@@ -2737,6 +2737,7 @@ async fn approval_review_route_prompt_runs_only_for_needs_approval() -> Result<(
             decoded_request_body(request).is_some_and(|body| {
                 body["model"] == PRE_TOOL_PROMPT_HOOK_MAIN_MODEL
                     && body.to_string().contains(approval_turn_prompt)
+                    && !body.to_string().contains(approval_call_id)
             })
         },
         sse(vec![
@@ -2802,6 +2803,7 @@ async fn approval_review_route_prompt_runs_only_for_needs_approval() -> Result<(
             decoded_request_body(request).is_some_and(|body| {
                 body["model"] == PRE_TOOL_PROMPT_HOOK_MAIN_MODEL
                     && body.to_string().contains(skip_turn_prompt)
+                    && !body.to_string().contains(skip_call_id)
             })
         },
         sse(vec![
@@ -2862,9 +2864,9 @@ async fn approval_review_route_prompt_runs_only_for_needs_approval() -> Result<(
     );
     let route_request = &route_requests[0];
     assert_prompt_hook_request_is_isolated(route_request);
+    let route_prompt_texts = request_hook_prompt_texts(route_request);
     let route_input: Value = serde_json::from_str(
-        route_request
-            .message_input_texts("user")
+        route_prompt_texts
             .first()
             .context("approval review route prompt input")?,
     )?;
