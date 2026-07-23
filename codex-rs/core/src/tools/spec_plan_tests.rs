@@ -823,7 +823,7 @@ async fn guardian_reviewer_tools_stay_within_allowlist() {
     );
     assert_eq!(
         with_environment.registered_names,
-        vec!["exec_command", "write_stdin", "view_image"]
+        vec!["exec_command", "view_image", "write_stdin"]
     );
 
     let without_environment = probe(|turn| {
