@@ -4135,7 +4135,9 @@ impl ThreadRequestProcessor {
         let mut source_thread = self
             .read_stored_thread_for_resume(&thread_id, path.as_ref(), include_source_history)
             .await?;
-        if matches!(source_thread.history_mode, ThreadHistoryMode::Paginated) {
+        if include_source_history
+            && matches!(source_thread.history_mode, ThreadHistoryMode::Paginated)
+        {
             return Err(method_not_found("paginated_threads is not supported yet"));
         }
         let source_thread_id = source_thread.thread_id;

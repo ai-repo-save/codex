@@ -11,6 +11,9 @@ use app_test_support::write_mock_responses_config_toml_with_chatgpt_base_url;
 use codex_app_server_protocol::AppInfo;
 use codex_app_server_protocol::CapabilityRootLocation;
 use codex_app_server_protocol::EnvironmentAddResponse;
+use codex_app_server_protocol::EnvironmentStatusKind;
+use codex_app_server_protocol::EnvironmentStatusParams;
+use codex_app_server_protocol::EnvironmentStatusResponse;
 use codex_app_server_protocol::ListMcpServerStatusParams;
 use codex_app_server_protocol::ListMcpServerStatusResponse;
 use codex_app_server_protocol::RequestId;
@@ -396,7 +399,7 @@ async fn selected_capabilities_become_available_between_samples_in_one_turn() ->
     let mut exec_server =
         spawn_exec_server(fixture.codex_home.path(), &fixture.exec_server_url).await?;
     add_environment(&mut app_server, &fixture.exec_server_url).await?;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_environment_ready(&mut app_server).await?;
     app_server
         .send_response(
             request_id,
@@ -711,6 +714,38 @@ async fn add_environment(app_server: &mut TestAppServer, exec_server_url: &str) 
     )
     .await??;
     let _: EnvironmentAddResponse = to_response(response)?;
+    Ok(())
+}
+
+async fn wait_for_environment_ready(app_server: &mut TestAppServer) -> Result<()> {
+    timeout(READ_TIMEOUT, async {
+        loop {
+            let request_id = app_server
+                .send_raw_request(
+                    "environment/status",
+                    Some(serde_json::to_value(EnvironmentStatusParams {
+                        environment_id: EXECUTOR_ID.to_string(),
+                    })?),
+                )
+                .await?;
+            let response = app_server
+                .read_stream_until_response_message(RequestId::Integer(request_id))
+                .await?;
+            let response: EnvironmentStatusResponse = to_response(response)?;
+            match response.status {
+                EnvironmentStatusKind::Ready => return Ok::<_, anyhow::Error>(()),
+                EnvironmentStatusKind::Pending => {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                EnvironmentStatusKind::Disconnected | EnvironmentStatusKind::Unknown => {
+                    anyhow::bail!(
+                        "selected capability environment did not become ready: {response:?}"
+                    );
+                }
+            }
+        }
+    })
+    .await??;
     Ok(())
 }
 

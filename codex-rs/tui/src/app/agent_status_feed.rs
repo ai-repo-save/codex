@@ -133,36 +133,9 @@ impl AgentStatusThreadPreview {
 }
 
 fn activity_summary(item: &ThreadItem) -> Option<String> {
-    let summary = match item {
-        ThreadItem::AgentMessage { text, .. } | ThreadItem::Plan { text, .. } => text,
-        ThreadItem::Reasoning { summary, .. } => summary.last()?,
-        ThreadItem::CommandExecution { command, .. } => {
-            let command = truncate_text(
-                command,
-                AGENT_STATUS_PREVIEW_GRAPHEMES.saturating_sub("$ ".len()),
-            );
-            return bounded_summary(&format!("$ {command}"));
-        }
-        ThreadItem::FileChange { changes, .. } => {
-            return bounded_summary(&format!("Updated {} file(s)", changes.len()));
-        }
-        ThreadItem::McpToolCall { server, tool, .. } => {
-            return bounded_summary(&format!("MCP {server}/{tool}"));
-        }
-        ThreadItem::SkillLoad { name, .. } => {
-            return bounded_summary(&format!("Read skill {name}"));
-        }
-        ThreadItem::DynamicToolCall {
-            namespace, tool, ..
-        } => {
-            let tool = namespace
-                .as_ref()
-                .map(|namespace| format!("{namespace}/{tool}"))
-                .unwrap_or_else(|| tool.clone());
-            return bounded_summary(&format!("Tool {tool}"));
-        }
+    match item {
         ThreadItem::CollabAgentToolCall { .. } => {
-            return collab_tool_summary(item).and_then(|summary| bounded_summary(&summary));
+            collab_tool_summary(item).and_then(|summary| bounded_summary(&summary))
         }
         ThreadItem::SubAgentActivity {
             kind,
@@ -181,55 +154,10 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
                 model.as_deref(),
                 reasoning_effort.as_ref(),
             );
-            return bounded_summary(&summary);
+            bounded_summary(&summary)
         }
-        ThreadItem::MemoryMutation(mutation) => {
-            return bounded_summary(&crate::memory_mutation::memory_mutation_summary(mutation));
-        }
-        ThreadItem::WebSearch(item) => {
-            return bounded_summary(&format!("Web search: {}", item.query));
-        }
-        ThreadItem::ImageView { path, .. } => {
-            let path = path.render_for_ui();
-            return bounded_summary(&format!("Viewed {path}"));
-        }
-        ThreadItem::ImageGeneration(_) => return Some("Generated an image".to_string()),
-        ThreadItem::EnteredReviewMode { .. } => return Some("Entered review mode".to_string()),
-        ThreadItem::ExitedReviewMode { .. } => return Some("Exited review mode".to_string()),
-        ThreadItem::ContextCompaction { .. } => return Some("Compacted context".to_string()),
-        ThreadItem::ContextAnchorSaved {
-            anchor_id, label, ..
-        } => {
-            return bounded_summary(
-                &crate::context_anchor_display::context_anchor_saved_summary(
-                    anchor_id,
-                    label.as_deref(),
-                ),
-            );
-        }
-        ThreadItem::ContextAnchorRewound {
-            anchor_id,
-            dropped_turns,
-            response_items_reclaimed,
-            approx_tokens_reclaimed,
-            reclaim_threshold_percent,
-            reclaim_threshold_met,
-            ..
-        } => {
-            return bounded_summary(
-                &crate::context_anchor_display::context_anchor_rewound_summary(
-                    anchor_id,
-                    *dropped_turns,
-                    *response_items_reclaimed,
-                    *approx_tokens_reclaimed,
-                    *reclaim_threshold_percent,
-                    *reclaim_threshold_met,
-                ),
-            );
-        }
-        _ => return None,
-    };
-    bounded_summary(summary)
+        _ => None,
+    }
 }
 
 fn bounded_summary(summary: &str) -> Option<String> {

@@ -3990,6 +3990,28 @@ async fn direct_input_to_multi_agent_v2_subagent_is_rejected() -> Result<()> {
         ]),
     )
     .await;
+    let _child_turn = responses::mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| {
+            body_contains(req, CHILD_PROMPT) && !body_contains(req, SPAWN_CALL_ID)
+        },
+        responses::sse(vec![
+            responses::ev_response_created("resp-child-1"),
+            responses::ev_assistant_message("msg-child-1", "child done"),
+            responses::ev_completed("resp-child-1"),
+        ]),
+    )
+    .await;
+    let _parent_follow_up = responses::mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, SPAWN_CALL_ID),
+        responses::sse(vec![
+            responses::ev_response_created("resp-parent-2"),
+            responses::ev_assistant_message("msg-parent-2", "parent done"),
+            responses::ev_completed("resp-parent-2"),
+        ]),
+    )
+    .await;
     let codex_home = TempDir::new()?;
     create_config_toml(
         codex_home.path(),

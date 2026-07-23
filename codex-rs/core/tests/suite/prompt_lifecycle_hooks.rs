@@ -34,6 +34,10 @@ use serde_json::Value;
 use serde_json::json;
 use tokio::time::Instant;
 use tokio::time::sleep;
+use wiremock::Mock;
+use wiremock::ResponseTemplate;
+use wiremock::matchers::method;
+use wiremock::matchers::path_regex;
 
 const MAIN_MODEL: &str = "prompt-lifecycle-main-model";
 const EVALUATOR_MODEL: &str = "prompt-lifecycle-evaluator-model";
@@ -45,6 +49,7 @@ const NEXT_REPLY: &str = "next lifecycle reply";
 const SPAWN_PROMPT: &str = "spawn the lifecycle child";
 const CHILD_PROMPT: &str = "run the lifecycle child";
 const SPAWN_CALL_ID: &str = "prompt-lifecycle-spawn";
+const COLLAB_SPAWN_HEADER_VALUE: &str = "collab_spawn";
 
 fn write_prompt_hook(
     home: &Path,
@@ -386,10 +391,15 @@ async fn user_prompt_submit_fail_closed_rejects_only_the_failed_input() -> Resul
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn subagent_start_fail_closed_errors_child_without_sampling() -> Result<()> {
+async fn subagent_start_fail_closed_errors_child_without_sampling_or_prewarm() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
+    Mock::given(method("GET"))
+        .and(path_regex(".*/responses$"))
+        .respond_with(ResponseTemplate::new(426))
+        .mount(&server)
+        .await;
     let spawn_args = serde_json::to_string(&json!({
         "message": CHILD_PROMPT,
         "task_name": "worker",
@@ -417,7 +427,8 @@ async fn subagent_start_fail_closed_errors_child_without_sampling() -> Result<()
         |request: &wiremock::Request| {
             request_body(request).is_some_and(|body| {
                 body["model"] == json!(MAIN_MODEL)
-                    && request_header(request, "x-openai-subagent") == Some("collab_spawn")
+                    && request_header(request, "x-openai-subagent")
+                        == Some(COLLAB_SPAWN_HEADER_VALUE)
             })
         },
         model_sse("unexpected-child-main", "unexpected child sample"),
@@ -446,6 +457,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling() -> Result<()
                 .features
                 .enable(Feature::MultiAgentV2)
                 .expect("enable multi-agent v2");
+            config.model_provider.supports_websockets = true;
         })
         .build(&server)
         .await?;
@@ -481,19 +493,24 @@ async fn subagent_start_fail_closed_errors_child_without_sampling() -> Result<()
             })
         })
         .count();
-    let child_main_request_count = requests
+    let child_model_request_count = requests
         .iter()
         .filter(|request| {
-            request_body(request).is_some_and(|body| {
-                body["model"] == json!(MAIN_MODEL)
-                    && request_header(request, "x-openai-subagent") == Some("collab_spawn")
-            })
+            request_header(request, "x-openai-subagent") == Some(COLLAB_SPAWN_HEADER_VALUE)
+                || request_body(request).is_some_and(|body| {
+                    body.pointer("/client_metadata/x-openai-subagent")
+                        .and_then(Value::as_str)
+                        == Some(COLLAB_SPAWN_HEADER_VALUE)
+                })
         })
         .count();
     assert_eq!(
         evaluator_request_count, 1,
         "unexpected child error: {child_error:?}"
     );
-    assert_eq!(child_main_request_count, 0);
+    assert_eq!(
+        child_model_request_count, 0,
+        "rejected child sent sampling or startup prewarm traffic"
+    );
     Ok(())
 }

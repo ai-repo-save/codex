@@ -49,6 +49,10 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 const TEST_CURATED_PLUGIN_SHA: &str = "0123456789abcdef0123456789abcdef01234567";
 const TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS: &str =
     "CODEX_TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS";
+#[cfg(target_os = "linux")]
+const TEST_USER_CONFIG_FILE: &str = "CODEX_APP_SERVER_TEST_USER_CONFIG_FILE";
+#[cfg(target_os = "linux")]
+const UNWRITABLE_USER_CONFIG_FILE: &str = "/proc/thread-self/children";
 const ALTERNATE_MARKETPLACE_RELATIVE_PATH: &str = ".claude-plugin/marketplace.json";
 const ALTERNATE_PLUGIN_MANIFEST_RELATIVE_PATH: &str = ".claude-plugin/plugin.json";
 
@@ -2978,20 +2982,28 @@ trusted_hash = "sha256:unrelated"
 #[cfg(unix)]
 #[tokio::test]
 async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<()> {
+    #[cfg(not(target_os = "linux"))]
     use std::os::unix::fs::PermissionsExt;
+    #[cfg(not(target_os = "linux"))]
     use std::os::unix::fs::symlink;
 
     let codex_home = TempDir::new()?;
-    let config_target_dir = TempDir::new()?;
-    let config_target = config_target_dir.path().join("config.toml");
     let server = MockServer::start().await;
+    #[cfg(not(target_os = "linux"))]
+    let config_target_dir = TempDir::new()?;
+    #[cfg(not(target_os = "linux"))]
+    let config_target = config_target_dir.path().join("config.toml");
+    #[cfg(not(target_os = "linux"))]
     write_remote_plugin_hook_config(
         config_target_dir.path(),
         &format!("{}/backend-api/", server.uri()),
         "",
     )?;
+    #[cfg(not(target_os = "linux"))]
     symlink(&config_target, codex_home.path().join("config.toml"))?;
     write_remote_plugin_test_auth(codex_home.path())?;
+    #[cfg(target_os = "linux")]
+    let chatgpt_base_url = format!(r#"chatgpt_base_url="{}/backend-api/""#, server.uri());
 
     let bundle_url = mount_remote_plugin_bundle_with_hooks(
         &server,
@@ -3003,21 +3015,41 @@ async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<(
     .await?;
     mount_workspace_bundle_sync(&server, &[("failed-trust", "AVAILABLE", &bundle_url)]).await;
 
-    let mut mcp = TestAppServer::builder()
+    let mcp_builder = TestAppServer::builder()
         .with_codex_home(codex_home.path())
-        .without_auto_env()
-        .with_env_overrides(&[(TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS, Some("1"))])
-        .build()
-        .await?;
+        .without_auto_env();
+    #[cfg(target_os = "linux")]
+    let mcp_builder = mcp_builder
+        .with_args(&[
+            "-c",
+            chatgpt_base_url.as_str(),
+            "-c",
+            "features.plugins=true",
+            "-c",
+            "features.hooks=true",
+        ])
+        .with_env_overrides(&[
+            (TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS, Some("1")),
+            (TEST_USER_CONFIG_FILE, Some(UNWRITABLE_USER_CONFIG_FILE)),
+        ]);
+    #[cfg(not(target_os = "linux"))]
+    let mcp_builder = mcp_builder
+        .with_env_overrides(&[(TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS, Some("1"))]);
+    let mut mcp = mcp_builder.build().await?;
     timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
 
+    #[cfg(not(target_os = "linux"))]
     let original_permissions = std::fs::metadata(config_target_dir.path())?.permissions();
+    #[cfg(not(target_os = "linux"))]
     let _permission_guard = RestorePermissions(
         config_target_dir.path().to_path_buf(),
         original_permissions.clone(),
     );
+    #[cfg(not(target_os = "linux"))]
     let mut read_only_permissions = original_permissions;
+    #[cfg(not(target_os = "linux"))]
     read_only_permissions.set_mode(read_only_permissions.mode() & !0o222);
+    #[cfg(not(target_os = "linux"))]
     std::fs::set_permissions(config_target_dir.path(), read_only_permissions)?;
 
     trigger_plugin_installed_sync(&mut mcp).await?;
@@ -3039,6 +3071,9 @@ async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<(
     .await?;
 
     assert_eq!(after[0].current_hash, before[0].current_hash);
+    #[cfg(target_os = "linux")]
+    assert!(!codex_home.path().join("config.toml").exists());
+    #[cfg(not(target_os = "linux"))]
     assert!(!std::fs::read_to_string(config_target)?.contains("trusted_hash"));
     Ok(())
 }
@@ -4614,10 +4649,10 @@ fn write_plugin_share_local_path_mapping(
     )
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "linux")))]
 struct RestorePermissions(std::path::PathBuf, std::fs::Permissions);
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "linux")))]
 impl Drop for RestorePermissions {
     fn drop(&mut self) {
         let _ = std::fs::set_permissions(&self.0, self.1.clone());

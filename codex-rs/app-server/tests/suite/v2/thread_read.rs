@@ -14,13 +14,21 @@ use codex_app_server_protocol::InitializeCapabilities;
 use codex_app_server_protocol::InitializeParams;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCResponse;
+use codex_app_server_protocol::MemoryMutation;
+use codex_app_server_protocol::MemoryMutationAction;
+use codex_app_server_protocol::MemoryMutationScope;
+use codex_app_server_protocol::MemoryMutationStatus;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::SessionSource;
 use codex_app_server_protocol::SortDirection;
+use codex_app_server_protocol::SubAgentActivityKind;
+use codex_app_server_protocol::SubAgentActivityOperation;
+use codex_app_server_protocol::SubAgentActivityOutcome;
 use codex_app_server_protocol::ThreadForkParams;
 use codex_app_server_protocol::ThreadForkResponse;
 use codex_app_server_protocol::ThreadHistoryMode;
 use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadItemEntry;
 use codex_app_server_protocol::ThreadItemsListParams;
 use codex_app_server_protocol::ThreadItemsListResponse;
 use codex_app_server_protocol::ThreadListParams;
@@ -53,17 +61,23 @@ use codex_core::ARCHIVED_SESSIONS_SUBDIR;
 use codex_core::config::ConfigBuilder;
 use codex_exec_server::EnvironmentManager;
 use codex_feedback::CodexFeedback;
+use codex_protocol::AgentPath;
 use codex_protocol::items::AgentMessageContent;
 use codex_protocol::items::AgentMessageItem;
+use codex_protocol::items::SubAgentActivityItem;
 use codex_protocol::items::TurnItem as CoreTurnItem;
 use codex_protocol::items::UserMessageItem;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::MessagePhase;
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::AgentMessageEvent;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::ItemCompletedEvent;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SessionSource as ProtocolSessionSource;
+use codex_protocol::protocol::SubAgentActivityKind as CoreSubAgentActivityKind;
+use codex_protocol::protocol::SubAgentActivityOperation as CoreSubAgentActivityOperation;
+use codex_protocol::protocol::SubAgentActivityOutcome as CoreSubAgentActivityOutcome;
 use codex_protocol::protocol::ThreadMemoryMode;
 use codex_protocol::protocol::TurnCompleteEvent;
 use codex_protocol::protocol::TurnStartedEvent;
@@ -1517,6 +1531,9 @@ async fn paginated_history_lists_use_projected_turns_and_items() -> Result<()> {
     let codex_home = TempDir::new()?;
     create_config_toml(codex_home.path(), &server.uri())?;
     let thread_id = codex_protocol::ThreadId::default();
+    let agent_thread_id =
+        codex_protocol::ThreadId::from_string("019c5c55-4bf9-7ade-ae3c-0d6079c3c941")?;
+    let agent_path = AgentPath::try_from("/root/worker").expect("valid agent path");
     let state_db = codex_state::StateRuntime::init(
         codex_home.path().to_path_buf(),
         "mock_provider".to_string(),
@@ -1590,6 +1607,35 @@ async fn paginated_history_lists_use_projected_turns_and_items() -> Result<()> {
                         memory_citation: None,
                     }),
                 ),
+                paginated_completed_item(
+                    thread_id,
+                    "turn-1",
+                    CoreTurnItem::SubAgentActivity(SubAgentActivityItem {
+                        id: "activity-1".to_string(),
+                        kind: CoreSubAgentActivityKind::Started,
+                        agent_thread_id,
+                        agent_path,
+                        operation: Some(CoreSubAgentActivityOperation::InspectAgent),
+                        outcome: Some(CoreSubAgentActivityOutcome::Failed),
+                        model: Some("gpt-5.4".to_string()),
+                        reasoning_effort: Some(ReasoningEffort::High),
+                    }),
+                ),
+                paginated_completed_item(
+                    thread_id,
+                    "turn-1",
+                    serde_json::from_value(json!({
+                        "type": "Extension",
+                        "kind": "memory.mutation",
+                        "id": "memory-1",
+                        "action": "write",
+                        "scope": "project",
+                        "status": "succeeded",
+                        "title": "Preferred tools",
+                        "path": "project/preferred-tools.md",
+                        "preview": "Use pnpm for JavaScript",
+                    }))?,
+                ),
                 paginated_turn_completed("turn-1"),
                 paginated_turn_started("turn-2"),
                 paginated_completed_item(
@@ -1613,6 +1659,25 @@ async fn paginated_history_lists_use_projected_turns_and_items() -> Result<()> {
         .await?;
     timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
 
+    let expected_sub_agent_activity = ThreadItem::SubAgentActivity {
+        id: "activity-1".to_string(),
+        kind: SubAgentActivityKind::Started,
+        agent_thread_id: agent_thread_id.to_string(),
+        agent_path: "/root/worker".to_string(),
+        operation: Some(SubAgentActivityOperation::InspectAgent),
+        outcome: Some(SubAgentActivityOutcome::Failed),
+        model: Some("gpt-5.4".to_string()),
+        reasoning_effort: Some(ReasoningEffort::High),
+    };
+    let expected_memory_mutation = ThreadItem::MemoryMutation(MemoryMutation {
+        id: "memory-1".to_string(),
+        action: MemoryMutationAction::Write,
+        scope: MemoryMutationScope::Project,
+        status: MemoryMutationStatus::Succeeded,
+        title: Some("Preferred tools".to_string()),
+        path: Some("project/preferred-tools.md".to_string()),
+        preview: Some("Use pnpm for JavaScript".to_string()),
+    });
     let expected_turn_1_full = Turn {
         id: "turn-1".to_string(),
         items: vec![
@@ -1632,6 +1697,8 @@ async fn paginated_history_lists_use_projected_turns_and_items() -> Result<()> {
                 phase: None,
                 memory_citation: None,
             },
+            expected_sub_agent_activity.clone(),
+            expected_memory_mutation.clone(),
         ],
         items_view: TurnItemsView::Full,
         status: TurnStatus::Completed,
@@ -1778,7 +1845,7 @@ async fn paginated_history_lists_use_projected_turns_and_items() -> Result<()> {
         data.into_iter()
             .map(|entry| entry.item.id().to_string())
             .collect::<Vec<_>>(),
-        vec!["user-2", "agent-1", "steer-1"]
+        vec!["user-2", "memory-1", "activity-1"]
     );
 
     let ThreadItemsListResponse { data, .. } = read_items_page(
@@ -1794,7 +1861,7 @@ async fn paginated_history_lists_use_projected_turns_and_items() -> Result<()> {
         data.into_iter()
             .map(|entry| entry.item.id().to_string())
             .collect::<Vec<_>>(),
-        vec!["agent-1", "steer-1"]
+        vec!["memory-1", "activity-1"]
     );
 
     let first_page = read_turns_page(
@@ -1895,15 +1962,40 @@ async fn paginated_history_lists_use_projected_turns_and_items() -> Result<()> {
         thread_id,
         /*turn_id*/ None,
         Some(second_items_page.next_cursor.expect("next item cursor")),
-        Some(2),
+        Some(4),
         SortDirection::Asc,
     )
     .await?;
-    assert_eq!(third_items_page.data.len(), 2);
-    assert_eq!(third_items_page.data[0].turn_id, "turn-1");
-    assert_eq!(third_items_page.data[0].item.id(), "agent-1");
-    assert_eq!(third_items_page.data[1].turn_id, "turn-2");
-    assert_eq!(third_items_page.data[1].item.id(), "user-2");
+    assert_eq!(
+        third_items_page.data,
+        vec![
+            ThreadItemEntry {
+                turn_id: "turn-1".to_string(),
+                item: ThreadItem::AgentMessage {
+                    id: "agent-1".to_string(),
+                    text: "first".to_string(),
+                    phase: None,
+                    memory_citation: None,
+                },
+            },
+            ThreadItemEntry {
+                turn_id: "turn-1".to_string(),
+                item: expected_sub_agent_activity,
+            },
+            ThreadItemEntry {
+                turn_id: "turn-1".to_string(),
+                item: expected_memory_mutation,
+            },
+            ThreadItemEntry {
+                turn_id: "turn-2".to_string(),
+                item: ThreadItem::UserMessage {
+                    id: "user-2".to_string(),
+                    client_id: None,
+                    content: Vec::new(),
+                },
+            },
+        ]
+    );
 
     let turn_start_id = mcp
         .send_turn_start_request(TurnStartParams {

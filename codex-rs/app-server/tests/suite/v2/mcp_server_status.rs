@@ -45,6 +45,7 @@ use tokio::time::sleep;
 use tokio::time::timeout;
 
 const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(10);
+const MCP_STATUS_TEST_TOKEN_ENV_VAR: &str = "MCP_STATUS_TEST_TOKEN";
 
 async fn wait_for_new_pid(path: &Path, previous_pid: Option<&str>) -> Result<String> {
     Ok(timeout(DEFAULT_READ_TIMEOUT, async {
@@ -102,7 +103,7 @@ async fn mcp_server_status_list_returns_raw_server_and_tool_names() -> Result<()
         r#"
 [mcp_servers.some-server]
 url = "{mcp_server_url}/mcp"
-bearer_token_env_var = "MCP_STATUS_TEST_TOKEN"
+bearer_token_env_var = "{MCP_STATUS_TEST_TOKEN_ENV_VAR}"
 "#
     ));
     std::fs::write(config_path, config_toml)?;
@@ -110,6 +111,7 @@ bearer_token_env_var = "MCP_STATUS_TEST_TOKEN"
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
         .without_auto_env()
+        .with_env_overrides(&[(MCP_STATUS_TEST_TOKEN_ENV_VAR, Some("test-token"))])
         .build()
         .await?;
     timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;

@@ -4,6 +4,7 @@ use app_test_support::to_response;
 use app_test_support::write_mock_responses_config_toml;
 use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::RequestId;
+use codex_app_server_protocol::ThreadHistoryMode;
 use codex_app_server_protocol::ThreadResetContextParams;
 use codex_app_server_protocol::ThreadResetContextResponse;
 use codex_app_server_protocol::ThreadSource;
@@ -29,6 +30,15 @@ const COMPACT_PROMPT: &str = "Summarize the conversation.";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn thread_reset_context_forks_with_context_without_compaction() -> Result<()> {
+    assert_reset_context_uses_live_context(ThreadHistoryMode::Legacy).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn thread_reset_context_forks_loaded_idle_paginated_thread_with_live_context() -> Result<()> {
+    assert_reset_context_uses_live_context(ThreadHistoryMode::Paginated).await
+}
+
+async fn assert_reset_context_uses_live_context(history_mode: ThreadHistoryMode) -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = responses::start_mock_server().await;
@@ -55,12 +65,11 @@ async fn thread_reset_context_forks_with_context_without_compaction() -> Result<
 
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
-        .without_auto_env()
         .build()
         .await?;
     timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
 
-    let source_thread_id = start_thread(&mut mcp).await?;
+    let source_thread_id = start_thread(&mut mcp, history_mode).await?;
     send_turn_and_wait(&mut mcp, &source_thread_id).await?;
 
     let reset_id = mcp
@@ -101,11 +110,15 @@ async fn thread_reset_context_forks_with_context_without_compaction() -> Result<
     Ok(())
 }
 
-async fn start_thread(mcp: &mut TestAppServer) -> Result<String> {
+async fn start_thread(
+    mcp: &mut TestAppServer,
+    history_mode: ThreadHistoryMode,
+) -> Result<String> {
     let thread_id = mcp
-        .send_thread_start_request(ThreadStartParams {
+        .send_thread_start_request_with_auto_env(ThreadStartParams {
             model: Some("mock-model".to_string()),
             thread_source: Some(ThreadSource::User),
+            history_mode: Some(history_mode),
             ..Default::default()
         })
         .await?;
@@ -115,6 +128,7 @@ async fn start_thread(mcp: &mut TestAppServer) -> Result<String> {
     )
     .await??;
     let ThreadStartResponse { thread, .. } = to_response::<ThreadStartResponse>(thread_resp)?;
+    assert_eq!(thread.history_mode, history_mode);
     timeout(
         DEFAULT_READ_TIMEOUT,
         mcp.read_stream_until_notification_message("thread/started"),

@@ -50,6 +50,7 @@ const EXPERIMENTAL_CLIENT_METHOD_DEPENDENCY_TYPES: &[&str] = &[
     "RemoteControlClient",
     "RemoteControlClientsListOrder",
     "ThreadBackgroundTerminal",
+    "ThreadItemEntry",
     "ThreadSearchOccurrence",
     "ThreadSearchTextRange",
 ];
@@ -2198,6 +2199,10 @@ mod tests {
             fixture_tree.contains_key(Path::new("v2/RemoteControlClientsListOrder.ts")),
             false
         );
+        assert_eq!(
+            fixture_tree.contains_key(Path::new("v2/ThreadItemEntry.ts")),
+            false
+        );
 
         let mut undefined_offenders = Vec::new();
         let mut optional_nullable_offenders = BTreeSet::new();
@@ -2417,6 +2422,49 @@ mod tests {
             true
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn generate_ts_excludes_experimental_method_dependencies_from_stable_schema() -> Result<()> {
+        let stable_output_dir =
+            std::env::temp_dir().join(format!("codex_schema_{}", Uuid::now_v7()));
+        let experimental_output_dir =
+            std::env::temp_dir().join(format!("codex_schema_{}", Uuid::now_v7()));
+        fs::create_dir(&stable_output_dir)?;
+        fs::create_dir(&experimental_output_dir)?;
+
+        generate_ts_with_options(
+            &stable_output_dir,
+            None,
+            GenerateTsOptions {
+                run_prettier: false,
+                ..GenerateTsOptions::default()
+            },
+        )?;
+        generate_ts_with_options(
+            &experimental_output_dir,
+            None,
+            GenerateTsOptions {
+                run_prettier: false,
+                experimental_api: true,
+                ..GenerateTsOptions::default()
+            },
+        )?;
+
+        assert_eq!(
+            stable_output_dir.join("v2/ThreadItemEntry.ts").exists(),
+            false
+        );
+        assert_eq!(
+            experimental_output_dir
+                .join("v2/ThreadItemEntry.ts")
+                .exists(),
+            true
+        );
+
+        let _cleanup = fs::remove_dir_all(&stable_output_dir);
+        let _cleanup = fs::remove_dir_all(&experimental_output_dir);
         Ok(())
     }
 
@@ -2918,6 +2966,7 @@ permissionProfile?: string | null};
             flat_v2_bundle_json.contains("RemoteControlClientsListOrder"),
             false
         );
+        assert_eq!(flat_v2_bundle_json.contains("ThreadItemEntry"), false);
         assert_eq!(flat_v2_bundle_json.contains("#/definitions/v2/"), false);
         assert_eq!(
             flat_v2_bundle_json.contains("\"title\": \"CodexAppServerProtocolV2\""),
@@ -3005,6 +3054,10 @@ permissionProfile?: string | null};
                 .exists(),
             false
         );
+        assert_eq!(
+            output_dir.join("v2").join("ThreadItemEntry.json").exists(),
+            false
+        );
 
         let _cleanup = fs::remove_dir_all(&output_dir);
         Ok(())
@@ -3030,6 +3083,7 @@ permissionProfile?: string | null};
             "RemoteControlClientsListResponse.json",
             "RemoteControlClientsRevokeParams.json",
             "RemoteControlClientsRevokeResponse.json",
+            "ThreadItemEntry.json",
         ] {
             assert!(output_dir.join("v2").join(schema).exists());
         }
