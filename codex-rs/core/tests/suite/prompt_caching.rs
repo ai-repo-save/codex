@@ -202,6 +202,7 @@ async fn prompt_tools_are_consistent_across_requests() -> anyhow::Result<()> {
         "get_context_usage",
         "request_context_compaction",
         "save_context_anchor",
+        "list_context_anchors",
         "rewind_context_to_anchor",
         "update_plan",
         "request_user_input",
