@@ -5,6 +5,8 @@ use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
 use crate::guardian::review_approval_request;
 use crate::guardian::routes_approval_action_to_guardian_with_reviewer;
+use crate::hook_runtime::ApprovalReviewRouteHookRequest;
+use crate::hook_runtime::run_approval_review_route_hooks;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::sandboxing::SandboxPermissions;
 use crate::session::turn_context::TurnContext;
@@ -14,6 +16,7 @@ use crate::tools::sandboxing::ToolCtx;
 use crate::tools::sandboxing::ToolError;
 use crate::tools::sandboxing::ToolRuntime;
 use codex_config::types::ApprovalsReviewer;
+use codex_hooks::ApprovalReviewRouteDecision;
 use codex_hooks::PermissionRequestDecision;
 use codex_otel::ToolDecisionSource;
 use codex_protocol::models::AdditionalPermissionProfile;
@@ -201,12 +204,38 @@ pub(super) async fn resolve_tool_apporval<Rq, Out, T>(
     permission_request_run_id: &str,
     ctx: ApprovalCtx<'_>,
     tool_ctx: &ToolCtx,
-    reviewer: ApprovalReviewer,
+    mut reviewer: ApprovalReviewer,
     otel: &codex_otel::SessionTelemetry,
 ) -> Result<ReviewDecision, ToolError>
 where
     T: ToolRuntime<Rq, Out>,
 {
+    if let Some(action) = tool.guardian_review_action(req)
+        && let Some(permission_request) = tool.permission_request_payload(req)
+    {
+        let strict_auto_review = ctx.session.strict_auto_review_enabled_for_turn().await;
+        let static_auto_review_enabled = reviewer == ApprovalReviewer::Guardian;
+        if let Some(route) = run_approval_review_route_hooks(
+            ctx.session,
+            ctx.turn,
+            ApprovalReviewRouteHookRequest {
+                run_id_suffix: permission_request_run_id.to_string(),
+                payload: permission_request,
+                approval_kind: approval_kind_for_action(action),
+                strict_auto_review,
+                static_auto_review_enabled,
+                retry_reason: ctx.retry_reason.clone(),
+            },
+        )
+        .await
+        {
+            reviewer = match route {
+                ApprovalReviewRouteDecision::AutoReview => ApprovalReviewer::Guardian,
+                ApprovalReviewRouteDecision::User => ApprovalReviewer::User,
+            };
+        }
+    }
+
     if let Some(permission_request) = tool.permission_request_payload(req) {
         match run_permission_request_hooks(
             ctx.session,
@@ -277,6 +306,18 @@ where
     };
     record_resolution(otel, tool_ctx, &resolution);
     resolution.into_tool_result()
+}
+
+fn approval_kind_for_action(action: GuardianReviewAction) -> &'static str {
+    match action {
+        GuardianReviewAction::Shell => "shell",
+        GuardianReviewAction::ExecCommand => "exec_command",
+        GuardianReviewAction::Execve => "execve",
+        GuardianReviewAction::ApplyPatch => "apply_patch",
+        GuardianReviewAction::McpToolCall => "mcp_tool_call",
+        GuardianReviewAction::NetworkAccess => "network_access",
+        GuardianReviewAction::RequestPermissions => "request_permissions",
+    }
 }
 
 fn record_resolution(
