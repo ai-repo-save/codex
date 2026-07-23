@@ -298,10 +298,10 @@ mod tests {
         let OutgoingEnvelope::Broadcast { message } = envelope else {
             panic!("expected broadcast notification");
         };
-        let OutgoingMessage::AppServerNotification(ServerNotification::ThreadGoalCleared(
-            notification,
-        )) = message
-        else {
+        let OutgoingMessage::AppServerNotification(envelope) = message else {
+            panic!("expected thread goal cleared notification");
+        };
+        let ServerNotification::ThreadGoalCleared(notification) = envelope.notification else {
             panic!("expected thread goal cleared notification");
         };
 

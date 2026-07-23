@@ -29,6 +29,7 @@ struct ThreadForkBuildResult {
     response: ThreadForkResponse,
     notification: ThreadStartedNotification,
     token_usage_turn_id: Option<String>,
+    inherited_goal: bool,
     forked_thread: Arc<CodexThread>,
     thread_id: ThreadId,
     thread_originator: String,
@@ -209,6 +210,8 @@ fn thread_fork_params_from_reset_context(params: ThreadResetContextParams) -> Th
         thread_source,
         exclude_turns: false,
         last_turn_id: None,
+        before_turn_id: None,
+        defer_goal_continuation: false,
     }
 }
 
@@ -4386,6 +4389,7 @@ impl ThreadRequestProcessor {
             response,
             notification,
             token_usage_turn_id,
+            inherited_goal,
             forked_thread,
             thread_id,
             thread_originator,
@@ -4401,6 +4405,7 @@ impl ThreadRequestProcessor {
             response,
             notification,
             token_usage_turn_id,
+            inherited_goal,
             forked_thread,
             thread_id,
             thread_originator,
@@ -4427,6 +4432,11 @@ impl ThreadRequestProcessor {
         self.outgoing
             .send_server_notification(ServerNotification::ThreadStarted(notification))
             .await;
+        if inherited_goal {
+            self.thread_goal_processor
+                .emit_thread_goal_snapshot(thread_id)
+                .await;
+        }
     }
 
     async fn thread_reset_context_inner(
@@ -4489,6 +4499,7 @@ impl ThreadRequestProcessor {
             response,
             notification,
             token_usage_turn_id,
+            inherited_goal: _,
             forked_thread,
             thread_id,
             thread_originator: _,
@@ -4595,11 +4606,6 @@ impl ThreadRequestProcessor {
                 reset_listener_command_tx,
             )
             .await;
-        if inherited_goal {
-            self.thread_goal_processor
-                .emit_thread_goal_snapshot(thread_id)
-                .await;
-        }
         Ok(())
     }
 
