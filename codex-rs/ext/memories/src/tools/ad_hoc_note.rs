@@ -73,7 +73,7 @@ impl AddAdHocNoteTool {
         let mutation = MemoryMutation::write(
             call.call_id.clone(),
             MemoryMutationScope::Global,
-            None,
+            /*title*/ None,
             &args.note,
         );
         call.turn_item_emitter
