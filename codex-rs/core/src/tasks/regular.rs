@@ -2,15 +2,12 @@ use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
 
-use crate::hook_runtime::run_pending_session_start_hooks;
 use crate::session::TurnInput;
 use crate::session::turn::run_turn;
 use crate::session::turn_context::TurnContext;
 use crate::session_startup_prewarm::SessionStartupPrewarmResolution;
 use crate::state::TaskKind;
 use codex_protocol::protocol::EventMsg;
-use codex_protocol::protocol::SessionSource;
-use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::protocol::TurnStartedEvent;
 use tracing::Instrument;
 use tracing::trace_span;
@@ -59,23 +56,11 @@ impl SessionTask for RegularTask {
             });
             sess.send_event(ctx.as_ref(), event).await;
             sess.set_server_reasoning_included(/*included*/ false).await;
-            if matches!(
-                &ctx.session_source,
-                SessionSource::SubAgent(SubAgentSource::ThreadSpawn { .. })
-            ) && run_pending_session_start_hooks(&sess, &ctx).await
-            {
-                return None;
-            }
-            Some(
-                sess.consume_startup_prewarm_for_regular_turn(&cancellation_token)
-                    .await,
-            )
+            sess.consume_startup_prewarm_for_regular_turn(&cancellation_token)
+                .await
         }
         .instrument(trace_span!("regular_task.prepare_run_turn"))
         .await;
-        let Some(prewarmed_client_session) = prewarmed_client_session else {
-            return Ok(None);
-        };
         let prewarmed_client_session = match prewarmed_client_session {
             SessionStartupPrewarmResolution::Cancelled => return Ok(None),
             SessionStartupPrewarmResolution::Unavailable { .. } => None,
