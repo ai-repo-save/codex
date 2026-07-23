@@ -2436,7 +2436,7 @@ mod tests {
 
         generate_ts_with_options(
             &stable_output_dir,
-            None,
+            /*prettier*/ None,
             GenerateTsOptions {
                 run_prettier: false,
                 ..GenerateTsOptions::default()
@@ -2444,7 +2444,7 @@ mod tests {
         )?;
         generate_ts_with_options(
             &experimental_output_dir,
-            None,
+            /*prettier*/ None,
             GenerateTsOptions {
                 run_prettier: false,
                 experimental_api: true,
