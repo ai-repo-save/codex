@@ -38,6 +38,7 @@ use serde_json::json;
 use crate::SkillMetadata;
 use crate::config::CurrentTimeReminderConfig;
 use crate::environment_selection::TurnEnvironmentState;
+use crate::guardian::GUARDIAN_REVIEWER_NAME;
 use crate::session::step_context::StepContext;
 use crate::session::tests::make_session_and_context;
 use crate::session::turn_context::TurnContext;
@@ -806,6 +807,34 @@ async fn environment_count_controls_environment_backed_tools() {
         multiple_environments.visible_spec("view_image"),
         "environment_id"
     ));
+}
+
+#[tokio::test]
+async fn guardian_reviewer_tools_stay_within_allowlist() {
+    let with_environment = probe(|turn| {
+        turn.session_source = SessionSource::SubAgent(SubAgentSource::Other(
+            GUARDIAN_REVIEWER_NAME.to_string(),
+        ));
+    })
+    .await;
+    assert_eq!(
+        with_environment.visible_names,
+        vec!["exec_command", "write_stdin", "view_image"]
+    );
+    assert_eq!(
+        with_environment.registered_names,
+        vec!["exec_command", "write_stdin", "view_image"]
+    );
+
+    let without_environment = probe(|turn| {
+        turn.session_source = SessionSource::SubAgent(SubAgentSource::Other(
+            GUARDIAN_REVIEWER_NAME.to_string(),
+        ));
+        turn.environments.environments.clear();
+    })
+    .await;
+    assert_eq!(without_environment.visible_names, Vec::<String>::new());
+    assert_eq!(without_environment.registered_names, Vec::<String>::new());
 }
 
 #[tokio::test]

@@ -572,7 +572,6 @@ fn code_mode_namespace_descriptions(
 
 #[instrument(level = "trace", skip_all)]
 fn add_tool_sources(context: &CoreToolPlanContext<'_>, planned_tools: &mut PlannedTools) {
-    planned_tools.add(AccountRateLimitsHandler);
     // Guardian reviewers receive only `exec_command`, `write_stdin`, and `view_image`
     // when an environment is available; all general tool sources stay excluded.
     if crate::guardian::is_guardian_reviewer_source(&context.step_context.turn.session_source) {
@@ -600,6 +599,7 @@ fn add_tool_sources(context: &CoreToolPlanContext<'_>, planned_tools: &mut Plann
         return;
     }
 
+    planned_tools.add(AccountRateLimitsHandler);
     add_shell_tools(context, planned_tools);
     add_mcp_resource_tools(context, planned_tools);
     add_core_utility_tools(context, planned_tools);
