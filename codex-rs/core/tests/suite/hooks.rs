@@ -110,6 +110,20 @@ fn decoded_request_body(request: &wiremock::Request) -> Option<Value> {
     serde_json::from_slice(&body).ok()
 }
 
+fn prompt_hook_event_input(
+    request: &core_test_support::responses::ResponsesRequest,
+) -> Result<Value> {
+    let user_inputs = request.message_input_texts("user");
+    let rendered_prompt = user_inputs.first().context("prompt hook user input")?;
+    let (_, wrapped_event) = rendered_prompt
+        .split_once(PRE_TOOL_PROMPT_HOOK_UNTRUSTED_PREFIX)
+        .context("prompt hook untrusted event prefix")?;
+    let (event_json, _) = wrapped_event
+        .split_once(PRE_TOOL_PROMPT_HOOK_UNTRUSTED_SUFFIX)
+        .context("prompt hook untrusted event suffix")?;
+    serde_json::from_str(event_json).context("parse prompt hook event input")
+}
+
 fn restrictive_workspace_write_profile() -> PermissionProfile {
     PermissionProfile::workspace_write_with(
         &[],
@@ -2679,12 +2693,7 @@ async fn permission_request_prompt_hook_denies_tool_and_turn_continues() -> Resu
     let _initial_request = initial_response.single_request();
     let evaluator_request = evaluator_response.single_request();
     assert_prompt_hook_request_is_isolated(&evaluator_request);
-    let hook_prompt_texts = request_hook_prompt_texts(&evaluator_request);
-    let hook_input: Value = serde_json::from_str(
-        hook_prompt_texts
-            .first()
-            .context("permission request prompt input")?,
-    )?;
+    let hook_input = prompt_hook_event_input(&evaluator_request)?;
     assert_permission_request_hook_input(&hook_input, "Bash", &command, /*description*/ None);
     let continuation_request = continuation_response.single_request();
     let function_call_output = continuation_request.function_call_output(call_id);
@@ -2842,18 +2851,36 @@ async fn approval_review_route_prompt_runs_only_for_needs_approval() -> Result<(
         .with_config(trust_discovered_hooks);
     let test = builder.build(&server).await?;
 
-    test.submit_turn_with_approval_and_permission_profile(
+    let approval_submit = test.submit_turn_with_approval_and_permission_profile(
         approval_turn_prompt,
         AskForApproval::OnRequest,
         PermissionProfile::Disabled,
-    )
-    .await?;
-    test.submit_turn_with_approval_and_permission_profile(
+    );
+    tokio::pin!(approval_submit);
+    tokio::select! {
+        result = &mut approval_submit => result?,
+        _ = sleep(Duration::from_secs(5)) => panic!(
+            "approval route response counts: initial={}, evaluator={}, guardian={}, continuation={}",
+            approval_initial_response.requests().len(),
+            route_evaluator_response.requests().len(),
+            guardian_response.requests().len(),
+            approval_continuation_response.requests().len(),
+        ),
+    }
+    let skip_submit = test.submit_turn_with_approval_and_permission_profile(
         skip_turn_prompt,
         AskForApproval::OnRequest,
         PermissionProfile::Disabled,
-    )
-    .await?;
+    );
+    tokio::pin!(skip_submit);
+    tokio::select! {
+        result = &mut skip_submit => result?,
+        _ = sleep(Duration::from_secs(5)) => panic!(
+            "skip route response counts: initial={}, continuation={}",
+            skip_initial_response.requests().len(),
+            skip_continuation_response.requests().len(),
+        ),
+    }
 
     let _approval_initial_request = approval_initial_response.single_request();
     let route_requests = route_evaluator_response.requests();
@@ -2864,12 +2891,7 @@ async fn approval_review_route_prompt_runs_only_for_needs_approval() -> Result<(
     );
     let route_request = &route_requests[0];
     assert_prompt_hook_request_is_isolated(route_request);
-    let route_prompt_texts = request_hook_prompt_texts(route_request);
-    let route_input: Value = serde_json::from_str(
-        route_prompt_texts
-            .first()
-            .context("approval review route prompt input")?,
-    )?;
+    let route_input = prompt_hook_event_input(route_request)?;
     assert_eq!(route_input["hook_event_name"], "ApprovalReviewRoute");
     assert_eq!(route_input["tool_name"], "Bash");
     assert_eq!(route_input["tool_input"]["command"], approval_command);
