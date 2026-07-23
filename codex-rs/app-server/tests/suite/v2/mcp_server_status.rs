@@ -20,7 +20,6 @@ use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
 use codex_core::config::set_project_trust_level;
 use codex_protocol::config_types::TrustLevel;
-use core_test_support::stdio_server_bin;
 use pretty_assertions::assert_eq;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::Implementation;
@@ -45,6 +44,7 @@ use tokio::time::sleep;
 use tokio::time::timeout;
 
 const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(10);
+const MCP_STATUS_STDIO_SERVER_BIN: &str = "codex-app-server-test-mcp-status-stdio-server";
 const MCP_STATUS_TEST_TOKEN_ENV_VAR: &str = "MCP_STATUS_TEST_TOKEN";
 
 async fn wait_for_new_pid(path: &Path, previous_pid: Option<&str>) -> Result<String> {
@@ -192,7 +192,11 @@ MCP_TEST_DYNAMIC_SERVER_METADATA = "1"
 MCP_TEST_INITIALIZE_BARRIER_FILE = {}
 MCP_TEST_PID_FILE = {}
 "#,
-        toml::Value::String(stdio_server_bin()?),
+        toml::Value::String(
+            codex_utils_cargo_bin::cargo_bin(MCP_STATUS_STDIO_SERVER_BIN)?
+                .to_string_lossy()
+                .into_owned(),
+        ),
         toml::Value::String(barrier_file.to_string_lossy().into_owned()),
         toml::Value::String(pid_file.to_string_lossy().into_owned()),
     ));

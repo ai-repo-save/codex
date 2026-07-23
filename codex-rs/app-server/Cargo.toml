@@ -13,6 +13,10 @@ name = "codex-app-server-test-notify-capture"
 path = "src/bin/notify_capture.rs"
 
 [[bin]]
+name = "codex-app-server-test-mcp-status-stdio-server"
+path = "src/bin/mcp_status_stdio_server.rs"
+
+[[bin]]
 name = "exec-server"
 path = "src/bin/exec_server.rs"
 
