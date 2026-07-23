@@ -50,7 +50,7 @@ async fn save_context_anchor_emits_started_and_completed_items() -> Result<()> {
         codex_home.path(),
         &server.uri(),
         &BTreeMap::default(),
-        /*model_context_window*/ 200_000,
+        /*auto_compact_limit*/ 200_000,
         /*requires_openai_auth*/ None,
         "mock_provider",
         "Summarize the conversation.",

@@ -322,7 +322,7 @@ async fn hooks_list_returns_prompt_hook_definition() -> Result<()> {
                     Some("gpt-hook-reviewer"),
                     Some(("python3 /tmp/prompt-filter.py", 7)),
                     Some(ReasoningEffort::High),
-                    true,
+                    /*fail_closed*/ true,
                     Some("reviewing listed hook"),
                 ),
                 trust_status: HookTrustStatus::Untrusted,
