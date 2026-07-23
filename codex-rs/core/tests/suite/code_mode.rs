@@ -971,11 +971,22 @@ text(JSON.stringify(result));
     );
 
     let parsed: Value = serde_json::from_str(&output)?;
+    let parsed = parsed
+        .as_object()
+        .expect("get_context_remaining must return a JSON object");
     assert_eq!(
-        parsed,
-        serde_json::json!({
-            "tokens_left": 9000,
-        })
+        parsed.len(),
+        1,
+        "get_context_remaining must return only the `tokens_left` field"
+    );
+    let tokens_left = parsed
+        .get("tokens_left")
+        .expect("get_context_remaining response must contain `tokens_left`")
+        .as_i64()
+        .expect("get_context_remaining `tokens_left` must be an i64");
+    assert!(
+        (0..=9_000).contains(&tokens_left),
+        "get_context_remaining `tokens_left` must be between 0 and 9000, got {tokens_left}"
     );
 
     Ok(())

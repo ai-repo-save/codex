@@ -4,6 +4,7 @@ assertion_line: 1095
 expression: snapshot
 ---
 • Spawned Robie [explorer]
+  └ Compute 11! and reply with just the integer result.
 
 • Sent input to Robie [explorer]
 
@@ -27,7 +28,7 @@ expression: snapshot
 • Waiting for Robie [explorer]
 
 • Finished waiting
-  └ Robie [explorer]: Completed
-    Bob [worker]: Error
+  └ Robie [explorer]: Completed - 39916800
+    Bob [worker]: Error - tool timeout
 
 • Closed Robie [explorer]

@@ -278,6 +278,7 @@ pub struct ResponseCreateWsRequest<'a> {
     pub tools: Option<&'a [Value]>,
     pub tool_choice: &'a str,
     pub parallel_tool_calls: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<&'a Reasoning>,
     pub store: bool,
     pub stream: bool,

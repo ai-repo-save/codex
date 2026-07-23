@@ -6,6 +6,7 @@
 
 use crate::history_cell::PlainHistoryCell;
 use crate::render::line_utils::prefix_lines;
+use crate::text_formatting::truncate_text;
 use codex_app_server_protocol::AskParentMode;
 use codex_app_server_protocol::CollabAgentState;
 use codex_app_server_protocol::CollabAgentStatus;
@@ -29,6 +30,10 @@ use ratatui::text::Line;
 use ratatui::text::Span;
 use std::collections::HashMap;
 use std::collections::HashSet;
+
+const COLLAB_PROMPT_PREVIEW_GRAPHEMES: usize = 160;
+const COLLAB_AGENT_ERROR_PREVIEW_GRAPHEMES: usize = 160;
+const COLLAB_AGENT_RESPONSE_PREVIEW_GRAPHEMES: usize = 240;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AgentPickerThreadEntry {
@@ -61,6 +66,12 @@ pub(crate) struct AgentMetadata {
     pub(crate) agent_nickname: Option<String>,
     /// Agent type shown in brackets when present, for example `worker`.
     pub(crate) agent_role: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SpawnRequestSummary {
+    pub(crate) model: String,
+    pub(crate) reasoning_effort: ReasoningEffort,
 }
 
 #[derive(Clone, Copy)]
@@ -185,12 +196,36 @@ fn next_agent_word_motion_fallback(
 
 pub(crate) fn tool_call_history_cell(
     item: &ThreadItem,
+    agent_metadata: impl FnMut(ThreadId) -> AgentMetadata,
+) -> Option<PlainHistoryCell> {
+    tool_call_history_cell_with_spawn_request(item, /*cached_spawn_request*/ None, agent_metadata)
+}
+
+pub(crate) fn spawn_request_summary(item: &ThreadItem) -> Option<SpawnRequestSummary> {
+    match item {
+        ThreadItem::CollabAgentToolCall {
+            tool: CollabAgentTool::SpawnAgent,
+            model: Some(model),
+            reasoning_effort: Some(reasoning_effort),
+            ..
+        } => Some(SpawnRequestSummary {
+            model: model.clone(),
+            reasoning_effort: reasoning_effort.clone(),
+        }),
+        _ => None,
+    }
+}
+
+pub(crate) fn tool_call_history_cell_with_spawn_request(
+    item: &ThreadItem,
+    cached_spawn_request: Option<&SpawnRequestSummary>,
     mut agent_metadata: impl FnMut(ThreadId) -> AgentMetadata,
 ) -> Option<PlainHistoryCell> {
     let ThreadItem::CollabAgentToolCall {
         tool,
         status,
         receiver_thread_ids,
+        prompt,
         mode,
         agents_states,
         ..
@@ -208,7 +243,13 @@ pub(crate) fn tool_call_history_cell(
             if matches!(status, CollabAgentToolCallStatus::InProgress) {
                 return None;
             }
-            Some(spawn_end(first_receiver, &mut agent_metadata))
+            let fallback_spawn_request = spawn_request_summary(item);
+            Some(spawn_end(
+                first_receiver,
+                prompt.as_deref().unwrap_or_default(),
+                cached_spawn_request.or(fallback_spawn_request.as_ref()),
+                &mut agent_metadata,
+            ))
         }
         CollabAgentTool::SendInput => {
             if matches!(status, CollabAgentToolCallStatus::InProgress) {
@@ -473,17 +514,42 @@ fn sub_agent_activity_execution_details(
 
 fn spawn_end(
     new_thread_id: Option<ThreadId>,
+    prompt: &str,
+    spawn_request: Option<&SpawnRequestSummary>,
     agent_metadata: &mut impl FnMut(ThreadId) -> AgentMetadata,
 ) -> PlainHistoryCell {
     let title = match new_thread_id {
-        Some(thread_id) => title_with_agent(
-            "Spawned",
-            agent_label(thread_id, &agent_metadata(thread_id)),
-        ),
+        Some(thread_id) => {
+            let mut spans = vec![Span::from("Spawned ").bold()];
+            spans.extend(agent_label_spans(agent_label(
+                thread_id,
+                &agent_metadata(thread_id),
+            )));
+            if let Some(spawn_request) = spawn_request {
+                let model = spawn_request.model.trim();
+                let details = if model.is_empty() {
+                    format!("({})", spawn_request.reasoning_effort)
+                } else {
+                    format!("({model} {})", spawn_request.reasoning_effort)
+                };
+                spans.push(Span::from(" ").dim());
+                spans.push(Span::from(details).magenta());
+            }
+            title_spans_line(spans)
+        }
         None => title_text("Agent spawn failed"),
     };
 
-    collab_event(title, Vec::new())
+    let prompt = prompt.trim();
+    let details = if prompt.is_empty() {
+        Vec::new()
+    } else {
+        vec![Line::from(Span::from(truncate_text(
+            prompt,
+            COLLAB_PROMPT_PREVIEW_GRAPHEMES,
+        )))]
+    };
+    collab_event(title, details)
 }
 
 fn interaction_end(
@@ -819,7 +885,7 @@ fn first_agent_state<'a>(
 fn status_summary_line(status: Option<&CollabAgentState>) -> Line<'static> {
     match status {
         Some(status) => status_summary_spans(status).into(),
-        None => error_summary_spans().into(),
+        None => error_summary_spans(/*error*/ None).into(),
     }
 }
 
@@ -830,15 +896,39 @@ fn status_summary_spans(status: &CollabAgentState) -> Vec<Span<'static>> {
         // Allow `.yellow()`
         #[allow(clippy::disallowed_methods)]
         CollabAgentStatus::Interrupted => vec![Span::from("Interrupted").yellow()],
-        CollabAgentStatus::Completed => vec![Span::from("Completed").green()],
-        CollabAgentStatus::Errored => error_summary_spans(),
+        CollabAgentStatus::Completed => {
+            let mut spans = vec![Span::from("Completed").green()];
+            if let Some(message) = status.message.as_ref() {
+                let message_preview = truncate_text(
+                    &message.split_whitespace().collect::<Vec<_>>().join(" "),
+                    COLLAB_AGENT_RESPONSE_PREVIEW_GRAPHEMES,
+                );
+                if !message_preview.is_empty() {
+                    spans.push(Span::from(" - ").dim());
+                    spans.push(Span::from(message_preview));
+                }
+            }
+            spans
+        }
+        CollabAgentStatus::Errored => error_summary_spans(status.message.as_deref()),
         CollabAgentStatus::Shutdown => vec![Span::from("Shutdown")],
         CollabAgentStatus::NotFound => vec![Span::from("Not found").red()],
     }
 }
 
-fn error_summary_spans() -> Vec<Span<'static>> {
-    vec![Span::from("Error").red()]
+fn error_summary_spans(error: Option<&str>) -> Vec<Span<'static>> {
+    let mut spans = vec![Span::from("Error").red()];
+    if let Some(error) = error {
+        let error_preview = truncate_text(
+            &error.split_whitespace().collect::<Vec<_>>().join(" "),
+            COLLAB_AGENT_ERROR_PREVIEW_GRAPHEMES,
+        );
+        if !error_preview.is_empty() {
+            spans.push(Span::from(" - ").dim());
+            spans.push(Span::from(error_preview));
+        }
+    }
+    spans
 }
 
 #[cfg(test)]

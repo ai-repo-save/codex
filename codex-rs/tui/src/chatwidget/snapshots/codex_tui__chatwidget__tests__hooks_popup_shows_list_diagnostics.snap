@@ -1,5 +1,6 @@
 ---
 source: tui/src/chatwidget/tests/popups_and_settings.rs
+assertion_line: 155
 expression: popup
 ---
   Hooks
@@ -12,6 +13,7 @@ expression: popup
   Event                 Installed   Active      Description
   PreToolUse            0           0           Before a tool executes
   PermissionRequest     0           0           When permission is requested
+  ApprovalReviewRoute   0           0           Before approval selects a reviewer
   PostToolUse           0           0           After a tool executes
   PreCompact            0           0           Before context compaction
   PostCompact           0           0           After context compaction

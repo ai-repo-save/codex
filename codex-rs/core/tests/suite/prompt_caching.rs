@@ -194,9 +194,9 @@ async fn prompt_tools_are_consistent_across_requests() -> anyhow::Result<()> {
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     let mut expected_tools_names = if cfg!(windows) {
-        vec!["shell_command"]
+        vec!["get_account_rate_limits", "shell_command"]
     } else {
-        vec!["exec_command", "write_stdin"]
+        vec!["get_account_rate_limits", "exec_command", "write_stdin"]
     };
     expected_tools_names.extend([
         "get_context_usage",

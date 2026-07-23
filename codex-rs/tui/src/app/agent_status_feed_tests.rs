@@ -301,7 +301,7 @@ fn agent_status_describes_started_agent_with_model_and_effort() {
     Sub-agents running
 
       • `/root/reviewer`
-    Started /root/reviewer (gpt-5.6, high)
+        Started /root/reviewer (gpt-5.6, high)
     "###);
 }
 
