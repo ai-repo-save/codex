@@ -9665,7 +9665,7 @@ mod tests {
             /*disable_paste_burst*/ false,
         );
 
-        type_chars_humanlike(&mut composer, &['/', 'c']);
+        type_chars_humanlike(&mut composer, &['/', 'c', 'o']);
 
         let (_result, _needs_redraw) =
             composer.handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
