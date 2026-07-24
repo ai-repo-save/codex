@@ -232,9 +232,7 @@ impl MemoryToolBackends {
             let Some(path) = mutation.path() else {
                 continue;
             };
-            if !mutation_ids.insert(mutation.id().to_string())
-                || !paths.insert(path.to_string())
-            {
+            if !mutation_ids.insert(mutation.id().to_string()) || !paths.insert(path.to_string()) {
                 continue;
             }
             let Ok(note) = session
