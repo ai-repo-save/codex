@@ -7,6 +7,7 @@ use codex_models_manager::bundled_models_response;
 use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ReasoningSummary;
+use codex_protocol::config_types::ServiceTier;
 use codex_protocol::items::SubAgentActivityItem;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::PermissionProfile;
@@ -1885,7 +1886,7 @@ async fn skills_toggle_skips_instructions_for_parent_and_spawned_child() -> Resu
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn spawn_agent_started_activity_uses_role_effective_model_and_reasoning_effort() -> Result<()>
+async fn spawn_agent_started_activity_uses_role_effective_settings() -> Result<()>
 {
     skip_if_no_network!(Ok(()));
 
@@ -1950,7 +1951,7 @@ async fn spawn_agent_started_activity_uses_role_effective_model_and_reasoning_ef
             std::fs::write(
                 &role_path,
                 format!(
-                    "model = \"{V2_DEFAULT_MODEL}\"\nmodel_reasoning_effort = \"{ROLE_REASONING_EFFORT}\"\n",
+                    "model = \"{V2_DEFAULT_MODEL}\"\nmodel_reasoning_effort = \"{ROLE_REASONING_EFFORT}\"\nservice_tier = \"priority\"\n",
                 ),
             )
             .expect("write role config");
@@ -2020,7 +2021,7 @@ async fn spawn_agent_started_activity_uses_role_effective_model_and_reasoning_ef
             outcome: None,
             model: Some(V2_DEFAULT_MODEL.to_string()),
             reasoning_effort: Some(ROLE_REASONING_EFFORT),
-            service_tier: None,
+            service_tier: Some(ServiceTier::Fast.request_value().to_string()),
         }],
     );
 
