@@ -2,9 +2,11 @@ use crate::context::ContextRewindCarryForward;
 use crate::context::ContextualUserFragment;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
+use codex_extension_api::RewindContextContributionInput;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
+use codex_protocol::items::TurnItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::ContextAnchorSavedEvent;
 use codex_protocol::protocol::ContextRewoundToAnchorEvent;
@@ -241,6 +243,29 @@ fn count_user_turns_since_anchor(
         .find(|(active_anchor_id, _)| active_anchor_id == anchor_id)
         .map(|(_, user_turn_total_at_save)| user_turn_total.saturating_sub(user_turn_total_at_save))
         .ok_or_else(|| CodexErr::InvalidRequest(format!("unknown context anchor `{anchor_id}`")))
+}
+
+fn completed_turn_items_since_anchor(
+    rollout_items: &[RolloutItem],
+    anchor_id: &str,
+) -> Vec<TurnItem> {
+    let Some(anchor_index) = rollout_items.iter().rposition(|item| {
+        matches!(
+            item,
+            RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(event))
+                if event.anchor_id == anchor_id
+        )
+    }) else {
+        return Vec::new();
+    };
+
+    rollout_items[anchor_index.saturating_add(1)..]
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::EventMsg(EventMsg::ItemCompleted(event)) => Some(event.item.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 fn list_context_anchors_from_rollout(
@@ -558,6 +583,46 @@ impl Session {
             reclaim_threshold_met: benefit.reclaim_threshold_met,
             note,
         };
+        let completed_items =
+            completed_turn_items_since_anchor(&stored_history.items, &active_anchor.anchor_id);
+        let mut developer_sections = Vec::new();
+        let mut contextual_user_sections = Vec::new();
+        let mut separate_developer_sections = Vec::new();
+        for contributor in self.services.extensions.context_contributors() {
+            for fragment in contributor
+                .contribute_rewind_context(RewindContextContributionInput {
+                    session_store: &self.services.session_extension_data,
+                    thread_store: &self.services.thread_extension_data,
+                    completed_items: &completed_items,
+                })
+                .await
+            {
+                super::push_prompt_fragment(
+                    fragment,
+                    &mut developer_sections,
+                    &mut contextual_user_sections,
+                    &mut separate_developer_sections,
+                );
+            }
+        }
+        let mut contribution_items = Vec::with_capacity(3);
+        if let Some(developer_message) =
+            crate::context_manager::updates::build_developer_update_item(developer_sections)
+        {
+            contribution_items.push(developer_message);
+        }
+        for section in separate_developer_sections {
+            if let Some(developer_message) =
+                crate::context_manager::updates::build_developer_update_item(vec![section])
+            {
+                contribution_items.push(developer_message);
+            }
+        }
+        if let Some(contextual_user_message) =
+            crate::context_manager::updates::build_contextual_user_message(contextual_user_sections)
+        {
+            contribution_items.push(contextual_user_message);
+        }
         let replay_items = stored_history
             .items
             .iter()
@@ -565,6 +630,12 @@ impl Session {
             .chain(std::iter::once(RolloutItem::EventMsg(
                 EventMsg::ContextRewoundToAnchor(rewind_event.clone()),
             )))
+            .chain(
+                contribution_items
+                    .iter()
+                    .cloned()
+                    .map(RolloutItem::ResponseItem),
+            )
             .collect::<Vec<_>>();
         self.apply_rollout_reconstruction(turn_context, replay_items.as_slice())
             .await;
@@ -578,11 +649,19 @@ impl Session {
         };
         self.recompute_token_usage(turn_context).await;
 
-        self.persist_rollout_items(&[
-            RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind_event.clone())),
-            RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(replacement_anchor.clone())),
-        ])
-        .await;
+        let persisted_items = std::iter::once(RolloutItem::EventMsg(
+            EventMsg::ContextRewoundToAnchor(rewind_event.clone()),
+        ))
+        .chain(
+            contribution_items
+                .into_iter()
+                .map(RolloutItem::ResponseItem),
+        )
+        .chain(std::iter::once(RolloutItem::EventMsg(
+            EventMsg::ContextAnchorSaved(replacement_anchor.clone()),
+        )))
+        .collect::<Vec<_>>();
+        self.persist_rollout_items(&persisted_items).await;
         self.flush_rollout().await.map_err(CodexErr::Io)?;
         Ok(RewindContextToAnchorResult::Rewound {
             rewind_event,
