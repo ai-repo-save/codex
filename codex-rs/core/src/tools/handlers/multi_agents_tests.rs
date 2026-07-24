@@ -3161,15 +3161,18 @@ async fn multi_agent_v2_spawn_agent_ignores_configured_max_depth() {
         session.services.agent_control = manager.agent_control();
         session.thread_id = root.thread_id;
     }
-    set_turn_config(&mut turn, config);
     let parent_path = AgentPath::try_from("/root/parent").expect("agent path");
-    turn.session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
-        parent_thread_id: root.thread_id,
-        depth: 1,
-        agent_path: Some(parent_path),
-        agent_nickname: None,
-        agent_role: None,
-    });
+    {
+        let turn = Arc::get_mut(&mut turn).expect("turn should be uniquely owned");
+        set_turn_config(turn, config);
+        turn.session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+            parent_thread_id: root.thread_id,
+            depth: 1,
+            agent_path: Some(parent_path),
+            agent_nickname: None,
+            agent_role: None,
+        });
+    }
 
     let invocation = invocation(
         session,
