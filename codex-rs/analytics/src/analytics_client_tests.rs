@@ -4425,6 +4425,7 @@ async fn turn_event_counts_completed_tool_items() {
             prompt: Some("help".to_string()),
             model: Some("gpt-5".to_string()),
             reasoning_effort: None,
+            service_tier: None,
             mode: None,
             snapshot_revision: None,
             agents_states: Default::default(),
@@ -4438,6 +4439,7 @@ async fn turn_event_counts_completed_tool_items() {
             outcome: None,
             model: None,
             reasoning_effort: None,
+            service_tier: None,
         },
         ThreadItem::WebSearch(WebSearchItem {
             id: "web-1".to_string(),
