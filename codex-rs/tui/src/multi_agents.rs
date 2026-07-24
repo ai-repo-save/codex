@@ -17,6 +17,7 @@ use codex_app_server_protocol::SubAgentActivityOperation;
 use codex_app_server_protocol::SubAgentActivityOutcome;
 use codex_app_server_protocol::ThreadItem;
 use codex_protocol::ThreadId;
+use codex_protocol::config_types::ServiceTier;
 use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
 use codex_protocol::openai_models::ReasoningEffort;
 use crossterm::event::KeyCode;
@@ -230,6 +231,7 @@ pub(crate) fn tool_call_history_cell_with_spawn_request(
         status,
         receiver_thread_ids,
         prompt,
+        service_tier,
         mode,
         agents_states,
         ..
@@ -252,6 +254,7 @@ pub(crate) fn tool_call_history_cell_with_spawn_request(
                 first_receiver,
                 prompt.as_deref().unwrap_or_default(),
                 cached_spawn_request.or(fallback_spawn_request.as_ref()),
+                service_tier.as_deref(),
                 &mut agent_metadata,
             ))
         }
@@ -362,6 +365,7 @@ pub(crate) fn sub_agent_activity_history_cell(item: &ThreadItem) -> Option<Plain
         agent_path,
         model,
         reasoning_effort,
+        service_tier,
         ..
     } = item
     else {
@@ -373,6 +377,7 @@ pub(crate) fn sub_agent_activity_history_cell(item: &ThreadItem) -> Option<Plain
             agent_path,
             model.as_deref(),
             reasoning_effort.as_ref(),
+            service_tier.as_deref(),
         ),
         Vec::new(),
     ))
@@ -385,9 +390,10 @@ pub(crate) fn sub_agent_activity_summary(
     agent_path: &str,
     model: Option<&str>,
     reasoning_effort: Option<&ReasoningEffort>,
+    service_tier: Option<&str>,
 ) -> String {
     let action = sub_agent_activity_action(kind, operation, outcome);
-    let details = sub_agent_activity_execution_details(action, model, reasoning_effort);
+    let details = sub_agent_activity_execution_details(action, model, reasoning_effort, service_tier);
     format!(
         "{} {agent_path}{}",
         action.title_prefix(),
@@ -488,12 +494,15 @@ fn sub_agent_activity_title(
     agent_path: &str,
     model: Option<&str>,
     reasoning_effort: Option<&ReasoningEffort>,
+    service_tier: Option<&str>,
 ) -> Line<'static> {
     let mut spans = vec![
         Span::from(format!("{} ", action.title_prefix())).bold(),
         Span::from(format!("`{agent_path}`")).cyan(),
     ];
-    if let Some(details) = sub_agent_activity_execution_details(action, model, reasoning_effort) {
+    if let Some(details) =
+        sub_agent_activity_execution_details(action, model, reasoning_effort, service_tier)
+    {
         spans.push(Span::from(details).dim());
     }
     title_spans_line(spans)
@@ -503,23 +512,30 @@ fn sub_agent_activity_execution_details(
     action: SubAgentActivityAction,
     model: Option<&str>,
     reasoning_effort: Option<&ReasoningEffort>,
+    service_tier: Option<&str>,
 ) -> Option<String> {
     if !matches!(action, SubAgentActivityAction::Started) {
         return None;
     }
 
-    match (model.filter(|model| !model.is_empty()), reasoning_effort) {
-        (Some(model), Some(reasoning_effort)) => Some(format!(" ({model}, {reasoning_effort})")),
-        (Some(model), None) => Some(format!(" ({model})")),
-        (None, Some(reasoning_effort)) => Some(format!(" ({reasoning_effort})")),
-        (None, None) => None,
+    let mut details = Vec::new();
+    if let Some(model) = model.filter(|model| !model.is_empty()) {
+        details.push(model.to_string());
     }
+    if let Some(reasoning_effort) = reasoning_effort {
+        details.push(reasoning_effort.to_string());
+    }
+    if is_fast_service_tier(service_tier) {
+        details.push("fast".to_string());
+    }
+    (!details.is_empty()).then(|| format!(" ({})", details.join(", ")))
 }
 
 fn spawn_end(
     new_thread_id: Option<ThreadId>,
     prompt: &str,
     spawn_request: Option<&SpawnRequestSummary>,
+    service_tier: Option<&str>,
     agent_metadata: &mut impl FnMut(ThreadId) -> AgentMetadata,
 ) -> PlainHistoryCell {
     let title = match new_thread_id {
@@ -529,13 +545,19 @@ fn spawn_end(
                 thread_id,
                 &agent_metadata(thread_id),
             )));
-            if let Some(spawn_request) = spawn_request {
+            let mut detail_parts = spawn_request.map_or_else(Vec::new, |spawn_request| {
                 let model = spawn_request.model.trim();
-                let details = if model.is_empty() {
-                    format!("({})", spawn_request.reasoning_effort)
+                if model.is_empty() {
+                    vec![spawn_request.reasoning_effort.to_string()]
                 } else {
-                    format!("({model} {})", spawn_request.reasoning_effort)
-                };
+                    vec![model.to_string(), spawn_request.reasoning_effort.to_string()]
+                }
+            });
+            if is_fast_service_tier(service_tier) {
+                detail_parts.push("fast".to_string());
+            }
+            if !detail_parts.is_empty() {
+                let details = format!("({})", detail_parts.join(" "));
                 spans.push(Span::from(" ").dim());
                 spans.push(Span::from(details).magenta());
             }
@@ -554,6 +576,13 @@ fn spawn_end(
         )))]
     };
     collab_event(title, details)
+}
+
+fn is_fast_service_tier(service_tier: Option<&str>) -> bool {
+    matches!(
+        service_tier.and_then(ServiceTier::from_request_value),
+        Some(ServiceTier::Fast)
+    )
 }
 
 fn interaction_end(
@@ -960,6 +989,7 @@ mod tests {
             outcome: Some(SubAgentActivityOutcome::Succeeded),
             model: None,
             reasoning_effort: None,
+            service_tier: None,
         };
 
         assert_eq!(
@@ -987,6 +1017,7 @@ mod tests {
                 prompt: Some("Compute 11! and reply with just the integer result.".to_string()),
                 model: None,
                 reasoning_effort: None,
+                service_tier: Some(ServiceTier::Fast.request_value().to_string()),
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1008,6 +1039,7 @@ mod tests {
                 prompt: Some("Please continue and return the answer only.".to_string()),
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1029,6 +1061,7 @@ mod tests {
                 prompt: Some("Should I preserve the existing wire format?".to_string()),
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: Some(AskParentMode::Authoritative),
                 snapshot_revision: None,
                 agents_states: HashMap::new(),
@@ -1047,6 +1080,7 @@ mod tests {
                 prompt: Some("Should I preserve the existing wire format?".to_string()),
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: Some(AskParentMode::Authoritative),
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1068,6 +1102,7 @@ mod tests {
                 prompt: Some("Choose the compatibility policy.".to_string()),
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: Some(AskParentMode::Authoritative),
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1089,6 +1124,7 @@ mod tests {
                 prompt: Some("Resolve the ownership conflict.".to_string()),
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: Some(AskParentMode::Authoritative),
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1110,6 +1146,7 @@ mod tests {
                 prompt: Some("What constraints did the parent already identify?".to_string()),
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: Some(AskParentMode::Consult),
                 snapshot_revision: Some("history-18/items-42".to_string()),
                 agents_states: HashMap::new(),
@@ -1128,6 +1165,7 @@ mod tests {
                 prompt: Some("What constraints did the parent already identify?".to_string()),
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: Some(AskParentMode::Consult),
                 snapshot_revision: Some("history-18/items-42".to_string()),
                 agents_states: HashMap::from([(
@@ -1152,6 +1190,7 @@ mod tests {
                 prompt: Some("May I commit the compatibility change?".to_string()),
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: Some(AskParentMode::Consult),
                 snapshot_revision: Some("history-18/items-42".to_string()),
                 agents_states: HashMap::from([(
@@ -1176,6 +1215,7 @@ mod tests {
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::new(),
@@ -1194,6 +1234,7 @@ mod tests {
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([
@@ -1221,6 +1262,7 @@ mod tests {
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1340,6 +1382,7 @@ mod tests {
                     agent_path,
                     model,
                     reasoning_effort,
+                    service_tier,
                     ..
                 } => sub_agent_activity_summary(
                     *kind,
@@ -1348,6 +1391,7 @@ mod tests {
                     agent_path,
                     model.as_deref(),
                     reasoning_effort.as_ref(),
+                    service_tier.as_deref(),
                 ),
                 _ => unreachable!("activity item"),
             })
@@ -1510,9 +1554,10 @@ mod tests {
                 sender_thread_id: sender_thread_id.to_string(),
                 receiver_thread_ids: vec![robie_id.to_string()],
                 prompt: Some(String::new()),
-                model: None,
-                reasoning_effort: None,
-                mode: None,
+            model: None,
+            reasoning_effort: None,
+            service_tier: None,
+            mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
                     robie_id.to_string(),
@@ -1550,6 +1595,7 @@ mod tests {
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1602,6 +1648,7 @@ mod tests {
             outcome,
             model: Some("gpt-5.6".to_string()),
             reasoning_effort: Some(ReasoningEffort::High),
+            service_tier: Some(ServiceTier::Fast.request_value().to_string()),
         }
     }
 

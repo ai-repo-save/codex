@@ -229,6 +229,7 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
             agent_path,
             model,
             reasoning_effort,
+            service_tier,
             ..
         } => {
             vec![
@@ -239,6 +240,7 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
                     agent_path,
                     model.as_deref(),
                     reasoning_effort.as_ref(),
+                    service_tier.as_deref(),
                 )
                 .dim()
                 .into(),

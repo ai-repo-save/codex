@@ -144,6 +144,7 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
             agent_path,
             model,
             reasoning_effort,
+            service_tier,
             ..
         } => {
             let summary = sub_agent_activity_summary(
@@ -153,6 +154,7 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
                 agent_path,
                 model.as_deref(),
                 reasoning_effort.as_ref(),
+                service_tier.as_deref(),
             );
             bounded_summary(&summary)
         }

@@ -457,6 +457,11 @@ async fn collab_spawn_end_shows_requested_model_and_effort() {
                 prompt: Some("Explore the repo".to_string()),
                 model: Some("gpt-5".to_string()),
                 reasoning_effort: Some(ReasoningEffortConfig::High),
+                service_tier: Some(
+                    codex_protocol::config_types::ServiceTier::Fast
+                        .request_value()
+                        .to_string(),
+                ),
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::new(),
@@ -478,6 +483,7 @@ async fn collab_spawn_end_shows_requested_model_and_effort() {
                 prompt: Some("Explore the repo".to_string()),
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -502,6 +508,10 @@ async fn collab_spawn_end_shows_requested_model_and_effort() {
     assert!(
         rendered.contains("Spawned Robie [explorer] (gpt-5 high)"),
         "expected spawn line to include agent metadata and requested model, got {rendered:?}"
+    );
+    assert!(
+        !rendered.contains("fast"),
+        "completed item without an effective fast tier must not inherit the pending request tier"
     );
 }
 
@@ -972,6 +982,7 @@ async fn live_app_server_collab_wait_items_render_history() {
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::new(),
@@ -997,6 +1008,7 @@ async fn live_app_server_collab_wait_items_render_history() {
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([
@@ -1046,6 +1058,11 @@ async fn live_app_server_sub_agent_activity_renders_history() {
                 outcome: None,
                 model: Some("gpt-5.6".to_string()),
                 reasoning_effort: Some(ReasoningEffortConfig::High),
+                service_tier: Some(
+                    codex_protocol::config_types::ServiceTier::Fast
+                        .request_value()
+                        .to_string(),
+                ),
             },
         }),
         /*replay_kind*/ None,
@@ -1056,7 +1073,7 @@ async fn live_app_server_sub_agent_activity_renders_history() {
         .map(|lines| lines_to_single_string(&lines))
         .collect::<Vec<_>>()
         .join("\n");
-    insta::assert_snapshot!(combined, @r###"• Started `/root/research` (gpt-5.6, high)"###);
+    insta::assert_snapshot!(combined, @r###"• Started `/root/research` (gpt-5.6, high, fast)"###);
 }
 
 #[tokio::test]
@@ -1294,6 +1311,11 @@ async fn live_app_server_collab_spawn_completed_renders_requested_model_and_effo
                 prompt: Some("Explore the repo".to_string()),
                 model: Some("gpt-5".to_string()),
                 reasoning_effort: Some(ReasoningEffortConfig::High),
+                service_tier: Some(
+                    codex_protocol::config_types::ServiceTier::Fast
+                        .request_value()
+                        .to_string(),
+                ),
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::new(),
@@ -1316,6 +1338,11 @@ async fn live_app_server_collab_spawn_completed_renders_requested_model_and_effo
                 prompt: Some("Explore the repo".to_string()),
                 model: Some("gpt-5".to_string()),
                 reasoning_effort: Some(ReasoningEffortConfig::High),
+                service_tier: Some(
+                    codex_protocol::config_types::ServiceTier::Fast
+                        .request_value()
+                        .to_string(),
+                ),
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(

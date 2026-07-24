@@ -50,6 +50,11 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
                     outcome: None,
                     model: Some("gpt-5.6".to_string()),
                     reasoning_effort: Some(ReasoningEffort::High),
+                    service_tier: Some(
+                        codex_protocol::config_types::ServiceTier::Fast
+                            .request_value()
+                            .to_string(),
+                    ),
                 },
                 ThreadItem::MemoryMutation(codex_app_server_protocol::MemoryMutation {
                     id: "memory-write-1".to_string(),
@@ -69,6 +74,7 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
                     prompt: Some("private agent instructions".to_string()),
                     model: Some("gpt-5.6".to_string()),
                     reasoning_effort: None,
+                    service_tier: None,
                     mode: None,
                     snapshot_revision: None,
                     agents_states: Default::default(),
@@ -96,7 +102,7 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
     insta::assert_snapshot!(
         rendered,
         @r###"
-Started /root/research (gpt-5.6, high)
+Started /root/research (gpt-5.6, high, fast)
 Wrote memory · scope: project · title: Repository conventions · path: memories/project/repository-conventions.md · preview: Run focused tests remotely.
 Spawned an agent
 "###,

@@ -130,6 +130,11 @@ async fn replayed_sub_agent_activity_renders_history() {
             outcome: None,
             model: Some("gpt-5.6".to_string()),
             reasoning_effort: Some(ReasoningEffortConfig::High),
+            service_tier: Some(
+                codex_protocol::config_types::ServiceTier::Fast
+                    .request_value()
+                    .to_string(),
+            ),
         },
         "turn-1".to_string(),
         ReplayKind::ThreadSnapshot,
@@ -140,7 +145,7 @@ async fn replayed_sub_agent_activity_renders_history() {
         .map(|lines| lines_to_single_string(&lines))
         .collect::<Vec<_>>()
         .join("\n");
-    insta::assert_snapshot!(combined, @r###"• Started `/root/research` (gpt-5.6, high)"###);
+    insta::assert_snapshot!(combined, @r###"• Started `/root/research` (gpt-5.6, high, fast)"###);
 }
 
 #[tokio::test]
