@@ -284,7 +284,7 @@ async fn handler_rejects_non_function_payloads() {
     let (session, turn) = make_session_and_context().await;
     let invocation = invocation(
         Arc::new(session),
-        turn,
+        Arc::new(turn),
         "spawn_agent",
         ToolPayload::Custom {
             input: "hello".to_string(),
@@ -3173,7 +3173,7 @@ async fn multi_agent_v2_spawn_agent_ignores_configured_max_depth() {
 
     let invocation = invocation(
         session,
-        Arc::new(turn),
+        turn,
         "spawn_agent",
         function_payload(json!({
             "message": "hello",
