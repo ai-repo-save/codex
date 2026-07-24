@@ -4289,6 +4289,9 @@ pub struct CollabAgentSpawnBeginEvent {
     pub prompt: String,
     pub model: String,
     pub reasoning_effort: ReasoningEffortConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub service_tier: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
@@ -4340,6 +4343,10 @@ pub struct CollabAgentSpawnEndEvent {
     pub model: String,
     /// Effective reasoning effort used by the spawned agent after inheritance and role overrides.
     pub reasoning_effort: ReasoningEffortConfig,
+    /// Effective service tier used by the spawned agent after inheritance and role overrides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub service_tier: Option<String>,
     /// Last known status of the new agent reported to the sender agent.
     pub status: AgentStatus,
 }
@@ -4433,6 +4440,9 @@ pub struct SubAgentActivityEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub reasoning_effort: Option<ReasoningEffortConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub service_tier: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
@@ -4542,6 +4552,9 @@ mod tests {
     use super::*;
     use crate::items::CommandExecutionItem;
     use crate::items::CommandExecutionStatus;
+    use crate::items::CollabAgentTool;
+    use crate::items::CollabAgentToolCallItem;
+    use crate::items::CollabAgentToolCallStatus;
     use crate::items::DynamicToolCallItem;
     use crate::items::DynamicToolCallStatus;
     use crate::items::EnteredReviewModeItem;
@@ -5773,6 +5786,7 @@ mod tests {
                 agent_path: agent_path.clone(),
                 model: Some("gpt-5.4".into()),
                 reasoning_effort: Some(ReasoningEffortConfig::High),
+                service_tier: Some("priority".into()),
                 operation: Some(SubAgentActivityOperation::SendMessage),
                 outcome: Some(SubAgentActivityOutcome::Succeeded),
             }),
@@ -5792,6 +5806,7 @@ mod tests {
                 kind: SubAgentActivityKind::Started,
                 model: Some("gpt-5.4".into()),
                 reasoning_effort: Some(ReasoningEffortConfig::High),
+                service_tier: Some("priority".into()),
                 operation: Some(SubAgentActivityOperation::SendMessage),
                 outcome: Some(SubAgentActivityOutcome::Succeeded),
             }
@@ -5810,6 +5825,7 @@ mod tests {
             agent_path: agent_path.clone(),
             model: None,
             reasoning_effort: None,
+            service_tier: None,
             operation: None,
             outcome: None,
         };
@@ -5821,6 +5837,7 @@ mod tests {
             kind: SubAgentActivityKind::Interacted,
             model: None,
             reasoning_effort: None,
+            service_tier: None,
             operation: None,
             outcome: None,
         };
@@ -5851,6 +5868,134 @@ mod tests {
             panic!("expected sub-agent activity event");
         };
         assert_eq!(event, expected_event);
+    }
+
+    #[test]
+    fn collab_agent_spawn_service_tier_survives_legacy_event_bridge() {
+        let sender_thread_id = ThreadId::new();
+        let receiver_thread_id = ThreadId::new();
+        let item = CollabAgentToolCallItem {
+            id: "spawn-1".into(),
+            tool: CollabAgentTool::SpawnAgent,
+            status: CollabAgentToolCallStatus::Completed,
+            sender_thread_id,
+            receiver_thread_ids: vec![receiver_thread_id],
+            receiver_agents: Vec::new(),
+            prompt: Some("help".into()),
+            model: Some("gpt-5.4".into()),
+            reasoning_effort: Some(ReasoningEffortConfig::High),
+            service_tier: Some("priority".into()),
+            mode: None,
+            snapshot_revision: None,
+            agents_states: Default::default(),
+        };
+        let started = ItemStartedEvent {
+            thread_id: sender_thread_id,
+            turn_id: "turn-1".into(),
+            started_at_ms: 10,
+            item: TurnItem::CollabAgentToolCall(item.clone()),
+        };
+        let completed = ItemCompletedEvent {
+            thread_id: sender_thread_id,
+            turn_id: "turn-1".into(),
+            completed_at_ms: 20,
+            item: TurnItem::CollabAgentToolCall(item),
+        };
+
+        assert!(matches!(
+            started.as_legacy_events(/*show_raw_agent_reasoning*/ false).as_slice(),
+            [EventMsg::CollabAgentSpawnBegin(CollabAgentSpawnBeginEvent {
+                service_tier: Some(service_tier),
+                ..
+            })] if service_tier == "priority"
+        ));
+        assert!(matches!(
+            completed
+                .as_legacy_events(/*show_raw_agent_reasoning*/ false)
+                .as_slice(),
+            [EventMsg::CollabAgentSpawnEnd(CollabAgentSpawnEndEvent {
+                service_tier: Some(service_tier),
+                ..
+            })] if service_tier == "priority"
+        ));
+    }
+
+    #[test]
+    fn collab_agent_spawn_deserializes_without_service_tier() {
+        let sender_thread_id = ThreadId::new();
+        let receiver_thread_id = ThreadId::new();
+        let expected_item = CollabAgentToolCallItem {
+            id: "spawn-1".into(),
+            tool: CollabAgentTool::SpawnAgent,
+            status: CollabAgentToolCallStatus::Completed,
+            sender_thread_id,
+            receiver_thread_ids: vec![receiver_thread_id],
+            receiver_agents: Vec::new(),
+            prompt: Some("help".into()),
+            model: Some("gpt-5.4".into()),
+            reasoning_effort: Some(ReasoningEffortConfig::High),
+            service_tier: None,
+            mode: None,
+            snapshot_revision: None,
+            agents_states: Default::default(),
+        };
+        let expected_begin = CollabAgentSpawnBeginEvent {
+            call_id: "spawn-1".into(),
+            started_at_ms: 10,
+            sender_thread_id,
+            prompt: "help".into(),
+            model: "gpt-5.4".into(),
+            reasoning_effort: ReasoningEffortConfig::High,
+            service_tier: None,
+        };
+        let expected_end = CollabAgentSpawnEndEvent {
+            call_id: "spawn-1".into(),
+            completed_at_ms: 20,
+            sender_thread_id,
+            new_thread_id: Some(receiver_thread_id),
+            new_agent_nickname: None,
+            new_agent_role: None,
+            prompt: "help".into(),
+            model: "gpt-5.4".into(),
+            reasoning_effort: ReasoningEffortConfig::High,
+            service_tier: None,
+            status: AgentStatus::NotFound,
+        };
+
+        let mut item_json = serde_json::to_value(TurnItem::CollabAgentToolCall(
+            CollabAgentToolCallItem {
+                service_tier: Some("priority".into()),
+                ..expected_item.clone()
+            },
+        ))
+        .unwrap();
+        item_json.as_object_mut().unwrap().remove("service_tier");
+        let item = serde_json::from_value::<TurnItem>(item_json).unwrap();
+        let TurnItem::CollabAgentToolCall(item) = item else {
+            panic!("expected collab agent tool call item");
+        };
+        assert_eq!(item, expected_item);
+
+        let mut begin_json = serde_json::to_value(CollabAgentSpawnBeginEvent {
+            service_tier: Some("priority".into()),
+            ..expected_begin.clone()
+        })
+        .unwrap();
+        begin_json
+            .as_object_mut()
+            .unwrap()
+            .remove("service_tier");
+        let begin = serde_json::from_value::<CollabAgentSpawnBeginEvent>(begin_json).unwrap();
+        assert_eq!(begin, expected_begin);
+
+        let mut end_json = serde_json::to_value(CollabAgentSpawnEndEvent {
+            service_tier: Some("priority".into()),
+            ..expected_end.clone()
+        })
+        .unwrap();
+        end_json.as_object_mut().unwrap().remove("service_tier");
+        let end = serde_json::from_value::<CollabAgentSpawnEndEvent>(end_json).unwrap();
+        assert_eq!(end, expected_end);
     }
 
     #[test]
