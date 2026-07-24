@@ -30,6 +30,7 @@ fn sub_agent_activity_is_a_terminal_tool_runtime_event() -> anyhow::Result<()> {
         outcome: None,
         model: Some("gpt-5.4".to_string()),
         reasoning_effort: Some(ReasoningEffort::High),
+        service_tier: Some("priority".to_string()),
     });
 
     let Some(ToolRuntimeTraceEvent::Ended {
@@ -52,7 +53,8 @@ fn sub_agent_activity_is_a_terminal_tool_runtime_event() -> anyhow::Result<()> {
             "agent_path": "/root/reviewer",
             "kind": "started",
             "model": "gpt-5.4",
-            "reasoning_effort": "high"
+            "reasoning_effort": "high",
+            "service_tier": "priority"
         })
     );
     Ok(())
@@ -70,6 +72,7 @@ fn failed_sub_agent_activity_is_a_failed_terminal_tool_runtime_event() -> anyhow
         outcome: Some(SubAgentActivityOutcome::Failed),
         model: None,
         reasoning_effort: None,
+        service_tier: None,
     });
 
     let Some(ToolRuntimeTraceEvent::Ended { status, .. }) = tool_runtime_trace_event(&event) else {
