@@ -365,7 +365,7 @@ pub enum ThreadItem {
         model: Option<String>,
         /// Reasoning effort requested for the spawned agent, when applicable.
         reasoning_effort: Option<ReasoningEffort>,
-        /// Service tier requested for the spawned agent, when applicable.
+        /// Service tier reported for the spawned agent, when applicable.
         service_tier: Option<String>,
         /// Delivery semantics for an `ask_parent` request, when applicable.
         mode: Option<AskParentMode>,
