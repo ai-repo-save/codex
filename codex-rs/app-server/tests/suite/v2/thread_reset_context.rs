@@ -110,10 +110,7 @@ async fn assert_reset_context_uses_live_context(history_mode: ThreadHistoryMode)
     Ok(())
 }
 
-async fn start_thread(
-    mcp: &mut TestAppServer,
-    history_mode: ThreadHistoryMode,
-) -> Result<String> {
+async fn start_thread(mcp: &mut TestAppServer, history_mode: ThreadHistoryMode) -> Result<String> {
     let thread_id = mcp
         .send_thread_start_request_with_auto_env(ThreadStartParams {
             model: Some("mock-model".to_string()),

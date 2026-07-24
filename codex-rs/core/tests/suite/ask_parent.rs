@@ -498,12 +498,11 @@ async fn consult_uses_a_fixed_parent_snapshot_without_waking_the_parent() -> Res
 async fn consult_requires_authoritative_parent_without_automatic_escalation() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
-    let (_test, _server, requests, result) =
-        run_consult(
-            ConsultOutcome::RequiresAuthoritativeParent,
-            /*request_local_tool*/ false,
-        )
-        .await?;
+    let (_test, _server, requests, result) = run_consult(
+        ConsultOutcome::RequiresAuthoritativeParent,
+        /*request_local_tool*/ false,
+    )
+    .await?;
 
     assert_eq!(
         result.get("status"),

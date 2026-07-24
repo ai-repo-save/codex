@@ -3144,8 +3144,10 @@ async fn unified_exec_enforces_glob_deny_read_policy() -> Result<()> {
 
     let session_model = session_configured.model.clone();
     let turn_cwd = cwd.abs();
-    let (sandbox_policy, permission_profile) =
-        turn_permission_fields(session_configured.permission_profile.clone(), turn_cwd.as_path());
+    let (sandbox_policy, permission_profile) = turn_permission_fields(
+        session_configured.permission_profile.clone(),
+        turn_cwd.as_path(),
+    );
     codex
         .submit(Op::UserInput {
             items: vec![UserInput::Text {

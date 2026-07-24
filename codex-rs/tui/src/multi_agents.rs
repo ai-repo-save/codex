@@ -198,7 +198,11 @@ pub(crate) fn tool_call_history_cell(
     item: &ThreadItem,
     agent_metadata: impl FnMut(ThreadId) -> AgentMetadata,
 ) -> Option<PlainHistoryCell> {
-    tool_call_history_cell_with_spawn_request(item, /*cached_spawn_request*/ None, agent_metadata)
+    tool_call_history_cell_with_spawn_request(
+        item,
+        /*cached_spawn_request*/ None,
+        agent_metadata,
+    )
 }
 
 pub(crate) fn spawn_request_summary(item: &ThreadItem) -> Option<SpawnRequestSummary> {

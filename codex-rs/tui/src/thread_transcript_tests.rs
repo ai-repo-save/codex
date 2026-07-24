@@ -87,11 +87,11 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
         RawReasoningVisibility::Hidden,
         /*codex_home*/ None,
     )
-        .into_iter()
-        .flat_map(|cell| cell.transcript_lines(/*width*/ 80))
-        .map(|line| line.to_string())
-        .collect::<Vec<_>>()
-        .join("\n");
+    .into_iter()
+    .flat_map(|cell| cell.transcript_lines(/*width*/ 80))
+    .map(|line| line.to_string())
+    .collect::<Vec<_>>()
+    .join("\n");
 
     insta::assert_snapshot!(
         rendered,

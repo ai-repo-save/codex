@@ -320,7 +320,8 @@ fn skill_load_cell_renders_failed_skill_error() {
         "missing".to_string(),
         /*path*/ None,
         codex_app_server_protocol::SkillLoadStatus::Failed,
-        /*error*/ Some("skill `missing` was not found in the available skills list".to_string()),
+        /*error*/
+        Some("skill `missing` was not found in the available skills list".to_string()),
     );
 
     assert_eq!(

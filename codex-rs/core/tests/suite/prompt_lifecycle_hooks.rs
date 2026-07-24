@@ -212,8 +212,13 @@ async fn pre_compact_invalid_prompt_output_fails_open_and_compacts() -> Result<(
     let test = test_codex()
         .with_model(MAIN_MODEL)
         .with_pre_build_hook(|home| {
-            write_prompt_hook(home, "PreCompact", Some("manual"), /*fail_closed*/ false)
-                .expect("write PreCompact prompt hook");
+            write_prompt_hook(
+                home,
+                "PreCompact",
+                Some("manual"),
+                /*fail_closed*/ false,
+            )
+            .expect("write PreCompact prompt hook");
         })
         .with_config(|config| {
             trust_discovered_hooks(config);
@@ -258,8 +263,13 @@ async fn pre_compact_fail_closed_aborts_only_compaction() -> Result<()> {
     let test = test_codex()
         .with_model(MAIN_MODEL)
         .with_pre_build_hook(|home| {
-            write_prompt_hook(home, "PreCompact", Some("manual"), /*fail_closed*/ true)
-                .expect("write PreCompact prompt hook");
+            write_prompt_hook(
+                home,
+                "PreCompact",
+                Some("manual"),
+                /*fail_closed*/ true,
+            )
+            .expect("write PreCompact prompt hook");
         })
         .with_config(|config| {
             trust_discovered_hooks(config);
@@ -327,8 +337,13 @@ async fn session_start_fail_closed_skips_first_sample_and_next_turn_continues() 
     let test = test_codex()
         .with_model(MAIN_MODEL)
         .with_pre_build_hook(|home| {
-            write_prompt_hook(home, "SessionStart", Some("startup"), /*fail_closed*/ true)
-                .expect("write SessionStart prompt hook");
+            write_prompt_hook(
+                home,
+                "SessionStart",
+                Some("startup"),
+                /*fail_closed*/ true,
+            )
+            .expect("write SessionStart prompt hook");
         })
         .with_config(trust_discovered_hooks)
         .build(&server)
@@ -369,7 +384,7 @@ async fn user_prompt_submit_fail_closed_rejects_only_the_failed_input() -> Resul
                 /*matcher*/ None,
                 /*fail_closed*/ true,
             )
-                .expect("write UserPromptSubmit prompt hook");
+            .expect("write UserPromptSubmit prompt hook");
         })
         .with_config(trust_discovered_hooks)
         .build(&server)
@@ -449,8 +464,13 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_or_prewarm() -
     let test = test_codex()
         .with_model(MAIN_MODEL)
         .with_pre_build_hook(|home| {
-            write_prompt_hook(home, "SubagentStart", Some("default"), /*fail_closed*/ true)
-                .expect("write SubagentStart prompt hook");
+            write_prompt_hook(
+                home,
+                "SubagentStart",
+                Some("default"),
+                /*fail_closed*/ true,
+            )
+            .expect("write SubagentStart prompt hook");
         })
         .with_config(|config| {
             trust_discovered_hooks(config);
@@ -505,10 +525,8 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_or_prewarm() -
         .filter(|request| {
             request.method == "POST"
                 && request.url.path().ends_with("/responses")
-                && request_header(request, "x-openai-subagent")
-                    == Some(COLLAB_SPAWN_HEADER_VALUE)
-                && request_body(request)
-                    .is_some_and(|body| body["model"] == json!(MAIN_MODEL))
+                && request_header(request, "x-openai-subagent") == Some(COLLAB_SPAWN_HEADER_VALUE)
+                && request_body(request).is_some_and(|body| body["model"] == json!(MAIN_MODEL))
         })
         .count();
     let child_websocket_prewarm_request_count = requests
@@ -516,8 +534,7 @@ async fn subagent_start_fail_closed_errors_child_without_sampling_or_prewarm() -
         .filter(|request| {
             request.method == "GET"
                 && request.url.path().ends_with("/responses")
-                && request_header(request, "x-openai-subagent")
-                    == Some(COLLAB_SPAWN_HEADER_VALUE)
+                && request_header(request, "x-openai-subagent") == Some(COLLAB_SPAWN_HEADER_VALUE)
         })
         .count();
     assert_eq!(

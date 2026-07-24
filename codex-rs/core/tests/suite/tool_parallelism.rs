@@ -6,12 +6,12 @@ use std::fs;
 use std::time::Duration;
 use std::time::Instant;
 
+use codex_features::Feature;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::Op;
 use codex_protocol::user_input::UserInput;
-use codex_features::Feature;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
@@ -355,14 +355,12 @@ async fn shell_tools_start_before_response_completed_when_stream_delayed() -> an
     ])
     .await;
 
-    let mut builder = test_codex()
-        .with_model("gpt-5.4")
-        .with_config(|config| {
-            config
-                .features
-                .disable(Feature::UnifiedExec)
-                .expect("test config should allow feature update");
-        });
+    let mut builder = test_codex().with_model("gpt-5.4").with_config(|config| {
+        config
+            .features
+            .disable(Feature::UnifiedExec)
+            .expect("test config should allow feature update");
+    });
     let test = builder
         .build_with_streaming_server(&streaming_server)
         .await?;

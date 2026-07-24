@@ -169,8 +169,7 @@ async fn selected_capability_stack_tracks_environment_availability_and_resume() 
     let initial_requests = response_mock.requests();
     assert_selected_capabilities_absent(&initial_requests[0]);
 
-    let (mut exec_server, exec_server_url) =
-        spawn_exec_server(fixture.codex_home.path()).await?;
+    let (mut exec_server, exec_server_url) = spawn_exec_server(fixture.codex_home.path()).await?;
     add_environment(&mut app_server, &exec_server_url).await?;
     wait_for_environment_ready(&mut app_server).await?;
     wait_for_selected_mcp_server(&mut app_server, &thread_id).await?;
@@ -402,8 +401,7 @@ async fn selected_capabilities_become_available_between_samples_in_one_turn() ->
     assert_eq!(1, requests.len());
     assert_selected_capabilities_absent(&requests[0]);
 
-    let (mut exec_server, exec_server_url) =
-        spawn_exec_server(fixture.codex_home.path()).await?;
+    let (mut exec_server, exec_server_url) = spawn_exec_server(fixture.codex_home.path()).await?;
     add_environment(&mut app_server, &exec_server_url).await?;
     wait_for_environment_ready(&mut app_server).await?;
     app_server

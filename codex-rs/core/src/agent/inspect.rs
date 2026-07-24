@@ -96,15 +96,19 @@ pub(crate) fn summarize_transcript_tail(
                 if role == "system" || role == "developer" {
                     None
                 } else {
-                    content_items_to_plain_text(content)
-                        .and_then(|text| {
-                            transcript_tail_entry(role.clone(), "message", /*name*/ None, text)
-                        })
+                    content_items_to_plain_text(content).and_then(|text| {
+                        transcript_tail_entry(role.clone(), "message", /*name*/ None, text)
+                    })
                 }
             }
             ResponseItem::Reasoning { summary, .. } => {
                 reasoning_summary_to_text(summary).and_then(|text| {
-                    transcript_tail_entry("assistant", "reasoning_summary", /*name*/ None, text)
+                    transcript_tail_entry(
+                        "assistant",
+                        "reasoning_summary",
+                        /*name*/ None,
+                        text,
+                    )
                 })
             }
             ResponseItem::LocalShellCall { action, .. } => {

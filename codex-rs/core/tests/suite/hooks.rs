@@ -2790,22 +2790,21 @@ async fn approval_review_route_prompt_runs_only_for_needs_approval() -> Result<(
         ]),
     )
     .await;
-    let approval_continuation_response =
-        core_test_support::responses::mount_sse_once_match(
-            &server,
-            move |request: &wiremock::Request| {
-                decoded_request_body(request).is_some_and(|body| {
-                    body["model"] == PRE_TOOL_PROMPT_HOOK_MAIN_MODEL
-                        && body.to_string().contains(approval_call_id)
-                })
-            },
-            sse(vec![
-                ev_response_created("route-main-approval-complete"),
-                ev_assistant_message("route-main-approval-result", "approval route complete"),
-                ev_completed("route-main-approval-complete"),
-            ]),
-        )
-        .await;
+    let approval_continuation_response = core_test_support::responses::mount_sse_once_match(
+        &server,
+        move |request: &wiremock::Request| {
+            decoded_request_body(request).is_some_and(|body| {
+                body["model"] == PRE_TOOL_PROMPT_HOOK_MAIN_MODEL
+                    && body.to_string().contains(approval_call_id)
+            })
+        },
+        sse(vec![
+            ev_response_created("route-main-approval-complete"),
+            ev_assistant_message("route-main-approval-result", "approval route complete"),
+            ev_completed("route-main-approval-complete"),
+        ]),
+    )
+    .await;
     let skip_initial_response = core_test_support::responses::mount_sse_once_match(
         &server,
         move |request: &wiremock::Request| {
@@ -3681,7 +3680,10 @@ async fn assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
 
 #[tokio::test]
 async fn pre_tool_use_prompt_hook_allows_with_isolated_model_request() -> Result<()> {
-    assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(/*reasoning_effort*/ None).await
+    assert_pre_tool_use_prompt_hook_allows_with_isolated_model_request(
+        /*reasoning_effort*/ None,
+    )
+    .await
 }
 
 #[tokio::test]

@@ -812,9 +812,8 @@ async fn environment_count_controls_environment_backed_tools() {
 #[tokio::test]
 async fn guardian_reviewer_tools_stay_within_allowlist() {
     let with_environment = probe(|turn| {
-        turn.session_source = SessionSource::SubAgent(SubAgentSource::Other(
-            GUARDIAN_REVIEWER_NAME.to_string(),
-        ));
+        turn.session_source =
+            SessionSource::SubAgent(SubAgentSource::Other(GUARDIAN_REVIEWER_NAME.to_string()));
     })
     .await;
     assert_eq!(
@@ -827,9 +826,8 @@ async fn guardian_reviewer_tools_stay_within_allowlist() {
     );
 
     let without_environment = probe(|turn| {
-        turn.session_source = SessionSource::SubAgent(SubAgentSource::Other(
-            GUARDIAN_REVIEWER_NAME.to_string(),
-        ));
+        turn.session_source =
+            SessionSource::SubAgent(SubAgentSource::Other(GUARDIAN_REVIEWER_NAME.to_string()));
         turn.environments.environments.clear();
     })
     .await;

@@ -2537,7 +2537,10 @@ async fn record_token_usage_info_adds_context_reminder_when_percent_threshold_cr
         .expect("record token usage");
 
     assert_eq!(
-        vec![default_context_reminder(Some(15), /*used_tokens*/ 86_800)],
+        vec![default_context_reminder(
+            Some(15),
+            /*used_tokens*/ 86_800
+        )],
         context_reminder_texts(&session, &turn_context).await
     );
 }
@@ -2595,7 +2598,10 @@ async fn record_token_usage_info_uses_one_crossing_for_percent_or_absolute_thres
         .expect("record token usage");
 
     assert_eq!(
-        vec![default_context_reminder(Some(23), /*used_tokens*/ 80_000)],
+        vec![default_context_reminder(
+            Some(23),
+            /*used_tokens*/ 80_000
+        )],
         context_reminder_texts(&session, &turn_context).await
     );
 }
@@ -2667,7 +2673,10 @@ async fn record_token_usage_info_adds_context_reminder_for_subagents_but_not_whe
         .await
         .expect("record token usage");
     assert_eq!(
-        vec![default_context_reminder(Some(15), /*used_tokens*/ 86_800)],
+        vec![default_context_reminder(
+            Some(15),
+            /*used_tokens*/ 86_800
+        )],
         context_reminder_texts(&subagent_session, &subagent_turn_context).await
     );
 
