@@ -28,6 +28,7 @@ use codex_utils_absolute_path::test_support::PathBufExt;
 use codex_utils_absolute_path::test_support::PathExt;
 use codex_utils_absolute_path::test_support::test_path_buf;
 use codex_utils_output_truncation::TruncationPolicy;
+use codex_utils_output_truncation::approx_token_count;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 use unicode_segmentation::UnicodeSegmentation;
@@ -38,6 +39,7 @@ use crate::scoped::GLOBAL_MEMORY_MAINTENANCE_POLICY;
 use crate::scoped::MemoryScope;
 use crate::scoped::MemoryToolBackends;
 use crate::scoped::PROJECT_MEMORY_MAINTENANCE_POLICY;
+use crate::scoped::SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT;
 use crate::scoped::SESSION_MEMORY_MAINTENANCE_POLICY;
 
 #[test]
@@ -832,6 +834,66 @@ async fn rewind_context_includes_each_completed_session_write_once() {
             .rewind_session_context_fragment(&completed_items)
             .await,
         None
+    );
+}
+
+#[tokio::test]
+async fn scoped_memory_context_fragments_respect_model_visible_token_limit() {
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let project_root = tempfile::tempdir().expect("project root");
+    let backends = MemoryToolBackends::new(
+        &tempdir.path().abs(),
+        /*global_enabled*/ false,
+        /*scoped_enabled*/ true,
+        "thread-1",
+        &project_root.path().abs(),
+    );
+    let oversized_note = "memory ".repeat(SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT);
+    let session_response = backends
+        .write_note(
+            MemoryScope::Session,
+            "Oversized session memory".to_string(),
+            oversized_note.clone(),
+        )
+        .await
+        .expect("write oversized session note");
+    backends
+        .write_note(
+            MemoryScope::Project,
+            "Oversized project memory".to_string(),
+            oversized_note.clone(),
+        )
+        .await
+        .expect("write oversized project note");
+
+    let scoped_context = backends
+        .scoped_context_fragment()
+        .await
+        .expect("oversized scoped notes should contribute context");
+    assert!(
+        approx_token_count(&scoped_context) <= SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT,
+        "scoped context used {} approximate tokens",
+        approx_token_count(&scoped_context)
+    );
+
+    let completed_items = vec![TurnItem::Extension(ExtensionItem::MemoryMutation(
+        MemoryMutation::write(
+            "mutation-1".to_string(),
+            MemoryMutationScope::Session,
+            Some("Oversized session memory".to_string()),
+            &oversized_note,
+        )
+        .with_status(MemoryMutationStatus::Succeeded)
+        .with_path(session_response.path),
+    ))];
+    let rewind_context = backends
+        .rewind_session_context_fragment(&completed_items)
+        .await
+        .expect("oversized rewind note should contribute context");
+    assert!(
+        approx_token_count(&rewind_context) <= SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT,
+        "rewind context used {} approximate tokens",
+        approx_token_count(&rewind_context)
     );
 }
 

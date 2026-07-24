@@ -14,6 +14,7 @@ use codex_extension_items::memory_mutation::MemoryMutationScope;
 use codex_extension_items::memory_mutation::MemoryMutationStatus;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_output_truncation::TruncationPolicy;
+use codex_utils_output_truncation::approx_token_count;
 use codex_utils_output_truncation::truncate_text;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -37,7 +38,8 @@ use crate::local::LocalMemoriesBackend;
 const SCOPED_MEMORIES_DIR: &str = "scoped-memories";
 const NOTES_DIR: &str = "notes";
 const PROJECT_METADATA_FILENAME: &str = "metadata.toml";
-const SESSION_CONTEXT_TOKEN_LIMIT: usize = 10_000;
+pub(crate) const SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT: usize = 10_000;
+const SESSION_CONTEXT_TOKEN_LIMIT: usize = SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT;
 const PROJECT_CONTEXT_TOKEN_LIMIT: usize = 15_000;
 
 pub(crate) const SESSION_MEMORY_MAINTENANCE_POLICY: &str = "Session memory is working memory for the current thread. Codex may proactively create, update, or delete session notes when doing so helps complete the current task; no explicit user request is required.";
@@ -207,7 +209,7 @@ impl MemoryToolBackends {
             SESSION_MEMORY_MAINTENANCE_POLICY,
             PROJECT_MEMORY_MAINTENANCE_POLICY,
         );
-        Some(ScopedMemoryContextFragment::new(body).render())
+        Some(render_scoped_memory_context(body))
     }
 
     pub(crate) async fn rewind_session_context_fragment(
@@ -270,7 +272,7 @@ impl MemoryToolBackends {
         let body = format!(
             "\n## Scoped Memory\n### Session memory\n{content}\n\n{SESSION_MEMORY_MAINTENANCE_POLICY}\n\nUse `memories.write_note` and `memories.delete` to maintain scoped memory under these rules. To replace a note, write the corrected note, then delete the obsolete file.\n"
         );
-        Some(ScopedMemoryContextFragment::new(body).render())
+        Some(render_scoped_memory_context(body))
     }
 
     fn backend_for_read(
@@ -293,6 +295,31 @@ impl MemoryToolBackends {
                 },
             )
         })
+    }
+}
+
+fn render_scoped_memory_context(body: String) -> String {
+    let rendered = ScopedMemoryContextFragment::new(&body).render();
+    if approx_token_count(&rendered) <= SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT {
+        return rendered;
+    }
+
+    let (start_marker, end_marker) = ScopedMemoryContextFragment::type_markers();
+    let wrapper_tokens = approx_token_count(&format!("{start_marker}{end_marker}"));
+    let mut body_token_budget =
+        SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT.saturating_sub(wrapper_tokens);
+
+    loop {
+        let truncated_body = truncate_text(&body, TruncationPolicy::Tokens(body_token_budget));
+        let rendered = ScopedMemoryContextFragment::new(truncated_body).render();
+        let rendered_tokens = approx_token_count(&rendered);
+        if rendered_tokens <= SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT {
+            return rendered;
+        }
+
+        body_token_budget = body_token_budget.saturating_sub(
+            rendered_tokens.saturating_sub(SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT),
+        );
     }
 }
 
