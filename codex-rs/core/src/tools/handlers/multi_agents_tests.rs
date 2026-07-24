@@ -284,7 +284,7 @@ async fn handler_rejects_non_function_payloads() {
     let (session, turn) = make_session_and_context().await;
     let invocation = invocation(
         Arc::new(session),
-        Arc::new(turn),
+        turn,
         "spawn_agent",
         ToolPayload::Custom {
             input: "hello".to_string(),
