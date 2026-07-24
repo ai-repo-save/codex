@@ -110,6 +110,10 @@ model: string | null,
  */
 reasoningEffort: ReasoningEffort | null,
 /**
+ * Service tier reported for the spawned agent, when applicable.
+ */
+serviceTier: string | null,
+/**
  * Delivery semantics for an `ask_parent` request, when applicable.
  */
 mode: AskParentMode | null,
@@ -120,4 +124,4 @@ snapshotRevision: string | null,
 /**
  * Last known status of the target agents, when available.
  */
-agentsStates: { [key in string]?: CollabAgentState }, } | { "type": "subAgentActivity", id: string, kind: SubAgentActivityKind, agentThreadId: string, agentPath: string, operation: SubAgentActivityOperation | null, outcome: SubAgentActivityOutcome | null, model: string | null, reasoningEffort: ReasoningEffort | null, } | { "type": "memoryMutation" } & MemoryMutation | { "type": "webSearch" } & WebSearchItem | { "type": "imageView", id: string, path: LegacyAppPathString, } | { "type": "sleep" } & SleepItem | { "type": "imageGeneration" } & ImageGenerationItem | { "type": "enteredReviewMode", id: string, review: string, } | { "type": "exitedReviewMode", id: string, review: string, } | { "type": "contextCompaction", id: string, } | { "type": "contextAnchorSaved", id: string, anchorId: string, label: string | null, historyBoundary: bigint, createdAt: bigint, } | { "type": "contextAnchorRewound", id: string, anchorId: string, droppedTurns: number, responseItemsReclaimed: bigint, approxTokensReclaimed: bigint, reclaimThresholdPercent: number, reclaimThresholdTokens: bigint | null, reclaimThresholdMet: boolean | null, };
+agentsStates: { [key in string]?: CollabAgentState }, } | { "type": "subAgentActivity", id: string, kind: SubAgentActivityKind, agentThreadId: string, agentPath: string, operation: SubAgentActivityOperation | null, outcome: SubAgentActivityOutcome | null, model: string | null, reasoningEffort: ReasoningEffort | null, serviceTier: string | null, } | { "type": "memoryMutation" } & MemoryMutation | { "type": "webSearch" } & WebSearchItem | { "type": "imageView", id: string, path: LegacyAppPathString, } | { "type": "sleep" } & SleepItem | { "type": "imageGeneration" } & ImageGenerationItem | { "type": "enteredReviewMode", id: string, review: string, } | { "type": "exitedReviewMode", id: string, review: string, } | { "type": "contextCompaction", id: string, } | { "type": "contextAnchorSaved", id: string, anchorId: string, label: string | null, historyBoundary: bigint, createdAt: bigint, } | { "type": "contextAnchorRewound", id: string, anchorId: string, droppedTurns: number, responseItemsReclaimed: bigint, approxTokensReclaimed: bigint, reclaimThresholdPercent: number, reclaimThresholdTokens: bigint | null, reclaimThresholdMet: boolean | null, };

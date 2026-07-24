@@ -4589,6 +4589,13 @@
               "description": "Thread ID of the agent issuing the collab request.",
               "type": "string"
             },
+            "serviceTier": {
+              "description": "Service tier reported for the spawned agent, when applicable.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "snapshotRevision": {
               "description": "Opaque revision of the parent snapshot used for an `ask_parent` request.",
               "type": [
@@ -4680,6 +4687,12 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "serviceTier": {
+              "type": [
+                "string",
+                "null"
               ]
             },
             "type": {
