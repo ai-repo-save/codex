@@ -4290,6 +4290,7 @@ config_file = "./custom-role.toml"
         model,
         reasoning_effort,
         service_tier,
+        context_inheritance,
         mode,
         snapshot_revision,
         agents_states,
@@ -4310,6 +4311,10 @@ config_file = "./custom-role.toml"
     assert_eq!(model, Some(ROLE_MODEL.to_string()));
     assert_eq!(reasoning_effort, Some(ROLE_REASONING_EFFORT));
     assert_eq!(service_tier, None);
+    assert_eq!(
+        context_inheritance,
+        Some(SpawnContextInheritance::None)
+    );
     assert_eq!(mode, None);
     assert_eq!(snapshot_revision, None);
     let agent_state = agents_states
