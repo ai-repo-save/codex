@@ -319,8 +319,7 @@ fn render_scoped_memory_context(body: String, token_limit: usize) -> String {
         }
 
         let overflow_tokens = rendered_tokens.saturating_sub(token_limit);
-        body_token_budget =
-            body_token_budget.saturating_sub(overflow_tokens.max(/*other*/ 1));
+        body_token_budget = body_token_budget.saturating_sub(overflow_tokens.max(/*other*/ 1));
     }
 
     ScopedMemoryContextFragment::new(String::new()).render()

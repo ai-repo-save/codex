@@ -127,12 +127,7 @@ async fn rewind_injects_each_new_session_memory_once_and_persists_it_on_resume()
     .await;
     let mut resumed_app_server = build_app_server(codex_home.path()).await?;
     resume_thread(&mut resumed_app_server, &thread_id).await?;
-    run_turn(
-        &mut resumed_app_server,
-        &thread_id,
-        "continue after resume",
-    )
-    .await?;
+    run_turn(&mut resumed_app_server, &thread_id, "continue after resume").await?;
     assert_user_text_occurrences(
         &resume_mock.single_request(),
         &[(FIRST_MEMORY_NOTE, 1), (SECOND_MEMORY_NOTE, 1)],
@@ -220,12 +215,7 @@ async fn rewind_skips_session_memory_deleted_after_its_write() -> Result<()> {
         ],
     )
     .await;
-    run_turn(
-        &mut app_server,
-        &thread_id,
-        "rewind after deleting memory",
-    )
-    .await?;
+    run_turn(&mut app_server, &thread_id, "rewind after deleting memory").await?;
     let rewind_requests = rewind_mock.requests();
     assert_eq!(rewind_requests.len(), 2);
     assert_user_text_occurrences(
@@ -364,12 +354,7 @@ fn write_session_note_response(
     ])
 }
 
-fn rewind_response(
-    response_id: &str,
-    call_id: &str,
-    anchor_id: &str,
-    note: &str,
-) -> String {
+fn rewind_response(response_id: &str, call_id: &str, anchor_id: &str, note: &str) -> String {
     responses::sse(vec![
         responses::ev_response_created(response_id),
         responses::ev_function_call(
@@ -381,10 +366,7 @@ fn rewind_response(
     ])
 }
 
-fn replacement_anchor_id(
-    request: &responses::ResponsesRequest,
-    call_id: &str,
-) -> Result<String> {
+fn replacement_anchor_id(request: &responses::ResponsesRequest, call_id: &str) -> Result<String> {
     let output = request
         .function_call_output_text(call_id)
         .expect("rewind output should be text JSON");

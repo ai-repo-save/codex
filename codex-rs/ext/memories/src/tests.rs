@@ -39,8 +39,8 @@ use crate::scoped::GLOBAL_MEMORY_MAINTENANCE_POLICY;
 use crate::scoped::MemoryScope;
 use crate::scoped::MemoryToolBackends;
 use crate::scoped::PROJECT_MEMORY_MAINTENANCE_POLICY;
-use crate::scoped::SESSION_MEMORY_MAINTENANCE_POLICY;
 use crate::scoped::SESSION_CONTEXT_TOKEN_LIMIT;
+use crate::scoped::SESSION_MEMORY_MAINTENANCE_POLICY;
 
 #[test]
 fn memory_tool_namespace_matches_responses_api_identifier() {
