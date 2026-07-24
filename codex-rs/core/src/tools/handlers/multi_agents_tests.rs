@@ -199,7 +199,11 @@ fn collab_agent_tool_call_service_tiers(
 ) -> Vec<(CollabAgentToolCallStatus, Option<String>)> {
     std::iter::from_fn(|| receiver.try_recv().ok())
         .filter_map(|event| match event.msg {
-            EventMsg::ItemStarted(event) | EventMsg::ItemCompleted(event) => match event.item {
+            EventMsg::ItemStarted(event) => match event.item {
+                TurnItem::CollabAgentToolCall(item) => Some((item.status, item.service_tier)),
+                _ => None,
+            },
+            EventMsg::ItemCompleted(event) => match event.item {
                 TurnItem::CollabAgentToolCall(item) => Some((item.status, item.service_tier)),
                 _ => None,
             },
@@ -517,13 +521,16 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
             .start_thread((*turn.config).clone())
             .await
             .expect("root thread should start");
-        session.services.agent_control = manager.agent_control();
-        session.thread_id = root.thread_id;
+        {
+            let session = Arc::get_mut(&mut session).expect("session should be uniquely owned");
+            session.services.agent_control = manager.agent_control();
+            session.thread_id = root.thread_id;
+        }
 
         let output = SpawnAgentHandler::default()
             .handle(invocation(
-                Arc::new(session),
-                Arc::new(turn),
+                session,
+                turn,
                 "spawn_agent",
                 function_payload(json!({
                     "message": "inspect this repo",
@@ -635,12 +642,15 @@ async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_
             .start_thread((*turn.config).clone())
             .await
             .expect("root thread should start");
-        session.services.agent_control = manager.agent_control();
-        session.thread_id = root.thread_id;
+        {
+            let session = Arc::get_mut(&mut session).expect("session should be uniquely owned");
+            session.services.agent_control = manager.agent_control();
+            session.thread_id = root.thread_id;
+        }
 
         let output = SpawnAgentHandler::default()
             .handle(invocation(
-                Arc::new(session),
+                session,
                 Arc::new(turn),
                 "spawn_agent",
                 function_payload(json!({"message": "inspect this repo"})),
@@ -743,19 +753,24 @@ service_tier = "priority"
                 nickname_candidates: None,
             },
         );
-        turn.config = Arc::new(config);
+        Arc::get_mut(&mut turn)
+            .expect("turn should be uniquely owned")
+            .config = Arc::new(config);
         let manager = thread_manager();
         let root = manager
             .start_thread((*turn.config).clone())
             .await
             .expect("root thread should start");
-        session.services.agent_control = manager.agent_control();
-        session.thread_id = root.thread_id;
+        {
+            let session = Arc::get_mut(&mut session).expect("session should be uniquely owned");
+            session.services.agent_control = manager.agent_control();
+            session.thread_id = root.thread_id;
+        }
 
         let output = SpawnAgentHandler::default()
             .handle(invocation(
-                Arc::new(session),
-                Arc::new(turn),
+                session,
+                turn,
                 "spawn_agent",
                 function_payload(json!({
                     "message": "inspect this repo",
@@ -983,9 +998,11 @@ async fn multi_agent_v2_full_history_fork_accepts_explicit_service_tier() {
         .start_thread((*turn.config).clone())
         .await
         .expect("root thread should start");
-    session.services.agent_control = manager.agent_control();
-    session.thread_id = root.thread_id;
-    let session = Arc::new(session);
+    {
+        let session = Arc::get_mut(&mut session).expect("session should be uniquely owned");
+        session.services.agent_control = manager.agent_control();
+        session.thread_id = root.thread_id;
+    }
     let turn = Arc::new(turn);
 
     let output = SpawnAgentHandlerV2::default()
