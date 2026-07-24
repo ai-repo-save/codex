@@ -2017,6 +2017,7 @@ async fn spawn_agent_started_activity_uses_role_effective_settings() -> Result<(
             agent_path: AgentPath::try_from("/root/worker").expect("child path should be valid"),
             kind: SubAgentActivityKind::Started,
             operation: None,
+            context_inheritance: None,
             outcome: None,
             model: Some(V2_DEFAULT_MODEL.to_string()),
             reasoning_effort: Some(ROLE_REASONING_EFFORT),
