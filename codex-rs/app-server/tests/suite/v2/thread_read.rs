@@ -21,6 +21,7 @@ use codex_app_server_protocol::MemoryMutationStatus;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::SessionSource;
 use codex_app_server_protocol::SortDirection;
+use codex_app_server_protocol::SpawnContextInheritance;
 use codex_app_server_protocol::SubAgentActivityKind;
 use codex_app_server_protocol::SubAgentActivityOperation;
 use codex_app_server_protocol::SubAgentActivityOutcome;
@@ -78,6 +79,7 @@ use codex_protocol::protocol::SessionSource as ProtocolSessionSource;
 use codex_protocol::protocol::SubAgentActivityKind as CoreSubAgentActivityKind;
 use codex_protocol::protocol::SubAgentActivityOperation as CoreSubAgentActivityOperation;
 use codex_protocol::protocol::SubAgentActivityOutcome as CoreSubAgentActivityOutcome;
+use codex_protocol::protocol::SpawnContextInheritance as CoreSpawnContextInheritance;
 use codex_protocol::protocol::ThreadMemoryMode;
 use codex_protocol::protocol::TurnCompleteEvent;
 use codex_protocol::protocol::TurnStartedEvent;
@@ -1620,6 +1622,9 @@ async fn paginated_history_lists_use_projected_turns_and_items() -> Result<()> {
                         model: Some("gpt-5.4".to_string()),
                         reasoning_effort: Some(ReasoningEffort::High),
                         service_tier: Some("priority".to_string()),
+                        context_inheritance: Some(CoreSpawnContextInheritance::LastNTurns {
+                            turns: 3,
+                        }),
                     }),
                 ),
                 paginated_completed_item(
@@ -1670,6 +1675,7 @@ async fn paginated_history_lists_use_projected_turns_and_items() -> Result<()> {
         model: Some("gpt-5.4".to_string()),
         reasoning_effort: Some(ReasoningEffort::High),
         service_tier: Some("priority".to_string()),
+        context_inheritance: Some(SpawnContextInheritance::LastNTurns { turns: 3 }),
     };
     let expected_memory_mutation = ThreadItem::MemoryMutation(MemoryMutation {
         id: "memory-1".to_string(),

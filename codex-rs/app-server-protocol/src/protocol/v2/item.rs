@@ -43,6 +43,7 @@ use codex_protocol::protocol::GuardianRiskLevel as CoreGuardianRiskLevel;
 use codex_protocol::protocol::GuardianUserAuthorization as CoreGuardianUserAuthorization;
 use codex_protocol::protocol::PatchApplyStatus as CorePatchApplyStatus;
 use codex_protocol::protocol::ReviewDecision as CoreReviewDecision;
+use codex_protocol::protocol::SpawnContextInheritance as CoreSpawnContextInheritance;
 use codex_protocol::protocol::SubAgentActivityKind as CoreSubAgentActivityKind;
 use codex_protocol::protocol::SubAgentActivityOperation as CoreSubAgentActivityOperation;
 use codex_protocol::protocol::SubAgentActivityOutcome as CoreSubAgentActivityOutcome;
@@ -367,6 +368,8 @@ pub enum ThreadItem {
         reasoning_effort: Option<ReasoningEffort>,
         /// Service tier reported for the spawned agent, when applicable.
         service_tier: Option<String>,
+        /// Effective parent-context inheritance requested for a spawned agent, when available.
+        context_inheritance: Option<SpawnContextInheritance>,
         /// Delivery semantics for an `ask_parent` request, when applicable.
         mode: Option<AskParentMode>,
         /// Opaque revision of the parent snapshot used for an `ask_parent` request.
@@ -386,6 +389,7 @@ pub enum ThreadItem {
         model: Option<String>,
         reasoning_effort: Option<ReasoningEffort>,
         service_tier: Option<String>,
+        context_inheritance: Option<SpawnContextInheritance>,
     },
     MemoryMutation(MemoryMutation),
     WebSearch(WebSearchItem),
@@ -932,6 +936,7 @@ impl From<CoreTurnItem> for ThreadItem {
                 model: call.model,
                 reasoning_effort: call.reasoning_effort,
                 service_tier: call.service_tier,
+                context_inheritance: call.context_inheritance.map(Into::into),
                 mode: call.mode.map(AskParentMode::from),
                 snapshot_revision: call.snapshot_revision,
                 agents_states: call
@@ -950,6 +955,7 @@ impl From<CoreTurnItem> for ThreadItem {
                 model: activity.model,
                 reasoning_effort: activity.reasoning_effort,
                 service_tier: activity.service_tier,
+                context_inheritance: activity.context_inheritance.map(Into::into),
             },
             CoreTurnItem::WebSearch(search) => ThreadItem::WebSearch(WebSearchItem {
                 id: search.id,
@@ -1225,6 +1231,26 @@ pub enum CollabAgentToolCallStatus {
     InProgress,
     Completed,
     Failed,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(tag = "type", rename_all = "camelCase")]
+#[ts(tag = "type", rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum SpawnContextInheritance {
+    None,
+    Full,
+    LastNTurns { turns: u64 },
+}
+
+impl From<CoreSpawnContextInheritance> for SpawnContextInheritance {
+    fn from(value: CoreSpawnContextInheritance) -> Self {
+        match value {
+            CoreSpawnContextInheritance::None => Self::None,
+            CoreSpawnContextInheritance::Full => Self::Full,
+            CoreSpawnContextInheritance::LastNTurns { turns } => Self::LastNTurns { turns },
+        }
+    }
 }
 
 impl From<CoreCollabAgentTool> for CollabAgentTool {

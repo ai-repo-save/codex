@@ -2772,6 +2772,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         model: Some("gpt-5.4".to_string()),
         reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
         service_tier: Some("priority".to_string()),
+        context_inheritance: Some(codex_protocol::protocol::SpawnContextInheritance::None),
         mode: None,
         snapshot_revision: None,
         agents_states: [(receiver_thread_id, CoreAgentStatus::Completed(None))]
@@ -2791,6 +2792,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             model: Some("gpt-5.4".to_string()),
             reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
             service_tier: Some("priority".to_string()),
+            context_inheritance: Some(SpawnContextInheritance::None),
             mode: None,
             snapshot_revision: None,
             agents_states: [(
@@ -2817,6 +2819,9 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         model: Some("gpt-5.4".to_string()),
         reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
         service_tier: Some("priority".to_string()),
+        context_inheritance: Some(
+            codex_protocol::protocol::SpawnContextInheritance::LastNTurns { turns: 3 },
+        ),
     });
 
     assert_eq!(
@@ -2831,6 +2836,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             model: Some("gpt-5.4".to_string()),
             reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
             service_tier: Some("priority".to_string()),
+            context_inheritance: Some(SpawnContextInheritance::LastNTurns { turns: 3 }),
         }
     );
 
@@ -2846,6 +2852,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         model: None,
         reasoning_effort: None,
         service_tier: None,
+        context_inheritance: None,
     });
 
     assert_eq!(
@@ -2860,6 +2867,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
         }
     );
 

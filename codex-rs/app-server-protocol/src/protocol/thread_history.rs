@@ -895,6 +895,7 @@ impl ThreadHistoryBuilder {
             model: Some(payload.model.clone()),
             reasoning_effort: Some(payload.reasoning_effort.clone()),
             service_tier: payload.service_tier.clone(),
+            context_inheritance: payload.context_inheritance.clone().map(Into::into),
             mode: None,
             snapshot_revision: None,
             agents_states: HashMap::new(),
@@ -933,6 +934,7 @@ impl ThreadHistoryBuilder {
             model: Some(payload.model.clone()),
             reasoning_effort: Some(payload.reasoning_effort.clone()),
             service_tier: payload.service_tier.clone(),
+            context_inheritance: payload.context_inheritance.clone().map(Into::into),
             mode: None,
             snapshot_revision: None,
             agents_states,
@@ -953,6 +955,7 @@ impl ThreadHistoryBuilder {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
             mode: None,
             snapshot_revision: None,
             agents_states: HashMap::new(),
@@ -980,6 +983,7 @@ impl ThreadHistoryBuilder {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
             mode: None,
             snapshot_revision: None,
             agents_states: [(receiver_id, received_status)].into_iter().collect(),
@@ -1000,6 +1004,7 @@ impl ThreadHistoryBuilder {
             model: payload.model.clone(),
             reasoning_effort: payload.reasoning_effort.clone(),
             service_tier: payload.service_tier.clone(),
+            context_inheritance: payload.context_inheritance.clone().map(Into::into),
         });
     }
 
@@ -1021,6 +1026,7 @@ impl ThreadHistoryBuilder {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
             mode: None,
             snapshot_revision: None,
             agents_states: HashMap::new(),
@@ -1059,6 +1065,7 @@ impl ThreadHistoryBuilder {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
             mode: None,
             snapshot_revision: None,
             agents_states,
@@ -1079,6 +1086,7 @@ impl ThreadHistoryBuilder {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
             mode: None,
             snapshot_revision: None,
             agents_states: HashMap::new(),
@@ -1108,6 +1116,7 @@ impl ThreadHistoryBuilder {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
             mode: None,
             snapshot_revision: None,
             agents_states,
@@ -1128,6 +1137,7 @@ impl ThreadHistoryBuilder {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
             mode: None,
             snapshot_revision: None,
             agents_states: HashMap::new(),
@@ -1160,6 +1170,7 @@ impl ThreadHistoryBuilder {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
             mode: None,
             snapshot_revision: None,
             agents_states,
@@ -4099,6 +4110,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: [(
@@ -4140,6 +4152,9 @@ mod tests {
                 model: "gpt-5.4-mini".into(),
                 reasoning_effort: codex_protocol::openai_models::ReasoningEffort::Medium,
                 service_tier: Some("priority".into()),
+                context_inheritance: Some(
+                    codex_protocol::protocol::SpawnContextInheritance::Full,
+                ),
                 status: AgentStatus::Running,
             }),
         ];
@@ -4163,6 +4178,7 @@ mod tests {
                 model: Some("gpt-5.4-mini".into()),
                 reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::Medium),
                 service_tier: Some("priority".into()),
+                context_inheritance: Some(crate::protocol::v2::SpawnContextInheritance::Full),
                 mode: None,
                 snapshot_revision: None,
                 agents_states: [(
@@ -4202,6 +4218,7 @@ mod tests {
                 model: Some("gpt-5.4".into()),
                 reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
                 service_tier: Some("priority".into()),
+                context_inheritance: None,
             }),
         ];
 
@@ -4222,6 +4239,7 @@ mod tests {
                 model: Some("gpt-5.4".into()),
                 reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
                 service_tier: Some("priority".into()),
+                context_inheritance: None,
             }
         );
     }
@@ -4241,6 +4259,7 @@ mod tests {
             model: Some("gpt-5.4".into()),
             reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
             service_tier: Some("priority".into()),
+            context_inheritance: None,
         };
         let mut serialized = serde_json::to_value(event).expect("serialize sub-agent activity");
         serialized
@@ -4275,6 +4294,7 @@ mod tests {
                 model: Some("gpt-5.4".into()),
                 reasoning_effort: None,
                 service_tier: Some("priority".into()),
+                context_inheritance: None,
             }
         );
     }
@@ -4339,6 +4359,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: [(

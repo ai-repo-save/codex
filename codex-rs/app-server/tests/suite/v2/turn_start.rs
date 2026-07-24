@@ -40,6 +40,7 @@ use codex_app_server_protocol::RawResponseCompletedNotification;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerRequest;
 use codex_app_server_protocol::ServerRequestResolvedNotification;
+use codex_app_server_protocol::SpawnContextInheritance;
 use codex_app_server_protocol::SubAgentActivityKind;
 use codex_app_server_protocol::TextElement;
 use codex_app_server_protocol::ThreadDeleteParams;
@@ -3727,6 +3728,7 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
         "model": REQUESTED_MODEL,
         "reasoning_effort": REQUESTED_REASONING_EFFORT,
         "service_tier": REQUESTED_SERVICE_TIER,
+        "fork_context": true,
     }))?;
     let _parent_turn = responses::mount_sse_once_match(
         &server,
@@ -3816,11 +3818,15 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
             let started_notif = mcp
                 .read_stream_until_notification_message("item/started")
                 .await?;
-            let started: ItemStartedNotification =
-                serde_json::from_value(started_notif.params.expect("item/started params"))?;
+            let params = started_notif.params.expect("item/started params");
+            let started: ItemStartedNotification = serde_json::from_value(params.clone())?;
             if let ThreadItem::CollabAgentToolCall { id, .. } = &started.item
                 && id == SPAWN_CALL_ID
             {
+                assert_eq!(
+                    params["item"]["contextInheritance"],
+                    json!({ "type": "full" })
+                );
                 return Ok::<ThreadItem, anyhow::Error>(started.item);
             }
         }
@@ -3838,6 +3844,7 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
             model: Some(REQUESTED_MODEL.to_string()),
             reasoning_effort: Some(REQUESTED_REASONING_EFFORT),
             service_tier: Some(REQUESTED_SERVICE_TIER.to_string()),
+            context_inheritance: Some(SpawnContextInheritance::Full),
             mode: None,
             snapshot_revision: None,
             agents_states: HashMap::new(),
@@ -3869,6 +3876,7 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
         model,
         reasoning_effort,
         service_tier,
+        context_inheritance,
         mode,
         snapshot_revision,
         agents_states,
@@ -3889,6 +3897,7 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
     assert_eq!(model, Some(REQUESTED_MODEL.to_string()));
     assert_eq!(reasoning_effort, Some(REQUESTED_REASONING_EFFORT));
     assert_eq!(service_tier, Some(REQUESTED_SERVICE_TIER.to_string()));
+    assert_eq!(context_inheritance, Some(SpawnContextInheritance::Full));
     assert_eq!(mode, None);
     assert_eq!(snapshot_revision, None);
     let agent_state = agents_states
@@ -4067,8 +4076,8 @@ async fn direct_input_to_multi_agent_v2_subagent_is_rejected() -> Result<()> {
             let completed_notif = mcp
                 .read_stream_until_notification_message("item/completed")
                 .await?;
-            let completed: ItemCompletedNotification =
-                serde_json::from_value(completed_notif.params.expect("item/completed params"))?;
+            let params = completed_notif.params.expect("item/completed params");
+            let completed: ItemCompletedNotification = serde_json::from_value(params.clone())?;
             if let ThreadItem::SubAgentActivity {
                 id,
                 kind: SubAgentActivityKind::Started,
@@ -4076,13 +4085,19 @@ async fn direct_input_to_multi_agent_v2_subagent_is_rejected() -> Result<()> {
                 operation,
                 outcome,
                 model,
+                context_inheritance,
                 ..
             } = completed.item
                 && id == SPAWN_CALL_ID
             {
+                assert_eq!(
+                    params["item"]["contextInheritance"],
+                    json!({ "type": "none" })
+                );
                 assert_eq!(operation, None);
                 assert_eq!(outcome, None);
                 assert_eq!(model.as_deref(), Some("gpt-5.4"));
+                assert_eq!(context_inheritance, Some(SpawnContextInheritance::None));
                 return Ok::<String, anyhow::Error>(agent_thread_id);
             }
         }
