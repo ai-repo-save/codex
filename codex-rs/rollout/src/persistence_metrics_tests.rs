@@ -1,3 +1,8 @@
+use codex_extension_items::ExtensionItem;
+use codex_extension_items::memory_mutation::MemoryMutation;
+use codex_extension_items::memory_mutation::MemoryMutationScope;
+use codex_extension_items::memory_mutation::MemoryMutationStatus;
+use codex_extension_items::web_search::WebSearchItem;
 use codex_protocol::ThreadId;
 use codex_protocol::items::EnteredReviewModeItem;
 use codex_protocol::items::ExitedReviewModeItem;
@@ -283,6 +288,73 @@ fn item_completion_persistence_depends_on_history_mode() {
     assert_eq!(
         paginated_measurement.items[0].decision,
         super::PersistenceDecision::Kept
+    );
+}
+
+#[test]
+fn memory_mutation_completion_is_durable_in_all_history_modes() {
+    let memory_mutation = RolloutItem::EventMsg(EventMsg::ItemCompleted(ItemCompletedEvent {
+        thread_id: ThreadId::default(),
+        turn_id: "turn".to_string(),
+        item: TurnItem::Extension(ExtensionItem::MemoryMutation(
+            MemoryMutation::write(
+                "memory".to_string(),
+                MemoryMutationScope::Session,
+                Some("Rewind reminder".to_string()),
+                "Remember this after rewinding.",
+            )
+            .with_status(MemoryMutationStatus::Succeeded)
+            .with_path("notes/rewind-reminder.md".to_string()),
+        )),
+        completed_at_ms: 0,
+    }));
+    let web_search = RolloutItem::EventMsg(EventMsg::ItemCompleted(ItemCompletedEvent {
+        thread_id: ThreadId::default(),
+        turn_id: "turn".to_string(),
+        item: TurnItem::Extension(ExtensionItem::WebSearch(WebSearchItem {
+            id: "search".to_string(),
+            query: "query".to_string(),
+            action: None,
+            results: None,
+        })),
+        completed_at_ms: 0,
+    }));
+    let items = vec![memory_mutation.clone(), web_search.clone()];
+
+    let (persisted_legacy, legacy_measurement) =
+        measure_and_filter_rollout_items(&items, ThreadHistoryMode::Legacy);
+    assert_eq!(
+        serde_json::to_value(persisted_legacy).expect("serialize persisted items"),
+        serde_json::to_value([memory_mutation.clone()]).expect("serialize expected items")
+    );
+    assert_eq!(
+        legacy_measurement
+            .items
+            .iter()
+            .map(|item| item.decision)
+            .collect::<Vec<_>>(),
+        vec![
+            super::PersistenceDecision::Kept,
+            super::PersistenceDecision::Dropped,
+        ]
+    );
+
+    let (persisted_paginated, paginated_measurement) =
+        measure_and_filter_rollout_items(&items, ThreadHistoryMode::Paginated);
+    assert_eq!(
+        serde_json::to_value(persisted_paginated).expect("serialize persisted items"),
+        serde_json::to_value([memory_mutation, web_search]).expect("serialize expected items")
+    );
+    assert_eq!(
+        paginated_measurement
+            .items
+            .iter()
+            .map(|item| item.decision)
+            .collect::<Vec<_>>(),
+        vec![
+            super::PersistenceDecision::Kept,
+            super::PersistenceDecision::Kept,
+        ]
     );
 }
 
