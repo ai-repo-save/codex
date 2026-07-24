@@ -365,6 +365,8 @@ pub enum ThreadItem {
         model: Option<String>,
         /// Reasoning effort requested for the spawned agent, when applicable.
         reasoning_effort: Option<ReasoningEffort>,
+        /// Service tier requested for the spawned agent, when applicable.
+        service_tier: Option<String>,
         /// Delivery semantics for an `ask_parent` request, when applicable.
         mode: Option<AskParentMode>,
         /// Opaque revision of the parent snapshot used for an `ask_parent` request.
@@ -383,6 +385,7 @@ pub enum ThreadItem {
         outcome: Option<SubAgentActivityOutcome>,
         model: Option<String>,
         reasoning_effort: Option<ReasoningEffort>,
+        service_tier: Option<String>,
     },
     MemoryMutation(MemoryMutation),
     WebSearch(WebSearchItem),
@@ -928,6 +931,7 @@ impl From<CoreTurnItem> for ThreadItem {
                 prompt: call.prompt,
                 model: call.model,
                 reasoning_effort: call.reasoning_effort,
+                service_tier: call.service_tier,
                 mode: call.mode.map(AskParentMode::from),
                 snapshot_revision: call.snapshot_revision,
                 agents_states: call
@@ -945,6 +949,7 @@ impl From<CoreTurnItem> for ThreadItem {
                 outcome: activity.outcome.map(Into::into),
                 model: activity.model,
                 reasoning_effort: activity.reasoning_effort,
+                service_tier: activity.service_tier,
             },
             CoreTurnItem::WebSearch(search) => ThreadItem::WebSearch(WebSearchItem {
                 id: search.id,

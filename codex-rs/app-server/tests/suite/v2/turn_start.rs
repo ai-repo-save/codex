@@ -3717,14 +3717,16 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
     const CHILD_PROMPT: &str = "child: do work";
     const PARENT_PROMPT: &str = "spawn a child and continue";
     const SPAWN_CALL_ID: &str = "spawn-call-1";
-    const REQUESTED_MODEL: &str = "gpt-5.2";
+    const REQUESTED_MODEL: &str = "gpt-5.4";
     const REQUESTED_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::Low;
+    const REQUESTED_SERVICE_TIER: &str = "priority";
 
     let server = responses::start_mock_server().await;
     let spawn_args = serde_json::to_string(&json!({
         "message": CHILD_PROMPT,
         "model": REQUESTED_MODEL,
         "reasoning_effort": REQUESTED_REASONING_EFFORT,
+        "service_tier": REQUESTED_SERVICE_TIER,
     }))?;
     let _parent_turn = responses::mount_sse_once_match(
         &server,
@@ -3835,6 +3837,7 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
             prompt: Some(CHILD_PROMPT.to_string()),
             model: Some(REQUESTED_MODEL.to_string()),
             reasoning_effort: Some(REQUESTED_REASONING_EFFORT),
+            service_tier: Some(REQUESTED_SERVICE_TIER.to_string()),
             mode: None,
             snapshot_revision: None,
             agents_states: HashMap::new(),
@@ -3865,6 +3868,7 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
         prompt,
         model,
         reasoning_effort,
+        service_tier,
         mode,
         snapshot_revision,
         agents_states,
@@ -3884,6 +3888,7 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
     assert_eq!(prompt, Some(CHILD_PROMPT.to_string()));
     assert_eq!(model, Some(REQUESTED_MODEL.to_string()));
     assert_eq!(reasoning_effort, Some(REQUESTED_REASONING_EFFORT));
+    assert_eq!(service_tier, Some(REQUESTED_SERVICE_TIER.to_string()));
     assert_eq!(mode, None);
     assert_eq!(snapshot_revision, None);
     let agent_state = agents_states
@@ -4269,6 +4274,7 @@ config_file = "./custom-role.toml"
         prompt,
         model,
         reasoning_effort,
+        service_tier,
         mode,
         snapshot_revision,
         agents_states,
@@ -4288,6 +4294,7 @@ config_file = "./custom-role.toml"
     assert_eq!(prompt, Some(CHILD_PROMPT.to_string()));
     assert_eq!(model, Some(ROLE_MODEL.to_string()));
     assert_eq!(reasoning_effort, Some(ROLE_REASONING_EFFORT));
+    assert_eq!(service_tier, None);
     assert_eq!(mode, None);
     assert_eq!(snapshot_revision, None);
     let agent_state = agents_states

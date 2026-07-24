@@ -2769,8 +2769,9 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         receiver_thread_ids: vec![receiver_thread_id],
         receiver_agents: Vec::new(),
         prompt: Some("continue".to_string()),
-        model: None,
-        reasoning_effort: None,
+        model: Some("gpt-5.4".to_string()),
+        reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
+        service_tier: Some("priority".to_string()),
         mode: None,
         snapshot_revision: None,
         agents_states: [(receiver_thread_id, CoreAgentStatus::Completed(None))]
@@ -2787,8 +2788,9 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             sender_thread_id: sender_thread_id.to_string(),
             receiver_thread_ids: vec![receiver_thread_id.to_string()],
             prompt: Some("continue".to_string()),
-            model: None,
-            reasoning_effort: None,
+            model: Some("gpt-5.4".to_string()),
+            reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
+            service_tier: Some("priority".to_string()),
             mode: None,
             snapshot_revision: None,
             agents_states: [(
@@ -2814,6 +2816,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         outcome: Some(CoreSubAgentActivityOutcome::Failed),
         model: Some("gpt-5.4".to_string()),
         reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
+        service_tier: Some("priority".to_string()),
     });
 
     assert_eq!(
@@ -2827,6 +2830,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             outcome: Some(SubAgentActivityOutcome::Failed),
             model: Some("gpt-5.4".to_string()),
             reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
+            service_tier: Some("priority".to_string()),
         }
     );
 
@@ -2841,6 +2845,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         outcome: None,
         model: None,
         reasoning_effort: None,
+        service_tier: None,
     });
 
     assert_eq!(
@@ -2854,6 +2859,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             outcome: None,
             model: None,
             reasoning_effort: None,
+            service_tier: None,
         }
     );
 

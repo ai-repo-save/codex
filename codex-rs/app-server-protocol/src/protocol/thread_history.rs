@@ -894,6 +894,7 @@ impl ThreadHistoryBuilder {
             prompt: Some(payload.prompt.clone()),
             model: Some(payload.model.clone()),
             reasoning_effort: Some(payload.reasoning_effort.clone()),
+            service_tier: payload.service_tier.clone(),
             mode: None,
             snapshot_revision: None,
             agents_states: HashMap::new(),
@@ -931,6 +932,7 @@ impl ThreadHistoryBuilder {
             prompt: Some(payload.prompt.clone()),
             model: Some(payload.model.clone()),
             reasoning_effort: Some(payload.reasoning_effort.clone()),
+            service_tier: payload.service_tier.clone(),
             mode: None,
             snapshot_revision: None,
             agents_states,
@@ -950,6 +952,7 @@ impl ThreadHistoryBuilder {
             prompt: Some(payload.prompt.clone()),
             model: None,
             reasoning_effort: None,
+            service_tier: None,
             mode: None,
             snapshot_revision: None,
             agents_states: HashMap::new(),
@@ -976,6 +979,7 @@ impl ThreadHistoryBuilder {
             prompt: Some(payload.prompt.clone()),
             model: None,
             reasoning_effort: None,
+            service_tier: None,
             mode: None,
             snapshot_revision: None,
             agents_states: [(receiver_id, received_status)].into_iter().collect(),
@@ -995,6 +999,7 @@ impl ThreadHistoryBuilder {
             outcome: payload.outcome.map(Into::into),
             model: payload.model.clone(),
             reasoning_effort: payload.reasoning_effort.clone(),
+            service_tier: payload.service_tier.clone(),
         });
     }
 
@@ -1015,6 +1020,7 @@ impl ThreadHistoryBuilder {
             prompt: None,
             model: None,
             reasoning_effort: None,
+            service_tier: None,
             mode: None,
             snapshot_revision: None,
             agents_states: HashMap::new(),
@@ -1052,6 +1058,7 @@ impl ThreadHistoryBuilder {
             prompt: None,
             model: None,
             reasoning_effort: None,
+            service_tier: None,
             mode: None,
             snapshot_revision: None,
             agents_states,
@@ -1071,6 +1078,7 @@ impl ThreadHistoryBuilder {
             prompt: None,
             model: None,
             reasoning_effort: None,
+            service_tier: None,
             mode: None,
             snapshot_revision: None,
             agents_states: HashMap::new(),
@@ -1099,6 +1107,7 @@ impl ThreadHistoryBuilder {
             prompt: None,
             model: None,
             reasoning_effort: None,
+            service_tier: None,
             mode: None,
             snapshot_revision: None,
             agents_states,
@@ -1118,6 +1127,7 @@ impl ThreadHistoryBuilder {
             prompt: None,
             model: None,
             reasoning_effort: None,
+            service_tier: None,
             mode: None,
             snapshot_revision: None,
             agents_states: HashMap::new(),
@@ -1149,6 +1159,7 @@ impl ThreadHistoryBuilder {
             prompt: None,
             model: None,
             reasoning_effort: None,
+            service_tier: None,
             mode: None,
             snapshot_revision: None,
             agents_states,
@@ -4087,6 +4098,7 @@ mod tests {
                 prompt: None,
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: [(
@@ -4127,6 +4139,7 @@ mod tests {
                 prompt: "inspect the repo".into(),
                 model: "gpt-5.4-mini".into(),
                 reasoning_effort: codex_protocol::openai_models::ReasoningEffort::Medium,
+                service_tier: Some("priority".into()),
                 status: AgentStatus::Running,
             }),
         ];
@@ -4149,6 +4162,7 @@ mod tests {
                 prompt: Some("inspect the repo".into()),
                 model: Some("gpt-5.4-mini".into()),
                 reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::Medium),
+                service_tier: Some("priority".into()),
                 mode: None,
                 snapshot_revision: None,
                 agents_states: [(
@@ -4187,6 +4201,7 @@ mod tests {
                 outcome: Some(CoreSubAgentActivityOutcome::Succeeded),
                 model: Some("gpt-5.4".into()),
                 reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
+                service_tier: Some("priority".into()),
             }),
         ];
 
@@ -4206,6 +4221,7 @@ mod tests {
                 outcome: Some(SubAgentActivityOutcome::Succeeded),
                 model: Some("gpt-5.4".into()),
                 reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
+                service_tier: Some("priority".into()),
             }
         );
     }
@@ -4224,6 +4240,7 @@ mod tests {
             outcome: Some(CoreSubAgentActivityOutcome::Succeeded),
             model: Some("gpt-5.4".into()),
             reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
+            service_tier: Some("priority".into()),
         };
         let mut serialized = serde_json::to_value(event).expect("serialize sub-agent activity");
         serialized
@@ -4257,6 +4274,7 @@ mod tests {
                 outcome: Some(SubAgentActivityOutcome::Succeeded),
                 model: Some("gpt-5.4".into()),
                 reasoning_effort: None,
+                service_tier: Some("priority".into()),
             }
         );
     }
@@ -4320,6 +4338,7 @@ mod tests {
                 prompt: Some("new task".into()),
                 model: None,
                 reasoning_effort: None,
+                service_tier: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: [(

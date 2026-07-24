@@ -1619,6 +1619,7 @@ async fn paginated_history_lists_use_projected_turns_and_items() -> Result<()> {
                         outcome: Some(CoreSubAgentActivityOutcome::Failed),
                         model: Some("gpt-5.4".to_string()),
                         reasoning_effort: Some(ReasoningEffort::High),
+                        service_tier: Some("priority".to_string()),
                     }),
                 ),
                 paginated_completed_item(
@@ -1668,6 +1669,7 @@ async fn paginated_history_lists_use_projected_turns_and_items() -> Result<()> {
         outcome: Some(SubAgentActivityOutcome::Failed),
         model: Some("gpt-5.4".to_string()),
         reasoning_effort: Some(ReasoningEffort::High),
+        service_tier: Some("priority".to_string()),
     };
     let expected_memory_mutation = ThreadItem::MemoryMutation(MemoryMutation {
         id: "memory-1".to_string(),
