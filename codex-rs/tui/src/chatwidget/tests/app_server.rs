@@ -433,7 +433,7 @@ async fn thread_settings_updated_preserves_default_settings_for_plan_mode() {
 }
 
 #[tokio::test]
-async fn collab_spawn_end_shows_requested_model_and_effort() {
+async fn collab_spawn_end_uses_completed_effective_metadata() {
     let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
     let sender_thread_id = ThreadId::new();
     let spawned_thread_id = ThreadId::new();
@@ -507,17 +507,12 @@ async fn collab_spawn_end_shows_requested_model_and_effort() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    assert!(
-        rendered.contains("Spawned Robie [explorer] (gpt-5 high)"),
-        "expected spawn line to include agent metadata and requested model, got {rendered:?}"
-    );
-    assert!(
-        rendered.contains("context: all"),
-        "expected spawn line to include inherited context, got {rendered:?}"
-    );
-    assert!(
-        !rendered.contains("fast"),
-        "completed item without an effective fast tier must not inherit the pending request tier"
+    insta::assert_snapshot!(
+        rendered,
+        @r###"
+• Spawned Robie [explorer] (gpt-5 high)
+  └ Explore the repo
+"###
     );
 }
 

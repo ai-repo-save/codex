@@ -581,7 +581,8 @@ fn context_inheritance_detail(
         SpawnContextInheritance::Full => Some(" · context: all".to_string()),
         SpawnContextInheritance::None => Some(" · context: none".to_string()),
         SpawnContextInheritance::LastNTurns { turns } => {
-            Some(format!(" · context: last {turns} turns"))
+            let unit = if *turns == 1 { "turn" } else { "turns" };
+            Some(format!(" · context: last {turns} {unit}"))
         }
     }
 }
@@ -620,9 +621,6 @@ fn spawn_end(
                 spans.push(Span::from(" ").dim());
                 spans.push(Span::from(details).magenta());
             }
-            let context_inheritance = context_inheritance.or_else(|| {
-                spawn_request.and_then(|spawn_request| spawn_request.context_inheritance.as_ref())
-            });
             if let Some(context_detail) = context_inheritance_detail(context_inheritance) {
                 spans.push(Span::from(context_detail).dim());
             }
@@ -1732,7 +1730,7 @@ mod tests {
             reasoning_effort: Some(ReasoningEffort::High),
             service_tier: Some(ServiceTier::Fast.request_value().to_string()),
             context_inheritance: matches!(kind, SubAgentActivityKind::Started)
-                .then_some(SpawnContextInheritance::LastNTurns { turns: 2 }),
+                .then_some(SpawnContextInheritance::LastNTurns { turns: 1 }),
         }
     }
 

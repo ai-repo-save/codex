@@ -4,7 +4,7 @@ assertion_line: 1190
 expression: snapshot
 ---
 History:
-• Started `/root/task` (gpt-5.6, high, fast) · context: last 2 turns
+• Started `/root/task` (gpt-5.6, high, fast) · context: last 1 turn
 • Interacted with `/root/task`
 • Interrupted `/root/task`
 • Sent message to `/root/task`
@@ -17,7 +17,7 @@ History:
 • Failed to inspect `/root/task`
 
 Transcript:
-Started /root/task (gpt-5.6, high, fast) · context: last 2 turns
+Started /root/task (gpt-5.6, high, fast) · context: last 1 turn
 Interacted with /root/task
 Interrupted /root/task
 Sent message to /root/task
