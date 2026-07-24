@@ -707,6 +707,64 @@
       ],
       "type": "string"
     },
+    "SpawnContextInheritance": {
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "none"
+              ],
+              "title": "NoneSpawnContextInheritanceType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "NoneSpawnContextInheritance",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "full"
+              ],
+              "title": "FullSpawnContextInheritanceType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "FullSpawnContextInheritance",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "turns": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "type": {
+              "enum": [
+                "lastNTurns"
+              ],
+              "title": "LastNTurnsSpawnContextInheritanceType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "turns",
+            "type"
+          ],
+          "title": "LastNTurnsSpawnContextInheritance",
+          "type": "object"
+        }
+      ]
+    },
     "SubAgentActivityKind": {
       "enum": [
         "started",
@@ -1233,6 +1291,17 @@
               "description": "Last known status of the target agents, when available.",
               "type": "object"
             },
+            "contextInheritance": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SpawnContextInheritance"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Effective parent-context inheritance requested for a spawned agent, when available."
+            },
             "id": {
               "description": "Unique identifier for this collab tool call.",
               "type": "string"
@@ -1341,6 +1410,16 @@
             },
             "agentThreadId": {
               "type": "string"
+            },
+            "contextInheritance": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SpawnContextInheritance"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "id": {
               "type": "string"

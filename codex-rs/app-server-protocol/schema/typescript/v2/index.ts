@@ -405,6 +405,7 @@ export type { SkillsListEntry } from "./SkillsListEntry";
 export type { SkillsListParams } from "./SkillsListParams";
 export type { SkillsListResponse } from "./SkillsListResponse";
 export type { SortDirection } from "./SortDirection";
+export type { SpawnContextInheritance } from "./SpawnContextInheritance";
 export type { SpendControlLimitSnapshot } from "./SpendControlLimitSnapshot";
 export type { SubAgentActivityKind } from "./SubAgentActivityKind";
 export type { SubAgentActivityOperation } from "./SubAgentActivityOperation";
