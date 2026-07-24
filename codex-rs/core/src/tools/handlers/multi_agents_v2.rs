@@ -80,6 +80,7 @@ pub(crate) async fn emit_sub_agent_interaction(
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
         },
     )
     .await;

@@ -57,6 +57,7 @@ use codex_protocol::protocol::Op;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::SpawnContextInheritance;
 use codex_protocol::protocol::SubAgentActivityKind;
 use codex_protocol::protocol::SubAgentActivityOperation;
 use codex_protocol::protocol::SubAgentActivityOutcome;
@@ -194,17 +195,25 @@ fn completed_sub_agent_activities(
         .collect()
 }
 
-fn collab_agent_tool_call_service_tiers(
+fn collab_agent_tool_call_metadata(
     receiver: &async_channel::Receiver<codex_protocol::protocol::Event>,
-) -> Vec<(CollabAgentToolCallStatus, Option<String>)> {
+) -> Vec<(
+    CollabAgentToolCallStatus,
+    Option<String>,
+    Option<SpawnContextInheritance>,
+)> {
     std::iter::from_fn(|| receiver.try_recv().ok())
         .filter_map(|event| match event.msg {
             EventMsg::ItemStarted(event) => match event.item {
-                TurnItem::CollabAgentToolCall(item) => Some((item.status, item.service_tier)),
+                TurnItem::CollabAgentToolCall(item) => {
+                    Some((item.status, item.service_tier, item.context_inheritance))
+                }
                 _ => None,
             },
             EventMsg::ItemCompleted(event) => match event.item {
-                TurnItem::CollabAgentToolCall(item) => Some((item.status, item.service_tier)),
+                TurnItem::CollabAgentToolCall(item) => {
+                    Some((item.status, item.service_tier, item.context_inheritance))
+                }
                 _ => None,
             },
             _ => None,
@@ -231,6 +240,7 @@ fn assert_single_interaction(
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
         }],
     );
 }
@@ -544,15 +554,17 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
         let result: SpawnAgentResult =
             serde_json::from_str(&content).expect("spawn_agent result should be json");
         assert_eq!(
-            collab_agent_tool_call_service_tiers(&receiver),
+            collab_agent_tool_call_metadata(&receiver),
             vec![
                 (
                     CollabAgentToolCallStatus::InProgress,
                     Some(ServiceTier::Fast.request_value().to_string()),
+                    Some(SpawnContextInheritance::None),
                 ),
                 (
                     CollabAgentToolCallStatus::Completed,
                     Some(ServiceTier::Fast.request_value().to_string()),
+                    Some(SpawnContextInheritance::None),
                 ),
             ]
         );
@@ -661,12 +673,17 @@ async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_
         let result: SpawnAgentResult =
             serde_json::from_str(&content).expect("spawn_agent result should be json");
         assert_eq!(
-            collab_agent_tool_call_service_tiers(&receiver),
+            collab_agent_tool_call_metadata(&receiver),
             vec![
-                (CollabAgentToolCallStatus::InProgress, None),
+                (
+                    CollabAgentToolCallStatus::InProgress,
+                    None,
+                    Some(SpawnContextInheritance::None),
+                ),
                 (
                     CollabAgentToolCallStatus::Completed,
                     Some(ServiceTier::Fast.request_value().to_string()),
+                    Some(SpawnContextInheritance::None),
                 ),
             ]
         );
@@ -783,12 +800,17 @@ service_tier = "priority"
         let result: SpawnAgentResult =
             serde_json::from_str(&content).expect("spawn_agent result should be json");
         assert_eq!(
-            collab_agent_tool_call_service_tiers(&receiver),
+            collab_agent_tool_call_metadata(&receiver),
             vec![
-                (CollabAgentToolCallStatus::InProgress, None),
+                (
+                    CollabAgentToolCallStatus::InProgress,
+                    None,
+                    Some(SpawnContextInheritance::None),
+                ),
                 (
                     CollabAgentToolCallStatus::Completed,
                     Some(ServiceTier::Fast.request_value().to_string()),
+                    Some(SpawnContextInheritance::None),
                 ),
             ]
         );
@@ -935,7 +957,7 @@ async fn spawn_agent_full_history_fork_accepts_explicit_service_tier() {
         agent_id: String,
     }
 
-    let (mut session, turn) = make_session_and_context().await;
+    let (mut session, turn, receiver) = make_session_and_context_with_rx().await;
     let turn = turn
         .with_model("gpt-5.4".to_string(), &session.services.models_manager)
         .await;
@@ -944,13 +966,17 @@ async fn spawn_agent_full_history_fork_accepts_explicit_service_tier() {
         .start_thread((*turn.config).clone())
         .await
         .expect("root thread should start");
-    session.services.agent_control = manager.agent_control();
-    session.thread_id = root.thread_id;
+    {
+        let session = Arc::get_mut(&mut session).expect("session should be uniquely owned");
+        session.services.agent_control = manager.agent_control();
+        session.thread_id = root.thread_id;
+    }
+    let turn = Arc::new(turn);
 
     let output = SpawnAgentHandler::default()
         .handle(invocation(
-            Arc::new(session),
-            Arc::new(turn),
+            session,
+            turn,
             "spawn_agent",
             function_payload(json!({
                 "message": "inspect this repo",
@@ -963,6 +989,21 @@ async fn spawn_agent_full_history_fork_accepts_explicit_service_tier() {
     let (content, _) = expect_text_output(output);
     let result: SpawnAgentResult =
         serde_json::from_str(&content).expect("spawn_agent result should be json");
+    assert_eq!(
+        collab_agent_tool_call_metadata(&receiver),
+        vec![
+            (
+                CollabAgentToolCallStatus::InProgress,
+                Some(ServiceTier::Fast.request_value().to_string()),
+                Some(SpawnContextInheritance::Full),
+            ),
+            (
+                CollabAgentToolCallStatus::Completed,
+                Some(ServiceTier::Fast.request_value().to_string()),
+                Some(SpawnContextInheritance::Full),
+            ),
+        ]
+    );
     let snapshot = manager
         .get_thread(parse_agent_id(&result.agent_id))
         .await
@@ -1024,9 +1065,14 @@ async fn multi_agent_v2_full_history_fork_accepts_explicit_service_tier() {
     assert_eq!(
         completed_sub_agent_activities(&receiver)
             .into_iter()
-            .map(|activity| activity.service_tier)
+            .map(|activity| (activity.service_tier, activity.context_inheritance))
             .collect::<Vec<_>>(),
-        vec![Some(ServiceTier::Fast.request_value().to_string())]
+        vec![
+            (
+                Some(ServiceTier::Fast.request_value().to_string()),
+                Some(SpawnContextInheritance::Full),
+            )
+        ]
     );
     let child_thread_id = session
         .services
@@ -1296,6 +1342,7 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
             model: Some("gpt-5-role-override".to_string()),
             reasoning_effort: Some(ReasoningEffort::Minimal),
             service_tier: None,
+            context_inheritance: Some(SpawnContextInheritance::LastNTurns { turns: 1 }),
         }],
     );
 
@@ -1701,6 +1748,7 @@ async fn multi_agent_v2_followup_task_rejects_root_target_from_child() {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
         }],
     );
 }
@@ -2107,6 +2155,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
         }],
     );
 
@@ -2158,6 +2207,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
         }],
     );
 
@@ -3094,7 +3144,7 @@ async fn multi_agent_v2_spawn_agent_ignores_configured_max_depth() {
         nickname: Option<String>,
     }
 
-    let (mut session, mut turn) = make_session_and_context().await;
+    let (mut session, mut turn, receiver) = make_session_and_context_with_rx().await;
     let manager = thread_manager();
     let mut config = (*turn.config).clone();
     config.agent_max_depth = 1;
@@ -3106,8 +3156,11 @@ async fn multi_agent_v2_spawn_agent_ignores_configured_max_depth() {
         .start_thread(config.clone())
         .await
         .expect("root thread should start");
-    session.services.agent_control = manager.agent_control();
-    session.thread_id = root.thread_id;
+    {
+        let session = Arc::get_mut(&mut session).expect("session should be uniquely owned");
+        session.services.agent_control = manager.agent_control();
+        session.thread_id = root.thread_id;
+    }
     set_turn_config(&mut turn, config);
     let parent_path = AgentPath::try_from("/root/parent").expect("agent path");
     turn.session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
@@ -3119,7 +3172,7 @@ async fn multi_agent_v2_spawn_agent_ignores_configured_max_depth() {
     });
 
     let invocation = invocation(
-        Arc::new(session),
+        session,
         Arc::new(turn),
         "spawn_agent",
         function_payload(json!({
@@ -3138,6 +3191,13 @@ async fn multi_agent_v2_spawn_agent_ignores_configured_max_depth() {
     assert_eq!(result.task_name, "/root/parent/child");
     assert_eq!(result.nickname, None);
     assert_eq!(success, Some(true));
+    assert_eq!(
+        completed_sub_agent_activities(&receiver)
+            .into_iter()
+            .map(|activity| activity.context_inheritance)
+            .collect::<Vec<_>>(),
+        vec![Some(SpawnContextInheritance::None)]
+    );
 }
 
 #[tokio::test]

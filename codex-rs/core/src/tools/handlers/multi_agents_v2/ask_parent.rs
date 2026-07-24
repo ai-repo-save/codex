@@ -463,6 +463,7 @@ async fn emit_ask_parent_item(
         model: None,
         reasoning_effort: None,
         service_tier: None,
+        context_inheritance: None,
         mode: Some(mode),
         snapshot_revision,
         agents_states: HashMap::from([(parent_thread_id, parent_status)]),

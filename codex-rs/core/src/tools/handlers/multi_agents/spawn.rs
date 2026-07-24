@@ -7,6 +7,7 @@ use crate::agent::next_thread_spawn_depth;
 use crate::agent::role::DEFAULT_ROLE_NAME;
 use crate::tools::handlers::multi_agents_spec::SpawnAgentToolOptions;
 use crate::tools::handlers::multi_agents_spec::create_spawn_agent_tool_v1;
+use codex_protocol::protocol::SpawnContextInheritance;
 use codex_tools::ToolSpec;
 
 #[derive(Default)]
@@ -60,6 +61,11 @@ async fn handle_spawn_agent(
         .filter(|role| !role.is_empty());
     let input_items = parse_collab_input(args.message, args.items)?;
     let prompt = render_input_preview(&input_items);
+    let context_inheritance = Some(if args.fork_context {
+        SpawnContextInheritance::Full
+    } else {
+        SpawnContextInheritance::None
+    });
     let session_source = turn.session_source.clone();
     let child_depth = next_thread_spawn_depth(&session_source);
     let max_depth = turn.config.agent_max_depth;
@@ -82,6 +88,7 @@ async fn handle_spawn_agent(
                 model: Some(args.model.clone().unwrap_or_default()),
                 reasoning_effort: Some(args.reasoning_effort.clone().unwrap_or_default()),
                 service_tier: args.service_tier.clone(),
+                context_inheritance: context_inheritance.clone(),
                 mode: None,
                 snapshot_revision: None,
                 agents_states: Default::default(),
@@ -205,6 +212,7 @@ async fn handle_spawn_agent(
                 model: Some(effective_model),
                 reasoning_effort: Some(effective_reasoning_effort),
                 service_tier: effective_service_tier,
+                context_inheritance,
                 mode: None,
                 snapshot_revision: None,
                 agents_states,
