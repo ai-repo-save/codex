@@ -393,7 +393,8 @@ pub(crate) fn sub_agent_activity_summary(
     service_tier: Option<&str>,
 ) -> String {
     let action = sub_agent_activity_action(kind, operation, outcome);
-    let details = sub_agent_activity_execution_details(action, model, reasoning_effort, service_tier);
+    let details =
+        sub_agent_activity_execution_details(action, model, reasoning_effort, service_tier);
     format!(
         "{} {agent_path}{}",
         action.title_prefix(),
@@ -550,7 +551,10 @@ fn spawn_end(
                 if model.is_empty() {
                     vec![spawn_request.reasoning_effort.to_string()]
                 } else {
-                    vec![model.to_string(), spawn_request.reasoning_effort.to_string()]
+                    vec![
+                        model.to_string(),
+                        spawn_request.reasoning_effort.to_string(),
+                    ]
                 }
             });
             if is_fast_service_tier(service_tier) {
@@ -1554,10 +1558,10 @@ mod tests {
                 sender_thread_id: sender_thread_id.to_string(),
                 receiver_thread_ids: vec![robie_id.to_string()],
                 prompt: Some(String::new()),
-            model: None,
-            reasoning_effort: None,
-            service_tier: None,
-            mode: None,
+                model: None,
+                reasoning_effort: None,
+                service_tier: None,
+                mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
                     robie_id.to_string(),

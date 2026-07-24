@@ -4550,11 +4550,11 @@ pub struct CollabResumeEndEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::items::CommandExecutionItem;
-    use crate::items::CommandExecutionStatus;
     use crate::items::CollabAgentTool;
     use crate::items::CollabAgentToolCallItem;
     use crate::items::CollabAgentToolCallStatus;
+    use crate::items::CommandExecutionItem;
+    use crate::items::CommandExecutionStatus;
     use crate::items::DynamicToolCallItem;
     use crate::items::DynamicToolCallStatus;
     use crate::items::EnteredReviewModeItem;
@@ -5962,13 +5962,12 @@ mod tests {
             status: AgentStatus::NotFound,
         };
 
-        let mut item_json = serde_json::to_value(TurnItem::CollabAgentToolCall(
-            CollabAgentToolCallItem {
+        let mut item_json =
+            serde_json::to_value(TurnItem::CollabAgentToolCall(CollabAgentToolCallItem {
                 service_tier: Some("priority".into()),
                 ..expected_item.clone()
-            },
-        ))
-        .unwrap();
+            }))
+            .unwrap();
         item_json.as_object_mut().unwrap().remove("service_tier");
         let item = serde_json::from_value::<TurnItem>(item_json).unwrap();
         let TurnItem::CollabAgentToolCall(item) = item else {
@@ -5981,10 +5980,7 @@ mod tests {
             ..expected_begin.clone()
         })
         .unwrap();
-        begin_json
-            .as_object_mut()
-            .unwrap()
-            .remove("service_tier");
+        begin_json.as_object_mut().unwrap().remove("service_tier");
         let begin = serde_json::from_value::<CollabAgentSpawnBeginEvent>(begin_json).unwrap();
         assert_eq!(begin, expected_begin);
 
