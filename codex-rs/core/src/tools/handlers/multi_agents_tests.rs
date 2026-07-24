@@ -89,7 +89,7 @@ fn invocation(
     ToolInvocation {
         session,
         step_context,
-        turn,
+        Arc::new(turn),
         cancellation_token: CancellationToken::new(),
         tracker: Arc::new(Mutex::new(TurnDiffTracker::default())),
         call_id: "call-1".to_string(),
@@ -306,7 +306,7 @@ async fn spawn_agent_rejects_empty_message() {
     let (session, turn) = make_session_and_context().await;
     let invocation = invocation(
         Arc::new(session),
-        Arc::new(turn),
+        turn,
         "spawn_agent",
         function_payload(json!({"message": "   "})),
     );
