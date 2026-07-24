@@ -13,9 +13,13 @@ use codex_extension_api::ToolContributor;
 use codex_extension_api::ToolExecutor;
 use codex_extension_api::ToolName;
 use codex_extension_api::ToolPayload;
+use codex_extension_api::TurnItem;
 use codex_extension_api::TurnItemEmissionFuture;
 use codex_extension_api::TurnItemEmitter;
 use codex_extension_items::ExtensionItem;
+use codex_extension_items::memory_mutation::MemoryMutation;
+use codex_extension_items::memory_mutation::MemoryMutationScope;
+use codex_extension_items::memory_mutation::MemoryMutationStatus;
 use codex_extension_items::memory_mutation::MEMORY_MUTATION_PATH_MAX_GRAPHEMES;
 use codex_extension_items::memory_mutation::MEMORY_MUTATION_PREVIEW_MAX_GRAPHEMES;
 use codex_extension_items::memory_mutation::MEMORY_MUTATION_TITLE_MAX_GRAPHEMES;
@@ -752,6 +756,83 @@ async fn delete_tool_removes_global_file_from_memory_reads() {
 async fn replacing_scoped_notes_removes_obsolete_notes_from_context() {
     assert_replacing_scoped_note_removes_obsolete_note_from_context(MemoryScope::Session).await;
     assert_replacing_scoped_note_removes_obsolete_note_from_context(MemoryScope::Project).await;
+}
+
+#[tokio::test]
+async fn rewind_context_includes_each_completed_session_write_once() {
+    const NOTE: &str = "Remember this after rewinding.";
+
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let project_root = tempfile::tempdir().expect("project root");
+    let backends = MemoryToolBackends::new(
+        &tempdir.path().abs(),
+        /*global_enabled*/ false,
+        /*scoped_enabled*/ true,
+        "thread-1",
+        &project_root.path().abs(),
+    );
+    let response = backends
+        .write_note(
+            MemoryScope::Session,
+            "Rewind reminder".to_string(),
+            NOTE.to_string(),
+        )
+        .await
+        .expect("write session note");
+    let mutation = MemoryMutation::write(
+        "mutation-1".to_string(),
+        MemoryMutationScope::Session,
+        Some("Rewind reminder".to_string()),
+        NOTE,
+    )
+    .with_status(MemoryMutationStatus::Succeeded)
+    .with_path(response.path.clone());
+    let completed_items = vec![
+        TurnItem::Extension(ExtensionItem::MemoryMutation(mutation.clone())),
+        TurnItem::Extension(ExtensionItem::MemoryMutation(mutation)),
+        TurnItem::Extension(ExtensionItem::MemoryMutation(
+            MemoryMutation::write(
+                "project-mutation".to_string(),
+                MemoryMutationScope::Project,
+                Some("Project reminder".to_string()),
+                NOTE,
+            )
+            .with_status(MemoryMutationStatus::Succeeded)
+            .with_path(response.path.clone()),
+        )),
+        TurnItem::Extension(ExtensionItem::MemoryMutation(
+            MemoryMutation::write(
+                "failed-mutation".to_string(),
+                MemoryMutationScope::Session,
+                Some("Failed reminder".to_string()),
+                NOTE,
+            )
+            .with_status(MemoryMutationStatus::Failed)
+            .with_path(response.path.clone()),
+        )),
+    ];
+
+    let context = backends
+        .rewind_session_context_fragment(&completed_items)
+        .await
+        .expect("successful session write should contribute context");
+    assert_eq!(context.matches(NOTE).count(), 1);
+
+    backends
+        .delete(
+            Some(MemoryScope::Session),
+            crate::backend::DeleteMemoryRequest {
+                path: response.path,
+            },
+        )
+        .await
+        .expect("delete session note");
+    assert_eq!(
+        backends
+            .rewind_session_context_fragment(&completed_items)
+            .await,
+        None
+    );
 }
 
 async fn assert_replacing_scoped_note_removes_obsolete_note_from_context(scope: MemoryScope) {

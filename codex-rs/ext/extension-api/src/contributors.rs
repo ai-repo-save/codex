@@ -14,6 +14,7 @@ use crate::ExtensionData;
 mod context;
 mod mcp;
 mod prompt;
+mod rewind_context;
 mod skill_invocation;
 mod thread_lifecycle;
 mod tool_lifecycle;
@@ -26,6 +27,7 @@ pub use mcp::McpServerContribution;
 pub use mcp::McpServerContributionContext;
 pub use prompt::PromptFragment;
 pub use prompt::PromptSlot;
+pub use rewind_context::RewindContextContributionInput;
 pub use skill_invocation::SkillInvocationInput;
 pub use skill_invocation::SkillInvocationKind;
 pub use thread_lifecycle::ThreadIdleInput;
@@ -94,6 +96,22 @@ pub trait ContextContributor: Send + Sync {
     fn contribute_turn_context<'a>(
         &'a self,
         input: TurnContextContributionInput<'a>,
+    ) -> ExtensionFuture<'a, Vec<PromptFragment>> {
+        Box::pin(async move {
+            let _self = self;
+            let _input = input;
+            Vec::new()
+        })
+    }
+
+    /// Contributes context restored after a successful context-anchor rewind.
+    ///
+    /// `completed_items` contains only items completed after the target anchor.
+    /// Implementations should derive bounded incremental context from those
+    /// items instead of reconstructing their full thread context.
+    fn contribute_rewind_context<'a>(
+        &'a self,
+        input: RewindContextContributionInput<'a>,
     ) -> ExtensionFuture<'a, Vec<PromptFragment>> {
         Box::pin(async move {
             let _self = self;

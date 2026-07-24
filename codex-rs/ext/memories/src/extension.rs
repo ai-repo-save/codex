@@ -8,6 +8,7 @@ use codex_extension_api::ExtensionFuture;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::PromptFragment;
 use codex_extension_api::PromptSlot;
+use codex_extension_api::RewindContextContributionInput;
 use codex_extension_api::ThreadLifecycleContributor;
 use codex_extension_api::ThreadStartInput;
 use codex_extension_api::ToolContributor;
@@ -90,6 +91,28 @@ impl ContextContributor for MemoriesExtension {
                 fragments.push(PromptFragment::new(PromptSlot::ContextualUser, context));
             }
             fragments
+        })
+    }
+
+    fn contribute_rewind_context<'a>(
+        &'a self,
+        input: RewindContextContributionInput<'a>,
+    ) -> ExtensionFuture<'a, Vec<PromptFragment>> {
+        Box::pin(async move {
+            let Some(config) = input.thread_store.get::<MemoriesExtensionConfig>() else {
+                return Vec::new();
+            };
+            if !config.scoped_enabled {
+                return Vec::new();
+            }
+            let Some(context) = config
+                .backends(input.thread_store.level_id())
+                .rewind_session_context_fragment(input.completed_items)
+                .await
+            else {
+                return Vec::new();
+            };
+            vec![PromptFragment::new(PromptSlot::ContextualUser, context)]
         })
     }
 }

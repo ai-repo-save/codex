@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
@@ -6,6 +7,11 @@ use std::path::PathBuf;
 use chrono::Utc;
 use codex_context_fragments::ContextualUserFragment;
 use codex_context_fragments::ScopedMemoryContextFragment;
+use codex_extension_api::TurnItem;
+use codex_extension_items::ExtensionItem;
+use codex_extension_items::memory_mutation::MemoryMutationAction;
+use codex_extension_items::memory_mutation::MemoryMutationScope;
+use codex_extension_items::memory_mutation::MemoryMutationStatus;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_output_truncation::TruncationPolicy;
 use codex_utils_output_truncation::truncate_text;
@@ -200,6 +206,71 @@ impl MemoryToolBackends {
             sections.join("\n\n"),
             SESSION_MEMORY_MAINTENANCE_POLICY,
             PROJECT_MEMORY_MAINTENANCE_POLICY,
+        );
+        Some(ScopedMemoryContextFragment::new(body).render())
+    }
+
+    pub(crate) async fn rewind_session_context_fragment(
+        &self,
+        completed_items: &[TurnItem],
+    ) -> Option<String> {
+        let session = self.session.as_ref()?;
+        let mut mutation_ids = HashSet::new();
+        let mut paths = HashSet::new();
+        let mut notes = Vec::new();
+
+        for item in completed_items {
+            let TurnItem::Extension(ExtensionItem::MemoryMutation(mutation)) = item else {
+                continue;
+            };
+            if mutation.action() != MemoryMutationAction::Write
+                || mutation.scope() != MemoryMutationScope::Session
+                || mutation.status() != MemoryMutationStatus::Succeeded
+            {
+                continue;
+            }
+            let Some(path) = mutation.path() else {
+                continue;
+            };
+            if !mutation_ids.insert(mutation.id().to_string())
+                || !paths.insert(path.to_string())
+            {
+                continue;
+            }
+            let Ok(note) = session
+                .backend
+                .read(ReadMemoryRequest {
+                    path: path.to_string(),
+                    line_offset: 1,
+                    max_lines: None,
+                    max_tokens: SESSION_CONTEXT_TOKEN_LIMIT,
+                })
+                .await
+            else {
+                continue;
+            };
+            let content = note.content.trim();
+            if content.is_empty() {
+                continue;
+            }
+            let Some(filename) = Path::new(&note.path)
+                .file_name()
+                .and_then(|filename| filename.to_str())
+            else {
+                continue;
+            };
+            notes.push(format!("### {filename}\n{content}"));
+        }
+
+        if notes.is_empty() {
+            return None;
+        }
+        let content = truncate_text(
+            &notes.join("\n\n"),
+            TruncationPolicy::Tokens(SESSION_CONTEXT_TOKEN_LIMIT),
+        );
+        let body = format!(
+            "\n## Scoped Memory\n### Session memory\n{content}\n\n{SESSION_MEMORY_MAINTENANCE_POLICY}\n\nUse `memories.write_note` and `memories.delete` to maintain scoped memory under these rules. To replace a note, write the corrected note, then delete the obsolete file.\n"
         );
         Some(ScopedMemoryContextFragment::new(body).render())
     }
