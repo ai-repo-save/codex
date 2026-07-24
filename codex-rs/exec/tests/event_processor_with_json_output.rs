@@ -726,6 +726,7 @@ fn collab_spawn_begin_and_end_emit_item_events() {
                 model: Some("gpt-5".to_string()),
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: std::collections::HashMap::new(),
@@ -746,6 +747,7 @@ fn collab_spawn_begin_and_end_emit_item_events() {
                 model: Some("gpt-5".to_string()),
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: std::collections::HashMap::from([(
