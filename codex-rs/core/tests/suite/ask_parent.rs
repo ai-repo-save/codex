@@ -393,6 +393,7 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
             outcome: Some(SubAgentActivityOutcome::Succeeded),
             model: None,
             reasoning_effort: None,
+            service_tier: None,
         }],
     );
 

@@ -153,6 +153,9 @@ async fn handle_spawn_agent(
         .as_ref()
         .and_then(|snapshot| snapshot.reasoning_effort.clone())
         .or(configured_reasoning_effort);
+    let effective_service_tier = agent_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.service_tier.clone());
     emit_sub_agent_activity(
         &session,
         &turn,
@@ -165,6 +168,7 @@ async fn handle_spawn_agent(
             outcome: None,
             model: Some(effective_model),
             reasoning_effort: effective_reasoning_effort,
+            service_tier: effective_service_tier,
         },
     )
     .await;

@@ -31,6 +31,7 @@ use codex_protocol::ThreadId;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::config_types::ShellEnvironmentPolicy;
+use codex_protocol::items::CollabAgentToolCallStatus;
 use codex_protocol::items::SubAgentActivityItem;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::BaseInstructions;
@@ -193,6 +194,20 @@ fn completed_sub_agent_activities(
         .collect()
 }
 
+fn collab_agent_tool_call_service_tiers(
+    receiver: &async_channel::Receiver<codex_protocol::protocol::Event>,
+) -> Vec<(CollabAgentToolCallStatus, Option<String>)> {
+    std::iter::from_fn(|| receiver.try_recv().ok())
+        .filter_map(|event| match event.msg {
+            EventMsg::ItemStarted(event) | EventMsg::ItemCompleted(event) => match event.item {
+                TurnItem::CollabAgentToolCall(item) => Some((item.status, item.service_tier)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
 fn assert_single_interaction(
     receiver: &async_channel::Receiver<codex_protocol::protocol::Event>,
     agent_thread_id: ThreadId,
@@ -211,6 +226,7 @@ fn assert_single_interaction(
             outcome: Some(outcome),
             model: None,
             reasoning_effort: None,
+            service_tier: None,
         }],
     );
 }
@@ -495,7 +511,7 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
     }
 
     {
-        let (mut session, turn) = make_session_and_context().await;
+        let (mut session, turn, receiver) = make_session_and_context_with_rx().await;
         let manager = thread_manager();
         let root = manager
             .start_thread((*turn.config).clone())
@@ -520,6 +536,19 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
         let (content, _) = expect_text_output(output);
         let result: SpawnAgentResult =
             serde_json::from_str(&content).expect("spawn_agent result should be json");
+        assert_eq!(
+            collab_agent_tool_call_service_tiers(&receiver),
+            vec![
+                (
+                    CollabAgentToolCallStatus::InProgress,
+                    Some(ServiceTier::Fast.request_value().to_string()),
+                ),
+                (
+                    CollabAgentToolCallStatus::Completed,
+                    Some(ServiceTier::Fast.request_value().to_string()),
+                ),
+            ]
+        );
         let snapshot = manager
             .get_thread(parse_agent_id(&result.agent_id))
             .await
@@ -594,7 +623,7 @@ async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_
     }
 
     {
-        let (mut session, turn) = make_session_and_context().await;
+        let (mut session, turn, receiver) = make_session_and_context_with_rx().await;
         let mut turn = turn
             .with_model("gpt-5.4".to_string(), &session.services.models_manager)
             .await;
@@ -621,6 +650,16 @@ async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_
         let (content, _) = expect_text_output(output);
         let result: SpawnAgentResult =
             serde_json::from_str(&content).expect("spawn_agent result should be json");
+        assert_eq!(
+            collab_agent_tool_call_service_tiers(&receiver),
+            vec![
+                (CollabAgentToolCallStatus::InProgress, None),
+                (
+                    CollabAgentToolCallStatus::Completed,
+                    Some(ServiceTier::Fast.request_value().to_string()),
+                ),
+            ]
+        );
         let snapshot = manager
             .get_thread(parse_agent_id(&result.agent_id))
             .await
@@ -676,7 +715,7 @@ async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_
     }
 
     {
-        let (mut session, mut turn) = make_session_and_context().await;
+        let (mut session, mut turn, receiver) = make_session_and_context_with_rx().await;
         tokio::fs::create_dir_all(&turn.config.codex_home)
             .await
             .expect("codex home should be created");
@@ -728,6 +767,16 @@ service_tier = "priority"
         let (content, _) = expect_text_output(output);
         let result: SpawnAgentResult =
             serde_json::from_str(&content).expect("spawn_agent result should be json");
+        assert_eq!(
+            collab_agent_tool_call_service_tiers(&receiver),
+            vec![
+                (CollabAgentToolCallStatus::InProgress, None),
+                (
+                    CollabAgentToolCallStatus::Completed,
+                    Some(ServiceTier::Fast.request_value().to_string()),
+                ),
+            ]
+        );
         let snapshot = manager
             .get_thread(parse_agent_id(&result.agent_id))
             .await
@@ -919,7 +968,7 @@ async fn multi_agent_v2_full_history_fork_accepts_explicit_service_tier() {
         task_name: String,
     }
 
-    let (mut session, turn) = make_session_and_context().await;
+    let (mut session, turn, receiver) = make_session_and_context_with_rx().await;
     let mut turn = turn
         .with_model("gpt-5.4".to_string(), &session.services.models_manager)
         .await;
@@ -955,6 +1004,13 @@ async fn multi_agent_v2_full_history_fork_accepts_explicit_service_tier() {
     let (content, _) = expect_text_output(output);
     let result: SpawnAgentResult =
         serde_json::from_str(&content).expect("spawn_agent result should be json");
+    assert_eq!(
+        completed_sub_agent_activities(&receiver)
+            .into_iter()
+            .map(|activity| activity.service_tier)
+            .collect::<Vec<_>>(),
+        vec![Some(ServiceTier::Fast.request_value().to_string())]
+    );
     let child_thread_id = session
         .services
         .agent_control
@@ -1222,6 +1278,7 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
             outcome: None,
             model: Some("gpt-5-role-override".to_string()),
             reasoning_effort: Some(ReasoningEffort::Minimal),
+            service_tier: None,
         }],
     );
 
@@ -1626,6 +1683,7 @@ async fn multi_agent_v2_followup_task_rejects_root_target_from_child() {
             outcome: Some(SubAgentActivityOutcome::Failed),
             model: None,
             reasoning_effort: None,
+            service_tier: None,
         }],
     );
 }
@@ -2031,6 +2089,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
             outcome: Some(SubAgentActivityOutcome::Succeeded),
             model: None,
             reasoning_effort: None,
+            service_tier: None,
         }],
     );
 
@@ -2081,6 +2140,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
             outcome: Some(SubAgentActivityOutcome::Succeeded),
             model: None,
             reasoning_effort: None,
+            service_tier: None,
         }],
     );
 

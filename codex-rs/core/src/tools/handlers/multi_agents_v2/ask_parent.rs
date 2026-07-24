@@ -462,6 +462,7 @@ async fn emit_ask_parent_item(
         prompt: Some(question.to_string()),
         model: None,
         reasoning_effort: None,
+        service_tier: None,
         mode: Some(mode),
         snapshot_revision,
         agents_states: HashMap::from([(parent_thread_id, parent_status)]),

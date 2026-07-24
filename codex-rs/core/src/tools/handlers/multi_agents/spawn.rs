@@ -81,6 +81,7 @@ async fn handle_spawn_agent(
                 prompt: Some(prompt.clone()),
                 model: Some(args.model.clone().unwrap_or_default()),
                 reasoning_effort: Some(args.reasoning_effort.clone().unwrap_or_default()),
+                service_tier: args.service_tier.clone(),
                 mode: None,
                 snapshot_revision: None,
                 agents_states: Default::default(),
@@ -174,6 +175,9 @@ async fn handle_spawn_agent(
         .as_ref()
         .and_then(|snapshot| snapshot.reasoning_effort.clone())
         .unwrap_or(args.reasoning_effort.unwrap_or_default());
+    let effective_service_tier = agent_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.service_tier.clone());
     let nickname = new_agent_nickname.clone();
     let receiver_thread_ids = new_thread_id.into_iter().collect();
     let receiver_agents = new_thread_id
@@ -200,6 +204,7 @@ async fn handle_spawn_agent(
                 prompt: Some(prompt),
                 model: Some(effective_model),
                 reasoning_effort: Some(effective_reasoning_effort),
+                service_tier: effective_service_tier,
                 mode: None,
                 snapshot_revision: None,
                 agents_states,

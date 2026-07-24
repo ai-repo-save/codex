@@ -2020,6 +2020,7 @@ async fn spawn_agent_started_activity_uses_role_effective_model_and_reasoning_ef
             outcome: None,
             model: Some(V2_DEFAULT_MODEL.to_string()),
             reasoning_effort: Some(ROLE_REASONING_EFFORT),
+            service_tier: None,
         }],
     );
 

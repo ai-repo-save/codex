@@ -82,6 +82,7 @@ async fn handle_interrupt_agent(
             outcome: None,
             model: None,
             reasoning_effort: None,
+            service_tier: None,
         },
     )
     .await;
