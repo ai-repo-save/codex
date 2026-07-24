@@ -1067,12 +1067,10 @@ async fn multi_agent_v2_full_history_fork_accepts_explicit_service_tier() {
             .into_iter()
             .map(|activity| (activity.service_tier, activity.context_inheritance))
             .collect::<Vec<_>>(),
-        vec![
-            (
-                Some(ServiceTier::Fast.request_value().to_string()),
-                Some(SpawnContextInheritance::Full),
-            )
-        ]
+        vec![(
+            Some(ServiceTier::Fast.request_value().to_string()),
+            Some(SpawnContextInheritance::Full),
+        )]
     );
     let child_thread_id = session
         .services

@@ -344,9 +344,11 @@ pub(crate) fn collab_tool_summary(item: &ThreadItem) -> Option<String> {
     };
     if matches!(
         (tool, status),
-        (CollabAgentTool::SpawnAgent, CollabAgentToolCallStatus::Completed)
-    )
-        && let Some(context_detail) = context_inheritance_detail(context_inheritance.as_ref())
+        (
+            CollabAgentTool::SpawnAgent,
+            CollabAgentToolCallStatus::Completed
+        )
+    ) && let Some(context_detail) = context_inheritance_detail(context_inheritance.as_ref())
     {
         summary.push_str(&context_detail);
     }
@@ -525,15 +527,13 @@ fn sub_agent_activity_title(
         Span::from(format!("{} ", action.title_prefix())).bold(),
         Span::from(format!("`{agent_path}`")).cyan(),
     ];
-    if let Some(details) =
-        sub_agent_activity_execution_details(
-            action,
-            model,
-            reasoning_effort,
-            service_tier,
-            context_inheritance,
-        )
-    {
+    if let Some(details) = sub_agent_activity_execution_details(
+        action,
+        model,
+        reasoning_effort,
+        service_tier,
+        context_inheritance,
+    ) {
         spans.push(Span::from(details).dim());
     }
     title_spans_line(spans)
@@ -561,7 +561,10 @@ fn sub_agent_activity_execution_details(
         details.push("fast".to_string());
     }
     let execution_details = (!details.is_empty()).then(|| format!(" ({})", details.join(", ")));
-    match (execution_details, context_inheritance_detail(context_inheritance)) {
+    match (
+        execution_details,
+        context_inheritance_detail(context_inheritance),
+    ) {
         (Some(execution_details), Some(context_detail)) => {
             Some(format!("{execution_details}{context_detail}"))
         }
@@ -577,7 +580,9 @@ fn context_inheritance_detail(
     match context_inheritance? {
         SpawnContextInheritance::Full => Some(" · context: all".to_string()),
         SpawnContextInheritance::None => Some(" · context: none".to_string()),
-        SpawnContextInheritance::LastNTurns { turns } => Some(format!(" · context: last {turns} turns")),
+        SpawnContextInheritance::LastNTurns { turns } => {
+            Some(format!(" · context: last {turns} turns"))
+        }
     }
 }
 
@@ -1726,9 +1731,8 @@ mod tests {
             model: Some("gpt-5.6".to_string()),
             reasoning_effort: Some(ReasoningEffort::High),
             service_tier: Some(ServiceTier::Fast.request_value().to_string()),
-            context_inheritance: matches!(kind, SubAgentActivityKind::Started).then_some(
-                SpawnContextInheritance::LastNTurns { turns: 2 },
-            ),
+            context_inheritance: matches!(kind, SubAgentActivityKind::Started)
+                .then_some(SpawnContextInheritance::LastNTurns { turns: 2 }),
         }
     }
 

@@ -4152,9 +4152,7 @@ mod tests {
                 model: "gpt-5.4-mini".into(),
                 reasoning_effort: codex_protocol::openai_models::ReasoningEffort::Medium,
                 service_tier: Some("priority".into()),
-                context_inheritance: Some(
-                    codex_protocol::protocol::SpawnContextInheritance::Full,
-                ),
+                context_inheritance: Some(codex_protocol::protocol::SpawnContextInheritance::Full),
                 status: AgentStatus::Running,
             }),
         ];
