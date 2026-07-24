@@ -3,6 +3,7 @@ use crate::test_support::PathBufExt;
 use crate::test_support::test_path_buf;
 use codex_app_server_protocol::CollabAgentTool;
 use codex_app_server_protocol::CollabAgentToolCallStatus;
+use codex_app_server_protocol::SpawnContextInheritance;
 use codex_app_server_protocol::SubAgentActivityKind;
 use codex_app_server_protocol::ThreadStatus;
 use codex_app_server_protocol::Turn;
@@ -55,6 +56,7 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
                             .request_value()
                             .to_string(),
                     ),
+                    context_inheritance: Some(SpawnContextInheritance::LastNTurns { turns: 4 }),
                 },
                 ThreadItem::MemoryMutation(codex_app_server_protocol::MemoryMutation {
                     id: "memory-write-1".to_string(),
@@ -75,6 +77,7 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
                     model: Some("gpt-5.6".to_string()),
                     reasoning_effort: None,
                     service_tier: None,
+                    context_inheritance: Some(SpawnContextInheritance::Full),
                     mode: None,
                     snapshot_revision: None,
                     agents_states: Default::default(),
@@ -102,9 +105,9 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
     insta::assert_snapshot!(
         rendered,
         @r###"
-Started /root/research (gpt-5.6, high, fast)
+Started /root/research (gpt-5.6, high, fast) · context: last 4 turns
 Wrote memory · scope: project · title: Repository conventions · path: memories/project/repository-conventions.md · preview: Run focused tests remotely.
-Spawned an agent
+Spawned an agent · context: all
 "###,
     );
 }

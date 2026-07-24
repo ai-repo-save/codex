@@ -230,6 +230,7 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
             model,
             reasoning_effort,
             service_tier,
+            context_inheritance,
             ..
         } => {
             vec![
@@ -241,6 +242,7 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
                     model.as_deref(),
                     reasoning_effort.as_ref(),
                     service_tier.as_deref(),
+                    context_inheritance.as_ref(),
                 )
                 .dim()
                 .into(),

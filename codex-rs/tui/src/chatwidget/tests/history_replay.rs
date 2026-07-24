@@ -135,6 +135,7 @@ async fn replayed_sub_agent_activity_renders_history() {
                     .request_value()
                     .to_string(),
             ),
+            context_inheritance: Some(codex_app_server_protocol::SpawnContextInheritance::None),
         },
         "turn-1".to_string(),
         ReplayKind::ThreadSnapshot,
@@ -145,7 +146,7 @@ async fn replayed_sub_agent_activity_renders_history() {
         .map(|lines| lines_to_single_string(&lines))
         .collect::<Vec<_>>()
         .join("\n");
-    insta::assert_snapshot!(combined, @r###"• Started `/root/research` (gpt-5.6, high, fast)"###);
+    insta::assert_snapshot!(combined, @r###"• Started `/root/research` (gpt-5.6, high, fast) · context: none"###);
 }
 
 #[tokio::test]

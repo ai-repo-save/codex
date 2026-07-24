@@ -3,7 +3,7 @@ source: tui/src/multi_agents.rs
 assertion_line: 1095
 expression: snapshot
 ---
-• Spawned Robie [explorer] (fast)
+• Spawned Robie [explorer] (fast) · context: all
   └ Compute 11! and reply with just the integer result.
 
 • Sent input to Robie [explorer]

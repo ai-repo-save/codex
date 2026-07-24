@@ -12,6 +12,7 @@ use codex_app_server_protocol::CollabAgentState;
 use codex_app_server_protocol::CollabAgentStatus;
 use codex_app_server_protocol::CollabAgentTool;
 use codex_app_server_protocol::CollabAgentToolCallStatus;
+use codex_app_server_protocol::SpawnContextInheritance;
 use codex_app_server_protocol::SubAgentActivityKind;
 use codex_app_server_protocol::SubAgentActivityOperation;
 use codex_app_server_protocol::SubAgentActivityOutcome;
@@ -73,6 +74,7 @@ pub(crate) struct AgentMetadata {
 pub(crate) struct SpawnRequestSummary {
     pub(crate) model: String,
     pub(crate) reasoning_effort: ReasoningEffort,
+    pub(crate) context_inheritance: Option<SpawnContextInheritance>,
 }
 
 #[derive(Clone, Copy)]
@@ -212,10 +214,12 @@ pub(crate) fn spawn_request_summary(item: &ThreadItem) -> Option<SpawnRequestSum
             tool: CollabAgentTool::SpawnAgent,
             model: Some(model),
             reasoning_effort: Some(reasoning_effort),
+            context_inheritance,
             ..
         } => Some(SpawnRequestSummary {
             model: model.clone(),
             reasoning_effort: reasoning_effort.clone(),
+            context_inheritance: context_inheritance.clone(),
         }),
         _ => None,
     }
@@ -232,6 +236,7 @@ pub(crate) fn tool_call_history_cell_with_spawn_request(
         receiver_thread_ids,
         prompt,
         service_tier,
+        context_inheritance,
         mode,
         agents_states,
         ..
@@ -255,6 +260,7 @@ pub(crate) fn tool_call_history_cell_with_spawn_request(
                 prompt.as_deref().unwrap_or_default(),
                 cached_spawn_request.or(fallback_spawn_request.as_ref()),
                 service_tier.as_deref(),
+                context_inheritance.as_ref(),
                 &mut agent_metadata,
             ))
         }
@@ -299,6 +305,7 @@ pub(crate) fn collab_tool_summary(item: &ThreadItem) -> Option<String> {
     let ThreadItem::CollabAgentToolCall {
         tool,
         status,
+        context_inheritance,
         mode,
         agents_states,
         ..
@@ -307,7 +314,7 @@ pub(crate) fn collab_tool_summary(item: &ThreadItem) -> Option<String> {
         return None;
     };
 
-    let summary = match tool {
+    let mut summary = match tool {
         CollabAgentTool::SpawnAgent => match status {
             CollabAgentToolCallStatus::InProgress => "Spawning an agent".to_string(),
             CollabAgentToolCallStatus::Completed => "Spawned an agent".to_string(),
@@ -335,6 +342,14 @@ pub(crate) fn collab_tool_summary(item: &ThreadItem) -> Option<String> {
             CollabAgentToolCallStatus::Failed => "Failed to close an agent".to_string(),
         },
     };
+    if matches!(
+        (tool, status),
+        (CollabAgentTool::SpawnAgent, CollabAgentToolCallStatus::Completed)
+    )
+        && let Some(context_detail) = context_inheritance_detail(context_inheritance.as_ref())
+    {
+        summary.push_str(&context_detail);
+    }
     Some(summary)
 }
 
@@ -366,6 +381,7 @@ pub(crate) fn sub_agent_activity_history_cell(item: &ThreadItem) -> Option<Plain
         model,
         reasoning_effort,
         service_tier,
+        context_inheritance,
         ..
     } = item
     else {
@@ -378,6 +394,7 @@ pub(crate) fn sub_agent_activity_history_cell(item: &ThreadItem) -> Option<Plain
             model.as_deref(),
             reasoning_effort.as_ref(),
             service_tier.as_deref(),
+            context_inheritance.as_ref(),
         ),
         Vec::new(),
     ))
@@ -391,10 +408,16 @@ pub(crate) fn sub_agent_activity_summary(
     model: Option<&str>,
     reasoning_effort: Option<&ReasoningEffort>,
     service_tier: Option<&str>,
+    context_inheritance: Option<&SpawnContextInheritance>,
 ) -> String {
     let action = sub_agent_activity_action(kind, operation, outcome);
-    let details =
-        sub_agent_activity_execution_details(action, model, reasoning_effort, service_tier);
+    let details = sub_agent_activity_execution_details(
+        action,
+        model,
+        reasoning_effort,
+        service_tier,
+        context_inheritance,
+    );
     format!(
         "{} {agent_path}{}",
         action.title_prefix(),
@@ -496,13 +519,20 @@ fn sub_agent_activity_title(
     model: Option<&str>,
     reasoning_effort: Option<&ReasoningEffort>,
     service_tier: Option<&str>,
+    context_inheritance: Option<&SpawnContextInheritance>,
 ) -> Line<'static> {
     let mut spans = vec![
         Span::from(format!("{} ", action.title_prefix())).bold(),
         Span::from(format!("`{agent_path}`")).cyan(),
     ];
     if let Some(details) =
-        sub_agent_activity_execution_details(action, model, reasoning_effort, service_tier)
+        sub_agent_activity_execution_details(
+            action,
+            model,
+            reasoning_effort,
+            service_tier,
+            context_inheritance,
+        )
     {
         spans.push(Span::from(details).dim());
     }
@@ -514,6 +544,7 @@ fn sub_agent_activity_execution_details(
     model: Option<&str>,
     reasoning_effort: Option<&ReasoningEffort>,
     service_tier: Option<&str>,
+    context_inheritance: Option<&SpawnContextInheritance>,
 ) -> Option<String> {
     if !matches!(action, SubAgentActivityAction::Started) {
         return None;
@@ -529,7 +560,25 @@ fn sub_agent_activity_execution_details(
     if is_fast_service_tier(service_tier) {
         details.push("fast".to_string());
     }
-    (!details.is_empty()).then(|| format!(" ({})", details.join(", ")))
+    let execution_details = (!details.is_empty()).then(|| format!(" ({})", details.join(", ")));
+    match (execution_details, context_inheritance_detail(context_inheritance)) {
+        (Some(execution_details), Some(context_detail)) => {
+            Some(format!("{execution_details}{context_detail}"))
+        }
+        (Some(execution_details), None) => Some(execution_details),
+        (None, Some(context_detail)) => Some(context_detail),
+        (None, None) => None,
+    }
+}
+
+fn context_inheritance_detail(
+    context_inheritance: Option<&SpawnContextInheritance>,
+) -> Option<String> {
+    match context_inheritance? {
+        SpawnContextInheritance::Full => Some(" · context: all".to_string()),
+        SpawnContextInheritance::None => Some(" · context: none".to_string()),
+        SpawnContextInheritance::LastNTurns { turns } => Some(format!(" · context: last {turns} turns")),
+    }
 }
 
 fn spawn_end(
@@ -537,6 +586,7 @@ fn spawn_end(
     prompt: &str,
     spawn_request: Option<&SpawnRequestSummary>,
     service_tier: Option<&str>,
+    context_inheritance: Option<&SpawnContextInheritance>,
     agent_metadata: &mut impl FnMut(ThreadId) -> AgentMetadata,
 ) -> PlainHistoryCell {
     let title = match new_thread_id {
@@ -564,6 +614,12 @@ fn spawn_end(
                 let details = format!("({})", detail_parts.join(" "));
                 spans.push(Span::from(" ").dim());
                 spans.push(Span::from(details).magenta());
+            }
+            let context_inheritance = context_inheritance.or_else(|| {
+                spawn_request.and_then(|spawn_request| spawn_request.context_inheritance.as_ref())
+            });
+            if let Some(context_detail) = context_inheritance_detail(context_inheritance) {
+                spans.push(Span::from(context_detail).dim());
             }
             title_spans_line(spans)
         }
@@ -994,6 +1050,7 @@ mod tests {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
         };
 
         assert_eq!(
@@ -1022,6 +1079,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: Some(ServiceTier::Fast.request_value().to_string()),
+                context_inheritance: Some(SpawnContextInheritance::Full),
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1044,6 +1102,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1066,6 +1125,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: Some(AskParentMode::Authoritative),
                 snapshot_revision: None,
                 agents_states: HashMap::new(),
@@ -1085,6 +1145,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: Some(AskParentMode::Authoritative),
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1107,6 +1168,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: Some(AskParentMode::Authoritative),
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1129,6 +1191,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: Some(AskParentMode::Authoritative),
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1151,6 +1214,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: Some(AskParentMode::Consult),
                 snapshot_revision: Some("history-18/items-42".to_string()),
                 agents_states: HashMap::new(),
@@ -1170,6 +1234,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: Some(AskParentMode::Consult),
                 snapshot_revision: Some("history-18/items-42".to_string()),
                 agents_states: HashMap::from([(
@@ -1195,6 +1260,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: Some(AskParentMode::Consult),
                 snapshot_revision: Some("history-18/items-42".to_string()),
                 agents_states: HashMap::from([(
@@ -1220,6 +1286,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::new(),
@@ -1239,6 +1306,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([
@@ -1267,6 +1335,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1387,6 +1456,7 @@ mod tests {
                     model,
                     reasoning_effort,
                     service_tier,
+                    context_inheritance,
                     ..
                 } => sub_agent_activity_summary(
                     *kind,
@@ -1396,6 +1466,7 @@ mod tests {
                     model.as_deref(),
                     reasoning_effort.as_ref(),
                     service_tier.as_deref(),
+                    context_inheritance.as_ref(),
                 ),
                 _ => unreachable!("activity item"),
             })
@@ -1561,6 +1632,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1600,6 +1672,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -1653,6 +1726,9 @@ mod tests {
             model: Some("gpt-5.6".to_string()),
             reasoning_effort: Some(ReasoningEffort::High),
             service_tier: Some(ServiceTier::Fast.request_value().to_string()),
+            context_inheritance: matches!(kind, SubAgentActivityKind::Started).then_some(
+                SpawnContextInheritance::LastNTurns { turns: 2 },
+            ),
         }
     }
 

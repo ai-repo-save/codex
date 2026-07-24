@@ -145,6 +145,7 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
             model,
             reasoning_effort,
             service_tier,
+            context_inheritance,
             ..
         } => {
             let summary = sub_agent_activity_summary(
@@ -155,6 +156,7 @@ fn activity_summary(item: &ThreadItem) -> Option<String> {
                 model.as_deref(),
                 reasoning_effort.as_ref(),
                 service_tier.as_deref(),
+                context_inheritance.as_ref(),
             );
             bounded_summary(&summary)
         }

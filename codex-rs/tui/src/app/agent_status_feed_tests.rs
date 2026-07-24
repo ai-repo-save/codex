@@ -26,6 +26,7 @@ fn agent_status_describes_pending_parent_decision() {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
             mode: None,
             snapshot_revision: None,
             agents_states: Default::default(),
@@ -68,6 +69,7 @@ fn agent_status_distinguishes_parent_decision_timeout() {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: [(
@@ -283,6 +285,7 @@ fn agent_status_describes_started_agent_with_model_and_effort() {
                 model: Some("gpt-5.6".to_string()),
                 reasoning_effort: Some(ReasoningEffort::High),
                 service_tier: None,
+                context_inheritance: None,
             },
             thread_id: "thread-child".to_string(),
             turn_id: "turn-1".to_string(),
@@ -386,5 +389,6 @@ fn sub_agent_activity_item(
         model: None,
         reasoning_effort: None,
         service_tier: None,
+        context_inheritance: None,
     }
 }

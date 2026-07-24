@@ -462,6 +462,7 @@ async fn collab_spawn_end_shows_requested_model_and_effort() {
                         .request_value()
                         .to_string(),
                 ),
+                context_inheritance: Some(codex_app_server_protocol::SpawnContextInheritance::Full),
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::new(),
@@ -484,6 +485,7 @@ async fn collab_spawn_end_shows_requested_model_and_effort() {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([(
@@ -508,6 +510,10 @@ async fn collab_spawn_end_shows_requested_model_and_effort() {
     assert!(
         rendered.contains("Spawned Robie [explorer] (gpt-5 high)"),
         "expected spawn line to include agent metadata and requested model, got {rendered:?}"
+    );
+    assert!(
+        rendered.contains("context: all"),
+        "expected spawn line to include inherited context, got {rendered:?}"
     );
     assert!(
         !rendered.contains("fast"),
@@ -983,6 +989,7 @@ async fn live_app_server_collab_wait_items_render_history() {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::new(),
@@ -1009,6 +1016,7 @@ async fn live_app_server_collab_wait_items_render_history() {
                 model: None,
                 reasoning_effort: None,
                 service_tier: None,
+                context_inheritance: None,
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::from([
@@ -1063,6 +1071,7 @@ async fn live_app_server_sub_agent_activity_renders_history() {
                         .request_value()
                         .to_string(),
                 ),
+                context_inheritance: Some(codex_app_server_protocol::SpawnContextInheritance::Full),
             },
         }),
         /*replay_kind*/ None,
@@ -1073,7 +1082,7 @@ async fn live_app_server_sub_agent_activity_renders_history() {
         .map(|lines| lines_to_single_string(&lines))
         .collect::<Vec<_>>()
         .join("\n");
-    insta::assert_snapshot!(combined, @r###"• Started `/root/research` (gpt-5.6, high, fast)"###);
+    insta::assert_snapshot!(combined, @r###"• Started `/root/research` (gpt-5.6, high, fast) · context: all"###);
 }
 
 #[tokio::test]
@@ -1316,6 +1325,7 @@ async fn live_app_server_collab_spawn_completed_renders_requested_model_and_effo
                         .request_value()
                         .to_string(),
                 ),
+                context_inheritance: Some(codex_app_server_protocol::SpawnContextInheritance::Full),
                 mode: None,
                 snapshot_revision: None,
                 agents_states: HashMap::new(),
@@ -1342,6 +1352,9 @@ async fn live_app_server_collab_spawn_completed_renders_requested_model_and_effo
                     codex_protocol::config_types::ServiceTier::Fast
                         .request_value()
                         .to_string(),
+                ),
+                context_inheritance: Some(
+                    codex_app_server_protocol::SpawnContextInheritance::LastNTurns { turns: 3 },
                 ),
                 mode: None,
                 snapshot_revision: None,
