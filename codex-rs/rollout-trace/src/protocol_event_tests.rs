@@ -6,6 +6,7 @@ use codex_protocol::protocol::ExecCommandBeginEvent;
 use codex_protocol::protocol::ExecCommandEndEvent;
 use codex_protocol::protocol::ExecCommandSource;
 use codex_protocol::protocol::ExecCommandStatus;
+use codex_protocol::protocol::SpawnContextInheritance;
 use codex_protocol::protocol::SubAgentActivityEvent;
 use codex_protocol::protocol::SubAgentActivityKind;
 use codex_protocol::protocol::SubAgentActivityOutcome;
@@ -31,6 +32,7 @@ fn sub_agent_activity_is_a_terminal_tool_runtime_event() -> anyhow::Result<()> {
         model: Some("gpt-5.4".to_string()),
         reasoning_effort: Some(ReasoningEffort::High),
         service_tier: Some("priority".to_string()),
+        context_inheritance: Some(SpawnContextInheritance::LastNTurns { turns: 3 }),
     });
 
     let Some(ToolRuntimeTraceEvent::Ended {
@@ -54,7 +56,11 @@ fn sub_agent_activity_is_a_terminal_tool_runtime_event() -> anyhow::Result<()> {
             "kind": "started",
             "model": "gpt-5.4",
             "reasoning_effort": "high",
-            "service_tier": "priority"
+            "service_tier": "priority",
+            "context_inheritance": {
+                "type": "lastNTurns",
+                "turns": 3
+            }
         })
     );
     Ok(())
@@ -73,6 +79,7 @@ fn failed_sub_agent_activity_is_a_failed_terminal_tool_runtime_event() -> anyhow
         model: None,
         reasoning_effort: None,
         service_tier: None,
+        context_inheritance: None,
     });
 
     let Some(ToolRuntimeTraceEvent::Ended { status, .. }) = tool_runtime_trace_event(&event) else {
