@@ -39,8 +39,8 @@ use crate::scoped::GLOBAL_MEMORY_MAINTENANCE_POLICY;
 use crate::scoped::MemoryScope;
 use crate::scoped::MemoryToolBackends;
 use crate::scoped::PROJECT_MEMORY_MAINTENANCE_POLICY;
-use crate::scoped::SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT;
 use crate::scoped::SESSION_MEMORY_MAINTENANCE_POLICY;
+use crate::scoped::SESSION_CONTEXT_TOKEN_LIMIT;
 
 #[test]
 fn memory_tool_namespace_matches_responses_api_identifier() {
@@ -838,7 +838,7 @@ async fn rewind_context_includes_each_completed_session_write_once() {
 }
 
 #[tokio::test]
-async fn scoped_memory_context_fragments_respect_model_visible_token_limit() {
+async fn rewind_session_context_fragment_respects_model_visible_token_limit() {
     let tempdir = tempfile::tempdir().expect("tempdir");
     let project_root = tempfile::tempdir().expect("project root");
     let backends = MemoryToolBackends::new(
@@ -848,7 +848,7 @@ async fn scoped_memory_context_fragments_respect_model_visible_token_limit() {
         "thread-1",
         &project_root.path().abs(),
     );
-    let oversized_note = "memory ".repeat(SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT);
+    let oversized_note = "memory ".repeat(SESSION_CONTEXT_TOKEN_LIMIT);
     let session_response = backends
         .write_note(
             MemoryScope::Session,
@@ -857,24 +857,6 @@ async fn scoped_memory_context_fragments_respect_model_visible_token_limit() {
         )
         .await
         .expect("write oversized session note");
-    backends
-        .write_note(
-            MemoryScope::Project,
-            "Oversized project memory".to_string(),
-            oversized_note.clone(),
-        )
-        .await
-        .expect("write oversized project note");
-
-    let scoped_context = backends
-        .scoped_context_fragment()
-        .await
-        .expect("oversized scoped notes should contribute context");
-    assert!(
-        approx_token_count(&scoped_context) <= SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT,
-        "scoped context used {} approximate tokens",
-        approx_token_count(&scoped_context)
-    );
 
     let completed_items = vec![TurnItem::Extension(ExtensionItem::MemoryMutation(
         MemoryMutation::write(
@@ -891,7 +873,7 @@ async fn scoped_memory_context_fragments_respect_model_visible_token_limit() {
         .await
         .expect("oversized rewind note should contribute context");
     assert!(
-        approx_token_count(&rewind_context) <= SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT,
+        approx_token_count(&rewind_context) <= SESSION_CONTEXT_TOKEN_LIMIT,
         "rewind context used {} approximate tokens",
         approx_token_count(&rewind_context)
     );

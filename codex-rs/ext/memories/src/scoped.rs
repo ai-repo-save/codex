@@ -38,8 +38,7 @@ use crate::local::LocalMemoriesBackend;
 const SCOPED_MEMORIES_DIR: &str = "scoped-memories";
 const NOTES_DIR: &str = "notes";
 const PROJECT_METADATA_FILENAME: &str = "metadata.toml";
-pub(crate) const SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT: usize = 10_000;
-const SESSION_CONTEXT_TOKEN_LIMIT: usize = SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT;
+pub(crate) const SESSION_CONTEXT_TOKEN_LIMIT: usize = 10_000;
 const PROJECT_CONTEXT_TOKEN_LIMIT: usize = 15_000;
 
 pub(crate) const SESSION_MEMORY_MAINTENANCE_POLICY: &str = "Session memory is working memory for the current thread. Codex may proactively create, update, or delete session notes when doing so helps complete the current task; no explicit user request is required.";
@@ -209,7 +208,7 @@ impl MemoryToolBackends {
             SESSION_MEMORY_MAINTENANCE_POLICY,
             PROJECT_MEMORY_MAINTENANCE_POLICY,
         );
-        Some(render_scoped_memory_context(body))
+        Some(ScopedMemoryContextFragment::new(body).render())
     }
 
     pub(crate) async fn rewind_session_context_fragment(
@@ -272,7 +271,10 @@ impl MemoryToolBackends {
         let body = format!(
             "\n## Scoped Memory\n### Session memory\n{content}\n\n{SESSION_MEMORY_MAINTENANCE_POLICY}\n\nUse `memories.write_note` and `memories.delete` to maintain scoped memory under these rules. To replace a note, write the corrected note, then delete the obsolete file.\n"
         );
-        Some(render_scoped_memory_context(body))
+        Some(render_scoped_memory_context(
+            body,
+            SESSION_CONTEXT_TOKEN_LIMIT,
+        ))
     }
 
     fn backend_for_read(
@@ -298,29 +300,30 @@ impl MemoryToolBackends {
     }
 }
 
-fn render_scoped_memory_context(body: String) -> String {
+fn render_scoped_memory_context(body: String, token_limit: usize) -> String {
     let rendered = ScopedMemoryContextFragment::new(&body).render();
-    if approx_token_count(&rendered) <= SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT {
+    if approx_token_count(&rendered) <= token_limit {
         return rendered;
     }
 
     let (start_marker, end_marker) = ScopedMemoryContextFragment::type_markers();
     let wrapper_tokens = approx_token_count(&format!("{start_marker}{end_marker}"));
-    let mut body_token_budget =
-        SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT.saturating_sub(wrapper_tokens);
+    let mut body_token_budget = token_limit.saturating_sub(wrapper_tokens);
 
-    loop {
+    while body_token_budget > 0 {
         let truncated_body = truncate_text(&body, TruncationPolicy::Tokens(body_token_budget));
         let rendered = ScopedMemoryContextFragment::new(truncated_body).render();
         let rendered_tokens = approx_token_count(&rendered);
-        if rendered_tokens <= SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT {
+        if rendered_tokens <= token_limit {
             return rendered;
         }
 
-        body_token_budget = body_token_budget.saturating_sub(
-            rendered_tokens.saturating_sub(SCOPED_MEMORY_CONTEXT_TOKEN_LIMIT),
-        );
+        let overflow_tokens = rendered_tokens.saturating_sub(token_limit);
+        body_token_budget =
+            body_token_budget.saturating_sub(overflow_tokens.max(/*other*/ 1));
     }
+
+    ScopedMemoryContextFragment::new(String::new()).render()
 }
 
 #[derive(Debug, Clone)]
