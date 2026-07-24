@@ -22,6 +22,7 @@ use crate::protocol::ReviewTarget;
 use crate::protocol::SubAgentActivityKind;
 use crate::protocol::SubAgentActivityOperation;
 use crate::protocol::SubAgentActivityOutcome;
+use crate::protocol::SpawnContextInheritance;
 use crate::user_input::ByteRange;
 use crate::user_input::TextElement;
 use crate::user_input::UserInput;
@@ -302,6 +303,9 @@ pub struct CollabAgentToolCallItem {
     pub service_tier: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
+    pub context_inheritance: Option<SpawnContextInheritance>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub mode: Option<AskParentMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -331,6 +335,9 @@ pub struct SubAgentActivityItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub service_tier: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub context_inheritance: Option<SpawnContextInheritance>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq)]

@@ -4276,6 +4276,15 @@ pub enum TurnAbortReason {
     BudgetLimited,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(tag = "type", rename_all = "camelCase")]
+#[ts(tag = "type", rename_all = "camelCase")]
+pub enum SpawnContextInheritance {
+    None,
+    Full,
+    LastNTurns { turns: u64 },
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
 pub struct CollabAgentSpawnBeginEvent {
     /// Identifier for the collab tool call.
@@ -4292,6 +4301,9 @@ pub struct CollabAgentSpawnBeginEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub service_tier: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub context_inheritance: Option<SpawnContextInheritance>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
@@ -4347,6 +4359,9 @@ pub struct CollabAgentSpawnEndEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub service_tier: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub context_inheritance: Option<SpawnContextInheritance>,
     /// Last known status of the new agent reported to the sender agent.
     pub status: AgentStatus,
 }
@@ -4443,6 +4458,9 @@ pub struct SubAgentActivityEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub service_tier: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub context_inheritance: Option<SpawnContextInheritance>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
@@ -5787,6 +5805,7 @@ mod tests {
                 model: Some("gpt-5.4".into()),
                 reasoning_effort: Some(ReasoningEffortConfig::High),
                 service_tier: Some("priority".into()),
+                context_inheritance: Some(SpawnContextInheritance::LastNTurns { turns: 3 }),
                 operation: Some(SubAgentActivityOperation::SendMessage),
                 outcome: Some(SubAgentActivityOutcome::Succeeded),
             }),
@@ -5807,6 +5826,7 @@ mod tests {
                 model: Some("gpt-5.4".into()),
                 reasoning_effort: Some(ReasoningEffortConfig::High),
                 service_tier: Some("priority".into()),
+                context_inheritance: Some(SpawnContextInheritance::LastNTurns { turns: 3 }),
                 operation: Some(SubAgentActivityOperation::SendMessage),
                 outcome: Some(SubAgentActivityOutcome::Succeeded),
             }
@@ -5826,6 +5846,7 @@ mod tests {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
             operation: None,
             outcome: None,
         };
@@ -5838,6 +5859,7 @@ mod tests {
             model: None,
             reasoning_effort: None,
             service_tier: None,
+            context_inheritance: None,
             operation: None,
             outcome: None,
         };
@@ -5885,6 +5907,7 @@ mod tests {
             model: Some("gpt-5.4".into()),
             reasoning_effort: Some(ReasoningEffortConfig::High),
             service_tier: Some("priority".into()),
+            context_inheritance: Some(SpawnContextInheritance::Full),
             mode: None,
             snapshot_revision: None,
             agents_states: Default::default(),
@@ -5906,6 +5929,7 @@ mod tests {
             started.as_legacy_events(/*show_raw_agent_reasoning*/ false).as_slice(),
             [EventMsg::CollabAgentSpawnBegin(CollabAgentSpawnBeginEvent {
                 service_tier: Some(service_tier),
+                context_inheritance: Some(SpawnContextInheritance::Full),
                 ..
             })] if service_tier == "priority"
         ));
@@ -5915,13 +5939,14 @@ mod tests {
                 .as_slice(),
             [EventMsg::CollabAgentSpawnEnd(CollabAgentSpawnEndEvent {
                 service_tier: Some(service_tier),
+                context_inheritance: Some(SpawnContextInheritance::Full),
                 ..
             })] if service_tier == "priority"
         ));
     }
 
     #[test]
-    fn collab_agent_spawn_deserializes_without_service_tier() {
+    fn collab_agent_spawn_deserializes_without_optional_metadata() {
         let sender_thread_id = ThreadId::new();
         let receiver_thread_id = ThreadId::new();
         let expected_item = CollabAgentToolCallItem {
@@ -5935,6 +5960,7 @@ mod tests {
             model: Some("gpt-5.4".into()),
             reasoning_effort: Some(ReasoningEffortConfig::High),
             service_tier: None,
+            context_inheritance: None,
             mode: None,
             snapshot_revision: None,
             agents_states: Default::default(),
@@ -5947,6 +5973,7 @@ mod tests {
             model: "gpt-5.4".into(),
             reasoning_effort: ReasoningEffortConfig::High,
             service_tier: None,
+            context_inheritance: None,
         };
         let expected_end = CollabAgentSpawnEndEvent {
             call_id: "spawn-1".into(),
@@ -5959,16 +5986,22 @@ mod tests {
             model: "gpt-5.4".into(),
             reasoning_effort: ReasoningEffortConfig::High,
             service_tier: None,
+            context_inheritance: None,
             status: AgentStatus::NotFound,
         };
 
         let mut item_json =
             serde_json::to_value(TurnItem::CollabAgentToolCall(CollabAgentToolCallItem {
                 service_tier: Some("priority".into()),
+                context_inheritance: Some(SpawnContextInheritance::Full),
                 ..expected_item.clone()
             }))
             .unwrap();
         item_json.as_object_mut().unwrap().remove("service_tier");
+        item_json
+            .as_object_mut()
+            .unwrap()
+            .remove("context_inheritance");
         let item = serde_json::from_value::<TurnItem>(item_json).unwrap();
         let TurnItem::CollabAgentToolCall(item) = item else {
             panic!("expected collab agent tool call item");
@@ -5977,19 +6010,29 @@ mod tests {
 
         let mut begin_json = serde_json::to_value(CollabAgentSpawnBeginEvent {
             service_tier: Some("priority".into()),
+            context_inheritance: Some(SpawnContextInheritance::Full),
             ..expected_begin.clone()
         })
         .unwrap();
         begin_json.as_object_mut().unwrap().remove("service_tier");
+        begin_json
+            .as_object_mut()
+            .unwrap()
+            .remove("context_inheritance");
         let begin = serde_json::from_value::<CollabAgentSpawnBeginEvent>(begin_json).unwrap();
         assert_eq!(begin, expected_begin);
 
         let mut end_json = serde_json::to_value(CollabAgentSpawnEndEvent {
             service_tier: Some("priority".into()),
+            context_inheritance: Some(SpawnContextInheritance::Full),
             ..expected_end.clone()
         })
         .unwrap();
         end_json.as_object_mut().unwrap().remove("service_tier");
+        end_json
+            .as_object_mut()
+            .unwrap()
+            .remove("context_inheritance");
         let end = serde_json::from_value::<CollabAgentSpawnEndEvent>(end_json).unwrap();
         assert_eq!(end, expected_end);
     }

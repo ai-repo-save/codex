@@ -252,6 +252,7 @@ impl CollabAgentToolCallItem {
                     model: self.model.clone().unwrap_or_default(),
                     reasoning_effort: self.reasoning_effort.clone().unwrap_or_default(),
                     service_tier: self.service_tier.clone(),
+                    context_inheritance: self.context_inheritance.clone(),
                 },
             )),
             CollabAgentTool::SendInput => receiver_thread_id.map(|receiver_thread_id| {
@@ -315,6 +316,7 @@ impl CollabAgentToolCallItem {
                     model: self.model.clone().unwrap_or_default(),
                     reasoning_effort: self.reasoning_effort.clone().unwrap_or_default(),
                     service_tier: self.service_tier.clone(),
+                    context_inheritance: self.context_inheritance.clone(),
                     status: receiver_thread_id
                         .map(|thread_id| self.agent_status(thread_id))
                         .unwrap_or(AgentStatus::NotFound),
@@ -412,6 +414,7 @@ impl SubAgentActivityItem {
             model: self.model.clone(),
             reasoning_effort: self.reasoning_effort.clone(),
             service_tier: self.service_tier.clone(),
+            context_inheritance: self.context_inheritance.clone(),
         })
     }
 }
