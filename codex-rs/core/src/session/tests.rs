@@ -8689,17 +8689,19 @@ async fn build_initial_context_keeps_typed_extension_fragments_as_independent_it
         })
         .collect::<Vec<_>>();
 
-    assert_eq!(
-        typed_items,
-        vec![
-            ContextualUserFragment::into(crate::context::ScopedMemoryContextFragment::new(
-                FIRST_TYPED_CONTEXT_ITEM,
-            )),
-            ContextualUserFragment::into(crate::context::ScopedMemoryContextFragment::new(
-                SECOND_TYPED_CONTEXT_ITEM,
-            )),
-        ]
-    );
+    let mut expected_typed_items = vec![
+        ContextualUserFragment::into(crate::context::ScopedMemoryContextFragment::new(
+            FIRST_TYPED_CONTEXT_ITEM,
+        )),
+        ContextualUserFragment::into(crate::context::ScopedMemoryContextFragment::new(
+            SECOND_TYPED_CONTEXT_ITEM,
+        )),
+    ];
+    for item in &mut expected_typed_items {
+        item.set_turn_id_if_missing(&turn_context.sub_id);
+    }
+
+    assert_eq!(typed_items, expected_typed_items);
 }
 
 #[tokio::test]
