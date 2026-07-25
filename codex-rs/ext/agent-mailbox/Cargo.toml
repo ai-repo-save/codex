@@ -1,0 +1,33 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-agent-mailbox-extension"
+version.workspace = true
+
+[lib]
+name = "codex_agent_mailbox_extension"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+codex-core = { workspace = true }
+codex-extension-api = { workspace = true }
+codex-features = { workspace = true }
+codex-protocol = { workspace = true }
+codex-state = { workspace = true }
+codex-tools = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
