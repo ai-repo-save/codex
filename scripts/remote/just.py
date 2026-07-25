@@ -30,9 +30,13 @@ def argument_parser() -> argparse.ArgumentParser:
             "syncing the selected local branch."
         ),
         epilog=(
-            "Example: scripts/remote/just.py --branch sync/rust-v0.146.0 "
-            "test -p codex-core context_anchor"
+            "Behavior: pushes the selected branch to origin, resets and cleans "
+            "the shared remote checkout, then copies Git-visible remote changes "
+            "back to the unchanged local checkout.\n\n"
+            "Example: scripts/remote/just.py --branch sync/rust-v0.146.0 test "
+            "-p codex-core context_anchor"
         ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--branch",

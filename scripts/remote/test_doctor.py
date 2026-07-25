@@ -23,7 +23,7 @@ class RemoteDoctorTest(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertEqual(command[0:2], ("ssh", doctor.DEFAULT_HOST))
         self.assertIn(
-            f"git ls-remote --heads origin '{doctor.DEFAULT_BRANCH}'",
+            f"git ls-remote --exit-code --heads origin '{doctor.DEFAULT_BRANCH}'",
             command[2],
         )
 
@@ -33,7 +33,7 @@ class RemoteDoctorTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertIn(
-            "git ls-remote --heads origin 'sync/rust-v0.146.0'",
+            "git ls-remote --exit-code --heads origin 'sync/rust-v0.146.0'",
             run.call_args.args[0][2],
         )
 

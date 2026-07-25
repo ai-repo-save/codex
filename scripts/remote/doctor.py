@@ -64,7 +64,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         'timeout 15 curl -I -L --connect-timeout 5 https://www.google.com 2>&1 | sed -n "1,12p"; '
         'printf "%s\\n" "== remote git origin =="; '
         f"cd {shell_quote(config.remote_path)}; "
-        "timeout 45 git ls-remote --heads origin "
+        "timeout 45 git ls-remote --exit-code --heads origin "
         f'{shell_quote(config.branch)} 2>&1 | sed -n "1,40p"'
     )
     run(ssh_command(config, command))

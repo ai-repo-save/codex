@@ -30,7 +30,13 @@ def argument_parser() -> argparse.ArgumentParser:
             "Compile and execute the Codex version smoke check on the remote "
             "execution host."
         ),
-        epilog=("Example: scripts/remote/build_sync.py --branch sync/rust-v0.146.0"),
+        epilog=(
+            "Behavior: pushes the selected branch to origin, resets and cleans "
+            "the shared remote checkout, then copies Git-visible remote changes "
+            "back to the unchanged local checkout.\n\n"
+            "Example: scripts/remote/build_sync.py --branch sync/rust-v0.146.0"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--branch",

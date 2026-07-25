@@ -42,7 +42,13 @@ def argument_parser() -> argparse.ArgumentParser:
             "Compile the remote TUI test graph and run the fixed embedded "
             "app-server RPC smoke check."
         ),
-        epilog=("Example: scripts/remote/tui_smoke.py --branch sync/rust-v0.146.0"),
+        epilog=(
+            "Behavior: pushes the selected branch to origin, resets and cleans "
+            "the shared remote checkout, then copies Git-visible remote changes "
+            "back to the unchanged local checkout.\n\n"
+            "Example: scripts/remote/tui_smoke.py --branch sync/rust-v0.146.0"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--branch",
