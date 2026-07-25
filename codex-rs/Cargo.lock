@@ -1836,6 +1836,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-agent-control"
+version = "0.145.0"
+dependencies = [
+ "codex-protocol",
+ "codex-tools",
+ "pretty_assertions",
+ "serde_json",
+]
+
+[[package]]
 name = "codex-agent-extension"
 version = "0.145.0"
 dependencies = [
@@ -2645,6 +2655,7 @@ dependencies = [
  "bm25",
  "chrono",
  "clap",
+ "codex-agent-control",
  "codex-agent-graph-store",
  "codex-analytics",
  "codex-api",
