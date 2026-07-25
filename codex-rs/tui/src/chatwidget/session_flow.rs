@@ -130,6 +130,7 @@ impl ChatWidget {
                 startup_tooltip_override,
                 self.plan_type,
                 show_fast_status,
+                crate::version::CODEX_CLI_VERSION,
             );
             self.apply_session_info_cell(session_info_cell);
         } else if self

@@ -138,6 +138,7 @@ pub(crate) fn new_session_info(
     tooltip_override: Option<String>,
     auth_plan: Option<PlanType>,
     show_fast_status: bool,
+    cli_version: &'static str,
 ) -> SessionInfoCell {
     // Header box rendered as history (so it appears at the very top)
     let header = SessionHeaderHistoryCell::new(
@@ -145,7 +146,7 @@ pub(crate) fn new_session_info(
         session.reasoning_effort.clone(),
         show_fast_status,
         config.cwd.to_path_buf(),
-        CODEX_CLI_VERSION,
+        cli_version,
     )
     .with_yolo_mode(has_yolo_permissions(
         session.approval_policy,

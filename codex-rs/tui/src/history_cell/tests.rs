@@ -675,6 +675,7 @@ async fn session_info_uses_availability_nux_tooltip_override() {
         Some("Model just became available".to_string()),
         Some(PlanType::Free),
         /*show_fast_status*/ false,
+        crate::test_support::TEST_CLI_VERSION,
     );
 
     let rendered = render_transcript(&cell).join("\n");
@@ -697,6 +698,7 @@ async fn session_info_availability_nux_tooltip_snapshot() {
         Some("Model just became available".to_string()),
         Some(PlanType::Free),
         /*show_fast_status*/ false,
+        crate::test_support::TEST_CLI_VERSION,
     );
 
     let rendered = render_transcript(&cell).join("\n");
@@ -714,6 +716,7 @@ async fn session_info_first_event_suppresses_tooltips_and_nux() {
         Some("Model just became available".to_string()),
         Some(PlanType::Free),
         /*show_fast_status*/ false,
+        crate::test_support::TEST_CLI_VERSION,
     );
 
     let rendered = render_transcript(&cell).join("\n");
@@ -733,6 +736,7 @@ async fn session_info_hides_tooltips_when_disabled() {
         Some("Model just became available".to_string()),
         Some(PlanType::Free),
         /*show_fast_status*/ false,
+        crate::test_support::TEST_CLI_VERSION,
     );
 
     let rendered = render_transcript(&cell).join("\n");
@@ -1184,8 +1188,11 @@ fn web_search_history_cell_snapshot() {
 
 #[test]
 fn standalone_unix_update_available_history_cell_snapshot() {
-    let cell =
-        UpdateAvailableHistoryCell::new("9.9.9".to_string(), Some(UpdateAction::StandaloneUnix));
+    let cell = UpdateAvailableHistoryCell::new(
+        crate::test_support::TEST_CLI_VERSION,
+        "9.9.9".to_string(),
+        Some(UpdateAction::StandaloneUnix),
+    );
     let rendered = render_lines(&cell.display_lines(/*width*/ 110)).join("\n");
 
     insta::assert_snapshot!(rendered);
@@ -1193,8 +1200,11 @@ fn standalone_unix_update_available_history_cell_snapshot() {
 
 #[test]
 fn standalone_windows_update_available_history_cell_snapshot() {
-    let cell =
-        UpdateAvailableHistoryCell::new("9.9.9".to_string(), Some(UpdateAction::StandaloneWindows));
+    let cell = UpdateAvailableHistoryCell::new(
+        crate::test_support::TEST_CLI_VERSION,
+        "9.9.9".to_string(),
+        Some(UpdateAction::StandaloneWindows),
+    );
     let rendered = render_lines(&cell.display_lines(/*width*/ 110)).join("\n");
 
     insta::assert_snapshot!(rendered);
@@ -1202,8 +1212,11 @@ fn standalone_windows_update_available_history_cell_snapshot() {
 
 #[test]
 fn pnpm_update_available_history_cell_snapshot() {
-    let cell =
-        UpdateAvailableHistoryCell::new("9.9.9".to_string(), Some(UpdateAction::PnpmGlobalLatest));
+    let cell = UpdateAvailableHistoryCell::new(
+        crate::test_support::TEST_CLI_VERSION,
+        "9.9.9".to_string(),
+        Some(UpdateAction::PnpmGlobalLatest),
+    );
     let rendered = render_lines(&cell.display_lines(/*width*/ 110)).join("\n");
 
     insta::assert_snapshot!(rendered);
