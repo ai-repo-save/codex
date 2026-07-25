@@ -28,6 +28,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::AGENT_MAILBOX_NAMESPACE;
+use crate::MAX_AGENT_MAILBOX_READ_MESSAGES;
 use crate::READ_TOOL_NAME;
 use crate::SEND_TOOL_NAME;
 use crate::extension::AgentMailboxRuntime;
@@ -37,7 +38,6 @@ use crate::output::snapshot_json;
 use crate::output::validate_message_input_for_read_output;
 use crate::output::validate_payload_bytes;
 use crate::schema::input_schema_for;
-use crate::MAX_AGENT_MAILBOX_READ_MESSAGES;
 
 const DEFAULT_READ_LIMIT: usize = 1;
 
@@ -288,9 +288,7 @@ fn sender_filter(
     Ok((None, Some(path.to_string())))
 }
 
-fn parse_args<T: for<'de> Deserialize<'de>>(
-    invocation: &ToolCall,
-) -> Result<T, FunctionCallError> {
+fn parse_args<T: for<'de> Deserialize<'de>>(invocation: &ToolCall) -> Result<T, FunctionCallError> {
     let arguments = invocation.function_arguments()?;
     let value = if arguments.trim().is_empty() {
         Value::Object(serde_json::Map::new())

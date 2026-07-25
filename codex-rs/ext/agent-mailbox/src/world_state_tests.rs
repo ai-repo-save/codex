@@ -5,8 +5,7 @@ use serde_json::json;
 
 use super::mailbox_world_state_section;
 
-const BODY_WITH_UNREAD_MESSAGES: &str =
-    "Agent mailbox: 3 unread — 1 action required, 1 result, 1 progress. Use agent_mailbox.read to process them.";
+const BODY_WITH_UNREAD_MESSAGES: &str = "Agent mailbox: 3 unread — 1 action required, 1 result, 1 progress. Use agent_mailbox.read to process them.";
 const EMPTY_MAILBOX_BODY: &str = "Agent mailbox: 0 unread.";
 
 #[test]

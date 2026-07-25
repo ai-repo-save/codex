@@ -98,6 +98,7 @@ mod tests {
     use crate::extensions::ThreadExtensionDependencies;
     use crate::extensions::guardian_agent_spawner;
     use crate::extensions::thread_extensions;
+    use codex_agent_mailbox_extension::NoopAgentMailboxStatusNotifier;
     use codex_arg0::Arg0DispatchPaths;
     use codex_config::CloudConfigBundleLoader;
     use codex_config::LoaderOverrides;
@@ -112,7 +113,6 @@ mod tests {
     use codex_core::thread_store_from_config;
     use codex_exec_server::EnvironmentManager;
     use codex_extension_api::NoopExtensionEventSink;
-    use codex_agent_mailbox_extension::NoopAgentMailboxStatusNotifier;
     use codex_home::CodexHomeUserInstructionsProvider;
     use codex_login::AuthManager;
     use codex_login::CodexAuth;

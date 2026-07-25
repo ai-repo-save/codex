@@ -135,10 +135,7 @@ async fn mailbox_reads_filtered_messages_in_global_arrival_order() -> anyhow::Re
     );
     assert_eq!(
         expected_snapshot(
-            /*total*/ 2,
-            /*progress*/ 1,
-            /*result*/ 1,
-            /*action_required*/ 0,
+            /*total*/ 2, /*progress*/ 1, /*result*/ 1, /*action_required*/ 0,
             /*revision*/ 4,
         ),
         result.snapshot
@@ -161,10 +158,7 @@ async fn mailbox_reads_filtered_messages_in_global_arrival_order() -> anyhow::Re
     );
     assert_eq!(
         expected_snapshot(
-            /*total*/ 0,
-            /*progress*/ 0,
-            /*result*/ 0,
-            /*action_required*/ 0,
+            /*total*/ 0, /*progress*/ 0, /*result*/ 0, /*action_required*/ 0,
             /*revision*/ 5,
         ),
         remaining.snapshot
@@ -173,7 +167,8 @@ async fn mailbox_reads_filtered_messages_in_global_arrival_order() -> anyhow::Re
 }
 
 #[tokio::test]
-async fn mailbox_enqueue_is_idempotent_after_consumption_and_runtime_restart() -> anyhow::Result<()> {
+async fn mailbox_enqueue_is_idempotent_after_consumption_and_runtime_restart() -> anyhow::Result<()>
+{
     let codex_home = unique_temp_dir();
     let first_runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string()).await?;
     let input = message(
@@ -193,10 +188,7 @@ async fn mailbox_enqueue_is_idempotent_after_consumption_and_runtime_restart() -
     assert_eq!(vec![inserted.message.clone()], consumed.messages);
     assert_eq!(
         expected_snapshot(
-            /*total*/ 0,
-            /*progress*/ 0,
-            /*result*/ 0,
-            /*action_required*/ 0,
+            /*total*/ 0, /*progress*/ 0, /*result*/ 0, /*action_required*/ 0,
             /*revision*/ 2,
         ),
         consumed.snapshot
@@ -224,7 +216,10 @@ async fn mailbox_enqueue_is_idempotent_after_consumption_and_runtime_restart() -
         created_at: retried_input.created_at,
         sequence: inserted.message.sequence,
     };
-    let duplicate = resumed_runtime.agent_mailbox().enqueue(retried_input).await?;
+    let duplicate = resumed_runtime
+        .agent_mailbox()
+        .enqueue(retried_input)
+        .await?;
     assert_eq!(false, duplicate.inserted);
     assert_eq!(expected_duplicate, duplicate.message);
     assert_eq!(consumed.snapshot, duplicate.snapshot);
@@ -236,10 +231,7 @@ async fn mailbox_enqueue_is_idempotent_after_consumption_and_runtime_restart() -
     assert_eq!(Vec::<AgentMailboxMessage>::new(), replayed.messages);
     assert_eq!(
         expected_snapshot(
-            /*total*/ 0,
-            /*progress*/ 0,
-            /*result*/ 0,
-            /*action_required*/ 0,
+            /*total*/ 0, /*progress*/ 0, /*result*/ 0, /*action_required*/ 0,
             /*revision*/ 2,
         ),
         replayed.snapshot
@@ -295,10 +287,7 @@ async fn concurrent_mailbox_reads_do_not_return_the_same_message() -> anyhow::Re
     );
     assert_eq!(
         expected_snapshot(
-            /*total*/ 0,
-            /*progress*/ 0,
-            /*result*/ 0,
-            /*action_required*/ 0,
+            /*total*/ 0, /*progress*/ 0, /*result*/ 0, /*action_required*/ 0,
             /*revision*/ 4,
         ),
         mailbox
@@ -334,10 +323,7 @@ async fn deleting_recipient_thread_removes_its_mailbox() -> anyhow::Result<()> {
 
     assert_eq!(
         expected_snapshot(
-            /*total*/ 0,
-            /*progress*/ 0,
-            /*result*/ 0,
-            /*action_required*/ 0,
+            /*total*/ 0, /*progress*/ 0, /*result*/ 0, /*action_required*/ 0,
             /*revision*/ 0,
         ),
         runtime
@@ -349,10 +335,7 @@ async fn deleting_recipient_thread_removes_its_mailbox() -> anyhow::Result<()> {
     assert_eq!(true, reinserted.inserted);
     assert_eq!(
         expected_snapshot(
-            /*total*/ 1,
-            /*progress*/ 0,
-            /*result*/ 1,
-            /*action_required*/ 0,
+            /*total*/ 1, /*progress*/ 0, /*result*/ 1, /*action_required*/ 0,
             /*revision*/ 1,
         ),
         reinserted.snapshot

@@ -38,30 +38,29 @@ const MESSAGE_CONTENT: &str = "bounded mailbox content";
 #[tokio::test]
 async fn send_rejects_a_message_larger_than_the_model_input_budget() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
-    let state =
-        StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
+    let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
     let tool = AgentMailboxTool::send(
         runtime(thread_id(SENDER_THREAD_ID), AgentPath::root()),
         state,
         Weak::new(),
         Arc::new(NoopAgentMailboxStatusNotifier),
     );
-    let result = tool.handle(tool_call(
-        SEND_TOOL_NAME,
-        json!({
-            "target": "/root",
-            "message": "x".repeat(MAX_AGENT_MAILBOX_PAYLOAD_BYTES + 1),
-            "category": "result",
-        }),
-    )).await;
+    let result = tool
+        .handle(tool_call(
+            SEND_TOOL_NAME,
+            json!({
+                "target": "/root",
+                "message": "x".repeat(MAX_AGENT_MAILBOX_PAYLOAD_BYTES + 1),
+                "category": "result",
+            }),
+        ))
+        .await;
 
     let Err(FunctionCallError::RespondToModel(message)) = result else {
         panic!("oversized mailbox message should be rejected");
     };
     assert_eq!(
-        format!(
-            "agent mailbox message exceeds the {MAX_AGENT_MAILBOX_PAYLOAD_BYTES}-byte limit"
-        ),
+        format!("agent mailbox message exceeds the {MAX_AGENT_MAILBOX_PAYLOAD_BYTES}-byte limit"),
         message
     );
     Ok(())
@@ -70,8 +69,7 @@ async fn send_rejects_a_message_larger_than_the_model_input_budget() -> anyhow::
 #[tokio::test]
 async fn bounded_batch_read_leaves_later_messages_unread() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
-    let state =
-        StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
+    let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
     let root_thread_id = thread_id(ROOT_THREAD_ID);
     let sender_thread_id = thread_id(SENDER_THREAD_ID);
     for id in [MESSAGE_ONE_ID, MESSAGE_TWO_ID, MESSAGE_THREE_ID] {
@@ -111,9 +109,12 @@ async fn bounded_batch_read_leaves_later_messages_unread() -> anyhow::Result<()>
             .total
     );
 
-    tool.handle(tool_call(READ_TOOL_NAME, json!({ "limit": MAX_AGENT_MAILBOX_READ_MESSAGES })))
-        .await
-        .expect("bounded batch read should succeed");
+    tool.handle(tool_call(
+        READ_TOOL_NAME,
+        json!({ "limit": MAX_AGENT_MAILBOX_READ_MESSAGES }),
+    ))
+    .await
+    .expect("bounded batch read should succeed");
     assert_eq!(
         1,
         state
@@ -147,7 +148,11 @@ fn runtime(mailbox_thread_id: ThreadId, agent_path: AgentPath) -> Arc<AgentMailb
     })
 }
 
-fn message(id: &str, root_thread_id: ThreadId, sender_thread_id: ThreadId) -> AgentMailboxMessageInput {
+fn message(
+    id: &str,
+    root_thread_id: ThreadId,
+    sender_thread_id: ThreadId,
+) -> AgentMailboxMessageInput {
     AgentMailboxMessageInput {
         id: id.to_string(),
         root_thread_id,

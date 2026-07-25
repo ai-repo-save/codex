@@ -20,8 +20,8 @@ use pretty_assertions::assert_eq;
 
 use super::AgentMailboxExtension;
 use super::AgentMailboxRuntime;
-use crate::NoopAgentMailboxStatusNotifier;
 use crate::MAX_AGENT_MAILBOX_PAYLOAD_BYTES;
+use crate::NoopAgentMailboxStatusNotifier;
 
 const SENDER_THREAD_ID: &str = "00000000-0000-0000-0000-000000000701";
 const RECIPIENT_THREAD_ID: &str = "00000000-0000-0000-0000-000000000702";
@@ -29,7 +29,8 @@ const TERMINAL_MESSAGE_ID: &str = "message-terminal-capture";
 const TERMINAL_MESSAGE_BODY: &str = "terminal child result";
 
 #[tokio::test]
-async fn terminal_capture_claims_only_after_persisting_the_completed_message() -> anyhow::Result<()> {
+async fn terminal_capture_claims_only_after_persisting_the_completed_message() -> anyhow::Result<()>
+{
     let temporary_home = tempfile::tempdir()?;
     let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
     let session_id = SessionId::new();
@@ -94,7 +95,8 @@ async fn terminal_capture_claims_only_after_persisting_the_completed_message() -
 }
 
 #[tokio::test]
-async fn terminal_capture_leaves_disabled_or_ephemeral_recipients_unclaimed() -> anyhow::Result<()> {
+async fn terminal_capture_leaves_disabled_or_ephemeral_recipients_unclaimed() -> anyhow::Result<()>
+{
     let temporary_home = tempfile::tempdir()?;
     let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
     let session_id = SessionId::new();
@@ -177,8 +179,11 @@ async fn terminal_capture_enforces_the_encrypted_payload_budget() -> anyhow::Res
     );
 
     let mut oversized_communication = terminal_communication();
-    oversized_communication.id = Some(ResponseItemId::from_server("message-terminal-oversized".to_string()));
-    oversized_communication.encrypted_content = Some("x".repeat(MAX_AGENT_MAILBOX_PAYLOAD_BYTES + 1));
+    oversized_communication.id = Some(ResponseItemId::from_server(
+        "message-terminal-oversized".to_string(),
+    ));
+    oversized_communication.encrypted_content =
+        Some("x".repeat(MAX_AGENT_MAILBOX_PAYLOAD_BYTES + 1));
     let Err(error) = extension
         .contribute(TerminalMessageInput {
             session_id,

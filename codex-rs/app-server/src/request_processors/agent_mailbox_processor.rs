@@ -102,7 +102,9 @@ impl AgentMailboxRequestProcessor {
             .unread_snapshot(root_thread_id, thread_id)
             .await
             .map_err(|error| {
-                internal_error(format!("failed to read agent mailbox status for {thread_id}: {error}"))
+                internal_error(format!(
+                    "failed to read agent mailbox status for {thread_id}: {error}"
+                ))
             })?;
         Ok(agent_mailbox_status(snapshot))
     }
@@ -122,7 +124,11 @@ impl AgentMailboxRequestProcessor {
             })
             .await
             .map_err(|error| invalid_request(format!("thread not found: {thread_id}: {error}")))?;
-        if let Some(session_id) = stored_thread.history.as_ref().and_then(session_id_from_history) {
+        if let Some(session_id) = stored_thread
+            .history
+            .as_ref()
+            .and_then(session_id_from_history)
+        {
             let root_thread_id: ThreadId = session_id.into();
             return Ok(root_thread_id);
         }
@@ -160,9 +166,7 @@ fn parse_thread_id_for_request(thread_id: &str) -> Result<ThreadId, JSONRPCError
         .map_err(|error| invalid_request(format!("invalid thread id: {error}")))
 }
 
-fn session_id_from_history(
-    history: &codex_thread_store::StoredThreadHistory,
-) -> Option<SessionId> {
+fn session_id_from_history(history: &codex_thread_store::StoredThreadHistory) -> Option<SessionId> {
     history.items.iter().find_map(|item| match item {
         RolloutItem::SessionMeta(meta) => Some(meta.meta.session_id),
         _ => None,

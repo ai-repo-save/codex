@@ -4241,9 +4241,8 @@ async fn multi_agent_v2_wait_agent_consumes_agent_mailbox_activity_once() {
     assert_eq!(
         result,
         crate::tools::handlers::multi_agents_v2::wait::WaitAgentResult {
-            message:
-                crate::tools::handlers::multi_agents_v2::wait::AGENT_MAILBOX_ACTIVITY_MESSAGE
-                    .to_string(),
+            message: crate::tools::handlers::multi_agents_v2::wait::AGENT_MAILBOX_ACTIVITY_MESSAGE
+                .to_string(),
             timed_out: false,
         }
     );

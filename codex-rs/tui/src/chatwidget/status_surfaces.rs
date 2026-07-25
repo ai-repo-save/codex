@@ -753,9 +753,10 @@ impl ChatWidget {
             ),
             StatusLineItem::WorkspaceHeadline => self.status_line_workspace_headline.clone(),
             StatusLineItem::TaskProgress => self.terminal_title_task_progress(),
-            StatusLineItem::AgentMailbox => self.agent_mailbox_status.as_ref().and_then(|status| {
-                (status.total > 0).then(|| format_agent_mailbox_status(status))
-            }),
+            StatusLineItem::AgentMailbox => self
+                .agent_mailbox_status
+                .as_ref()
+                .and_then(|status| (status.total > 0).then(|| format_agent_mailbox_status(status))),
         }
     }
 

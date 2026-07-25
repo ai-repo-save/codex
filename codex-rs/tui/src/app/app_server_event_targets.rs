@@ -205,11 +205,11 @@ mod tests {
     use super::server_notification_thread_target;
     use crate::test_support::PathBufExt;
     use crate::test_support::test_path_buf;
+    use codex_app_server_protocol::AgentMailboxStatus;
     use codex_app_server_protocol::GuardianWarningNotification;
     use codex_app_server_protocol::McpServerStartupState;
     use codex_app_server_protocol::McpServerStatusUpdatedNotification;
     use codex_app_server_protocol::ServerNotification;
-    use codex_app_server_protocol::AgentMailboxStatus;
     use codex_app_server_protocol::ThreadAgentMailboxUpdatedNotification;
     use codex_app_server_protocol::ThreadSettings;
     use codex_app_server_protocol::ThreadSettingsUpdatedNotification;
@@ -336,8 +336,8 @@ mod tests {
     #[test]
     fn agent_mailbox_updates_route_to_their_thread() {
         let thread_id = ThreadId::new();
-        let notification = ServerNotification::ThreadAgentMailboxUpdated(
-            ThreadAgentMailboxUpdatedNotification {
+        let notification =
+            ServerNotification::ThreadAgentMailboxUpdated(ThreadAgentMailboxUpdatedNotification {
                 thread_id: thread_id.to_string(),
                 mailbox: AgentMailboxStatus {
                     total: 1,
@@ -346,8 +346,7 @@ mod tests {
                     action_required: 0,
                     revision: 1,
                 },
-            },
-        );
+            });
 
         assert_eq!(
             server_notification_thread_target(&notification),

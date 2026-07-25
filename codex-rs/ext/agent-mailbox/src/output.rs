@@ -91,7 +91,9 @@ pub(crate) fn validate_message_input_for_read_output(
         sequence: 0,
     };
     if message_content_item_bytes(&message) > MAX_AGENT_MAILBOX_SINGLE_OUTPUT_BYTES {
-        return Err("agent mailbox message metadata and content exceed the read output limit".to_string());
+        return Err(
+            "agent mailbox message metadata and content exceed the read output limit".to_string(),
+        );
     }
     Ok(())
 }

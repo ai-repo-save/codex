@@ -31,9 +31,9 @@ use codex_state::AgentMailboxUnreadSnapshot;
 use codex_state::StateRuntime;
 use uuid::Uuid;
 
+use crate::output::validate_message_input_for_read_output;
 use crate::tools::AgentMailboxTool;
 use crate::world_state::mailbox_world_state_section;
-use crate::output::validate_message_input_for_read_output;
 
 pub trait AgentMailboxStatusNotifier: Send + Sync {
     fn status_updated(&self, thread_id: ThreadId, snapshot: AgentMailboxUnreadSnapshot);
@@ -199,10 +199,7 @@ impl TerminalMessageContributor for AgentMailboxExtension {
         input: TerminalMessageInput<'a>,
     ) -> ExtensionFuture<'a, Result<TerminalMessageDisposition, String>> {
         Box::pin(async move {
-            let Some(runtime) = input
-                .recipient_thread_store
-                .get::<AgentMailboxRuntime>()
-            else {
+            let Some(runtime) = input.recipient_thread_store.get::<AgentMailboxRuntime>() else {
                 return Ok(TerminalMessageDisposition::Unclaimed);
             };
             if !runtime.enabled() {
@@ -243,14 +240,17 @@ impl TerminalMessageContributor for AgentMailboxExtension {
                 payload,
                 created_at: Utc::now(),
             };
-            validate_message_input_for_read_output(&message)
-                .map_err(|err| format!("failed to capture terminal agent mailbox message: {err}"))?;
+            validate_message_input_for_read_output(&message).map_err(|err| {
+                format!("failed to capture terminal agent mailbox message: {err}")
+            })?;
             let outcome = self
                 .state
                 .agent_mailbox()
                 .enqueue(message)
                 .await
-                .map_err(|err| format!("failed to capture terminal agent mailbox message: {err}"))?;
+                .map_err(|err| {
+                    format!("failed to capture terminal agent mailbox message: {err}")
+                })?;
             self.notifier
                 .status_updated(input.recipient_thread_id, outcome.snapshot);
             if let Some(manager) = self.thread_manager.upgrade()
@@ -274,11 +274,7 @@ pub fn install_with_backend(
     thread_manager: Weak<ThreadManager>,
     notifier: Arc<dyn AgentMailboxStatusNotifier>,
 ) {
-    let extension = Arc::new(AgentMailboxExtension::new(
-        state,
-        thread_manager,
-        notifier,
-    ));
+    let extension = Arc::new(AgentMailboxExtension::new(state, thread_manager, notifier));
     registry.thread_lifecycle_contributor(extension.clone());
     registry.config_contributor(extension.clone());
     registry.prompt_contributor(extension.clone());

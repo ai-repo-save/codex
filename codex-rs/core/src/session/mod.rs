@@ -2002,8 +2002,7 @@ impl Session {
         else {
             return;
         };
-        let standard_terminal =
-            matches!(msg, EventMsg::TurnComplete(_) | EventMsg::TurnAborted(_));
+        let standard_terminal = matches!(msg, EventMsg::TurnComplete(_) | EventMsg::TurnAborted(_));
         let additional_captured_terminal = matches!(
             msg,
             EventMsg::Error(error)
@@ -2084,8 +2083,7 @@ impl Session {
         if !self.features.enabled(Feature::AgentMailbox) {
             return false;
         }
-        self
-            .state
+        self.state
             .lock()
             .await
             .session_configuration

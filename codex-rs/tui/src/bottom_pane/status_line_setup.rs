@@ -198,9 +198,7 @@ impl StatusLineItem {
             StatusLineItem::TaskProgress => {
                 "Latest task progress from update_plan (omitted until available)"
             }
-            StatusLineItem::AgentMailbox => {
-                "Unread deferred agent messages (omitted when empty)"
-            }
+            StatusLineItem::AgentMailbox => "Unread deferred agent messages (omitted when empty)",
         }
     }
 

@@ -8,8 +8,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 use tokio::time::timeout_at;
 
-pub(crate) const AGENT_MAILBOX_ACTIVITY_MESSAGE: &str =
-    "Agent mailbox activity is available.";
+pub(crate) const AGENT_MAILBOX_ACTIVITY_MESSAGE: &str = "Agent mailbox activity is available.";
 
 #[derive(Default)]
 pub(crate) struct Handler {

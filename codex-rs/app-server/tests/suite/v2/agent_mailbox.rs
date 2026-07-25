@@ -53,7 +53,12 @@ async fn thread_agent_mailbox_get_and_resume_hydration_are_count_only() -> Resul
 
     let first_thread = start_thread(&mut app_server).await?;
     let second_thread = start_thread(&mut app_server).await?;
-    start_turn(&mut app_server, &first_thread.id, "materialize mailbox thread").await?;
+    start_turn(
+        &mut app_server,
+        &first_thread.id,
+        "materialize mailbox thread",
+    )
+    .await?;
     wait_for_turn_completion(&mut app_server, &first_thread.id).await?;
     let first_thread_id = ThreadId::from_string(&first_thread.id)?;
     state_db
@@ -175,12 +180,7 @@ async fn agent_mailbox_body_reaches_parent_only_after_explicit_read() -> Result<
         |request: &wiremock::Request| request_body_contains(request, PARENT_READ_PROMPT),
         responses::sse(vec![
             responses::ev_response_created("resp-parent-read"),
-            responses::ev_function_call_with_namespace(
-                READ_CALL_ID,
-                "agent_mailbox",
-                "read",
-                "{}",
-            ),
+            responses::ev_function_call_with_namespace(READ_CALL_ID, "agent_mailbox", "read", "{}"),
             responses::ev_completed("resp-parent-read"),
         ]),
     )

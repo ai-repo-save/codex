@@ -199,7 +199,9 @@ INSERT INTO agent_mailbox_messages (
             });
         }
 
-        let sender_thread_id = request.sender_thread_id.map(|thread_id| thread_id.to_string());
+        let sender_thread_id = request
+            .sender_thread_id
+            .map(|thread_id| thread_id.to_string());
         let category = request.category.map(AgentMailboxCategory::as_str);
         let mut transaction = self.pool.begin().await?;
         let rows = sqlx::query(
@@ -274,12 +276,7 @@ WHERE root_thread_id = ? AND recipient_thread_id = ?
         root_thread_id: ThreadId,
         recipient_thread_id: ThreadId,
     ) -> anyhow::Result<AgentMailboxUnreadSnapshot> {
-        unread_snapshot_in_pool(
-            self.pool.as_ref(),
-            root_thread_id,
-            recipient_thread_id,
-        )
-        .await
+        unread_snapshot_in_pool(self.pool.as_ref(), root_thread_id, recipient_thread_id).await
     }
 
     pub async fn delete_recipient_messages(
@@ -338,7 +335,8 @@ async fn unread_snapshot_in_pool(
 ) -> anyhow::Result<AgentMailboxUnreadSnapshot> {
     let mut transaction = pool.begin().await?;
     let snapshot =
-        unread_snapshot_in_transaction(&mut transaction, root_thread_id, recipient_thread_id).await?;
+        unread_snapshot_in_transaction(&mut transaction, root_thread_id, recipient_thread_id)
+            .await?;
     transaction.commit().await?;
     Ok(snapshot)
 }
