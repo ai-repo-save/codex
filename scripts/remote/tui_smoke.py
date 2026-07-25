@@ -23,11 +23,11 @@ else:
     from ._sync import run_remote_workflow
 
 
-# Do not use this as complete TUI validation. It is only a fixed compile/RPC
-# smoke check for the remote TUI test graph. Routine TUI validation still needs
-# a test filter that matches the behavior being changed. The unfiltered
-# `just test -p codex-tui` command runs the entire crate, including
-# environment-sensitive snapshots, and is not a routine development gate.
+# This fixed compile/RPC smoke check verifies the remote TUI test graph. Routine
+# TUI validation uses a test filter that matches the behavior being changed. The
+# unfiltered `just test -p codex-tui` command runs the entire crate, including
+# its platform-sensitive snapshot set; version-bearing snapshots use stable
+# fixtures.
 TUI_SMOKE_JUST_ARGS = (
     "test",
     "-p",
