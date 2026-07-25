@@ -17,6 +17,7 @@
 //! - Context usage (remaining %, used %, window size)
 //! - Usage limits (primary, secondary)
 //! - Session info (thread title, thread ID, tokens used)
+//! - Unread agent mailbox counts
 //! - Application version
 
 use ratatui::buffer::Buffer;
@@ -142,6 +143,9 @@ pub(crate) enum StatusLineItem {
 
     /// Latest checklist task progress from `update_plan` (if available).
     TaskProgress,
+
+    /// Unread count summary from the deferred agent mailbox.
+    AgentMailbox,
 }
 
 impl StatusLineItem {
@@ -194,6 +198,9 @@ impl StatusLineItem {
             StatusLineItem::TaskProgress => {
                 "Latest task progress from update_plan (omitted until available)"
             }
+            StatusLineItem::AgentMailbox => {
+                "Unread deferred agent messages (omitted when empty)"
+            }
         }
     }
 
@@ -225,6 +232,7 @@ impl StatusLineItem {
             StatusLineItem::ThreadTitle => StatusSurfacePreviewItem::ThreadTitle,
             StatusLineItem::WorkspaceHeadline => StatusSurfacePreviewItem::WorkspaceHeadline,
             StatusLineItem::TaskProgress => StatusSurfacePreviewItem::TaskProgress,
+            StatusLineItem::AgentMailbox => StatusSurfacePreviewItem::AgentMailbox,
         }
     }
 }

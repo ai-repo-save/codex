@@ -243,6 +243,7 @@ impl ChatWidget {
             status_line_workspace_messages_disabled: false,
             current_goal_status_indicator: None,
             current_goal_status: None,
+            agent_mailbox_status: None,
             external_editor_state: ExternalEditorState::Closed,
             last_rendered_user_message_display: None,
             last_non_retry_error: None,

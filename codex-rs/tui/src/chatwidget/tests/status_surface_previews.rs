@@ -61,6 +61,27 @@ async fn default_status_line_configuration_has_model_and_directory() {
 }
 
 #[tokio::test]
+async fn agent_mailbox_joins_only_feature_enabled_default_status_line() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_feature_enabled(Feature::AgentMailbox, /*enabled*/ true);
+
+    assert_eq!(
+        chat.configured_status_line_items(),
+        vec![
+            "model-with-reasoning".to_string(),
+            "current-dir".to_string(),
+            "agent-mailbox".to_string(),
+        ]
+    );
+
+    chat.config.tui_status_line = Some(vec!["current-dir".to_string()]);
+    assert_eq!(
+        chat.configured_status_line_items(),
+        vec!["current-dir".to_string()]
+    );
+}
+
+#[tokio::test]
 async fn custom_status_line_configuration_preserves_selected_items() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.config.tui_status_line = Some(vec!["current-dir".to_string()]);

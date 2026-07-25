@@ -3074,6 +3074,73 @@ async fn status_line_fast_mode_renders_on_and_off() {
 }
 
 #[tokio::test]
+async fn agent_mailbox_status_line_uses_latest_active_thread_snapshot() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_feature_enabled(Feature::AgentMailbox, /*enabled*/ true);
+    chat.config.tui_status_line = Some(vec!["agent-mailbox".to_string()]);
+    let thread_id = ThreadId::new();
+    chat.thread_id = Some(thread_id);
+
+    chat.handle_server_notification(
+        ServerNotification::ThreadAgentMailboxUpdated(
+            codex_app_server_protocol::ThreadAgentMailboxUpdatedNotification {
+                thread_id: thread_id.to_string(),
+                mailbox: codex_app_server_protocol::AgentMailboxStatus {
+                    total: 4,
+                    progress: 2,
+                    result: 1,
+                    action_required: 1,
+                    revision: 2,
+                },
+            },
+        ),
+        /*replay_kind*/ None,
+    );
+    assert_chatwidget_snapshot!(
+        "status_line_agent_mailbox",
+        status_line_text(&chat).expect("agent mailbox status line"),
+        @r###"Inbox 4 (action 1, result 1, progress 2)"###,
+    );
+
+    chat.handle_server_notification(
+        ServerNotification::ThreadAgentMailboxUpdated(
+            codex_app_server_protocol::ThreadAgentMailboxUpdatedNotification {
+                thread_id: thread_id.to_string(),
+                mailbox: codex_app_server_protocol::AgentMailboxStatus {
+                    total: 1,
+                    progress: 1,
+                    result: 0,
+                    action_required: 0,
+                    revision: 1,
+                },
+            },
+        ),
+        /*replay_kind*/ None,
+    );
+    assert_eq!(
+        status_line_text(&chat),
+        Some("Inbox 4 (action 1, result 1, progress 2)".to_string())
+    );
+
+    chat.handle_server_notification(
+        ServerNotification::ThreadAgentMailboxUpdated(
+            codex_app_server_protocol::ThreadAgentMailboxUpdatedNotification {
+                thread_id: thread_id.to_string(),
+                mailbox: codex_app_server_protocol::AgentMailboxStatus {
+                    total: 0,
+                    progress: 0,
+                    result: 0,
+                    action_required: 0,
+                    revision: 3,
+                },
+            },
+        ),
+        /*replay_kind*/ None,
+    );
+    assert_eq!(status_line_text(&chat), None);
+}
+
+#[tokio::test]
 async fn status_line_fast_mode_footer_snapshot() {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;

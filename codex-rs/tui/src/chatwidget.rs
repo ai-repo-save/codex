@@ -80,6 +80,7 @@ use crate::token_usage::TokenUsageInfo;
 use crate::version::CODEX_CLI_VERSION;
 use codex_app_server_protocol::AddCreditsNudgeCreditType;
 use codex_app_server_protocol::AddCreditsNudgeEmailStatus;
+use codex_app_server_protocol::AgentMailboxStatus;
 use codex_app_server_protocol::AppSummary;
 use codex_app_server_protocol::CodexErrorInfo as AppServerCodexErrorInfo;
 use codex_app_server_protocol::CommandExecutionRequestApprovalParams;
@@ -328,6 +329,7 @@ mod command_lifecycle;
 mod connectors;
 mod constructor;
 use self::connectors::ConnectorsState;
+mod agent_mailbox;
 mod exec_state;
 use self::exec_state::RunningCommand;
 use self::exec_state::UnifiedExecProcessSummary;
@@ -752,6 +754,8 @@ pub(crate) struct ChatWidget {
     // Current thread-goal status shown in the status line when plan mode is inactive.
     current_goal_status_indicator: Option<GoalStatusIndicator>,
     current_goal_status: Option<GoalStatusState>,
+    // Latest unread count-only snapshot for the active thread's deferred agent mailbox.
+    agent_mailbox_status: Option<AgentMailboxStatus>,
     external_editor_state: ExternalEditorState,
     last_rendered_user_message_display: Option<UserMessageDisplay>,
     last_non_retry_error: Option<(String, String)>,

@@ -54,6 +54,9 @@ impl ChatWidget {
             ServerNotification::ThreadGoalCleared(notification) => {
                 self.on_thread_goal_cleared(notification.thread_id.as_str());
             }
+            ServerNotification::ThreadAgentMailboxUpdated(notification) => {
+                self.on_thread_agent_mailbox_updated(notification);
+            }
             ServerNotification::ThreadSettingsUpdated(notification) => {
                 self.on_thread_settings_updated(notification);
             }
