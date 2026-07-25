@@ -40,6 +40,41 @@ pub struct LiveThread {
     persistence_telemetry: RolloutPersistenceTelemetry,
 }
 
+/// Append failure annotated with whether canonical rollout history committed.
+#[derive(Debug, thiserror::Error)]
+#[error("{source}")]
+pub struct AppendItemsError {
+    #[source]
+    source: ThreadStoreError,
+    canonical_history_committed: bool,
+}
+
+impl AppendItemsError {
+    fn before_commit(source: ThreadStoreError) -> Self {
+        Self {
+            source,
+            canonical_history_committed: false,
+        }
+    }
+
+    fn after_commit(source: ThreadStoreError) -> Self {
+        Self {
+            source,
+            canonical_history_committed: true,
+        }
+    }
+
+    /// Returns whether canonical rollout history contains the append.
+    pub fn canonical_history_committed(&self) -> bool {
+        self.canonical_history_committed
+    }
+
+    /// Returns the underlying store error.
+    pub fn into_source(self) -> ThreadStoreError {
+        self.source
+    }
+}
+
 /// Owns a live thread while session initialization is still fallible.
 ///
 /// If initialization returns early after persistence has been opened, dropping this guard discards
@@ -187,7 +222,24 @@ impl LiveThread {
         fields(item_count = raw_items.len())
     )]
     pub async fn append_items(&self, raw_items: &[RolloutItem]) -> ThreadStoreResult<()> {
-        let items = self.persist_appended_items(raw_items).await?;
+        self.append_items_with_commit_outcome(raw_items)
+            .await
+            .map_err(AppendItemsError::into_source)
+    }
+
+    /// Appends items and preserves whether canonical rollout history committed on failure.
+    ///
+    /// Metadata and query projections are derived from canonical history. A failure after the
+    /// canonical append must not be interpreted as an uncommitted append by callers performing
+    /// their own transactional state transition.
+    pub async fn append_items_with_commit_outcome(
+        &self,
+        raw_items: &[RolloutItem],
+    ) -> Result<(), AppendItemsError> {
+        let items = self
+            .persist_appended_items(raw_items)
+            .await
+            .map_err(AppendItemsError::before_commit)?;
         if items.is_empty() {
             return Ok(());
         }
@@ -203,7 +255,8 @@ impl LiveThread {
                     patch: update.patch.clone(),
                     include_archived: true,
                 })
-                .await?;
+                .await
+                .map_err(AppendItemsError::after_commit)?;
             self.metadata_sync
                 .lock()
                 .await
@@ -373,3 +426,7 @@ impl LiveThread {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "live_thread_tests.rs"]
+mod tests;
