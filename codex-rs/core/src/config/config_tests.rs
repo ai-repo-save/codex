@@ -11092,6 +11092,30 @@ max_concurrent_threads_per_session = 9
 }
 
 #[tokio::test]
+async fn agent_mailbox_config_from_feature_table() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[features.agent_mailbox]
+enabled = true
+capture_terminal_messages = true
+"#,
+    )?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+
+    assert!(config.features.enabled(Feature::AgentMailbox));
+    assert!(config.features.enabled(Feature::MultiAgentV2));
+    assert!(config.agent_mailbox.capture_terminal_messages);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn context_reminder_config_from_table() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::write(

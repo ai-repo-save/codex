@@ -62,6 +62,7 @@ use codex_core_plugins::PluginLoadOutcome;
 use codex_core_plugins::PluginsConfigInput;
 use codex_exec_server::ExecutorFileSystem;
 use codex_exec_server::LOCAL_FS;
+use codex_features::AgentMailboxConfigToml;
 use codex_features::CodeModeConfigToml;
 use codex_features::CurrentTimeReminderConfigToml;
 use codex_features::CurrentTimeReminderDeliveryMode;
@@ -1140,6 +1141,9 @@ pub struct Config {
     /// Settings specific to the task-path-based multi-agent tool surface.
     pub multi_agent_v2: MultiAgentV2Config,
 
+    /// Settings for the experimental deferred multi-agent mailbox.
+    pub agent_mailbox: AgentMailboxConfig,
+
     /// Context-window token budget configuration, when enabled.
     pub token_budget: Option<TokenBudgetConfig>,
     /// Shared token budget for the root thread and its sub-agents.
@@ -1344,6 +1348,11 @@ impl Default for MultiAgentV2Config {
             DEFAULT_MULTI_AGENT_V2_MAX_CONCURRENT_THREADS_PER_SESSION,
         )
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+pub struct AgentMailboxConfig {
+    pub capture_terminal_messages: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -2829,6 +2838,15 @@ fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config
     }
 }
 
+fn resolve_agent_mailbox_config(config_toml: &ConfigToml) -> AgentMailboxConfig {
+    let base = agent_mailbox_toml_config(config_toml.features.as_ref());
+    AgentMailboxConfig {
+        capture_terminal_messages: base
+            .and_then(|config| config.capture_terminal_messages)
+            .unwrap_or_default(),
+    }
+}
+
 fn resolve_token_budget_config(
     config_toml: &ConfigToml,
     features: &ManagedFeatures,
@@ -3059,6 +3077,13 @@ fn code_mode_toml_config(features: Option<&FeaturesToml>) -> Option<&CodeModeCon
 
 fn multi_agent_v2_toml_config(features: Option<&FeaturesToml>) -> Option<&MultiAgentV2ConfigToml> {
     match features?.multi_agent_v2.as_ref()? {
+        FeatureToml::Enabled(_) => None,
+        FeatureToml::Config(config) => Some(config),
+    }
+}
+
+fn agent_mailbox_toml_config(features: Option<&FeaturesToml>) -> Option<&AgentMailboxConfigToml> {
+    match features?.agent_mailbox.as_ref()? {
         FeatureToml::Enabled(_) => None,
         FeatureToml::Config(config) => Some(config),
     }
@@ -3792,6 +3817,7 @@ impl Config {
         let context_reminder = resolve_context_reminder_config(&cfg);
         let context_rewind = resolve_context_rewind_config(&cfg);
         let multi_agent_v2 = resolve_multi_agent_v2_config(&cfg);
+        let agent_mailbox = resolve_agent_mailbox_config(&cfg);
         let token_budget = resolve_token_budget_config(&cfg, &features)?;
         let rollout_budget = resolve_rollout_budget_config(&cfg, &features)?;
         let current_time_reminder = resolve_current_time_reminder_config(&cfg, &features)?;
@@ -4333,6 +4359,7 @@ impl Config {
             background_terminal_max_timeout,
             ghost_snapshot,
             multi_agent_v2,
+            agent_mailbox,
             token_budget,
             rollout_budget,
             current_time_reminder,

@@ -4,6 +4,7 @@ use codex_config::config_toml::ConfigToml;
 use codex_config::config_toml::OrchestratorFeatureToml;
 use codex_config::config_toml::OrchestratorToml;
 use codex_config::types::MemoriesToml;
+use codex_features::AgentMailboxConfigToml;
 use codex_features::CurrentTimeReminderConfigToml;
 use codex_features::Feature;
 use codex_features::FeatureToml;
@@ -153,6 +154,10 @@ fn save_config_resolved_fields(
         resolved_config_to_toml(&config.multi_agent_v2, "features.multi_agent_v2")?;
     multi_agent_v2.enabled = Some(config.features.enabled(Feature::MultiAgentV2));
     features.multi_agent_v2 = Some(FeatureToml::Config(multi_agent_v2));
+    let mut agent_mailbox: AgentMailboxConfigToml =
+        resolved_config_to_toml(&config.agent_mailbox, "features.agent_mailbox")?;
+    agent_mailbox.enabled = Some(config.features.enabled(Feature::AgentMailbox));
+    features.agent_mailbox = Some(FeatureToml::Config(agent_mailbox));
     if let Some(token_budget) = config.token_budget.as_ref() {
         let mut token_budget: TokenBudgetConfigToml =
             resolved_config_to_toml(token_budget, "features.token_budget")?;
@@ -268,6 +273,11 @@ mod tests {
             .features
             .enable(Feature::CurrentTimeReminder)
             .expect("current_time_reminder should be enableable in tests");
+        config.agent_mailbox.capture_terminal_messages = true;
+        config
+            .features
+            .enable(Feature::AgentMailbox)
+            .expect("agent_mailbox should be enableable in tests");
         sc.original_config_do_not_use = Arc::new(config);
         sc.base_instructions = "resolved instructions".to_string();
         sc.developer_instructions = Some("resolved developer instructions".to_string());
@@ -330,6 +340,14 @@ mod tests {
                 ..
             })
         ));
+
+        assert_eq!(
+            features.agent_mailbox,
+            Some(FeatureToml::Config(AgentMailboxConfigToml {
+                enabled: Some(true),
+                capture_terminal_messages: Some(true),
+            }))
+        );
 
         assert_eq!(
             features.token_budget,

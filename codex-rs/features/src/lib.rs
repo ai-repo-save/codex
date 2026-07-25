@@ -16,6 +16,7 @@ use toml::Table;
 
 mod feature_configs;
 mod legacy;
+pub use feature_configs::AgentMailboxConfigToml;
 pub use feature_configs::CodeModeConfigToml;
 pub use feature_configs::CurrentTimeReminderConfigToml;
 pub use feature_configs::CurrentTimeReminderDeliveryMode;
@@ -152,6 +153,8 @@ pub enum Feature {
     Collab,
     /// Enable task-path-based multi-agent routing.
     MultiAgentV2,
+    /// Enable the deferred multi-agent mailbox extension.
+    AgentMailbox,
     /// Removed compatibility flag retained as a no-op.
     MultiAgentMode,
     /// Removed compatibility flag for the deleted agent-job tools.
@@ -560,6 +563,9 @@ impl Features {
         if self.enabled(Feature::CodeModeOnly) && !self.enabled(Feature::CodeMode) {
             self.enable(Feature::CodeMode);
         }
+        if self.enabled(Feature::AgentMailbox) && !self.enabled(Feature::MultiAgentV2) {
+            self.enable(Feature::MultiAgentV2);
+        }
     }
 }
 
@@ -647,6 +653,8 @@ pub struct FeaturesToml {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub multi_agent_v2: Option<FeatureToml<MultiAgentV2ConfigToml>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_mailbox: Option<FeatureToml<AgentMailboxConfigToml>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_budget: Option<FeatureToml<TokenBudgetConfigToml>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rollout_budget: Option<FeatureToml<RolloutBudgetConfigToml>>,
@@ -684,6 +692,9 @@ impl FeaturesToml {
         if let Some(enabled) = self.multi_agent_v2.as_ref().and_then(FeatureToml::enabled) {
             entries.insert(Feature::MultiAgentV2.key().to_string(), enabled);
         }
+        if let Some(enabled) = self.agent_mailbox.as_ref().and_then(FeatureToml::enabled) {
+            entries.insert(Feature::AgentMailbox.key().to_string(), enabled);
+        }
         if let Some(enabled) = self.token_budget.as_ref().and_then(FeatureToml::enabled) {
             entries.insert(Feature::TokenBudget.key().to_string(), enabled);
         }
@@ -708,6 +719,7 @@ impl FeaturesToml {
         let Self {
             code_mode,
             multi_agent_v2,
+            agent_mailbox,
             token_budget,
             rollout_budget,
             current_time_reminder,
@@ -724,6 +736,8 @@ impl FeaturesToml {
                 materialize_resolved_feature_enabled(code_mode, enabled);
             } else if spec.id == Feature::MultiAgentV2 {
                 materialize_resolved_feature_enabled(multi_agent_v2, enabled);
+            } else if spec.id == Feature::AgentMailbox {
+                materialize_resolved_feature_enabled(agent_mailbox, enabled);
             } else if spec.id == Feature::TokenBudget {
                 materialize_resolved_feature_enabled(token_budget, enabled);
             } else if spec.id == Feature::RolloutBudget {
@@ -1055,6 +1069,16 @@ pub const FEATURES: &[FeatureSpec] = &[
         id: Feature::MultiAgentV2,
         key: "multi_agent_v2",
         stage: Stage::Stable,
+        default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::AgentMailbox,
+        key: "agent_mailbox",
+        stage: Stage::Experimental {
+            name: "Agent mailbox",
+            menu_description: "Queue non-urgent sub-agent updates for explicit, ordered reading.",
+            announcement: "NEW: Agent mailbox can now queue sub-agent updates. Restart Codex after enabling it.",
+        },
         default_enabled: false,
     },
     FeatureSpec {

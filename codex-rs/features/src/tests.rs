@@ -431,6 +431,30 @@ encrypt_messages = true
 }
 
 #[test]
+fn agent_mailbox_feature_config_deserializes_table() {
+    let features: FeaturesToml = toml::from_str(
+        r#"
+[agent_mailbox]
+enabled = true
+capture_terminal_messages = true
+"#,
+    )
+    .expect("features table should deserialize");
+
+    assert_eq!(
+        features.entries(),
+        BTreeMap::from([("agent_mailbox".to_string(), true)])
+    );
+    assert_eq!(
+        features.agent_mailbox,
+        Some(FeatureToml::Config(crate::AgentMailboxConfigToml {
+            enabled: Some(true),
+            capture_terminal_messages: Some(true),
+        }))
+    );
+}
+
+#[test]
 fn multi_agent_v2_feature_config_usage_hint_enabled_does_not_enable_feature() {
     let features_toml: FeaturesToml = toml::from_str(
         r#"
