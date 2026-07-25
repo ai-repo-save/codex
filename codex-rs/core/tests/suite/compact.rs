@@ -896,6 +896,14 @@ async fn compact_hooks_respect_matchers_and_post_runs_after_compaction() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn post_compact_hook_can_append_supplement_from_persisted_compaction() {
+    struct SpillFileCleanup(PathBuf);
+
+    impl Drop for SpillFileCleanup {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(&self.0);
+        }
+    }
+
     skip_if_no_network!();
 
     let server = start_mock_server().await;
@@ -984,11 +992,12 @@ async fn post_compact_hook_can_append_supplement_from_persisted_compaction() {
         .find_map(|line| line.strip_prefix(HOOK_OUTPUT_PATH_PREFIX))
         .map(PathBuf::from)
         .expect("follow-up request should contain the spilled supplement path");
+    let spilled_file_cleanup = SpillFileCleanup(spilled_path.clone());
     assert_eq!(
         fs::read_to_string(&spilled_path).expect("read spilled supplement"),
         expected_supplement
     );
-    fs::remove_file(spilled_path).expect("remove spilled supplement");
+    drop(spilled_file_cleanup);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -2,6 +2,7 @@ use codex_protocol::ThreadId;
 use codex_protocol::items::HookPromptFragment;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_output_truncation::TruncationPolicy;
+use codex_utils_output_truncation::approx_bytes_for_tokens;
 use codex_utils_output_truncation::approx_token_count;
 use codex_utils_output_truncation::formatted_truncate_text;
 use tokio::fs;
@@ -54,7 +55,8 @@ impl HookOutputSpiller {
     /// Oversized text is written in full under the OS temp directory at
     /// `<temp_dir>/hook_outputs/<thread_id>/`
     /// and replaced with the same head/tail preview style used for other truncated
-    /// output, plus a path back to the preserved full text.
+    /// output, plus a path back to the preserved full text when the configured
+    /// budget can contain it.
     pub(crate) async fn maybe_spill_text(&self, thread_id: ThreadId, text: String) -> String {
         self.maybe_spill_text_with_limit(thread_id, text, AdditionalContextLimit::default())
             .await
@@ -79,12 +81,12 @@ impl HookOutputSpiller {
                 "failed to create hook output directory {}: {err}",
                 parent.display()
             );
-            return formatted_truncate_text(&text, TruncationPolicy::Tokens(token_limit));
+            return bounded_formatted_preview(&text, "", token_limit);
         }
 
         if let Err(err) = fs::write(path.as_ref(), &text).await {
             warn!("failed to write hook output {}: {err}", path.display());
-            return formatted_truncate_text(&text, TruncationPolicy::Tokens(token_limit));
+            return bounded_formatted_preview(&text, "", token_limit);
         }
 
         spilled_hook_output_preview(&text, &path, token_limit)
@@ -128,14 +130,53 @@ fn hook_output_path(output_dir: &AbsolutePathBuf, thread_id: ThreadId) -> Absolu
 }
 
 /// Builds the model-visible replacement for a spilled hook output.
-///
-/// The path footer is budgeted before truncation so adding the recovery path
-/// does not consume the configured preview budget.
 fn spilled_hook_output_preview(text: &str, path: &AbsolutePathBuf, token_limit: usize) -> String {
     let footer = format!("\n\nFull hook output saved to: {}", path.display());
-    let preview_policy =
-        TruncationPolicy::Tokens(token_limit.saturating_sub(approx_token_count(&footer)));
-    format!("{}{footer}", formatted_truncate_text(text, preview_policy))
+    bounded_formatted_preview(text, &footer, token_limit)
+}
+
+fn bounded_formatted_preview(text: &str, suffix: &str, token_limit: usize) -> String {
+    let mut minimum_body_tokens = 0;
+    let mut maximum_body_tokens = token_limit;
+    let mut best_preview = None;
+
+    while minimum_body_tokens <= maximum_body_tokens {
+        let body_tokens = minimum_body_tokens + (maximum_body_tokens - minimum_body_tokens) / 2;
+        let preview = format!(
+            "{}{suffix}",
+            formatted_truncate_text(text, TruncationPolicy::Tokens(body_tokens))
+        );
+        if approx_token_count(&preview) <= token_limit {
+            best_preview = Some(preview);
+            minimum_body_tokens = body_tokens.saturating_add(1);
+        } else if body_tokens == 0 {
+            break;
+        } else {
+            maximum_body_tokens = body_tokens - 1;
+        }
+    }
+
+    best_preview.unwrap_or_else(|| {
+        let fallback = if suffix.is_empty() {
+            formatted_truncate_text(text, TruncationPolicy::Tokens(/*tokens*/ 0))
+        } else {
+            suffix.trim_start().to_string()
+        };
+        truncate_to_approx_token_limit(&fallback, token_limit)
+    })
+}
+
+fn truncate_to_approx_token_limit(text: &str, token_limit: usize) -> String {
+    let byte_limit = approx_bytes_for_tokens(token_limit);
+    if text.len() <= byte_limit {
+        return text.to_string();
+    }
+
+    let boundary = (0..=byte_limit)
+        .rev()
+        .find(|index| text.is_char_boundary(*index))
+        .unwrap_or(0);
+    text[..boundary].to_string()
 }
 
 #[cfg(test)]

@@ -3,6 +3,8 @@ use anyhow::Context;
 use anyhow::Result;
 use tempfile::tempdir;
 
+const LIMITED_OUTPUT_TOKEN_LIMIT: usize = 100;
+
 #[tokio::test]
 async fn small_hook_output_remains_inline() -> Result<()> {
     let dir = tempdir()?;
@@ -32,6 +34,7 @@ async fn large_hook_output_spills_to_file() -> Result<()> {
         .maybe_spill_text(ThreadId::new(), text.clone())
         .await;
 
+    assert!(approx_token_count(&output) <= DEFAULT_HOOK_OUTPUT_TOKEN_LIMIT);
     assert!(output.contains("tokens truncated"));
     let path = output
         .lines()
@@ -55,7 +58,7 @@ async fn additional_contexts_apply_limits_individually() -> Result<()> {
             vec![
                 AdditionalContext {
                     text: limited_text.clone(),
-                    limit: AdditionalContextLimit::from_config(Some(1)),
+                    limit: AdditionalContextLimit::from_config(Some(LIMITED_OUTPUT_TOKEN_LIMIT)),
                 },
                 AdditionalContext {
                     text: unlimited_text.clone(),
@@ -71,6 +74,7 @@ async fn additional_contexts_apply_limits_individually() -> Result<()> {
     let [limited_output, zero_limit_output, high_limit_output] = output.as_slice() else {
         panic!("expected one output for each additional context");
     };
+    assert!(approx_token_count(limited_output) <= LIMITED_OUTPUT_TOKEN_LIMIT);
     assert!(limited_output.contains("Full hook output saved to:"));
     assert_eq!(zero_limit_output, &unlimited_text);
     assert_eq!(high_limit_output, &unlimited_text);
