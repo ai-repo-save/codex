@@ -5,26 +5,40 @@ use anyhow::Result;
 use app_test_support::TestAppServer;
 use app_test_support::create_mock_responses_server_repeating_assistant;
 use app_test_support::to_response;
+use app_test_support::write_models_cache;
 use chrono::Utc;
 use codex_app_server_protocol::JSONRPCNotification;
 use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ThreadAgentMailboxGetResponse;
+use codex_app_server_protocol::ThreadAgentMailboxUpdatedNotification;
 use codex_app_server_protocol::ThreadResumeParams;
 use codex_app_server_protocol::ThreadResumeResponse;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
+use codex_app_server_protocol::TurnCompletedNotification;
+use codex_app_server_protocol::TurnStartParams;
+use codex_app_server_protocol::TurnStartResponse;
+use codex_app_server_protocol::UserInput as V2UserInput;
 use codex_protocol::ThreadId;
 use codex_state::AgentMailboxCategory;
 use codex_state::AgentMailboxMessageInput;
 use codex_state::AgentMailboxPayload;
 use codex_state::StateRuntime;
+use core_test_support::responses;
 use pretty_assertions::assert_eq;
+use serde_json::json;
 use tempfile::TempDir;
 use tokio::time::timeout;
 
 const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const MESSAGE_BODY: &str = "the parent must read this only through agent_mailbox.read";
+const CHILD_PROMPT: &str = "send the mailbox result";
+const PARENT_SPAWN_PROMPT: &str = "delegate the mailbox result";
+const PARENT_READ_PROMPT: &str = "read the durable mailbox";
+const SPAWN_CALL_ID: &str = "spawn-mailbox-worker";
+const SEND_CALL_ID: &str = "send-mailbox-result";
+const READ_CALL_ID: &str = "read-mailbox-result";
 
 #[tokio::test]
 async fn thread_agent_mailbox_get_and_resume_hydration_are_count_only() -> Result<()> {
@@ -94,6 +108,152 @@ async fn thread_agent_mailbox_get_and_resume_hydration_are_count_only() -> Resul
     Ok(())
 }
 
+#[tokio::test]
+async fn agent_mailbox_body_reaches_parent_only_after_explicit_read() -> Result<()> {
+    let server = responses::start_mock_server().await;
+    let spawn_args = serde_json::to_string(&json!({
+        "message": CHILD_PROMPT,
+        "task_name": "mailbox-worker",
+    }))?;
+    let send_args = serde_json::to_string(&json!({
+        "target": "/root",
+        "message": MESSAGE_BODY,
+        "category": "result",
+    }))?;
+
+    let _parent_spawn = responses::mount_sse_once_match(
+        &server,
+        |request: &wiremock::Request| request_body_contains(request, PARENT_SPAWN_PROMPT),
+        responses::sse(vec![
+            responses::ev_response_created("resp-parent-spawn"),
+            responses::ev_function_call_with_namespace(
+                SPAWN_CALL_ID,
+                "agents",
+                "spawn_agent",
+                &spawn_args,
+            ),
+            responses::ev_completed("resp-parent-spawn"),
+        ]),
+    )
+    .await;
+    let _parent_spawn_output = responses::mount_sse_once_match(
+        &server,
+        |request: &wiremock::Request| request_body_contains(request, SPAWN_CALL_ID),
+        responses::sse(vec![
+            responses::ev_response_created("resp-parent-spawn-output"),
+            responses::ev_assistant_message("msg-parent-spawn-output", "delegated"),
+            responses::ev_completed("resp-parent-spawn-output"),
+        ]),
+    )
+    .await;
+    let _child_send = responses::mount_sse_once_match(
+        &server,
+        |request: &wiremock::Request| {
+            request_body_contains(request, CHILD_PROMPT)
+                && !request_body_contains(request, SPAWN_CALL_ID)
+        },
+        responses::sse(vec![
+            responses::ev_response_created("resp-child-send"),
+            responses::ev_function_call_with_namespace(
+                SEND_CALL_ID,
+                "agent_mailbox",
+                "send",
+                &send_args,
+            ),
+            responses::ev_completed("resp-child-send"),
+        ]),
+    )
+    .await;
+    let _child_send_output = responses::mount_sse_once_match(
+        &server,
+        |request: &wiremock::Request| request_body_contains(request, SEND_CALL_ID),
+        responses::sse(vec![
+            responses::ev_response_created("resp-child-send-output"),
+            responses::ev_assistant_message("msg-child-send-output", "mail queued"),
+            responses::ev_completed("resp-child-send-output"),
+        ]),
+    )
+    .await;
+    let _parent_read = responses::mount_sse_once_match(
+        &server,
+        |request: &wiremock::Request| request_body_contains(request, PARENT_READ_PROMPT),
+        responses::sse(vec![
+            responses::ev_response_created("resp-parent-read"),
+            responses::ev_function_call_with_namespace(
+                READ_CALL_ID,
+                "agent_mailbox",
+                "read",
+                "{}",
+            ),
+            responses::ev_completed("resp-parent-read"),
+        ]),
+    )
+    .await;
+    let _parent_read_output = responses::mount_sse_once_match(
+        &server,
+        |request: &wiremock::Request| {
+            request_body_contains(request, READ_CALL_ID)
+                && request_body_contains(request, MESSAGE_BODY)
+        },
+        responses::sse(vec![
+            responses::ev_response_created("resp-parent-read-output"),
+            responses::ev_assistant_message("msg-parent-read-output", "mail processed"),
+            responses::ev_completed("resp-parent-read-output"),
+        ]),
+    )
+    .await;
+
+    let codex_home = TempDir::new()?;
+    create_config_toml(codex_home.path(), &server.uri())?;
+    write_models_cache(codex_home.path())?;
+    let mut app_server = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build()
+        .await?;
+    timeout(DEFAULT_READ_TIMEOUT, app_server.initialize()).await??;
+
+    let thread = start_thread(&mut app_server).await?;
+    start_turn(&mut app_server, &thread.id, PARENT_SPAWN_PROMPT).await?;
+    wait_for_turn_completion(&mut app_server, &thread.id).await?;
+
+    let mailbox_update = wait_for_mailbox_update(&mut app_server, &thread.id).await?;
+    assert_eq!(mailbox_update.mailbox.total, 1);
+    assert_eq!(mailbox_update.mailbox.progress, 0);
+    assert_eq!(mailbox_update.mailbox.result, 1);
+    assert_eq!(mailbox_update.mailbox.action_required, 0);
+    assert_eq!(mailbox_update.mailbox.revision, 1);
+
+    start_turn(&mut app_server, &thread.id, PARENT_READ_PROMPT).await?;
+    wait_for_turn_completion(&mut app_server, &thread.id).await?;
+
+    let requests = server
+        .received_requests()
+        .await
+        .expect("mock Responses server should retain requests");
+    let read_request = requests
+        .iter()
+        .find(|request| request_body_contains(request, PARENT_READ_PROMPT))
+        .expect("parent read turn should reach Responses");
+    assert!(request_body_contains(read_request, "<agent_mailbox>"));
+    assert!(request_body_contains(read_request, "1 unread"));
+    assert!(!request_body_contains(read_request, MESSAGE_BODY));
+
+    let read_output_request = requests
+        .iter()
+        .find(|request| request_body_contains(request, READ_CALL_ID))
+        .expect("parent read tool output should reach Responses");
+    assert!(request_body_contains(read_output_request, MESSAGE_BODY));
+
+    let mailbox = get_mailbox(&mut app_server, &thread.id).await?;
+    assert_eq!(mailbox.total, 0);
+    assert_eq!(mailbox.progress, 0);
+    assert_eq!(mailbox.result, 0);
+    assert_eq!(mailbox.action_required, 0);
+    assert_eq!(mailbox.revision, 2);
+
+    Ok(())
+}
+
 async fn start_thread(app_server: &mut TestAppServer) -> Result<codex_app_server_protocol::Thread> {
     let request_id = app_server
         .send_thread_start_request_with_auto_env(ThreadStartParams {
@@ -107,6 +267,66 @@ async fn start_thread(app_server: &mut TestAppServer) -> Result<codex_app_server
     )
     .await??;
     Ok(to_response::<ThreadStartResponse>(response)?.thread)
+}
+
+async fn start_turn(app_server: &mut TestAppServer, thread_id: &str, prompt: &str) -> Result<()> {
+    let request_id = app_server
+        .send_turn_start_request(TurnStartParams {
+            thread_id: thread_id.to_string(),
+            input: vec![V2UserInput::Text {
+                text: prompt.to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })
+        .await?;
+    let response: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        app_server.read_stream_until_response_message(RequestId::Integer(request_id)),
+    )
+    .await??;
+    let _: TurnStartResponse = to_response(response)?;
+    Ok(())
+}
+
+async fn wait_for_turn_completion(app_server: &mut TestAppServer, thread_id: &str) -> Result<()> {
+    timeout(DEFAULT_READ_TIMEOUT, async {
+        loop {
+            let notification = app_server
+                .read_stream_until_notification_message("turn/completed")
+                .await?;
+            let completed: TurnCompletedNotification =
+                serde_json::from_value(notification.params.expect("turn/completed params"))?;
+            if completed.thread_id == thread_id {
+                return Ok::<(), anyhow::Error>(());
+            }
+        }
+    })
+    .await??;
+    Ok(())
+}
+
+async fn wait_for_mailbox_update(
+    app_server: &mut TestAppServer,
+    thread_id: &str,
+) -> Result<ThreadAgentMailboxUpdatedNotification> {
+    timeout(DEFAULT_READ_TIMEOUT, async {
+        loop {
+            let notification = app_server
+                .read_stream_until_notification_message("thread/agentMailbox/updated")
+                .await?;
+            let params = notification
+                .params
+                .expect("thread/agentMailbox/updated params");
+            assert!(!params.to_string().contains(MESSAGE_BODY));
+            let updated: ThreadAgentMailboxUpdatedNotification = serde_json::from_value(params)?;
+            if updated.thread_id == thread_id {
+                return Ok::<ThreadAgentMailboxUpdatedNotification, anyhow::Error>(updated);
+            }
+        }
+    })
+    .await
+    .map_err(Into::into)
 }
 
 async fn get_mailbox(
@@ -160,4 +380,10 @@ stream_max_retries = 0
 "#
         ),
     )
+}
+
+fn request_body_contains(request: &wiremock::Request, text: &str) -> bool {
+    String::from_utf8(request.body.clone())
+        .ok()
+        .is_some_and(|body| body.contains(text))
 }
