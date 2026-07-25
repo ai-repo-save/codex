@@ -681,10 +681,12 @@ impl AgentControl {
                     message,
                     /*trigger_turn*/ false,
                 );
-                communication.id = Some(ResponseItemId::with_suffix(
-                    "agent_terminal",
-                    format!("{child_thread_id}-fallback"),
-                ));
+                if capture_terminal_messages {
+                    communication.id = Some(ResponseItemId::with_suffix(
+                        "agent_terminal",
+                        format!("{child_thread_id}-fallback"),
+                    ));
+                }
                 if capture_terminal_messages
                     && control
                     .try_claim_terminal_message(

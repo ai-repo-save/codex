@@ -2130,20 +2130,28 @@ impl Session {
             message,
             /*trigger_turn*/ false,
         );
-        communication.id = Some(ResponseItemId::with_suffix(
-            "agent_terminal",
-            format!("{}-{}", self.thread_id, turn_context.sub_id),
-        ));
-        if self
+        let capture_terminal_messages = self
             .services
             .agent_control
-            .try_claim_terminal_message(
-                self.thread_id,
-                parent_thread_id,
-                &communication,
-                &status,
-            )
-            .await
+            .terminal_message_capture_enabled(parent_thread_id)
+            .await;
+        if capture_terminal_messages {
+            communication.id = Some(ResponseItemId::with_suffix(
+                "agent_terminal",
+                format!("{}-{}", self.thread_id, turn_context.sub_id),
+            ));
+        }
+        if capture_terminal_messages
+            && self
+                .services
+                .agent_control
+                .try_claim_terminal_message(
+                    self.thread_id,
+                    parent_thread_id,
+                    &communication,
+                    &status,
+                )
+                .await
         {
             return;
         }
