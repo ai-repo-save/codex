@@ -42,8 +42,6 @@ use codex_protocol::protocol::HookStartedEvent;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use codex_thread_store::ReadThreadParams;
-use codex_utils_output_truncation::TruncationPolicy;
-use codex_utils_output_truncation::truncate_text;
 use serde_json::Value;
 use tracing::instrument;
 use tracing::warn;
@@ -56,8 +54,6 @@ use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use crate::tools::hook_names::HookToolName;
 use crate::tools::sandboxing::PermissionRequestPayload;
-
-const POST_COMPACT_SUPPLEMENT_MAX_BYTES: usize = 16 * 1024;
 
 pub(crate) struct HookRuntimeOutcome {
     pub should_stop: bool,
@@ -588,10 +584,6 @@ async fn record_post_compact_supplement(
         return;
     }
 
-    let supplement = truncate_text(
-        supplement,
-        TruncationPolicy::Bytes(POST_COMPACT_SUPPLEMENT_MAX_BYTES),
-    );
     let response_item = ResponseItem::Message {
         id: None,
         role: "user".to_string(),

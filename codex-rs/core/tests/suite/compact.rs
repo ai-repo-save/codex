@@ -88,8 +88,9 @@ const REQUEST_CONTEXT_COMPACTION_CALL_ID: &str = "call-request-context-compactio
 const REQUEST_CONTEXT_COMPACTION_NOTE: &str = "preserve the active compaction tool call";
 const REQUEST_CONTEXT_COMPACTION_TOOL_NAME: &str = "request_context_compaction";
 const PRETURN_CONTEXT_DIFF_CWD: &str = "/tmp/PRETURN_CONTEXT_DIFF_CWD";
-const POST_COMPACT_SUPPLEMENT_TEXT: &str =
-    "<COMPACTION_SUPPLEMENT>continue from persisted compacted history</COMPACTION_SUPPLEMENT>";
+const POST_COMPACT_SUPPLEMENT_CHUNK: &str =
+    "<COMPACTION_SUPPLEMENT>continue from persisted compacted history</COMPACTION_SUPPLEMENT>\n";
+const HOOK_OUTPUT_PATH_PREFIX: &str = "Full hook output saved to: ";
 const GLOBAL_AGENTS_FILENAME: &str = "AGENTS.md";
 const GLOBAL_AGENTS_OVERRIDE_FILENAME: &str = "AGENTS.override.md";
 const NEW_GLOBAL_INSTRUCTIONS: &str = "new global instructions";
@@ -300,8 +301,8 @@ if saw_compaction and saw_replacement_history:
     }}))
 "#,
         log_path = log_path.display(),
-        supplement_json =
-            serde_json::to_string(POST_COMPACT_SUPPLEMENT_TEXT).expect("serialize supplement text"),
+        supplement_json = serde_json::to_string(&post_compact_supplement_text())
+            .expect("serialize supplement text"),
     );
     let hooks = json!({
         "hooks": {
@@ -317,6 +318,10 @@ if saw_compaction and saw_replacement_history:
 
     fs::write(&script_path, script).expect("write post compact supplement hook script");
     fs::write(home.join("hooks.json"), hooks.to_string()).expect("write hooks.json");
+}
+
+fn post_compact_supplement_text() -> String {
+    POST_COMPACT_SUPPLEMENT_CHUNK.repeat(/*n*/ 300)
 }
 
 fn non_openai_model_provider(server: &MockServer) -> ModelProviderInfo {
@@ -967,10 +972,23 @@ async fn post_compact_hook_can_append_supplement_from_persisted_compaction() {
 
     let requests = request_log.requests();
     assert_eq!(requests.len(), 3);
+    let expected_supplement = post_compact_supplement_text();
     assert!(
-        requests[2].body_contains_text(POST_COMPACT_SUPPLEMENT_TEXT),
-        "follow-up request after PostCompact hook should include supplement"
+        !requests[2].body_contains_text(&expected_supplement),
+        "follow-up request should contain a bounded spill preview, not the full supplement"
     );
+    let spilled_path = requests[2]
+        .message_input_texts("user")
+        .iter()
+        .flat_map(|text| text.lines())
+        .find_map(|line| line.strip_prefix(HOOK_OUTPUT_PATH_PREFIX))
+        .map(PathBuf::from)
+        .expect("follow-up request should contain the spilled supplement path");
+    assert_eq!(
+        fs::read_to_string(&spilled_path).expect("read spilled supplement"),
+        expected_supplement
+    );
+    fs::remove_file(spilled_path).expect("remove spilled supplement");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

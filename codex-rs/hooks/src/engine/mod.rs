@@ -410,7 +410,13 @@ impl ClaudeHooksEngine {
         &self,
         request: PostCompactRequest,
     ) -> StatelessHookOutcome {
-        crate::events::compact::run_post(&self.handlers, &self.shell, request).await
+        let session_id = request.session_id;
+        let mut outcome =
+            crate::events::compact::run_post(&self.handlers, &self.shell, request).await;
+        outcome.supplement = self
+            .maybe_spill_text(session_id, outcome.supplement)
+            .await;
+        outcome
     }
 
     pub(crate) fn preview_user_prompt_submit(
