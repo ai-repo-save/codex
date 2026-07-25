@@ -17,6 +17,7 @@ use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::InitialHistory;
 use codex_protocol::protocol::Op;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::SpawnContextInheritance;
 use codex_protocol::protocol::SubAgentActivityKind;
 use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::protocol::ThreadHistoryMode;
@@ -2017,7 +2018,7 @@ async fn spawn_agent_started_activity_uses_role_effective_settings() -> Result<(
             agent_path: AgentPath::try_from("/root/worker").expect("child path should be valid"),
             kind: SubAgentActivityKind::Started,
             operation: None,
-            context_inheritance: None,
+            context_inheritance: Some(SpawnContextInheritance::None),
             outcome: None,
             model: Some(V2_DEFAULT_MODEL.to_string()),
             reasoning_effort: Some(ROLE_REASONING_EFFORT),
