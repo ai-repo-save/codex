@@ -112,6 +112,7 @@ mod tests {
     use codex_core::thread_store_from_config;
     use codex_exec_server::EnvironmentManager;
     use codex_extension_api::NoopExtensionEventSink;
+    use codex_agent_mailbox_extension::NoopAgentMailboxStatusNotifier;
     use codex_home::CodexHomeUserInstructionsProvider;
     use codex_login::AuthManager;
     use codex_login::CodexAuth;
@@ -241,6 +242,7 @@ mod tests {
                         goal_service: Arc::new(codex_goal_extension::GoalService::new()),
                         environment_manager: Arc::clone(&environment_manager),
                         executor_skill_provider: Arc::clone(&executor_skill_provider),
+                        agent_mailbox_status_notifier: Arc::new(NoopAgentMailboxStatusNotifier),
                         thread_store: Arc::clone(&thread_store),
                     },
                 ),

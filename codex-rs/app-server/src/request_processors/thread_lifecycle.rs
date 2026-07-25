@@ -714,6 +714,10 @@ pub(super) async fn handle_pending_thread_resume_request(
     outgoing
         .send_response_with_thread_originator(request_id, response, originator)
         .await;
+    pending
+        .agent_mailbox_processor
+        .emit_snapshot_to_connection(conversation_id, connection_id)
+        .await;
     // Match cold resume: metadata-only resume should attach the listener without
     // paying the cost of turn reconstruction for historical usage replay.
     if let Some(token_usage_turn_id) = token_usage_turn_id {

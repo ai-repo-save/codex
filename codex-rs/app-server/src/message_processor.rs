@@ -11,6 +11,7 @@ use crate::current_time::app_server_time_provider;
 use crate::error_code::invalid_request;
 use crate::extensions::ThreadExtensionDependencies;
 use crate::extensions::app_server_extension_event_sink;
+use crate::extensions::app_server_agent_mailbox_status_notifier;
 use crate::extensions::guardian_agent_spawner;
 use crate::extensions::thread_extensions;
 use crate::external_agent_migration::ExternalAgentConfigRequestProcessor;
@@ -21,6 +22,7 @@ use crate::outgoing_message::ConnectionRequestId;
 use crate::outgoing_message::OutgoingMessageSender;
 use crate::outgoing_message::RequestContext;
 use crate::request_processors::AccountRequestProcessor;
+use crate::request_processors::AgentMailboxRequestProcessor;
 use crate::request_processors::AppsRequestProcessor;
 use crate::request_processors::CatalogRequestProcessor;
 use crate::request_processors::CommandExecRequestProcessor;
@@ -120,6 +122,7 @@ pub(crate) struct MessageProcessor {
     plugin_processor: PluginRequestProcessor,
     remote_control_processor: RemoteControlRequestProcessor,
     search_processor: SearchRequestProcessor,
+    agent_mailbox_processor: AgentMailboxRequestProcessor,
     thread_goal_processor: ThreadGoalRequestProcessor,
     thread_processor: ThreadRequestProcessor,
     turn_processor: TurnRequestProcessor,
@@ -280,6 +283,9 @@ impl MessageProcessor {
                         goal_service: Arc::clone(&goal_service),
                         environment_manager: Arc::clone(&environment_manager_for_extensions),
                         executor_skill_provider: Arc::clone(&executor_skill_provider),
+                        agent_mailbox_status_notifier: app_server_agent_mailbox_status_notifier(
+                            outgoing.clone(),
+                        ),
                         thread_store: Arc::clone(&thread_store),
                     },
                 ),
@@ -403,6 +409,13 @@ impl MessageProcessor {
         );
         let remote_control_processor = RemoteControlRequestProcessor::new(remote_control_handle);
         let search_processor = SearchRequestProcessor::new(outgoing.clone());
+        let agent_mailbox_processor = AgentMailboxRequestProcessor::new(
+            Arc::clone(&thread_manager),
+            outgoing.clone(),
+            Arc::clone(&config),
+            Arc::clone(&thread_store),
+            state_db.clone(),
+        );
         let thread_goal_processor = ThreadGoalRequestProcessor::new(
             Arc::clone(&thread_manager),
             outgoing.clone(),
@@ -424,6 +437,7 @@ impl MessageProcessor {
             thread_watch_manager.clone(),
             Arc::clone(&thread_list_state_permit),
             thread_goal_processor.clone(),
+            agent_mailbox_processor.clone(),
             state_db.clone(),
             log_db,
             Arc::clone(&skills_watcher),
@@ -500,6 +514,7 @@ impl MessageProcessor {
             plugin_processor,
             remote_control_processor,
             search_processor,
+            agent_mailbox_processor,
             thread_goal_processor,
             thread_processor,
             turn_processor,
@@ -1103,6 +1118,11 @@ impl MessageProcessor {
             }
             ClientRequest::ThreadGoalGet { params, .. } => {
                 self.thread_goal_processor.thread_goal_get(params).await
+            }
+            ClientRequest::ThreadAgentMailboxGet { params, .. } => {
+                self.agent_mailbox_processor
+                    .thread_agent_mailbox_get(params)
+                    .await
             }
             ClientRequest::ThreadGoalClear { params, .. } => {
                 self.thread_goal_processor

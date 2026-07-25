@@ -643,6 +643,7 @@ fn resolve_runtime_workspace_roots(workspace_roots: Vec<AbsolutePathBuf>) -> Vec
 
 mod config_errors;
 mod request_errors;
+mod agent_mailbox_processor;
 mod thread_delete;
 mod thread_goal_processor;
 mod thread_lifecycle;
@@ -651,6 +652,8 @@ mod thread_summary;
 
 use self::config_errors::*;
 use self::request_errors::*;
+pub(crate) use self::agent_mailbox_processor::AgentMailboxRequestProcessor;
+pub(crate) use self::agent_mailbox_processor::agent_mailbox_status;
 use self::thread_goal_processor::api_thread_goal_from_state;
 use self::thread_lifecycle::*;
 use self::thread_resume_redaction::*;

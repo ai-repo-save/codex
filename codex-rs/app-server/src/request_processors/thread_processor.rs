@@ -459,6 +459,7 @@ pub(crate) struct ThreadRequestProcessor {
     pub(super) thread_watch_manager: ThreadWatchManager,
     pub(super) thread_list_state_permit: Arc<Semaphore>,
     pub(super) thread_goal_processor: ThreadGoalRequestProcessor,
+    pub(super) agent_mailbox_processor: AgentMailboxRequestProcessor,
     pub(super) state_db: Option<StateDbHandle>,
     pub(super) log_db: Option<LogDbLayer>,
     pub(super) background_tasks: TaskTracker,
@@ -492,6 +493,7 @@ impl ThreadRequestProcessor {
         thread_watch_manager: ThreadWatchManager,
         thread_list_state_permit: Arc<Semaphore>,
         thread_goal_processor: ThreadGoalRequestProcessor,
+        agent_mailbox_processor: AgentMailboxRequestProcessor,
         state_db: Option<StateDbHandle>,
         log_db: Option<LogDbLayer>,
         skills_watcher: Arc<SkillsWatcher>,
@@ -510,6 +512,7 @@ impl ThreadRequestProcessor {
             thread_watch_manager,
             thread_list_state_permit,
             thread_goal_processor,
+            agent_mailbox_processor,
             state_db,
             log_db,
             background_tasks: TaskTracker::new(),
@@ -1106,11 +1109,13 @@ impl ThreadRequestProcessor {
         let request_trace = request_context.request_trace();
         let config_manager = self.config_manager.clone();
         let initial_config_warnings = Arc::clone(&self.initial_config_warnings);
+        let agent_mailbox_processor = self.agent_mailbox_processor.clone();
         let outgoing = Arc::clone(&listener_task_context.outgoing);
         let error_request_id = request_id.clone();
         let thread_start_task = async move {
             if let Err(error) = Self::thread_start_task(
                 listener_task_context,
+                agent_mailbox_processor,
                 config_manager,
                 request_id,
                 app_server_client_name,
@@ -1188,6 +1193,7 @@ impl ThreadRequestProcessor {
     #[allow(clippy::too_many_arguments)]
     async fn thread_start_task(
         listener_task_context: ListenerTaskContext,
+        agent_mailbox_processor: AgentMailboxRequestProcessor,
         config_manager: ConfigManager,
         request_id: ConnectionRequestId,
         app_server_client_name: Option<String>,
@@ -1444,6 +1450,7 @@ impl ThreadRequestProcessor {
             multi_agent_mode: MultiAgentMode::ExplicitRequestOnly,
         };
         let notif = thread_started_notification(thread);
+        let connection_id = request_id.connection_id;
         listener_task_context
             .outgoing
             .send_response_with_thread_originator(request_id, response, thread_originator)
@@ -1460,6 +1467,9 @@ impl ThreadRequestProcessor {
                 "app_server.thread_start.notify_started",
                 otel.name = "app_server.thread_start.notify_started",
             ))
+            .await;
+        agent_mailbox_processor
+            .emit_snapshot_to_connection(thread_id, connection_id)
             .await;
         session_telemetry.record_startup_phase(
             "thread_start_total",
@@ -3094,6 +3104,9 @@ impl ThreadRequestProcessor {
                 connection_id,
                 "thread",
             );
+            self.agent_mailbox_processor
+                .emit_snapshot_to_connection(thread_id, connection_id)
+                .await;
         }
     }
 
@@ -3459,6 +3472,9 @@ impl ThreadRequestProcessor {
                 self.outgoing
                     .send_response_with_thread_originator(request_id, response, thread_originator)
                     .await;
+                self.agent_mailbox_processor
+                    .emit_snapshot_to_connection(thread_id, connection_id)
+                    .await;
                 // `excludeTurns` is explicitly the cheap resume path, so avoid
                 // rebuilding history only to attribute a replayed usage update.
                 if let Some(token_usage_turn_id) = token_usage_turn_id {
@@ -3752,6 +3768,7 @@ impl ThreadRequestProcessor {
                     thread_summary,
                     emit_thread_goal_update,
                     thread_goal_state_db,
+                    agent_mailbox_processor: self.agent_mailbox_processor.clone(),
                     include_turns,
                     initial_turns_page: params.initial_turns_page.clone(),
                     paginated_turns,

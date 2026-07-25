@@ -3,6 +3,7 @@ use std::sync::Weak;
 
 use codex_analytics::AnalyticsEventsClient;
 use codex_app_server_protocol::ServerNotification;
+use codex_app_server_protocol::ThreadAgentMailboxUpdatedNotification;
 use codex_app_server_protocol::ThreadGoal;
 use codex_app_server_protocol::ThreadGoalClearedNotification;
 use codex_app_server_protocol::ThreadGoalUpdatedNotification;
@@ -23,9 +24,11 @@ use codex_protocol::error::CodexErr;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
 use codex_rollout::state_db::StateDbHandle;
+use codex_state::AgentMailboxUnreadSnapshot;
 use codex_thread_store::ThreadStore;
 
 use crate::outgoing_message::OutgoingMessageSender;
+use crate::request_processors::agent_mailbox_status;
 use crate::thread_state::ThreadListenerCommand;
 use crate::thread_state::ThreadStateManager;
 
@@ -38,6 +41,8 @@ pub(crate) struct ThreadExtensionDependencies {
     pub(crate) goal_service: Arc<GoalService>,
     pub(crate) environment_manager: Arc<EnvironmentManager>,
     pub(crate) executor_skill_provider: Arc<dyn codex_skills_extension::SkillProvider>,
+    pub(crate) agent_mailbox_status_notifier:
+        Arc<dyn codex_agent_mailbox_extension::AgentMailboxStatusNotifier>,
     /// Process-scoped persistence backend for extensions that need stored thread history.
     pub(crate) thread_store: Arc<dyn ThreadStore>,
 }
@@ -58,10 +63,17 @@ where
         goal_service,
         environment_manager,
         executor_skill_provider,
+        agent_mailbox_status_notifier,
         thread_store: _thread_store,
     } = dependencies;
     let mut builder = ExtensionRegistryBuilder::<Config>::with_event_sink(event_sink);
     if let Some(state_db) = state_db {
+        codex_agent_mailbox_extension::install_with_backend(
+            &mut builder,
+            state_db.clone(),
+            thread_manager.clone(),
+            agent_mailbox_status_notifier,
+        );
         codex_goal_extension::install_with_backend(
             &mut builder,
             state_db,
@@ -100,6 +112,34 @@ where
         },
     );
     Arc::new(builder.build())
+}
+
+struct AppServerAgentMailboxStatusNotifier {
+    outgoing: Arc<OutgoingMessageSender>,
+}
+
+pub(crate) fn app_server_agent_mailbox_status_notifier(
+    outgoing: Arc<OutgoingMessageSender>,
+) -> Arc<dyn codex_agent_mailbox_extension::AgentMailboxStatusNotifier> {
+    Arc::new(AppServerAgentMailboxStatusNotifier { outgoing })
+}
+
+impl codex_agent_mailbox_extension::AgentMailboxStatusNotifier
+    for AppServerAgentMailboxStatusNotifier
+{
+    fn status_updated(&self, thread_id: ThreadId, snapshot: AgentMailboxUnreadSnapshot) {
+        let outgoing = Arc::clone(&self.outgoing);
+        tokio::spawn(async move {
+            outgoing
+                .send_server_notification(ServerNotification::ThreadAgentMailboxUpdated(
+                    ThreadAgentMailboxUpdatedNotification {
+                        thread_id: thread_id.to_string(),
+                        mailbox: agent_mailbox_status(snapshot),
+                    },
+                ))
+                .await;
+        });
+    }
 }
 
 pub(crate) fn app_server_extension_event_sink(
