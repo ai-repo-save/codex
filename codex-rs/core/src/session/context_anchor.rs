@@ -649,16 +649,16 @@ impl Session {
             contribution_items,
             replacement_anchor_id,
         );
-        let replay_items_before_replacement = plan.replay_items_before_replacement();
+        let created_at = crate::turn_timing::now_unix_timestamp_ms() / 1000;
+        let collaboration_mode_kind = turn_context.collaboration_mode().mode;
+        let provisional_plan =
+            plan.clone()
+                .finalize(/*history_boundary*/ 0, created_at, collaboration_mode_kind);
         let reconstructed = self
-            .reconstruct_history_from_rollout(turn_context, &replay_items_before_replacement)
+            .reconstruct_history_from_rollout(turn_context, &provisional_plan.replay_items)
             .await;
         let history_boundary = u64::try_from(reconstructed.history.len()).unwrap_or(u64::MAX);
-        let plan = plan.finalize(
-            history_boundary,
-            crate::turn_timing::now_unix_timestamp_ms() / 1000,
-            turn_context.collaboration_mode().mode,
-        );
+        let plan = plan.finalize(history_boundary, created_at, collaboration_mode_kind);
 
         live_thread
             .append_items(&plan.persisted_items)

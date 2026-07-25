@@ -318,6 +318,19 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
         list_json["anchors"][0]["anchor_id"],
         json!(replacement_anchor_id)
     );
+    let current_history_items = list_json["current_history_items"]
+        .as_u64()
+        .expect("list output should include current history size");
+    let replacement_history_boundary = list_json["anchors"][0]["history_boundary"]
+        .as_u64()
+        .expect("replacement anchor should include its history boundary");
+    let response_items_since_anchor = list_json["anchors"][0]["response_items_since_anchor"]
+        .as_u64()
+        .expect("replacement anchor should include its response distance");
+    assert_eq!(
+        replacement_history_boundary + response_items_since_anchor,
+        current_history_items
+    );
 
     let stale_rewind_call_id = "stale-rewind-anchor-call";
     let third_mock = mount_sse_sequence(
