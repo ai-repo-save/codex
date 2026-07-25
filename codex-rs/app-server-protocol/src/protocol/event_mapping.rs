@@ -216,6 +216,9 @@ pub fn item_event_to_server_notification(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::v2::CollabAgentState;
+    use crate::protocol::v2::CollabAgentTool;
+    use crate::protocol::v2::CollabAgentToolCallStatus;
     use crate::protocol::v2::SubAgentActivityKind;
     use crate::protocol::v2::SubAgentActivityOperation;
     use crate::protocol::v2::SubAgentActivityOutcome;
@@ -230,6 +233,7 @@ mod tests {
     use codex_protocol::protocol::SubAgentActivityOperation as CoreSubAgentActivityOperation;
     use codex_protocol::protocol::SubAgentActivityOutcome as CoreSubAgentActivityOutcome;
     use pretty_assertions::assert_eq;
+    use std::collections::HashMap;
 
     fn assert_item_started_server_notification(
         notification: ServerNotification,
