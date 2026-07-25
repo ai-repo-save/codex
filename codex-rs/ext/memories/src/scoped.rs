@@ -40,6 +40,7 @@ const NOTES_DIR: &str = "notes";
 const PROJECT_METADATA_FILENAME: &str = "metadata.toml";
 pub(crate) const SESSION_CONTEXT_TOKEN_LIMIT: usize = 10_000;
 const PROJECT_CONTEXT_TOKEN_LIMIT: usize = 15_000;
+const SCOPED_CONTEXT_FRAGMENT_TOKEN_LIMIT: usize = 10_000;
 
 pub(crate) const SESSION_MEMORY_MAINTENANCE_POLICY: &str = "Session memory is working memory for the current thread. Codex may proactively create, update, or delete session notes when doing so helps complete the current task; no explicit user request is required.";
 pub(crate) const PROJECT_MEMORY_MAINTENANCE_POLICY: &str = "Project memory is shared across sessions for the current project. Codex may proactively create, update, or delete project notes when applicable user instructions or project AGENTS.md instructions authorize maintaining project memory.";
@@ -182,7 +183,7 @@ impl MemoryToolBackends {
         store.write_note(title, note).await
     }
 
-    pub(crate) async fn scoped_context_fragment(&self) -> Option<ScopedMemoryContextFragment> {
+    pub(crate) async fn scoped_context_fragments(&self) -> Vec<ScopedMemoryContextFragment> {
         let mut sections = Vec::new();
         if let Some(session) = self.session.as_ref()
             && let Some(section) = session
@@ -199,16 +200,23 @@ impl MemoryToolBackends {
             sections.push(section);
         }
         if sections.is_empty() {
-            return None;
+            return Vec::new();
         }
 
-        let body = format!(
-            "\n## Scoped Memory\n{}\n\n{}\n\n{}\n\nUse `memories.write_note` and `memories.delete` to maintain scoped memory under these rules. To replace a note, write the corrected note, then delete the obsolete file.\n",
-            sections.join("\n\n"),
+        let mut fragments = sections
+            .into_iter()
+            .flat_map(ScopedMemorySection::into_context_fragments)
+            .collect::<Vec<_>>();
+        let policy_body = format!(
+            "\n## Scoped Memory\n{}\n\n{}\n\nUse `memories.write_note` and `memories.delete` to maintain scoped memory under these rules. To replace a note, write the corrected note, then delete the obsolete file.\n",
             SESSION_MEMORY_MAINTENANCE_POLICY,
             PROJECT_MEMORY_MAINTENANCE_POLICY,
         );
-        Some(ScopedMemoryContextFragment::new(body))
+        fragments.push(render_scoped_memory_context(
+            policy_body,
+            SCOPED_CONTEXT_FRAGMENT_TOKEN_LIMIT,
+        ));
+        fragments
     }
 
     pub(crate) async fn rewind_session_context_fragment(
@@ -329,6 +337,121 @@ fn render_scoped_memory_context(
 }
 
 #[derive(Debug, Clone)]
+struct ScopedMemorySection {
+    title: String,
+    content: String,
+}
+
+impl ScopedMemorySection {
+    fn into_context_fragments(self) -> Vec<ScopedMemoryContextFragment> {
+        let mut fragments = Vec::new();
+        let mut current = String::new();
+
+        for unit in note_units(&self.content) {
+            let combined = format!("{current}{unit}");
+            if scoped_memory_content_fits(&self.title, &combined) {
+                current = combined;
+                continue;
+            }
+            if !current.is_empty() {
+                fragments.push(scoped_memory_content_fragment(&self.title, current));
+                current = String::new();
+            }
+
+            let mut remaining = unit;
+            while !remaining.is_empty() && !scoped_memory_content_fits(&self.title, remaining) {
+                let split_at = scoped_memory_content_split(&self.title, remaining);
+                let (chunk, rest) = remaining.split_at(split_at);
+                fragments.push(scoped_memory_content_fragment(&self.title, chunk.to_string()));
+                remaining = rest;
+            }
+            current.push_str(remaining);
+        }
+
+        if !current.is_empty() {
+            fragments.push(scoped_memory_content_fragment(&self.title, current));
+        }
+        fragments
+    }
+}
+
+fn note_units(content: &str) -> Vec<&str> {
+    let mut starts = vec![0];
+    starts.extend(
+        content
+            .match_indices("\n\n### ")
+            .map(|(index, _)| index),
+    );
+    starts.push(content.len());
+    starts
+        .windows(2)
+        .filter_map(|window| {
+            let unit = &content[window[0]..window[1]];
+            (!unit.is_empty()).then_some(unit)
+        })
+        .collect()
+}
+
+fn scoped_memory_content_fragment(
+    title: &str,
+    content: String,
+) -> ScopedMemoryContextFragment {
+    ScopedMemoryContextFragment::new(format!(
+        "\n## Scoped Memory\n### {title}\n{content}\n"
+    ))
+}
+
+fn scoped_memory_content_fits(title: &str, content: &str) -> bool {
+    approx_token_count(&scoped_memory_content_fragment(title, content.to_string()).render())
+        <= SCOPED_CONTEXT_FRAGMENT_TOKEN_LIMIT
+}
+
+fn scoped_memory_content_split(title: &str, content: &str) -> usize {
+    let mut low = 0;
+    let mut high = content.len();
+    while low < high {
+        let middle = low + (high - low).div_ceil(2);
+        let middle = previous_char_boundary(content, middle);
+        if middle == low {
+            break;
+        }
+        if scoped_memory_content_fits(title, &content[..middle]) {
+            low = middle;
+        } else {
+            high = middle.saturating_sub(1);
+        }
+    }
+
+    let maximum = previous_char_boundary(content, low);
+    preferred_semantic_boundary(&content[..maximum])
+        .filter(|index| *index >= maximum / 2)
+        .unwrap_or(maximum)
+}
+
+fn previous_char_boundary(content: &str, mut index: usize) -> usize {
+    index = index.min(content.len());
+    while index > 0 && !content.is_char_boundary(index) {
+        index -= 1;
+    }
+    index
+}
+
+fn preferred_semantic_boundary(content: &str) -> Option<usize> {
+    content
+        .rfind("\n\n")
+        .map(|index| index + 2)
+        .or_else(|| content.rfind('\n').map(|index| index + 1))
+        .or_else(|| {
+            content
+                .char_indices()
+                .rev()
+                .find(|(_, character)| character.is_whitespace())
+                .map(|(index, character)| index + character.len_utf8())
+        })
+        .filter(|index| *index > 0)
+}
+
+#[derive(Debug, Clone)]
 struct ScopedMemoryStore {
     scope: MemoryScope,
     root: PathBuf,
@@ -403,7 +526,11 @@ impl ScopedMemoryStore {
         })
     }
 
-    async fn context_section(&self, title: &str, token_limit: usize) -> Option<String> {
+    async fn context_section(
+        &self,
+        title: &str,
+        token_limit: usize,
+    ) -> Option<ScopedMemorySection> {
         let notes_dir = self.root.join(NOTES_DIR);
         let mut entries = tokio::fs::read_dir(notes_dir).await.ok()?;
         let mut paths = Vec::new();
@@ -439,7 +566,10 @@ impl ScopedMemoryStore {
         }
 
         let content = truncate_text(&notes.join("\n\n"), TruncationPolicy::Tokens(token_limit));
-        Some(format!("### {title}\n{content}"))
+        Some(ScopedMemorySection {
+            title: title.to_string(),
+            content,
+        })
     }
 
     async fn ensure_root(&self) -> Result<(), MemoriesBackendError> {

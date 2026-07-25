@@ -330,13 +330,83 @@ async fn typed_prompt_contribution_includes_scoped_memory_when_global_memories_a
         .contribute_thread_context_fragments(&ExtensionData::new("session"), &thread_store)
         .await;
 
-    assert_eq!(fragments.len(), 1);
-    assert_eq!(fragments[0].role(), "user");
-    let rendered = fragments[0].render();
+    assert_eq!(fragments.len(), 2);
+    assert!(fragments.iter().all(|fragment| fragment.role() == "user"));
+    let rendered = fragments
+        .iter()
+        .map(|fragment| fragment.render())
+        .collect::<String>();
     assert!(rendered.contains("<scoped_memory_context>"));
     assert!(rendered.contains(SESSION_MEMORY_MAINTENANCE_POLICY));
     assert!(rendered.contains(PROJECT_MEMORY_MAINTENANCE_POLICY));
     assert!(rendered.contains("Remember this only for the current session."));
+}
+
+#[tokio::test]
+async fn typed_scoped_memory_fragments_bound_each_model_visible_item() {
+    const SESSION_PREFIX: &str = "session-prefix";
+    const SESSION_SUFFIX: &str = "session-suffix";
+    const PROJECT_PREFIX: &str = "project-prefix";
+    const PROJECT_SUFFIX: &str = "project-suffix";
+
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let project_root = tempfile::tempdir().expect("project root");
+    let backends = MemoryToolBackends::new(
+        &tempdir.path().abs(),
+        /*global_enabled*/ false,
+        /*scoped_enabled*/ true,
+        "thread-1",
+        &project_root.path().abs(),
+    );
+    backends
+        .write_note(
+            MemoryScope::Session,
+            "Large session memory".to_string(),
+            format!(
+                "{SESSION_PREFIX}\n{}\n{SESSION_SUFFIX}",
+                "session memory ".repeat(SESSION_CONTEXT_TOKEN_LIMIT)
+            ),
+        )
+        .await
+        .expect("write session note");
+    backends
+        .write_note(
+            MemoryScope::Project,
+            "Large project memory".to_string(),
+            format!(
+                "{PROJECT_PREFIX}\n{}\n{PROJECT_SUFFIX}",
+                "project memory ".repeat(SESSION_CONTEXT_TOKEN_LIMIT)
+            ),
+        )
+        .await
+        .expect("write project note");
+
+    let fragments = backends.scoped_context_fragments().await;
+    let rendered = fragments
+        .iter()
+        .map(|fragment| fragment.render())
+        .collect::<Vec<_>>();
+
+    assert!(fragments.len() > 3);
+    assert!(
+        rendered
+            .iter()
+            .all(|fragment| approx_token_count(fragment) <= SESSION_CONTEXT_TOKEN_LIMIT)
+    );
+    let combined = rendered.concat();
+    assert!(combined.contains(SESSION_PREFIX));
+    assert!(combined.contains(SESSION_SUFFIX));
+    assert!(combined.contains(PROJECT_PREFIX));
+    assert!(combined.contains(PROJECT_SUFFIX));
+    assert!(combined.contains("tokens truncated"));
+    assert_eq!(
+        combined.matches(SESSION_MEMORY_MAINTENANCE_POLICY).count(),
+        1
+    );
+    assert_eq!(
+        combined.matches(PROJECT_MEMORY_MAINTENANCE_POLICY).count(),
+        1
+    );
 }
 
 #[tokio::test]
@@ -935,9 +1005,10 @@ async fn assert_replacing_scoped_note_removes_obsolete_note_from_context(scope: 
         .expect("write response path");
     assert!(
         backends
-            .scoped_context_fragment()
+            .scoped_context_fragments()
             .await
-            .is_some_and(|context| context.render().contains(OBSOLETE_NOTE))
+            .iter()
+            .any(|context| context.render().contains(OBSOLETE_NOTE))
     );
 
     let replacement_payload = ToolPayload::Function {
@@ -983,10 +1054,11 @@ async fn assert_replacing_scoped_note_removes_obsolete_note_from_context(scope: 
         }))
     );
     let context = backends
-        .scoped_context_fragment()
+        .scoped_context_fragments()
         .await
-        .expect("replacement note should remain in context")
-        .render();
+        .iter()
+        .map(|fragment| fragment.render())
+        .collect::<String>();
     assert!(!context.contains(OBSOLETE_NOTE));
     assert!(context.contains(REPLACEMENT_NOTE));
 }

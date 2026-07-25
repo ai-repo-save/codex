@@ -86,12 +86,12 @@ impl ContextContributor for MemoriesExtension {
             }
             config
                 .backends(thread_store.level_id())
-                .scoped_context_fragment()
+                .scoped_context_fragments()
                 .await
+                .into_iter()
                 .map(|fragment| {
                     Box::new(fragment) as Box<dyn ContextualUserFragment + Send>
                 })
-                .into_iter()
                 .collect()
         })
     }
