@@ -23,6 +23,12 @@ pub enum GoalTurnHostRejection {
 /// The extension owns goal state and chooses the model-visible items. The host
 /// owns live-thread lookup, turn admission, and same-turn input injection.
 pub trait GoalTurnHost: Send + Sync {
+    /// Confirms that the target thread remains available for goal work.
+    fn ensure_goal_thread_available(
+        &self,
+        thread_id: ThreadId,
+    ) -> impl Future<Output = Result<(), GoalTurnHostRejection>> + Send;
+
     /// Starts an automatic goal continuation when the target thread is idle.
     fn start_goal_turn_if_idle(
         &self,
@@ -43,6 +49,8 @@ pub type GoalTurnHostFuture<'a> =
     Pin<Box<dyn Future<Output = Result<(), GoalTurnHostRejection>> + Send + 'a>>;
 
 trait ErasedGoalTurnHost: Send + Sync {
+    fn ensure_goal_thread_available(&self, thread_id: ThreadId) -> GoalTurnHostFuture<'_>;
+
     fn start_goal_turn_if_idle(
         &self,
         thread_id: ThreadId,
@@ -60,6 +68,10 @@ impl<H> ErasedGoalTurnHost for H
 where
     H: GoalTurnHost,
 {
+    fn ensure_goal_thread_available(&self, thread_id: ThreadId) -> GoalTurnHostFuture<'_> {
+        Box::pin(GoalTurnHost::ensure_goal_thread_available(self, thread_id))
+    }
+
     fn start_goal_turn_if_idle(
         &self,
         thread_id: ThreadId,
@@ -92,6 +104,11 @@ impl GoalTurnHostHandle {
         }
     }
 
+    /// Confirms that the target thread remains available for goal work.
+    pub fn ensure_goal_thread_available(&self, thread_id: ThreadId) -> GoalTurnHostFuture<'_> {
+        self.inner.ensure_goal_thread_available(thread_id)
+    }
+
     /// Starts automatic goal work through the host-owned admission path.
     pub fn start_goal_turn_if_idle(
         &self,
@@ -116,6 +133,13 @@ impl GoalTurnHostHandle {
 pub struct NoopGoalTurnHost;
 
 impl GoalTurnHost for NoopGoalTurnHost {
+    fn ensure_goal_thread_available(
+        &self,
+        _thread_id: ThreadId,
+    ) -> impl Future<Output = Result<(), GoalTurnHostRejection>> + Send {
+        std::future::ready(Err(GoalTurnHostRejection::HostUnavailable))
+    }
+
     fn start_goal_turn_if_idle(
         &self,
         _thread_id: ThreadId,

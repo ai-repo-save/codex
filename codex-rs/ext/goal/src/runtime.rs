@@ -417,6 +417,16 @@ impl GoalRuntimeHandle {
             return Ok(());
         }
 
+        if let Err(reason) = self
+            .inner
+            .goal_turn_host
+            .ensure_goal_thread_available(self.inner.thread_id)
+            .await
+        {
+            tracing::debug!(?reason, "skipping goal continuation because live thread is unavailable");
+            return Ok(());
+        }
+
         let Some(goal) = self
             .inner
             .state_dbs
