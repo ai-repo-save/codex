@@ -32,10 +32,11 @@ use test_case::test_case;
 use tokio::time::sleep;
 
 const MULTI_AGENT_V1_NAMESPACE: &str = "multi_agent_v1";
+const MULTI_AGENT_V2_NAMESPACE: &str = "agents";
 const SPAWN_AGENT_TOOL_NAME: &str = "spawn_agent";
 
-fn spawn_agent_description(body: &Value) -> Option<String> {
-    namespace_child_tool(body, MULTI_AGENT_V1_NAMESPACE, SPAWN_AGENT_TOOL_NAME)
+fn spawn_agent_description(body: &Value, namespace: &str) -> Option<String> {
+    namespace_child_tool(body, namespace, SPAWN_AGENT_TOOL_NAME)
         .and_then(|tool| tool.get("description"))
         .and_then(Value::as_str)
         .map(str::to_string)
@@ -55,6 +56,7 @@ fn test_model_info(
     default_reasoning_level: ReasoningEffort,
     supported_reasoning_levels: Vec<ReasoningEffortPreset>,
     service_tiers: Vec<ModelServiceTier>,
+    multi_agent_version: Option<codex_protocol::protocol::MultiAgentVersion>,
 ) -> ModelInfo {
     ModelInfo {
         slug: slug.to_string(),
@@ -71,7 +73,7 @@ fn test_model_info(
         use_responses_lite: false,
         auto_review_model_override: None,
         tool_mode: None,
-        multi_agent_version: None,
+        multi_agent_version,
         priority: 1,
         additional_speed_tiers: Vec::new(),
         service_tiers,
@@ -146,8 +148,22 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
             name: "Fast".to_string(),
             description: "1.5x speed, increased usage".to_string(),
         }],
+        Some(codex_protocol::protocol::MultiAgentVersion::V2),
     )];
-    picker_visible_models.extend((1..=3).map(|index| {
+    picker_visible_models.push(test_model_info(
+        "gpt-5.6-luna",
+        "GPT-5.6 Luna",
+        "Fast and affordable agentic coding model.",
+        ModelVisibility::List,
+        ReasoningEffort::Medium,
+        vec![ReasoningEffortPreset {
+            effort: ReasoningEffort::Medium,
+            description: "Balanced".to_string(),
+        }],
+        Vec::new(),
+        Some(codex_protocol::protocol::MultiAgentVersion::V1),
+    ));
+    picker_visible_models.extend((1..=4).map(|index| {
         test_model_info(
             &format!("filler-model-{index}"),
             &format!("Filler Model {index}"),
@@ -159,6 +175,7 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
                 description: "Balanced".to_string(),
             }],
             Vec::new(),
+            None,
         )
     }));
     picker_visible_models.push(test_model_info(
@@ -186,6 +203,7 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
             },
         ],
         Vec::new(),
+        None,
     ));
     picker_visible_models.push(test_model_info(
         "hidden-model",
@@ -198,6 +216,7 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
             description: "Not visible".to_string(),
         }],
         Vec::new(),
+        None,
     ));
     mount_models_once(
         &server,
@@ -220,6 +239,10 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
                 .features
                 .enable(Feature::Collab)
                 .expect("test config should allow feature update");
+            config
+                .features
+                .enable(Feature::MultiAgentV2)
+                .expect("test config should allow feature update");
             config.multi_agent_v2.hide_spawn_agent_metadata = false;
         });
     let test = builder.build(&server).await?;
@@ -232,8 +255,8 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
     test.submit_turn("hello").await?;
 
     let body = resp_mock.single_request().body_json();
-    let description =
-        spawn_agent_description(&body).expect("spawn_agent description should be present");
+    let description = spawn_agent_description(&body, MULTI_AGENT_V2_NAMESPACE)
+        .expect("spawn_agent description should be present");
 
     assert!(
         description.contains("- `visible-model`: Fast and capable"),
@@ -263,6 +286,10 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
     assert!(
         description.contains("Service tiers: priority."),
         "expected service tier guidance in spawn_agent description: {description:?}"
+    );
+    assert!(
+        description.contains("- `gpt-5.6-luna`: Fast and affordable agentic coding model."),
+        "expected V1-marked Luna model in V2 spawn_agent description: {description:?}"
     );
     assert!(
         description.contains(

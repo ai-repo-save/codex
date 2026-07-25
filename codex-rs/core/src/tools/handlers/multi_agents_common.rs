@@ -17,7 +17,6 @@ use codex_protocol::models::ResponseInputItem;
 use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::openai_models::ReasoningEffortPreset;
-use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::user_input::UserInput;
@@ -28,15 +27,7 @@ use serde_json::Value as JsonValue;
 pub(crate) const MIN_WAIT_TIMEOUT_MS: i64 = DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS;
 pub(crate) const DEFAULT_WAIT_TIMEOUT_MS: i64 = 30_000;
 pub(crate) const MAX_WAIT_TIMEOUT_MS: i64 = HARD_MAX_MULTI_AGENT_V2_TIMEOUT_MS;
-pub(crate) const MAX_SPAWN_AGENT_MODEL_OVERRIDES: usize = 5;
-
-pub(crate) fn model_supports_multi_agent_backend(
-    model: &ModelPreset,
-    multi_agent_version: MultiAgentVersion,
-) -> bool {
-    multi_agent_version != MultiAgentVersion::V2
-        || model.multi_agent_version == Some(multi_agent_version)
-}
+pub(crate) const MAX_SPAWN_AGENT_MODEL_OVERRIDES: usize = 7;
 
 pub(crate) fn function_arguments(payload: ToolPayload) -> Result<String, FunctionCallError> {
     match payload {
@@ -264,7 +255,6 @@ pub(crate) async fn apply_requested_spawn_agent_model_overrides(
         let selected_model_name = find_spawn_agent_model_name(
             &available_models,
             requested_model,
-            turn.multi_agent_version,
         )?;
         let selected_model_info = session
             .services
@@ -397,20 +387,15 @@ pub(crate) async fn apply_spawn_agent_role(
 fn find_spawn_agent_model_name(
     available_models: &[ModelPreset],
     requested_model: &str,
-    multi_agent_version: MultiAgentVersion,
 ) -> Result<String, FunctionCallError> {
     available_models
         .iter()
-        .find(|model| {
-            model.model == requested_model
-                && model_supports_multi_agent_backend(model, multi_agent_version)
-        })
+        .find(|model| model.model == requested_model)
         .map(|model| model.model.clone())
         .ok_or_else(|| {
             let available = available_models
                 .iter()
                 .filter(|model| model.show_in_picker)
-                .filter(|model| model_supports_multi_agent_backend(model, multi_agent_version))
                 .take(MAX_SPAWN_AGENT_MODEL_OVERRIDES)
                 .map(|model| model.model.as_str())
                 .collect::<Vec<_>>()
