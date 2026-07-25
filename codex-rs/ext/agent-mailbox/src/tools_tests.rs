@@ -38,7 +38,8 @@ const MESSAGE_CONTENT: &str = "bounded mailbox content";
 #[tokio::test]
 async fn send_rejects_a_message_larger_than_the_model_input_budget() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
-    let state = Arc::new(StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?);
+    let state =
+        StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
     let tool = AgentMailboxTool::send(
         runtime(thread_id(SENDER_THREAD_ID), AgentPath::root()),
         state,
@@ -69,7 +70,8 @@ async fn send_rejects_a_message_larger_than_the_model_input_budget() -> anyhow::
 #[tokio::test]
 async fn bounded_batch_read_leaves_later_messages_unread() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
-    let state = Arc::new(StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?);
+    let state =
+        StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
     let root_thread_id = thread_id(ROOT_THREAD_ID);
     let sender_thread_id = thread_id(SENDER_THREAD_ID);
     for id in [MESSAGE_ONE_ID, MESSAGE_TWO_ID, MESSAGE_THREE_ID] {

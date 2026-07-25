@@ -11,7 +11,6 @@ use serde_json::Value;
 use serde_json::json;
 
 use crate::MAX_AGENT_MAILBOX_PAYLOAD_BYTES;
-use crate::MAX_AGENT_MAILBOX_READ_MESSAGES;
 use crate::MAX_AGENT_MAILBOX_READ_OUTPUT_BYTES;
 use crate::MAX_AGENT_MAILBOX_SINGLE_OUTPUT_BYTES;
 
@@ -31,7 +30,7 @@ impl AgentMailboxReadOutput {
             let metadata = message_metadata(&message);
             match message.payload {
                 AgentMailboxPayload::Plaintext { content } => {
-                    content_items.push(plaintext_content_item(metadata, content));
+                    content_items.push(plaintext_content_item(metadata.clone(), content));
                     sanitized_messages.push(json!({
                         "message": metadata,
                         "encrypted": false,
