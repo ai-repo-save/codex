@@ -660,17 +660,19 @@ impl Session {
             turn_context.collaboration_mode().mode,
         );
 
-        if let Err(err) = live_thread.append_items(&plan.persisted_items).await {
-            let committed = live_thread
-                .load_history(/*include_archived*/ false)
-                .await
-                .is_ok_and(|history| plan.is_committed_in(&history.items));
-            if !committed {
-                return Err(CodexErr::Io(std::io::Error::other(format!(
+        live_thread
+            .append_items(&plan.persisted_items)
+            .await
+            .map_err(|err| {
+                CodexErr::Io(std::io::Error::other(format!(
                     "failed to persist context rewind transaction: {err}"
-                ))));
-            }
-        }
+                )))
+            })?;
+        live_thread.flush().await.map_err(|err| {
+            CodexErr::Io(std::io::Error::other(format!(
+                "failed to flush context rewind transaction: {err}"
+            )))
+        })?;
 
         self.apply_rollout_reconstruction(turn_context, &plan.replay_items)
             .await;
