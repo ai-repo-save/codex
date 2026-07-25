@@ -10,7 +10,6 @@ use chrono::Utc;
 use codex_protocol::ThreadId;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::protocol::AskForApproval;
-use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SessionContextWindow;
 use codex_protocol::protocol::SessionMeta;
@@ -398,8 +397,6 @@ struct InMemoryThreadStoreState {
     metadata_updates: HashMap<ThreadId, ThreadMetadataPatch>,
     names: HashMap<ThreadId, Option<String>>,
     rollout_paths: HashMap<PathBuf, ThreadId>,
-    fail_next_rewind_append_before_commit: bool,
-    fail_next_rewind_append_after_commit: bool,
 }
 
 impl InMemoryThreadStore {
@@ -421,22 +418,6 @@ impl InMemoryThreadStore {
     /// Returns the calls observed by this store.
     pub async fn calls(&self) -> InMemoryThreadStoreCalls {
         self.state.lock().await.calls.clone()
-    }
-
-    /// Injects a failure before the next rewind transaction append for test/debug scenarios.
-    pub async fn fail_next_rewind_append_before_commit(&self) {
-        self.state
-            .lock()
-            .await
-            .fail_next_rewind_append_before_commit = true;
-    }
-
-    /// Injects a failure after the next rewind transaction append for test/debug scenarios.
-    pub async fn fail_next_rewind_append_after_commit(&self) {
-        self.state
-            .lock()
-            .await
-            .fail_next_rewind_append_after_commit = true;
     }
 
     async fn create_thread(&self, params: CreateThreadParams) -> ThreadStoreResult<()> {
@@ -506,32 +487,12 @@ impl InMemoryThreadStore {
         if persisted_items.is_empty() {
             return Ok(());
         }
-        let is_rewind_transaction = persisted_items.iter().any(|item| {
-            matches!(
-                item,
-                RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(_))
-            )
-        });
-        if is_rewind_transaction
-            && std::mem::take(&mut state.fail_next_rewind_append_before_commit)
-        {
-            return Err(ThreadStoreError::Internal {
-                message: "injected rewind append failure before canonical commit".to_string(),
-            });
-        }
         state.calls.append_items += 1;
         state
             .histories
             .entry(params.thread_id)
             .or_default()
             .extend(persisted_items);
-        if is_rewind_transaction
-            && std::mem::take(&mut state.fail_next_rewind_append_after_commit)
-        {
-            return Err(ThreadStoreError::Internal {
-                message: "injected rewind append failure after canonical commit".to_string(),
-            });
-        }
         Ok(())
     }
 

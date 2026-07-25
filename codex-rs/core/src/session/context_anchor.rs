@@ -660,12 +660,11 @@ impl Session {
             turn_context.collaboration_mode().mode,
         );
 
-        if let Err(err) = live_thread.append_items(&plan.persisted_items).await {
-            let committed = live_thread
-                .load_canonical_history(/*include_archived*/ false)
-                .await
-                .is_ok_and(|history| plan.is_committed_in(&history.items));
-            if !committed {
+        if let Err(err) = live_thread
+            .append_items_with_commit_outcome(&plan.persisted_items)
+            .await
+        {
+            if !err.canonical_history_committed() {
                 return Err(CodexErr::Io(std::io::Error::other(format!(
                     "failed to persist context rewind transaction: {err}"
                 ))));

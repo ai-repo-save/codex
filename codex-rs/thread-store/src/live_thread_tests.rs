@@ -71,13 +71,6 @@ impl ThreadStore for MetadataFailingStore {
         self.inner.load_history(params)
     }
 
-    fn load_canonical_history(
-        &self,
-        params: LoadThreadHistoryParams,
-    ) -> crate::ThreadStoreFuture<'_, StoredThreadHistory> {
-        self.inner.load_canonical_history(params)
-    }
-
     fn read_thread(
         &self,
         params: ReadThreadParams,
@@ -161,12 +154,7 @@ async fn append_reports_canonical_commit_when_metadata_projection_fails() {
             subagent_history_start_ordinal: None,
             initial_window_id: uuid::Uuid::now_v7().to_string(),
             metadata: ThreadPersistenceMetadata {
-                cwd: Some(
-                    codex_utils_absolute_path::AbsolutePathBuf::from_absolute_path(
-                        codex_home.path(),
-                    )
-                    .expect("temp codex home should be absolute"),
-                ),
+                cwd: None,
                 model_provider: "test-provider".to_string(),
                 memory_mode: ThreadMemoryMode::Enabled,
             },
@@ -183,14 +171,20 @@ async fn append_reports_canonical_commit_when_metadata_projection_fails() {
         ..Default::default()
     }));
 
-    live_thread
-        .append_items(std::slice::from_ref(&appended_item))
+    let err = live_thread
+        .append_items_with_commit_outcome(std::slice::from_ref(&appended_item))
         .await
         .expect_err("metadata projection should fail after canonical append");
 
-    let history = live_thread
-        .load_canonical_history(/*include_archived*/ false)
-        .await
-        .expect("canonical JSONL history should remain readable");
+    assert!(err.canonical_history_committed());
+    let history = ThreadStore::load_history(
+        &local_store,
+        LoadThreadHistoryParams {
+            thread_id,
+            include_archived: false,
+        },
+    )
+    .await
+    .expect("canonical JSONL history should remain readable");
     assert_eq!(history.items.last(), Some(&appended_item));
 }
