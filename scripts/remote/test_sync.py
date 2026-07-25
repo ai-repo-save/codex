@@ -47,9 +47,7 @@ class RemoteSyncTest(unittest.TestCase):
 
         apply_remote_changes.assert_called_once_with(Path("/repo"), config, status_plan)
 
-    def test_remote_codex_rs_test_command_uses_nextest_without_bench_smoke(
-        self,
-    ) -> None:
+    def test_remote_codex_rs_test_command_uses_canonical_just_recipe(self) -> None:
         command = _sync.remote_codex_rs_just_command(("test", "-p", "codex-app-server"))
 
         self.assertEqual(command[0:2], ("bash", "-lc"))
@@ -61,11 +59,9 @@ class RemoteSyncTest(unittest.TestCase):
         )
         self.assertIn("-C link-arg=-fuse-ld=$(command -v mold)", shell_command)
         self.assertIn(
-            "cd codex-rs && RUST_MIN_STACK=8388608 cargo nextest run --no-fail-fast -p codex-app-server",
+            "cd codex-rs && just test -p codex-app-server",
             shell_command,
         )
-        self.assertNotIn("just test", shell_command)
-        self.assertNotIn("bench-smoke", shell_command)
 
     def test_remote_codex_rs_non_test_command_uses_just_recipe(self) -> None:
         command = _sync.remote_codex_rs_just_command(("fmt",))

@@ -388,17 +388,7 @@ def git_output(repo_root: Path, *args: str) -> str:
 def remote_codex_rs_just_command(args: Sequence[str]) -> tuple[str, ...]:
     if not args:
         raise ValueError("just args must not be empty")
-    if args[0] == "test":
-        # The justfile's `test` recipe runs `bench-smoke` after nextest. Remote
-        # validation scripts are used for focused development checks, so they
-        # run the nextest portion directly and leave benchmark smoke to CI or an
-        # explicit benchmark command.
-        command = (
-            "cd codex-rs && "
-            f"RUST_MIN_STACK=8388608 cargo nextest run --no-fail-fast {shlex.join(args[1:])}"
-        )
-    else:
-        command = f"cd codex-rs && just {shlex.join(args)}"
+    command = f"cd codex-rs && just {shlex.join(args)}"
     return (
         "bash",
         "-lc",
