@@ -96,7 +96,8 @@ async fn thread_agent_mailbox_get_and_resume_hydration_are_count_only() -> Resul
     )
     .await??;
     let _: ThreadResumeResponse = to_response(resume_response)?;
-    let notification = wait_for_mailbox_update(&mut app_server, &first_thread.id, 1).await?;
+    let notification =
+        wait_for_mailbox_update(&mut app_server, &first_thread.id, /*revision*/ 1).await?;
     assert_eq!(notification.mailbox.total, 1);
     assert_eq!(notification.mailbox.action_required, 1);
 
@@ -211,7 +212,8 @@ async fn agent_mailbox_body_reaches_parent_only_after_explicit_read() -> Result<
     start_turn(&mut app_server, &thread.id, PARENT_SPAWN_PROMPT).await?;
     wait_for_turn_completion(&mut app_server, &thread.id).await?;
 
-    let mailbox_update = wait_for_mailbox_update(&mut app_server, &thread.id, 1).await?;
+    let mailbox_update =
+        wait_for_mailbox_update(&mut app_server, &thread.id, /*revision*/ 1).await?;
     assert_eq!(mailbox_update.mailbox.total, 1);
     assert_eq!(mailbox_update.mailbox.progress, 0);
     assert_eq!(mailbox_update.mailbox.result, 1);
