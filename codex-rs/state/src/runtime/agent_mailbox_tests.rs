@@ -1,5 +1,6 @@
 use super::StateRuntime;
 use crate::AgentMailboxCategory;
+use crate::AgentMailboxMessage;
 use crate::AgentMailboxMessageInput;
 use crate::AgentMailboxPayload;
 use crate::AgentMailboxReadRequest;
