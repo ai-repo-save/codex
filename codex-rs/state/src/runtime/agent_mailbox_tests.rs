@@ -233,7 +233,7 @@ async fn mailbox_enqueue_is_idempotent_after_consumption_and_runtime_restart() -
         .agent_mailbox()
         .consume(read_request(/*category*/ None))
         .await?;
-    assert_eq!(Vec::new(), replayed.messages);
+    assert_eq!(Vec::<AgentMailboxMessage>::new(), replayed.messages);
     assert_eq!(
         expected_snapshot(
             /*total*/ 0,
