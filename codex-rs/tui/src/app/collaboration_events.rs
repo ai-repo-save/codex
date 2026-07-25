@@ -7,14 +7,22 @@ pub(super) fn collab_receiver_thread_ids(
     notification: &ServerNotification,
 ) -> Option<&[String]> {
     match notification {
-        ServerNotification::ItemStarted(notification)
-        | ServerNotification::ItemCompleted(notification) => match &notification.item {
-            ThreadItem::CollabAgentToolCall {
-                receiver_thread_ids,
-                ..
-            } => Some(receiver_thread_ids),
-            _ => None,
-        },
+        ServerNotification::ItemStarted(notification) => {
+            collab_receiver_thread_ids_from_item(&notification.item)
+        }
+        ServerNotification::ItemCompleted(notification) => {
+            collab_receiver_thread_ids_from_item(&notification.item)
+        }
+        _ => None,
+    }
+}
+
+fn collab_receiver_thread_ids_from_item(item: &ThreadItem) -> Option<&[String]> {
+    match item {
+        ThreadItem::CollabAgentToolCall {
+            receiver_thread_ids,
+            ..
+        } => Some(receiver_thread_ids),
         _ => None,
     }
 }
@@ -23,11 +31,17 @@ pub(super) fn sub_agent_activity_item(
     notification: &ServerNotification,
 ) -> Option<&ThreadItem> {
     match notification {
-        ServerNotification::ItemStarted(notification)
-        | ServerNotification::ItemCompleted(notification) => match &notification.item {
-            item @ ThreadItem::SubAgentActivity { .. } => Some(item),
-            _ => None,
-        },
+        ServerNotification::ItemStarted(notification) => sub_agent_activity_from_item(&notification.item),
+        ServerNotification::ItemCompleted(notification) => {
+            sub_agent_activity_from_item(&notification.item)
+        }
+        _ => None,
+    }
+}
+
+fn sub_agent_activity_from_item(item: &ThreadItem) -> Option<&ThreadItem> {
+    match item {
+        item @ ThreadItem::SubAgentActivity { .. } => Some(item),
         _ => None,
     }
 }
