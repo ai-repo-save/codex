@@ -1884,6 +1884,7 @@ dependencies = [
 name = "codex-agent-mailbox-extension"
 version = "0.145.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "codex-core",
  "codex-extension-api",

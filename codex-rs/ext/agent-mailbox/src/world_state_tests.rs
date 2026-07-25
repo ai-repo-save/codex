@@ -28,7 +28,7 @@ fn world_state_exposes_only_aggregate_counts_and_replaces_empty_mailbox() {
             "actionRequired": 1,
             "revision": 7,
         }),
-        unread_section.snapshot()
+        *unread_section.snapshot()
     );
     assert_eq!(
         Some(BODY_WITH_UNREAD_MESSAGES.to_string()),

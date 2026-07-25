@@ -1,5 +1,4 @@
 use chrono::DateTime;
-use chrono::Utc;
 use codex_extension_api::ToolOutput;
 use codex_extension_api::ToolPayload;
 use codex_protocol::ThreadId;
