@@ -3096,8 +3096,7 @@ async fn agent_mailbox_status_line_uses_latest_active_thread_snapshot() {
         ),
         /*replay_kind*/ None,
     );
-    assert_chatwidget_snapshot!(
-        "status_line_agent_mailbox",
+    insta::assert_snapshot!(
         status_line_text(&chat).expect("agent mailbox status line"),
         @r###"Inbox 4 (action 1, result 1, progress 2)"###,
     );
