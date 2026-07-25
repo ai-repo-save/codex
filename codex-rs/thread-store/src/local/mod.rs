@@ -333,6 +333,13 @@ impl ThreadStore for LocalThreadStore {
         Box::pin(LocalThreadStore::load_history(self, params))
     }
 
+    fn load_canonical_history(
+        &self,
+        params: LoadThreadHistoryParams,
+    ) -> ThreadStoreFuture<'_, StoredThreadHistory> {
+        Box::pin(live_writer::load_canonical_history(self, params))
+    }
+
     fn load_latest_model_context(
         &self,
         params: LoadThreadHistoryParams,

@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use codex_context_fragments::ScopedMemoryContextFragment;
+use codex_core::NewThread;
 use codex_core::config::Config;
+use codex_core::config::ThreadStoreConfig;
 use codex_extension_api::ContextContributor;
 use codex_extension_api::ContextualUserFragment;
 use codex_extension_api::ExtensionData;
@@ -17,10 +19,15 @@ use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::InitialHistory;
 use codex_protocol::protocol::Op;
+use codex_protocol::protocol::ResumedHistory;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::RolloutLine;
 use codex_protocol::user_input::UserInput;
+use codex_thread_store::InMemoryThreadStore;
+use codex_thread_store::LoadThreadHistoryParams;
+use codex_thread_store::ThreadStore;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
@@ -43,6 +50,9 @@ const REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME: &str = "rewind_context_to_anchor";
 const TEST_MODEL: &str = "gpt-5.4";
 const INITIAL_TYPED_CONTEXT: &str = "initial typed context";
 const REWIND_TYPED_CONTEXT: &str = "rewind typed context";
+const SAVE_ANCHOR_PROMPT: &str = "save a rewind transaction anchor";
+const REWIND_FUTURE_PROMPT: &str = "discard this future branch with a context rewind";
+const VERIFY_RESUMED_REWIND_PROMPT: &str = "verify the resumed rewind context";
 
 struct TypedContextContributor;
 
@@ -102,6 +112,49 @@ async fn submit_turn_with_mode(test: &TestCodex, prompt: &str, mode: ModeKind) -
     })
     .await;
     Ok(())
+}
+
+async fn save_rewind_transaction_anchor(
+    test: &TestCodex,
+    server: &wiremock::MockServer,
+) -> Result<String> {
+    let save_call_id = "save-rewind-transaction-anchor";
+    let mock = mount_sse_sequence(
+        server,
+        vec![
+            sse(vec![
+                ev_response_created("save-rewind-anchor-response"),
+                ev_function_call(
+                    save_call_id,
+                    SAVE_CONTEXT_ANCHOR_TOOL_NAME,
+                    &json!({ "label": "before transactional rewind" }).to_string(),
+                ),
+                ev_completed("save-rewind-anchor-response"),
+            ]),
+            sse(vec![
+                ev_response_created("save-rewind-anchor-complete"),
+                ev_assistant_message("save-rewind-anchor-message", "anchor saved"),
+                ev_completed("save-rewind-anchor-complete"),
+            ]),
+        ],
+    )
+    .await;
+    test.submit_turn_with_approval_and_permission_profile(
+        SAVE_ANCHOR_PROMPT,
+        AskForApproval::Never,
+        PermissionProfile::Disabled,
+    )
+    .await?;
+
+    let requests = mock.requests();
+    let output = requests[1]
+        .function_call_output_text(save_call_id)
+        .expect("save output should be text JSON");
+    let output: Value = serde_json::from_str(&output)?;
+    Ok(output["anchor_id"]
+        .as_str()
+        .expect("save output should include anchor id")
+        .to_string())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -387,6 +440,352 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
         .filter(|text| text.contains(REWIND_TYPED_CONTEXT))
         .count();
     assert_eq!(persisted_rewind_context_count, 1);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn committed_context_rewind_error_converges_live_and_resumed_context() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let store_id = format!(
+        "context-rewind-after-commit-{}",
+        uuid::Uuid::now_v7()
+    );
+    let store = InMemoryThreadStore::for_id(store_id.clone());
+    let mut extension_builder = ExtensionRegistryBuilder::<Config>::new();
+    extension_builder.prompt_contributor(Arc::new(TypedContextContributor));
+    let mut builder = test_codex()
+        .with_extensions(Arc::new(extension_builder.build()))
+        .with_config(move |config| {
+            config.experimental_thread_store = ThreadStoreConfig::InMemory {
+                id: store_id.clone(),
+            };
+        });
+    let test = builder.build(&server).await?;
+    let anchor_id = save_rewind_transaction_anchor(&test, &server).await?;
+    store.fail_next_rewind_append_after_commit().await;
+
+    let rewind_call_id = "rewind-after-commit-call";
+    let list_call_id = "list-after-committed-rewind-call";
+    let rewind_mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("rewind-after-commit-response"),
+                ev_function_call(
+                    rewind_call_id,
+                    REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME,
+                    &json!({
+                        "anchor_id": anchor_id,
+                        "note": "carry forward after a committed append error"
+                    })
+                    .to_string(),
+                ),
+                ev_completed("rewind-after-commit-response"),
+            ]),
+            sse(vec![
+                ev_response_created("list-after-committed-rewind-response"),
+                ev_function_call(
+                    list_call_id,
+                    LIST_CONTEXT_ANCHORS_TOOL_NAME,
+                    &json!({ "limit": 10 }).to_string(),
+                ),
+                ev_completed("list-after-committed-rewind-response"),
+            ]),
+            sse(vec![
+                ev_response_created("committed-rewind-complete"),
+                ev_assistant_message("committed-rewind-message", "rewind complete"),
+                ev_completed("committed-rewind-complete"),
+            ]),
+        ],
+    )
+    .await;
+    test.submit_turn_with_approval_and_permission_profile(
+        REWIND_FUTURE_PROMPT,
+        AskForApproval::Never,
+        PermissionProfile::Disabled,
+    )
+    .await?;
+
+    let requests = rewind_mock.requests();
+    assert_eq!(requests.len(), 3);
+    for request in &requests[1..] {
+        let user_texts = request.message_input_texts("user");
+        assert_eq!(
+            user_texts
+                .iter()
+                .filter(|text| text.contains(REWIND_TYPED_CONTEXT))
+                .count(),
+            1
+        );
+        assert!(
+            user_texts
+                .iter()
+                .all(|text| !text.contains(REWIND_FUTURE_PROMPT))
+        );
+    }
+
+    let rewind_output = requests[1]
+        .function_call_output_text(rewind_call_id)
+        .expect("rewind output should be text JSON");
+    let rewind_output: Value = serde_json::from_str(&rewind_output)?;
+    let replacement_anchor_id = rewind_output["replacement_anchor_id"]
+        .as_str()
+        .expect("rewind output should include replacement anchor id")
+        .to_string();
+    assert_eq!(rewind_output["status"], json!("rewound"));
+    assert_eq!(rewind_output["anchor_id"], json!(anchor_id));
+
+    let list_output = requests[2]
+        .function_call_output_text(list_call_id)
+        .expect("list output should be text JSON");
+    let list_output: Value = serde_json::from_str(&list_output)?;
+    assert_eq!(list_output["active_anchor_count"], json!(1));
+    assert_eq!(
+        list_output["anchors"][0]["anchor_id"],
+        json!(replacement_anchor_id)
+    );
+
+    let thread_id = test.session_configured.thread_id;
+    let canonical_history = ThreadStore::load_history(
+        store.as_ref(),
+        LoadThreadHistoryParams {
+            thread_id,
+            include_archived: false,
+        },
+    )
+    .await?;
+    let persisted_rewind_count = canonical_history
+        .items
+        .iter()
+        .filter(|item| {
+            matches!(
+                item,
+                RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(event))
+                    if event.anchor_id == anchor_id
+            )
+        })
+        .count();
+    let persisted_replacement_count = canonical_history
+        .items
+        .iter()
+        .filter(|item| {
+            matches!(
+                item,
+                RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(event))
+                    if event.anchor_id == replacement_anchor_id
+            )
+        })
+        .count();
+    let persisted_rewind_context_count = canonical_history
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(ResponseItem::Message { content, .. }) => Some(content),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|item| match item {
+            ContentItem::InputText { text } => Some(text),
+            _ => None,
+        })
+        .filter(|text| text.contains(REWIND_TYPED_CONTEXT))
+        .count();
+    assert_eq!(persisted_rewind_count, 1);
+    assert_eq!(persisted_replacement_count, 1);
+    assert_eq!(persisted_rewind_context_count, 1);
+
+    test.codex.shutdown_and_wait().await?;
+    let NewThread {
+        thread: resumed_thread,
+        ..
+    } = test
+        .thread_manager
+        .resume_thread_with_history(
+            test.config.clone(),
+            InitialHistory::Resumed(ResumedHistory {
+                conversation_id: thread_id,
+                history: Arc::new(canonical_history.items),
+                rollout_path: None,
+            }),
+            test.thread_manager.auth_manager(),
+            /*parent_trace*/ None,
+            /*supports_openai_form_elicitation*/ false,
+        )
+        .await?;
+    let resumed_mock = mount_sse_sequence(
+        &server,
+        vec![sse(vec![
+            ev_response_created("resumed-rewind-response"),
+            ev_assistant_message("resumed-rewind-message", "resume verified"),
+            ev_completed("resumed-rewind-response"),
+        ])],
+    )
+    .await;
+    resumed_thread
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: VERIFY_RESUMED_REWIND_PROMPT.to_string(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await?;
+    wait_for_event(&resumed_thread, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+
+    let resumed_request = resumed_mock.single_request();
+    let resumed_user_texts = resumed_request.message_input_texts("user");
+    assert_eq!(
+        resumed_user_texts
+            .iter()
+            .filter(|text| text.contains(REWIND_TYPED_CONTEXT))
+            .count(),
+        1
+    );
+    assert!(
+        resumed_user_texts
+            .iter()
+            .all(|text| !text.contains(REWIND_FUTURE_PROMPT))
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn uncommitted_context_rewind_error_preserves_live_context_and_anchor() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let store_id = format!(
+        "context-rewind-before-commit-{}",
+        uuid::Uuid::now_v7()
+    );
+    let store = InMemoryThreadStore::for_id(store_id.clone());
+    let mut extension_builder = ExtensionRegistryBuilder::<Config>::new();
+    extension_builder.prompt_contributor(Arc::new(TypedContextContributor));
+    let mut builder = test_codex()
+        .with_extensions(Arc::new(extension_builder.build()))
+        .with_config(move |config| {
+            config.experimental_thread_store = ThreadStoreConfig::InMemory {
+                id: store_id.clone(),
+            };
+        });
+    let test = builder.build(&server).await?;
+    let anchor_id = save_rewind_transaction_anchor(&test, &server).await?;
+    store.fail_next_rewind_append_before_commit().await;
+
+    let failed_rewind_mock = mount_sse_sequence(
+        &server,
+        vec![sse(vec![
+            ev_response_created("rewind-before-commit-response"),
+            ev_function_call(
+                "rewind-before-commit-call",
+                REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME,
+                &json!({
+                    "anchor_id": anchor_id,
+                    "note": "this rewind must remain uncommitted"
+                })
+                .to_string(),
+            ),
+            ev_completed("rewind-before-commit-response"),
+        ])],
+    )
+    .await;
+    test.submit_turn_with_approval_and_permission_profile(
+        REWIND_FUTURE_PROMPT,
+        AskForApproval::Never,
+        PermissionProfile::Disabled,
+    )
+    .await?;
+    assert_eq!(failed_rewind_mock.requests().len(), 1);
+
+    let list_call_id = "list-after-uncommitted-rewind-call";
+    let list_mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("list-after-uncommitted-rewind-response"),
+                ev_function_call(
+                    list_call_id,
+                    LIST_CONTEXT_ANCHORS_TOOL_NAME,
+                    &json!({ "limit": 10 }).to_string(),
+                ),
+                ev_completed("list-after-uncommitted-rewind-response"),
+            ]),
+            sse(vec![
+                ev_response_created("uncommitted-rewind-check-complete"),
+                ev_assistant_message("uncommitted-rewind-check-message", "anchor unchanged"),
+                ev_completed("uncommitted-rewind-check-complete"),
+            ]),
+        ],
+    )
+    .await;
+    test.submit_turn_with_approval_and_permission_profile(
+        "list anchors after the failed rewind",
+        AskForApproval::Never,
+        PermissionProfile::Disabled,
+    )
+    .await?;
+
+    let requests = list_mock.requests();
+    assert_eq!(requests.len(), 2);
+    let user_texts = requests[0].message_input_texts("user");
+    assert!(
+        user_texts
+            .iter()
+            .any(|text| text.contains(REWIND_FUTURE_PROMPT))
+    );
+    assert!(
+        user_texts
+            .iter()
+            .all(|text| !text.contains(REWIND_TYPED_CONTEXT))
+    );
+    let list_output = requests[1]
+        .function_call_output_text(list_call_id)
+        .expect("list output should be text JSON");
+    let list_output: Value = serde_json::from_str(&list_output)?;
+    assert_eq!(list_output["active_anchor_count"], json!(1));
+    assert_eq!(list_output["anchors"][0]["anchor_id"], json!(anchor_id));
+
+    let canonical_history = ThreadStore::load_history(
+        store.as_ref(),
+        LoadThreadHistoryParams {
+            thread_id: test.session_configured.thread_id,
+            include_archived: false,
+        },
+    )
+    .await?;
+    assert!(canonical_history.items.iter().all(|item| {
+        !matches!(
+            item,
+            RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(_))
+        )
+    }));
+    assert_eq!(
+        canonical_history
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                RolloutItem::ResponseItem(ResponseItem::Message { content, .. }) => Some(content),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|item| match item {
+                ContentItem::InputText { text } => Some(text),
+                _ => None,
+            })
+            .filter(|text| text.contains(REWIND_TYPED_CONTEXT))
+            .count(),
+        0
+    );
 
     Ok(())
 }

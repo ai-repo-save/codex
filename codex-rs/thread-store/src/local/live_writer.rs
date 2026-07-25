@@ -14,8 +14,10 @@ use super::LocalThreadStore;
 use super::create_thread;
 use crate::AppendThreadItemsParams;
 use crate::CreateThreadParams;
+use crate::LoadThreadHistoryParams;
 use crate::ReadThreadParams;
 use crate::ResumeThreadParams;
+use crate::StoredThreadHistory;
 use crate::ThreadStoreError;
 use crate::ThreadStoreResult;
 use crate::types::canonical_history_mode_from_rollout_items;
@@ -123,6 +125,30 @@ pub(super) async fn append_items(
         RolloutWriteOp::AppendItems(params.items),
     )
     .await
+}
+
+pub(super) async fn load_canonical_history(
+    store: &LocalThreadStore,
+    params: LoadThreadHistoryParams,
+) -> ThreadStoreResult<StoredThreadHistory> {
+    let rollout_path = rollout_path(store, params.thread_id).await?;
+    let (items, loaded_thread_id, _) = RolloutRecorder::load_rollout_items(&rollout_path)
+        .await
+        .map_err(|err| ThreadStoreError::Internal {
+            message: format!("failed to load canonical rollout history: {err}"),
+        })?;
+    if loaded_thread_id != Some(params.thread_id) {
+        return Err(ThreadStoreError::Internal {
+            message: format!(
+                "canonical rollout thread id mismatch: expected {}, found {loaded_thread_id:?}",
+                params.thread_id
+            ),
+        });
+    }
+    Ok(StoredThreadHistory {
+        thread_id: params.thread_id,
+        items,
+    })
 }
 
 pub(super) async fn persist_thread(

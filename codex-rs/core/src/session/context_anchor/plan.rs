@@ -21,6 +21,35 @@ pub(super) struct FinalizedRewindPlan {
     pub(super) persisted_items: Vec<RolloutItem>,
 }
 
+impl FinalizedRewindPlan {
+    pub(super) fn is_committed_in(&self, rollout_items: &[RolloutItem]) -> bool {
+        let replacement_anchor_id = self.replacement_anchor.anchor_id.as_str();
+        let mut saw_rewind = false;
+        for item in rollout_items {
+            match item {
+                RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind))
+                    if rewind.anchor_id == self.rewind_event.anchor_id
+                        && rewind.replacement_anchor_id.as_deref()
+                            == Some(replacement_anchor_id) =>
+                {
+                    saw_rewind = true;
+                }
+                RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(anchor))
+                    if saw_rewind && anchor.anchor_id == replacement_anchor_id =>
+                {
+                    return true;
+                }
+                RolloutItem::ResponseItem(_) if saw_rewind => {}
+                _ if saw_rewind => {
+                    saw_rewind = false;
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+}
+
 impl RewindPlan {
     pub(super) fn new(
         source_items: Vec<RolloutItem>,
