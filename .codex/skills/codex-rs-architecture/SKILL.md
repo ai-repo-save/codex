@@ -21,6 +21,8 @@ Use this skill before modifying Codex internals or when a task is unclear about 
 
 - Locate the owning crate before editing. Avoid adding new concepts to `codex-core` when a narrower crate already owns the behavior.
 - Prefer bottom-layer fixes. If a request parser, tool router, or transport contract is wrong, fix that layer rather than adding caller-side compatibility.
-- Treat model-visible context as high risk. Any new context fragment must be bounded, structured, and reviewed for prompt-cache impact.
+- Treat model-visible context as high risk. Follow the existing producer, tool-output, and
+  context-window budget owners; intermediate adapters preserve typed fragments without
+  re-budgeting them. Review new fragments for prompt-cache impact.
 - For user-visible TUI changes, include snapshot coverage and inspect the rendered behavior path.
 - For Codex CLI or agent-behavior fixes that pass remote validation, install the updated standalone build locally before handoff unless the user explicitly excludes local install.

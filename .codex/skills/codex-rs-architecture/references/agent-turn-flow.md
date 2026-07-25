@@ -15,9 +15,18 @@
 
 ## Model-visible context
 
-- Context fragments should be structured and bounded. Repo guidance requires injected fragments to be represented under `core/context` when adding new model-visible context.
-- Avoid unbounded history or large raw documents in requests. Prefer capped summaries, explicit references, and progressive loading.
-- Any new individual context item that can exceed roughly 1k tokens needs manual review; anything above 10k tokens should not be injected as a single item.
+- Define typed model-visible fragments in `codex-rs/context-fragments` with
+  `ContextualUserFragment`; core registers and assembles them.
+- Trace producer → contribution → `ResponseItem` → context history → request assembly before
+  changing a limit. The producer owns semantic and collection budgets and measures the final
+  rendered fragment, including wrappers and truncation markers.
+- Shared tool-output serialization owns generic tool-result truncation. Session and request
+  assembly own the full context-window budget. Adapters, persistence, replay, and protocol
+  projection preserve already-budgeted content rather than applying another budget.
+- Treat 10K tokens as the maximum review boundary for one model-visible item, not as a default
+  per-layer budget. Items that can cross 1K tokens require additional manual review.
+- Represent large source material through its owning bounded summary, explicit references, or
+  progressive loading rather than copying raw documents into requests.
 
 ## Persistence and history
 
