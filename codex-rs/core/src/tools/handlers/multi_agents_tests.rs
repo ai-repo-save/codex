@@ -495,16 +495,20 @@ async fn multi_agent_v2_spawn_accepts_available_model_with_different_backend_met
         .features
         .enable(Feature::MultiAgentV2)
         .expect("test config should allow feature update");
-    set_turn_config(&mut turn, config);
+    set_turn_config(
+        Arc::get_mut(&mut turn).expect("turn context should be uniquely owned"),
+        config,
+    );
     let manager = thread_manager();
     let root = manager
         .start_thread((*turn.config).clone())
         .await
         .expect("root thread should start");
-    session.services.agent_control = manager.agent_control();
-    session.thread_id = root.thread_id;
-    let session = Arc::new(session);
-    let turn = Arc::new(turn);
+    {
+        let session = Arc::get_mut(&mut session).expect("session should be uniquely owned");
+        session.services.agent_control = manager.agent_control();
+        session.thread_id = root.thread_id;
+    }
 
     let output = SpawnAgentHandlerV2::default()
         .handle(invocation(
