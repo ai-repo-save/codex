@@ -1,4 +1,4 @@
-use super::multi_agents_common::MAX_SPAWN_AGENT_MODEL_OVERRIDES;
+use super::multi_agents_common::spawn_agent_model_overrides;
 use codex_protocol::openai_models::ModelPreset;
 use codex_tools::JsonSchema;
 use codex_tools::ResponsesApiNamespace;
@@ -991,11 +991,7 @@ This session is configured with {max_concurrent_threads_per_session} concurrentl
 }
 
 fn spawn_agent_models_description(models: &[ModelPreset]) -> String {
-    let visible_models: Vec<&ModelPreset> = models
-        .iter()
-        .filter(|model| model.show_in_picker)
-        .take(MAX_SPAWN_AGENT_MODEL_OVERRIDES)
-        .collect();
+    let visible_models = spawn_agent_model_overrides(models);
     if visible_models.is_empty() {
         return "No picker-visible model overrides are currently loaded.".to_string();
     }

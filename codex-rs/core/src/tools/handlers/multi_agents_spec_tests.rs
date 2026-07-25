@@ -189,7 +189,11 @@ fn spawn_agent_tool_v1_keeps_legacy_fork_context_field() {
 }
 
 #[test]
-fn spawn_agent_tool_caps_visible_model_summaries() {
+fn spawn_agent_tool_reserves_bounded_summaries_for_specialized_models() {
+    let mut luna = model_preset("luna", /*show_in_picker*/ true);
+    luna.model = "gpt-5.6-luna".to_string();
+    let mut spark = model_preset("spark", /*show_in_picker*/ true);
+    spark.model = "gpt-5.3-codex-spark".to_string();
     let tool = create_spawn_agent_tool_v2(SpawnAgentToolOptions {
         available_models: vec![
             model_preset("first", /*show_in_picker*/ true),
@@ -200,6 +204,8 @@ fn spawn_agent_tool_caps_visible_model_summaries() {
             model_preset("sixth", /*show_in_picker*/ true),
             model_preset("seventh", /*show_in_picker*/ true),
             model_preset("eighth", /*show_in_picker*/ true),
+            luna,
+            spark,
         ],
         agent_type_description: "role help".to_string(),
         expose_agent_type: true,
@@ -214,15 +220,17 @@ fn spawn_agent_tool_caps_visible_model_summaries() {
         panic!("spawn_agent should be a function tool");
     };
 
-    for model in [
-        "first", "second", "third", "fourth", "fifth", "sixth", "seventh",
-    ] {
+    for model in ["first", "second", "third", "fourth", "fifth"] {
         assert!(
             description.contains(&format!("`{model}-model`")),
             "expected {model} model summary in spawn_agent description: {description:?}"
         );
     }
-    assert!(!description.contains("`eighth-model`"));
+    assert!(description.contains("`gpt-5.6-luna`"));
+    assert!(description.contains("`gpt-5.3-codex-spark`"));
+    for model in ["sixth", "seventh", "eighth"] {
+        assert!(!description.contains(&format!("`{model}-model`")));
+    }
 }
 
 #[test]
