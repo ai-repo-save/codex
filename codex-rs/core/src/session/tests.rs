@@ -8559,6 +8559,7 @@ async fn make_multi_agent_v2_usage_hint_test_session(
 
 struct PromptExtensionTestContributor;
 struct PromptExtensionTestState;
+struct TypedPromptExtensionTestContributor;
 struct TurnContextExtensionTestContributor;
 struct TurnContextExtensionTestState {
     expected_model_context_window: Option<i64>,
@@ -8583,6 +8584,32 @@ impl codex_extension_api::ContextContributor for PromptExtensionTestContributor 
                 })
                 .into_iter()
                 .collect()
+        })
+    }
+}
+
+impl codex_extension_api::ContextContributor for TypedPromptExtensionTestContributor {
+    fn contribute_thread_context_fragments<'a>(
+        &'a self,
+        _session_store: &'a codex_extension_api::ExtensionData,
+        _thread_store: &'a codex_extension_api::ExtensionData,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Vec<Box<dyn ContextualUserFragment + Send>>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async {
+            vec![
+                Box::new(crate::context::ScopedMemoryContextFragment::new(
+                    "first typed context item",
+                )) as Box<dyn ContextualUserFragment + Send>,
+                Box::new(crate::context::ScopedMemoryContextFragment::new(
+                    "second typed context item",
+                )) as Box<dyn ContextualUserFragment + Send>,
+            ]
         })
     }
 }
@@ -8638,6 +8665,39 @@ async fn build_initial_context_includes_prompt_fragments_from_extensions() {
             .flatten()
             .any(|text| *text == "prompt extension enabled"),
         "expected prompt extension developer text, got {developer_messages:?}"
+    );
+}
+
+#[tokio::test]
+async fn build_initial_context_keeps_typed_extension_fragments_as_independent_items() {
+    let (mut session, turn_context) = make_session_and_context().await;
+    let mut builder = codex_extension_api::ExtensionRegistryBuilder::new();
+    builder.prompt_contributor(Arc::new(TypedPromptExtensionTestContributor));
+    session.services.extensions = Arc::new(builder.build());
+    let turn_context = Arc::new(turn_context);
+
+    let initial_context = build_initial_context(&session, &turn_context).await;
+    let typed_items = initial_context
+        .into_iter()
+        .filter(|item| match item {
+            ResponseItem::Message { content, .. } => content.iter().any(|content| {
+                matches!(content, ContentItem::InputText { text }
+                    if crate::context::ScopedMemoryContextFragment::matches_text(text))
+            }),
+            _ => false,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        typed_items,
+        vec![
+            ContextualUserFragment::into(crate::context::ScopedMemoryContextFragment::new(
+                "first typed context item",
+            )),
+            ContextualUserFragment::into(crate::context::ScopedMemoryContextFragment::new(
+                "second typed context item",
+            )),
+        ]
     );
 }
 

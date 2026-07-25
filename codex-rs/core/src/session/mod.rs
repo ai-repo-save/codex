@@ -1008,16 +1008,14 @@ fn push_prompt_fragment(
 
 fn push_typed_context_fragment(
     fragment: Box<dyn ContextualUserFragment + Send>,
-    developer_sections: &mut Vec<String>,
-    contextual_user_sections: &mut Vec<String>,
+    developer_items: &mut Vec<ResponseItem>,
+    contextual_user_items: &mut Vec<ResponseItem>,
 ) {
-    let role = fragment.role();
-    let text = fragment.render();
-    match role {
-        "developer" => developer_sections.push(text),
-        "user" => contextual_user_sections.push(text),
+    match fragment.role() {
+        "developer" => developer_items.push(fragment.into_boxed_response_item()),
+        "user" => contextual_user_items.push(fragment.into_boxed_response_item()),
         _ => {
-            tracing::warn!(role, "extension contributed unsupported context fragment role");
+            tracing::warn!(role = fragment.role(), "extension contributed unsupported context fragment role");
         }
     }
 }
@@ -3504,6 +3502,8 @@ impl Session {
         let mut developer_sections = Vec::<String>::with_capacity(8);
         let mut contextual_user_sections = Vec::<String>::with_capacity(2);
         let mut separate_developer_sections = Vec::<String>::new();
+        let mut typed_developer_items = Vec::new();
+        let mut typed_contextual_user_items = Vec::new();
         let (previous_turn_settings, base_instructions, session_source, auto_compact_window_ids) = {
             let state = self.state.lock().await;
             (
@@ -3633,8 +3633,8 @@ impl Session {
             {
                 push_typed_context_fragment(
                     fragment,
-                    &mut developer_sections,
-                    &mut contextual_user_sections,
+                    &mut typed_developer_items,
+                    &mut typed_contextual_user_items,
                 );
             }
         }
@@ -3724,6 +3724,7 @@ impl Session {
         {
             items.push(developer_message);
         }
+        items.extend(typed_developer_items);
         for section in separate_developer_sections {
             if let Some(developer_message) =
                 crate::context_manager::updates::build_developer_update_item(vec![section])
@@ -3758,6 +3759,7 @@ impl Session {
         {
             items.push(contextual_user_message);
         }
+        items.extend(typed_contextual_user_items);
         // Emit the guardian policy prompt as a separate developer item so the guardian
         // subagent sees a distinct, easy-to-audit instruction block.
         if separate_guardian_developer_message
