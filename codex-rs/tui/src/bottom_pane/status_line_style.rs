@@ -37,7 +37,7 @@ impl StatusLineAccent {
             StatusLineItem::GitBranch
             | StatusLineItem::PullRequestNumber
             | StatusLineItem::BranchChanges => Self::Branch,
-            StatusLineItem::Status => Self::State,
+            StatusLineItem::Status | StatusLineItem::AgentMailbox => Self::State,
             StatusLineItem::ContextRemaining
             | StatusLineItem::ContextUsed
             | StatusLineItem::ContextWindowSize
