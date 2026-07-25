@@ -6,6 +6,18 @@
       "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
       "type": "string"
     },
+    "AgentMailboxConfigToml": {
+      "additionalProperties": false,
+      "properties": {
+        "capture_terminal_messages": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "AgentRoleToml": {
       "additionalProperties": false,
       "properties": {
@@ -485,6 +497,9 @@
           "default": null,
           "description": "Optional feature toggles scoped to this profile.",
           "properties": {
+            "agent_mailbox": {
+              "$ref": "#/definitions/FeatureToml_for_AgentMailboxConfigToml"
+            },
             "apply_patch_freeform": {
               "type": "boolean"
             },
@@ -1078,6 +1093,16 @@
         }
       },
       "type": "object"
+    },
+    "FeatureToml_for_AgentMailboxConfigToml": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/definitions/AgentMailboxConfigToml"
+        }
+      ]
     },
     "FeatureToml_for_CodeModeConfigToml": {
       "anyOf": [
@@ -5143,6 +5168,9 @@
       "default": null,
       "description": "Centralized feature flags (new). Prefer this over individual toggles.",
       "properties": {
+        "agent_mailbox": {
+          "$ref": "#/definitions/FeatureToml_for_AgentMailboxConfigToml"
+        },
         "apply_patch_freeform": {
           "type": "boolean"
         },

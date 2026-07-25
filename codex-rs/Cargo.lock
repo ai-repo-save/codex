@@ -1848,27 +1848,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-agent-mailbox-extension"
-version = "0.145.0"
-dependencies = [
- "chrono",
- "codex-core",
- "codex-extension-api",
- "codex-features",
- "codex-protocol",
- "codex-state",
- "codex-tools",
- "pretty_assertions",
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "codex-agent-graph-store"
 version = "0.145.0"
 dependencies = [
@@ -1899,6 +1878,27 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "codex-agent-mailbox-extension"
+version = "0.145.0"
+dependencies = [
+ "chrono",
+ "codex-core",
+ "codex-extension-api",
+ "codex-features",
+ "codex-protocol",
+ "codex-state",
+ "codex-tools",
+ "pretty_assertions",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1978,6 +1978,7 @@ dependencies = [
  "chrono",
  "clap",
  "codex-agent-extension",
+ "codex-agent-mailbox-extension",
  "codex-analytics",
  "codex-app-server-protocol",
  "codex-app-server-transport",
