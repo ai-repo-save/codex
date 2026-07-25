@@ -19,6 +19,7 @@ use codex_state::AgentMailboxReadRequest;
 use codex_state::StateRuntime;
 use codex_tools::ResponsesApiNamespace;
 use codex_tools::ResponsesApiNamespaceTool;
+use codex_tools::ToolExposure;
 use codex_tools::default_namespace_description;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -250,6 +251,13 @@ impl ToolExecutor<ToolCall> for AgentMailboxTool {
                 READ_TOOL_NAME,
                 "Read and atomically consume the oldest matching unread mailbox messages.",
             ),
+        }
+    }
+
+    fn exposure(&self) -> ToolExposure {
+        match self.kind {
+            AgentMailboxToolKind::Send => ToolExposure::Direct,
+            AgentMailboxToolKind::Read => ToolExposure::DirectModelOnly,
         }
     }
 
