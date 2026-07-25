@@ -203,9 +203,29 @@ async fn mailbox_enqueue_is_idempotent_after_consumption_and_runtime_restart() -
     first_runtime.close().await;
 
     let resumed_runtime = StateRuntime::init(codex_home, "test-provider".to_string()).await?;
-    let duplicate = resumed_runtime.agent_mailbox().enqueue(input).await?;
+    let mut retried_input = input;
+    retried_input.sender_thread_id = thread_id(SECOND_SENDER_THREAD_ID);
+    retried_input.sender_agent_path = SECOND_SENDER_AGENT_PATH.to_string();
+    retried_input.category = AgentMailboxCategory::ActionRequired;
+    retried_input.payload = AgentMailboxPayload::Plaintext {
+        content: MESSAGE_THREE_CONTENT.to_string(),
+    };
+    retried_input.created_at = timestamp(/*seconds*/ 1_700_000_003);
+    let expected_duplicate = AgentMailboxMessage {
+        id: retried_input.id.clone(),
+        root_thread_id: retried_input.root_thread_id,
+        sender_thread_id: retried_input.sender_thread_id,
+        sender_agent_path: retried_input.sender_agent_path.clone(),
+        recipient_thread_id: retried_input.recipient_thread_id,
+        recipient_agent_path: retried_input.recipient_agent_path.clone(),
+        category: retried_input.category,
+        payload: retried_input.payload.clone(),
+        created_at: retried_input.created_at,
+        sequence: inserted.message.sequence,
+    };
+    let duplicate = resumed_runtime.agent_mailbox().enqueue(retried_input).await?;
     assert_eq!(false, duplicate.inserted);
-    assert_eq!(inserted.message, duplicate.message);
+    assert_eq!(expected_duplicate, duplicate.message);
     assert_eq!(consumed.snapshot, duplicate.snapshot);
 
     let replayed = resumed_runtime

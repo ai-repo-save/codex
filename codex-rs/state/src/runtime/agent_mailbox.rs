@@ -76,19 +76,37 @@ RETURNING next_sequence - 1 AS sequence
         .await?;
 
         let Some(reserved) = reserved else {
-            let existing = delivery_by_id(&mut transaction, &message.id)
+            let delivery = delivery_by_id(&mut transaction, &message.id)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("agent mailbox idempotency lookup lost delivery"))?;
+            if delivery.root_thread_id != message.root_thread_id
+                || delivery.recipient_thread_id != message.recipient_thread_id
+            {
+                return Err(anyhow::anyhow!(
+                    "agent mailbox delivery ID belongs to a different recipient"
+                ));
+            }
             let snapshot = unread_snapshot_in_transaction(
                 &mut transaction,
-                existing.root_thread_id,
-                existing.recipient_thread_id,
+                delivery.root_thread_id,
+                delivery.recipient_thread_id,
             )
             .await?;
             transaction.commit().await?;
             return Ok(AgentMailboxEnqueueOutcome {
                 inserted: false,
-                message: existing,
+                message: AgentMailboxMessage {
+                    id: message.id,
+                    root_thread_id: message.root_thread_id,
+                    sender_thread_id: message.sender_thread_id,
+                    sender_agent_path: message.sender_agent_path,
+                    recipient_thread_id: message.recipient_thread_id,
+                    recipient_agent_path: message.recipient_agent_path,
+                    category: message.category,
+                    payload: message.payload,
+                    created_at: message.created_at,
+                    sequence: delivery.sequence,
+                },
                 snapshot,
             });
         };
@@ -99,28 +117,14 @@ RETURNING next_sequence - 1 AS sequence
 INSERT INTO agent_mailbox_deliveries (
     id,
     root_thread_id,
-    sender_thread_id,
-    sender_agent_path,
     recipient_thread_id,
-    recipient_agent_path,
-    category,
-    payload_kind,
-    payload,
-    created_at_ms,
     sequence
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?)
             "#,
         )
         .bind(&message.id)
         .bind(message.root_thread_id.to_string())
-        .bind(message.sender_thread_id.to_string())
-        .bind(&message.sender_agent_path)
         .bind(message.recipient_thread_id.to_string())
-        .bind(&message.recipient_agent_path)
-        .bind(message.category.as_str())
-        .bind(payload_kind)
-        .bind(payload)
-        .bind(datetime_to_epoch_millis(message.created_at))
         .bind(sequence)
         .execute(&mut *transaction)
         .await?;
@@ -295,20 +299,12 @@ WHERE root_thread_id = ? AND recipient_thread_id = ?
 async fn delivery_by_id(
     transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     id: &str,
-) -> anyhow::Result<Option<AgentMailboxMessage>> {
+) -> anyhow::Result<Option<AgentMailboxDelivery>> {
     sqlx::query(
         r#"
 SELECT
-    id,
     root_thread_id,
-    sender_thread_id,
-    sender_agent_path,
     recipient_thread_id,
-    recipient_agent_path,
-    category,
-    payload_kind,
-    payload,
-    created_at_ms,
     sequence
 FROM agent_mailbox_deliveries
 WHERE id = ?
@@ -317,8 +313,22 @@ WHERE id = ?
     .bind(id)
     .fetch_optional(&mut **transaction)
     .await?
-    .map(|row| agent_mailbox_message_from_row(&row))
+    .map(|row| {
+        Ok(AgentMailboxDelivery {
+            root_thread_id: ThreadId::try_from(row.try_get::<String, _>("root_thread_id")?)?,
+            recipient_thread_id: ThreadId::try_from(
+                row.try_get::<String, _>("recipient_thread_id")?,
+            )?,
+            sequence: row.try_get("sequence")?,
+        })
+    })
     .transpose()
+}
+
+struct AgentMailboxDelivery {
+    root_thread_id: ThreadId,
+    recipient_thread_id: ThreadId,
+    sequence: i64,
 }
 
 async fn unread_snapshot_in_pool(
