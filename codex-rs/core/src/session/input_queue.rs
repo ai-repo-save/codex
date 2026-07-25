@@ -6,7 +6,7 @@ use codex_protocol::protocol::InterAgentCommunication;
 use codex_protocol::user_input::UserInput;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicI64;
 use std::sync::atomic::Ordering;
 use tokio::sync::Mutex;
 use tokio::sync::watch;
@@ -36,19 +36,19 @@ pub(crate) struct TurnInputQueue {
 /// Session-scoped pending input storage and active-turn mailbox delivery coordination.
 pub(crate) struct InputQueue {
     activity_tx: watch::Sender<InputQueueActivity>,
-    agent_mailbox_activity_tx: watch::Sender<()>,
-    agent_mailbox_activity_pending: AtomicBool,
+    agent_mailbox_activity_tx: watch::Sender<i64>,
+    consumed_agent_mailbox_activity_revision: AtomicI64,
     mailbox_pending_mails: Mutex<VecDeque<InterAgentCommunication>>,
 }
 
 impl InputQueue {
     pub(crate) fn new() -> Self {
         let (activity_tx, _) = watch::channel(InputQueueActivity::Mailbox);
-        let (agent_mailbox_activity_tx, _) = watch::channel(());
+        let (agent_mailbox_activity_tx, _) = watch::channel(0);
         Self {
             activity_tx,
             agent_mailbox_activity_tx,
-            agent_mailbox_activity_pending: AtomicBool::new(false),
+            consumed_agent_mailbox_activity_revision: AtomicI64::new(0),
             mailbox_pending_mails: Mutex::new(VecDeque::new()),
         }
     }
@@ -77,21 +77,25 @@ impl InputQueue {
     }
 
     pub(crate) fn notify_agent_mailbox_activity(&self) {
-        self.agent_mailbox_activity_pending
-            .store(true, Ordering::Release);
-        self.agent_mailbox_activity_tx.send_replace(());
+        self.agent_mailbox_activity_tx
+            .send_modify(|revision| *revision = revision.saturating_add(1));
     }
 
-    pub(crate) fn subscribe_agent_mailbox_activity(&self) -> (watch::Receiver<()>, bool) {
-        (
-            self.agent_mailbox_activity_tx.subscribe(),
-            self.agent_mailbox_activity_pending.load(Ordering::Acquire),
-        )
+    pub(crate) fn subscribe_agent_mailbox_activity(
+        &self,
+    ) -> (watch::Receiver<i64>, Option<i64>) {
+        let activity_rx = self.agent_mailbox_activity_tx.subscribe();
+        let revision = *activity_rx.borrow();
+        let consumed_revision = self
+            .consumed_agent_mailbox_activity_revision
+            .load(Ordering::Acquire);
+        let pending_revision = (revision > consumed_revision).then_some(revision);
+        (activity_rx, pending_revision)
     }
 
-    pub(crate) fn consume_agent_mailbox_activity(&self) {
-        self.agent_mailbox_activity_pending
-            .store(false, Ordering::Release);
+    pub(crate) fn consume_agent_mailbox_activity(&self, revision: i64) {
+        self.consumed_agent_mailbox_activity_revision
+            .fetch_max(revision, Ordering::AcqRel);
     }
 
     pub(crate) async fn enqueue_mailbox_communication(
@@ -346,6 +350,28 @@ mod tests {
             *activity_rx.borrow_and_update(),
             InputQueueActivity::Mailbox
         );
+    }
+
+    #[tokio::test]
+    async fn consuming_observed_mailbox_revision_preserves_newer_activity() {
+        let input_queue = InputQueue::new();
+        let (mut activity_rx, pending_revision) =
+            input_queue.subscribe_agent_mailbox_activity();
+        assert_eq!(pending_revision, None);
+
+        input_queue.notify_agent_mailbox_activity();
+        activity_rx
+            .changed()
+            .await
+            .expect("first mailbox revision should be published");
+        let observed_revision = *activity_rx.borrow_and_update();
+        assert_eq!(observed_revision, 1);
+
+        input_queue.notify_agent_mailbox_activity();
+        input_queue.consume_agent_mailbox_activity(observed_revision);
+
+        let (_activity_rx, pending_revision) = input_queue.subscribe_agent_mailbox_activity();
+        assert_eq!(pending_revision, Some(2));
     }
 
     #[tokio::test]

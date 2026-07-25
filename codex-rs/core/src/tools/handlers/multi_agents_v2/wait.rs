@@ -109,8 +109,10 @@ impl Handler {
             deadline,
         )
         .await;
-        if outcome == WaitOutcome::AgentMailboxActivity {
-            session.input_queue.consume_agent_mailbox_activity();
+        if let WaitOutcome::AgentMailboxActivity(revision) = outcome {
+            session
+                .input_queue
+                .consume_agent_mailbox_activity(revision);
         }
         let result = WaitAgentResult::from_outcome(outcome);
 
@@ -161,7 +163,7 @@ pub(crate) struct WaitAgentResult {
 impl WaitAgentResult {
     fn from_outcome(outcome: WaitOutcome) -> Self {
         let message = match outcome {
-            WaitOutcome::AgentMailboxActivity => AGENT_MAILBOX_ACTIVITY_MESSAGE,
+            WaitOutcome::AgentMailboxActivity(_) => AGENT_MAILBOX_ACTIVITY_MESSAGE,
             WaitOutcome::MailboxActivity => "Wait completed.",
             WaitOutcome::Steered => "Wait interrupted by new input.",
             WaitOutcome::TimedOut => "Wait timed out.",
@@ -193,7 +195,7 @@ impl ToolOutput for WaitAgentResult {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WaitOutcome {
-    AgentMailboxActivity,
+    AgentMailboxActivity(i64),
     MailboxActivity,
     Steered,
     TimedOut,
@@ -202,8 +204,8 @@ enum WaitOutcome {
 async fn wait_for_activity(
     activity_rx: &mut tokio::sync::watch::Receiver<InputQueueActivity>,
     pending_activity: Option<InputQueueActivity>,
-    agent_mailbox_activity_rx: &mut tokio::sync::watch::Receiver<()>,
-    pending_agent_mailbox_activity: bool,
+    agent_mailbox_activity_rx: &mut tokio::sync::watch::Receiver<i64>,
+    pending_agent_mailbox_activity: Option<i64>,
     deadline: Instant,
 ) -> WaitOutcome {
     if let Some(activity) = pending_activity {
@@ -212,8 +214,8 @@ async fn wait_for_activity(
             InputQueueActivity::Steer => WaitOutcome::Steered,
         };
     }
-    if pending_agent_mailbox_activity {
-        return WaitOutcome::AgentMailboxActivity;
+    if let Some(revision) = pending_agent_mailbox_activity {
+        return WaitOutcome::AgentMailboxActivity(revision);
     }
     tokio::select! {
         biased;
@@ -229,8 +231,8 @@ async fn wait_for_activity(
         result = timeout_at(deadline, agent_mailbox_activity_rx.changed()) => {
             match result {
                 Ok(Ok(())) => {
-                    agent_mailbox_activity_rx.borrow_and_update();
-                    WaitOutcome::AgentMailboxActivity
+                    let revision = *agent_mailbox_activity_rx.borrow_and_update();
+                    WaitOutcome::AgentMailboxActivity(revision)
                 }
                 Ok(Err(_)) | Err(_) => WaitOutcome::TimedOut,
             }
