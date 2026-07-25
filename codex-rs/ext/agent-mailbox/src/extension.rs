@@ -213,7 +213,8 @@ impl TerminalMessageContributor for AgentMailboxExtension {
             let message_id = input
                 .communication
                 .id
-                .clone()
+                .as_ref()
+                .map(ToString::to_string)
                 .unwrap_or_else(|| Uuid::new_v4().to_string());
             let root_thread_id: ThreadId = input.session_id.into();
             let outcome = self
