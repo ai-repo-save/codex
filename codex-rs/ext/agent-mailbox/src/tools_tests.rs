@@ -1,10 +1,11 @@
 use std::sync::Arc;
-use std::sync::Weak;
 use std::sync::atomic::AtomicBool;
 
 use chrono::DateTime;
 use chrono::Utc;
+use codex_extension_api::AgentMailboxHostHandle;
 use codex_extension_api::FunctionCallError;
+use codex_extension_api::NoopAgentMailboxHost;
 use codex_extension_api::NoopTurnItemEmitter;
 use codex_extension_api::ToolCall;
 use codex_extension_api::ToolExecutor;
@@ -49,7 +50,7 @@ async fn send_rejects_a_message_larger_than_the_storage_payload_limit() -> anyho
     let tool = AgentMailboxTool::send(
         runtime(thread_id(SENDER_THREAD_ID), AgentPath::root()),
         state,
-        Weak::new(),
+        noop_host(),
         Arc::new(NoopAgentMailboxStatusNotifier),
     );
     let result = tool
@@ -88,7 +89,7 @@ async fn user_requested_batch_limit_leaves_mailbox_unchanged_when_rejected() -> 
     let tool = AgentMailboxTool::read(
         runtime(root_thread_id, AgentPath::root()),
         Arc::clone(&state),
-        Weak::new(),
+        noop_host(),
         Arc::new(NoopAgentMailboxStatusNotifier),
     );
 
@@ -165,7 +166,7 @@ async fn read_consumes_only_messages_fully_delivered_within_invocation_budget()
     let tool = AgentMailboxTool::read(
         runtime(root_thread_id, AgentPath::root()),
         Arc::clone(&state),
-        Weak::new(),
+        noop_host(),
         Arc::new(NoopAgentMailboxStatusNotifier),
     );
 
@@ -227,6 +228,10 @@ async fn read_consumes_only_messages_fully_delivered_within_invocation_budget()
             .total
     );
     Ok(())
+}
+
+fn noop_host() -> AgentMailboxHostHandle {
+    AgentMailboxHostHandle::new(NoopAgentMailboxHost)
 }
 
 fn runtime(mailbox_thread_id: ThreadId, agent_path: AgentPath) -> Arc<AgentMailboxRuntime> {

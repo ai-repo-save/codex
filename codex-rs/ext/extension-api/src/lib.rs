@@ -6,12 +6,18 @@ mod user_instructions;
 
 pub use capabilities::AgentSpawnFuture;
 pub use capabilities::AgentSpawner;
+pub use capabilities::AgentMailboxHost;
+pub use capabilities::AgentMailboxHostError;
+pub use capabilities::AgentMailboxHostFuture;
+pub use capabilities::AgentMailboxHostHandle;
+pub use capabilities::AgentMailboxTarget;
 pub use capabilities::ExtensionEventSink;
 pub use capabilities::GoalTurnHost;
 pub use capabilities::GoalTurnHostHandle;
 pub use capabilities::GoalTurnHostRejection;
 pub use capabilities::GoalTurnHostFuture;
 pub use capabilities::NoopExtensionEventSink;
+pub use capabilities::NoopAgentMailboxHost;
 pub use capabilities::NoopGoalTurnHost;
 pub use capabilities::NoopResponseItemInjector;
 pub use capabilities::ResponseItemInjectionFuture;

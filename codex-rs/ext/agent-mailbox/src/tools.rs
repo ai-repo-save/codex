@@ -1,8 +1,7 @@
 use std::sync::Arc;
-use std::sync::Weak;
 
 use chrono::Utc;
-use codex_core::ThreadManager;
+use codex_extension_api::AgentMailboxHostHandle;
 use codex_extension_api::FunctionCallError;
 use codex_extension_api::JsonToolOutput;
 use codex_extension_api::ResponsesApiTool;
@@ -50,7 +49,7 @@ pub(crate) struct AgentMailboxTool {
     kind: AgentMailboxToolKind,
     runtime: Arc<AgentMailboxRuntime>,
     state: Arc<StateRuntime>,
-    thread_manager: Weak<ThreadManager>,
+    host: AgentMailboxHostHandle,
     notifier: Arc<dyn AgentMailboxStatusNotifier>,
 }
 
@@ -93,14 +92,14 @@ impl AgentMailboxTool {
     pub(crate) fn send(
         runtime: Arc<AgentMailboxRuntime>,
         state: Arc<StateRuntime>,
-        thread_manager: Weak<ThreadManager>,
+        host: AgentMailboxHostHandle,
         notifier: Arc<dyn AgentMailboxStatusNotifier>,
     ) -> Self {
         Self {
             kind: AgentMailboxToolKind::Send,
             runtime,
             state,
-            thread_manager,
+            host,
             notifier,
         }
     }
@@ -108,14 +107,14 @@ impl AgentMailboxTool {
     pub(crate) fn read(
         runtime: Arc<AgentMailboxRuntime>,
         state: Arc<StateRuntime>,
-        thread_manager: Weak<ThreadManager>,
+        host: AgentMailboxHostHandle,
         notifier: Arc<dyn AgentMailboxStatusNotifier>,
     ) -> Self {
         Self {
             kind: AgentMailboxToolKind::Read,
             runtime,
             state,
-            thread_manager,
+            host,
             notifier,
         }
     }
@@ -132,11 +131,9 @@ impl AgentMailboxTool {
             ));
         }
         validate_payload_bytes(message.len()).map_err(FunctionCallError::RespondToModel)?;
-        let manager = self.thread_manager.upgrade().ok_or_else(|| {
-            FunctionCallError::RespondToModel("agent thread manager is unavailable".to_string())
-        })?;
-        let target = manager
-            .resolve_agent_mailbox_target(self.runtime.thread_id, args.target.trim())
+        let target = self
+            .host
+            .resolve_target(self.runtime.thread_id, args.target.trim())
             .await
             .map_err(|err| FunctionCallError::RespondToModel(err.to_string()))?;
         let message_id = Uuid::new_v4().to_string();
@@ -165,10 +162,7 @@ impl AgentMailboxTool {
             })?;
         self.notifier
             .status_updated(target.thread_id, outcome.snapshot.clone());
-        if let Err(err) = manager
-            .notify_agent_mailbox_activity(target.thread_id)
-            .await
-        {
+        if let Err(err) = self.host.notify_activity(target.thread_id).await {
             tracing::debug!(
                 "mailbox message committed but live wait notification failed for {}: {err}",
                 target.thread_id

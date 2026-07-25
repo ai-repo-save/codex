@@ -7,8 +7,9 @@ use codex_app_server_protocol::ThreadAgentMailboxUpdatedNotification;
 use codex_app_server_protocol::ThreadGoal;
 use codex_app_server_protocol::ThreadGoalClearedNotification;
 use codex_app_server_protocol::ThreadGoalUpdatedNotification;
-use codex_core::NewThread;
+use codex_core::AgentMailboxHostAdapter;
 use codex_core::GoalTurnHostAdapter;
+use codex_core::NewThread;
 use codex_core::StartThreadOptions;
 use codex_core::ThreadManager;
 use codex_core::config::Config;
@@ -72,7 +73,7 @@ where
         codex_agent_mailbox_extension::install_with_backend(
             &mut builder,
             state_db.clone(),
-            thread_manager.clone(),
+            AgentMailboxHostAdapter::new(thread_manager.clone()),
             agent_mailbox_status_notifier,
             |config: &Config| codex_agent_mailbox_extension::AgentMailboxExtensionConfig {
                 enabled: config

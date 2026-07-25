@@ -1,10 +1,10 @@
 use std::sync::Arc;
-use std::sync::Weak;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 use chrono::Utc;
-use codex_core::ThreadManager;
+use codex_extension_api::AgentMailboxHost;
+use codex_extension_api::AgentMailboxHostHandle;
 use codex_extension_api::ConfigContributor;
 use codex_extension_api::ContextContributor;
 use codex_extension_api::ExtensionData;
@@ -87,19 +87,19 @@ impl<C> AgentMailboxConfigContributor<C> {
 
 pub struct AgentMailboxExtension {
     state: Arc<StateRuntime>,
-    thread_manager: Weak<ThreadManager>,
+    host: AgentMailboxHostHandle,
     notifier: Arc<dyn AgentMailboxStatusNotifier>,
 }
 
 impl AgentMailboxExtension {
     fn new(
         state: Arc<StateRuntime>,
-        thread_manager: Weak<ThreadManager>,
+        host: AgentMailboxHostHandle,
         notifier: Arc<dyn AgentMailboxStatusNotifier>,
     ) -> Self {
         Self {
             state,
-            thread_manager,
+            host,
             notifier,
         }
     }
@@ -174,13 +174,13 @@ impl ToolContributor for AgentMailboxExtension {
             Arc::new(AgentMailboxTool::send(
                 Arc::clone(&runtime),
                 Arc::clone(&self.state),
-                self.thread_manager.clone(),
+                self.host.clone(),
                 Arc::clone(&self.notifier),
             )),
             Arc::new(AgentMailboxTool::read(
                 runtime,
                 Arc::clone(&self.state),
-                self.thread_manager.clone(),
+                self.host.clone(),
                 Arc::clone(&self.notifier),
             )),
         ]
@@ -278,11 +278,7 @@ impl TerminalMessageContributor for AgentMailboxExtension {
                 })?;
             self.notifier
                 .status_updated(input.recipient_thread_id, outcome.snapshot);
-            if let Some(manager) = self.thread_manager.upgrade()
-                && let Err(err) = manager
-                    .notify_agent_mailbox_activity(input.recipient_thread_id)
-                    .await
-            {
+            if let Err(err) = self.host.notify_activity(input.recipient_thread_id).await {
                 tracing::debug!(
                     "terminal mailbox message committed but live wait notification failed for {}: {err}",
                     input.recipient_thread_id
@@ -293,17 +289,22 @@ impl TerminalMessageContributor for AgentMailboxExtension {
     }
 }
 
-pub fn install_with_backend<C>(
+pub fn install_with_backend<C, H>(
     registry: &mut ExtensionRegistryBuilder<C>,
     state: Arc<StateRuntime>,
-    thread_manager: Weak<ThreadManager>,
+    host: H,
     notifier: Arc<dyn AgentMailboxStatusNotifier>,
     config_from_host: impl Fn(&C) -> AgentMailboxExtensionConfig + Send + Sync + 'static,
 ) where
     C: Send + Sync + 'static,
+    H: AgentMailboxHost + 'static,
 {
     let config_contributor = Arc::new(AgentMailboxConfigContributor::new(config_from_host));
-    let extension = Arc::new(AgentMailboxExtension::new(state, thread_manager, notifier));
+    let extension = Arc::new(AgentMailboxExtension::new(
+        state,
+        AgentMailboxHostHandle::new(host),
+        notifier,
+    ));
     registry.thread_lifecycle_contributor(config_contributor.clone());
     registry.config_contributor(config_contributor);
     registry.prompt_contributor(extension.clone());

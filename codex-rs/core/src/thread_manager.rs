@@ -28,6 +28,7 @@ use codex_code_mode::InProcessCodeModeSessionProvider;
 use codex_code_mode::ProcessOwnedCodeModeSessionProvider;
 use codex_core_plugins::PluginsManager;
 use codex_exec_server::EnvironmentManager;
+use codex_extension_api::AgentMailboxTarget;
 use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::ExtensionRegistry;
 use codex_extension_api::LoadedUserInstructions;
@@ -44,7 +45,6 @@ use codex_model_provider_info::OPENAI_PROVIDER_ID;
 use codex_models_manager::collaboration_mode_presets::builtin_collaboration_mode_presets;
 use codex_models_manager::manager::RefreshStrategy;
 use codex_models_manager::manager::SharedModelsManager;
-use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::CollaborationModeMask;
 use codex_protocol::error::CodexErr;
@@ -188,13 +188,6 @@ enum ShutdownOutcome {
 pub struct ThreadManager {
     state: Arc<ThreadManagerState>,
     _test_codex_home_guard: Option<TempCodexHomeGuard>,
-}
-
-/// Live agent target resolved for an extension-owned mailbox operation.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ResolvedAgentMailboxTarget {
-    pub thread_id: ThreadId,
-    pub agent_path: AgentPath,
 }
 
 pub struct StartThreadOptions {
@@ -615,7 +608,7 @@ impl ThreadManager {
         &self,
         current_thread_id: ThreadId,
         target: &str,
-    ) -> CodexResult<ResolvedAgentMailboxTarget> {
+    ) -> CodexResult<AgentMailboxTarget> {
         let current_thread = self.state.get_thread(current_thread_id).await?;
         let agent_control = &current_thread.session.services.agent_control;
         let thread_id = match ThreadId::from_string(target) {
@@ -641,7 +634,7 @@ impl ThreadManager {
                     "live agent path for thread `{thread_id}` not found"
                 ))
             })?;
-        Ok(ResolvedAgentMailboxTarget {
+        Ok(AgentMailboxTarget {
             thread_id,
             agent_path,
         })

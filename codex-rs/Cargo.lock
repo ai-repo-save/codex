@@ -1886,7 +1886,6 @@ version = "0.145.0"
 dependencies = [
  "anyhow",
  "chrono",
- "codex-core",
  "codex-extension-api",
  "codex-protocol",
  "codex-state",

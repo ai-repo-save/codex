@@ -1,9 +1,9 @@
 use std::sync::Arc;
-use std::sync::Weak;
 use std::sync::atomic::AtomicBool;
 
-use codex_core::ThreadManager;
+use codex_extension_api::AgentMailboxHostHandle;
 use codex_extension_api::ExtensionData;
+use codex_extension_api::NoopAgentMailboxHost;
 use codex_extension_api::TerminalMessageContributor;
 use codex_extension_api::TerminalMessageDisposition;
 use codex_extension_api::TerminalMessageInput;
@@ -39,7 +39,7 @@ async fn terminal_capture_claims_only_after_persisting_the_completed_message() -
     let recipient_store = enabled_recipient_store(session_id, recipient_thread_id);
     let extension = AgentMailboxExtension::new(
         Arc::clone(&state),
-        Weak::<ThreadManager>::new(),
+        noop_host(),
         Arc::new(NoopAgentMailboxStatusNotifier),
     );
     let communication = terminal_communication();
@@ -104,7 +104,7 @@ async fn terminal_capture_leaves_disabled_or_ephemeral_recipients_unclaimed() ->
     let recipient_thread_id = thread_id(RECIPIENT_THREAD_ID);
     let extension = AgentMailboxExtension::new(
         state,
-        Weak::<ThreadManager>::new(),
+        noop_host(),
         Arc::new(NoopAgentMailboxStatusNotifier),
     );
     let communication = terminal_communication();
@@ -148,7 +148,7 @@ async fn terminal_capture_enforces_the_encrypted_payload_budget() -> anyhow::Res
     let recipient_store = enabled_recipient_store(session_id, recipient_thread_id);
     let extension = AgentMailboxExtension::new(
         Arc::clone(&state),
-        Weak::<ThreadManager>::new(),
+        noop_host(),
         Arc::new(NoopAgentMailboxStatusNotifier),
     );
     let status = AgentStatus::Completed(/*final_message*/ None);
@@ -212,6 +212,10 @@ async fn terminal_capture_enforces_the_encrypted_payload_budget() -> anyhow::Res
             .total
     );
     Ok(())
+}
+
+fn noop_host() -> AgentMailboxHostHandle {
+    AgentMailboxHostHandle::new(NoopAgentMailboxHost)
 }
 
 fn enabled_recipient_store(session_id: SessionId, recipient_thread_id: ThreadId) -> ExtensionData {

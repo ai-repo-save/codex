@@ -1,10 +1,17 @@
 mod agent;
+mod agent_mailbox;
 mod events;
 mod goal_turn;
 mod response_items;
 
 pub use agent::AgentSpawnFuture;
 pub use agent::AgentSpawner;
+pub use agent_mailbox::AgentMailboxHost;
+pub use agent_mailbox::AgentMailboxHostError;
+pub use agent_mailbox::AgentMailboxHostFuture;
+pub use agent_mailbox::AgentMailboxHostHandle;
+pub use agent_mailbox::AgentMailboxTarget;
+pub use agent_mailbox::NoopAgentMailboxHost;
 pub use events::ExtensionEventSink;
 pub use events::NoopExtensionEventSink;
 pub use goal_turn::GoalTurnHost;
