@@ -1,11 +1,10 @@
 use crate::protocol::common::ServerNotification;
+use crate::protocol::collaboration_items::CollaborationItemLifecycle;
+use crate::protocol::collaboration_items::collaboration_item_from_event;
 use crate::protocol::item_builders::build_command_execution_begin_item;
 use crate::protocol::item_builders::build_command_execution_end_item;
 use crate::protocol::item_builders::convert_patch_changes;
 use crate::protocol::v2::AgentMessageDeltaNotification;
-use crate::protocol::v2::CollabAgentState;
-use crate::protocol::v2::CollabAgentTool;
-use crate::protocol::v2::CollabAgentToolCallStatus;
 use crate::protocol::v2::CommandExecutionOutputDeltaNotification;
 use crate::protocol::v2::DynamicToolCallOutputContentItem;
 use crate::protocol::v2::DynamicToolCallStatus;
@@ -20,7 +19,6 @@ use crate::protocol::v2::TerminalInteractionNotification;
 use crate::protocol::v2::ThreadItem;
 use codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem as CoreDynamicToolCallOutputContentItem;
 use codex_protocol::protocol::EventMsg;
-use std::collections::HashMap;
 
 /// Build the v2 app-server notification that directly corresponds to a single core event.
 ///
@@ -34,6 +32,26 @@ pub fn item_event_to_server_notification(
 ) -> ServerNotification {
     let thread_id = thread_id.to_string();
     let turn_id = turn_id.to_string();
+    if let Some(projection) = collaboration_item_from_event(&msg) {
+        return match projection.lifecycle {
+            CollaborationItemLifecycle::Started { at_ms } => {
+                ServerNotification::ItemStarted(ItemStartedNotification {
+                    thread_id,
+                    turn_id,
+                    item: projection.item,
+                    started_at_ms: at_ms,
+                })
+            }
+            CollaborationItemLifecycle::Completed { at_ms } => {
+                ServerNotification::ItemCompleted(ItemCompletedNotification {
+                    thread_id,
+                    turn_id,
+                    item: projection.item,
+                    completed_at_ms: at_ms,
+                })
+            }
+        };
+    }
     match msg {
         EventMsg::DynamicToolCallResponse(response) => {
             let status = if response.success {
@@ -75,335 +93,18 @@ pub fn item_event_to_server_notification(
                 completed_at_ms: response.completed_at_ms,
             })
         }
-        EventMsg::CollabAgentSpawnBegin(begin_event) => {
-            let item = ThreadItem::CollabAgentToolCall {
-                id: begin_event.call_id,
-                tool: CollabAgentTool::SpawnAgent,
-                status: CollabAgentToolCallStatus::InProgress,
-                sender_thread_id: begin_event.sender_thread_id.to_string(),
-                receiver_thread_ids: Vec::new(),
-                prompt: Some(begin_event.prompt),
-                model: Some(begin_event.model),
-                reasoning_effort: Some(begin_event.reasoning_effort),
-                service_tier: begin_event.service_tier,
-                context_inheritance: begin_event.context_inheritance.map(Into::into),
-                mode: None,
-                snapshot_revision: None,
-                agents_states: HashMap::new(),
-            };
-            ServerNotification::ItemStarted(ItemStartedNotification {
-                thread_id,
-                turn_id,
-                item,
-                started_at_ms: begin_event.started_at_ms,
-            })
-        }
-        EventMsg::CollabAgentSpawnEnd(end_event) => {
-            let has_receiver = end_event.new_thread_id.is_some();
-            let status = match &end_event.status {
-                codex_protocol::protocol::AgentStatus::Errored(_)
-                | codex_protocol::protocol::AgentStatus::NotFound => {
-                    CollabAgentToolCallStatus::Failed
-                }
-                _ if has_receiver => CollabAgentToolCallStatus::Completed,
-                _ => CollabAgentToolCallStatus::Failed,
-            };
-            let (receiver_thread_ids, agents_states) = match end_event.new_thread_id {
-                Some(id) => {
-                    let receiver_id = id.to_string();
-                    let received_status = CollabAgentState::from(end_event.status.clone());
-                    (
-                        vec![receiver_id.clone()],
-                        [(receiver_id, received_status)].into_iter().collect(),
-                    )
-                }
-                None => (Vec::new(), HashMap::new()),
-            };
-            let item = ThreadItem::CollabAgentToolCall {
-                id: end_event.call_id,
-                tool: CollabAgentTool::SpawnAgent,
-                status,
-                sender_thread_id: end_event.sender_thread_id.to_string(),
-                receiver_thread_ids,
-                prompt: Some(end_event.prompt),
-                model: Some(end_event.model),
-                reasoning_effort: Some(end_event.reasoning_effort),
-                service_tier: end_event.service_tier,
-                context_inheritance: end_event.context_inheritance.map(Into::into),
-                mode: None,
-                snapshot_revision: None,
-                agents_states,
-            };
-            ServerNotification::ItemCompleted(ItemCompletedNotification {
-                thread_id,
-                turn_id,
-                item,
-                completed_at_ms: end_event.completed_at_ms,
-            })
-        }
-        EventMsg::CollabAgentInteractionBegin(begin_event) => {
-            let receiver_thread_ids = vec![begin_event.receiver_thread_id.to_string()];
-            let item = ThreadItem::CollabAgentToolCall {
-                id: begin_event.call_id,
-                tool: CollabAgentTool::SendInput,
-                status: CollabAgentToolCallStatus::InProgress,
-                sender_thread_id: begin_event.sender_thread_id.to_string(),
-                receiver_thread_ids,
-                prompt: Some(begin_event.prompt),
-                model: None,
-                reasoning_effort: None,
-                service_tier: None,
-                context_inheritance: None,
-                mode: None,
-                snapshot_revision: None,
-                agents_states: HashMap::new(),
-            };
-            ServerNotification::ItemStarted(ItemStartedNotification {
-                thread_id,
-                turn_id,
-                item,
-                started_at_ms: begin_event.started_at_ms,
-            })
-        }
-        EventMsg::CollabAgentInteractionEnd(end_event) => {
-            let status = match &end_event.status {
-                codex_protocol::protocol::AgentStatus::Errored(_)
-                | codex_protocol::protocol::AgentStatus::NotFound => {
-                    CollabAgentToolCallStatus::Failed
-                }
-                _ => CollabAgentToolCallStatus::Completed,
-            };
-            let receiver_id = end_event.receiver_thread_id.to_string();
-            let received_status = CollabAgentState::from(end_event.status);
-            let item = ThreadItem::CollabAgentToolCall {
-                id: end_event.call_id,
-                tool: CollabAgentTool::SendInput,
-                status,
-                sender_thread_id: end_event.sender_thread_id.to_string(),
-                receiver_thread_ids: vec![receiver_id.clone()],
-                prompt: Some(end_event.prompt),
-                model: None,
-                reasoning_effort: None,
-                service_tier: None,
-                context_inheritance: None,
-                mode: None,
-                snapshot_revision: None,
-                agents_states: [(receiver_id, received_status)].into_iter().collect(),
-            };
-            ServerNotification::ItemCompleted(ItemCompletedNotification {
-                thread_id,
-                turn_id,
-                item,
-                completed_at_ms: end_event.completed_at_ms,
-            })
-        }
-        EventMsg::SubAgentActivity(activity) => {
-            let item = ThreadItem::SubAgentActivity {
-                id: activity.event_id,
-                kind: activity.kind.into(),
-                agent_thread_id: activity.agent_thread_id.to_string(),
-                agent_path: String::from(activity.agent_path),
-                operation: activity.operation.map(Into::into),
-                outcome: activity.outcome.map(Into::into),
-                model: activity.model,
-                reasoning_effort: activity.reasoning_effort,
-                service_tier: activity.service_tier,
-                context_inheritance: activity.context_inheritance.map(Into::into),
-            };
-            ServerNotification::ItemCompleted(ItemCompletedNotification {
-                thread_id,
-                turn_id,
-                item,
-                completed_at_ms: activity.occurred_at_ms,
-            })
-        }
-        EventMsg::CollabWaitingBegin(begin_event) => {
-            let receiver_thread_ids = begin_event
-                .receiver_thread_ids
-                .iter()
-                .map(ToString::to_string)
-                .collect();
-            let item = ThreadItem::CollabAgentToolCall {
-                id: begin_event.call_id,
-                tool: CollabAgentTool::Wait,
-                status: CollabAgentToolCallStatus::InProgress,
-                sender_thread_id: begin_event.sender_thread_id.to_string(),
-                receiver_thread_ids,
-                prompt: None,
-                model: None,
-                reasoning_effort: None,
-                service_tier: None,
-                context_inheritance: None,
-                mode: None,
-                snapshot_revision: None,
-                agents_states: HashMap::new(),
-            };
-            ServerNotification::ItemStarted(ItemStartedNotification {
-                thread_id,
-                turn_id,
-                item,
-                started_at_ms: begin_event.started_at_ms,
-            })
-        }
-        EventMsg::CollabWaitingEnd(end_event) => {
-            let status = if end_event.statuses.values().any(|status| {
-                matches!(
-                    status,
-                    codex_protocol::protocol::AgentStatus::Errored(_)
-                        | codex_protocol::protocol::AgentStatus::NotFound
-                )
-            }) {
-                CollabAgentToolCallStatus::Failed
-            } else {
-                CollabAgentToolCallStatus::Completed
-            };
-            let receiver_thread_ids = end_event.statuses.keys().map(ToString::to_string).collect();
-            let agents_states = end_event
-                .statuses
-                .iter()
-                .map(|(id, status)| (id.to_string(), CollabAgentState::from(status.clone())))
-                .collect();
-            let item = ThreadItem::CollabAgentToolCall {
-                id: end_event.call_id,
-                tool: CollabAgentTool::Wait,
-                status,
-                sender_thread_id: end_event.sender_thread_id.to_string(),
-                receiver_thread_ids,
-                prompt: None,
-                model: None,
-                reasoning_effort: None,
-                service_tier: None,
-                context_inheritance: None,
-                mode: None,
-                snapshot_revision: None,
-                agents_states,
-            };
-            ServerNotification::ItemCompleted(ItemCompletedNotification {
-                thread_id,
-                turn_id,
-                item,
-                completed_at_ms: end_event.completed_at_ms,
-            })
-        }
-        EventMsg::CollabCloseBegin(begin_event) => {
-            let item = ThreadItem::CollabAgentToolCall {
-                id: begin_event.call_id,
-                tool: CollabAgentTool::CloseAgent,
-                status: CollabAgentToolCallStatus::InProgress,
-                sender_thread_id: begin_event.sender_thread_id.to_string(),
-                receiver_thread_ids: vec![begin_event.receiver_thread_id.to_string()],
-                prompt: None,
-                model: None,
-                reasoning_effort: None,
-                service_tier: None,
-                context_inheritance: None,
-                mode: None,
-                snapshot_revision: None,
-                agents_states: HashMap::new(),
-            };
-            ServerNotification::ItemStarted(ItemStartedNotification {
-                thread_id,
-                turn_id,
-                item,
-                started_at_ms: begin_event.started_at_ms,
-            })
-        }
-        EventMsg::CollabCloseEnd(end_event) => {
-            let status = match &end_event.status {
-                codex_protocol::protocol::AgentStatus::Errored(_)
-                | codex_protocol::protocol::AgentStatus::NotFound => {
-                    CollabAgentToolCallStatus::Failed
-                }
-                _ => CollabAgentToolCallStatus::Completed,
-            };
-            let receiver_id = end_event.receiver_thread_id.to_string();
-            let agents_states = [(
-                receiver_id.clone(),
-                CollabAgentState::from(end_event.status),
-            )]
-            .into_iter()
-            .collect();
-            let item = ThreadItem::CollabAgentToolCall {
-                id: end_event.call_id,
-                tool: CollabAgentTool::CloseAgent,
-                status,
-                sender_thread_id: end_event.sender_thread_id.to_string(),
-                receiver_thread_ids: vec![receiver_id],
-                prompt: None,
-                model: None,
-                reasoning_effort: None,
-                service_tier: None,
-                context_inheritance: None,
-                mode: None,
-                snapshot_revision: None,
-                agents_states,
-            };
-            ServerNotification::ItemCompleted(ItemCompletedNotification {
-                thread_id,
-                turn_id,
-                item,
-                completed_at_ms: end_event.completed_at_ms,
-            })
-        }
-        EventMsg::CollabResumeBegin(begin_event) => {
-            let item = ThreadItem::CollabAgentToolCall {
-                id: begin_event.call_id,
-                tool: CollabAgentTool::ResumeAgent,
-                status: CollabAgentToolCallStatus::InProgress,
-                sender_thread_id: begin_event.sender_thread_id.to_string(),
-                receiver_thread_ids: vec![begin_event.receiver_thread_id.to_string()],
-                prompt: None,
-                model: None,
-                reasoning_effort: None,
-                service_tier: None,
-                context_inheritance: None,
-                mode: None,
-                snapshot_revision: None,
-                agents_states: HashMap::new(),
-            };
-            ServerNotification::ItemStarted(ItemStartedNotification {
-                thread_id,
-                turn_id,
-                item,
-                started_at_ms: begin_event.started_at_ms,
-            })
-        }
-        EventMsg::CollabResumeEnd(end_event) => {
-            let status = match &end_event.status {
-                codex_protocol::protocol::AgentStatus::Errored(_)
-                | codex_protocol::protocol::AgentStatus::NotFound => {
-                    CollabAgentToolCallStatus::Failed
-                }
-                _ => CollabAgentToolCallStatus::Completed,
-            };
-            let receiver_id = end_event.receiver_thread_id.to_string();
-            let agents_states = [(
-                receiver_id.clone(),
-                CollabAgentState::from(end_event.status),
-            )]
-            .into_iter()
-            .collect();
-            let item = ThreadItem::CollabAgentToolCall {
-                id: end_event.call_id,
-                tool: CollabAgentTool::ResumeAgent,
-                status,
-                sender_thread_id: end_event.sender_thread_id.to_string(),
-                receiver_thread_ids: vec![receiver_id],
-                prompt: None,
-                model: None,
-                reasoning_effort: None,
-                service_tier: None,
-                context_inheritance: None,
-                mode: None,
-                snapshot_revision: None,
-                agents_states,
-            };
-            ServerNotification::ItemCompleted(ItemCompletedNotification {
-                thread_id,
-                turn_id,
-                item,
-                completed_at_ms: end_event.completed_at_ms,
-            })
+        EventMsg::CollabAgentSpawnBegin(_)
+        | EventMsg::CollabAgentSpawnEnd(_)
+        | EventMsg::CollabAgentInteractionBegin(_)
+        | EventMsg::CollabAgentInteractionEnd(_)
+        | EventMsg::SubAgentActivity(_)
+        | EventMsg::CollabWaitingBegin(_)
+        | EventMsg::CollabWaitingEnd(_)
+        | EventMsg::CollabCloseBegin(_)
+        | EventMsg::CollabCloseEnd(_)
+        | EventMsg::CollabResumeBegin(_)
+        | EventMsg::CollabResumeEnd(_) => {
+            unreachable!("collaboration events are projected before the general event match")
         }
         EventMsg::AgentMessageContentDelta(event) => {
             let codex_protocol::protocol::AgentMessageContentDeltaEvent { item_id, delta, .. } =

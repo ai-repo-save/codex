@@ -1,3 +1,4 @@
+use crate::protocol::collaboration_items::collaboration_item_from_event;
 use crate::protocol::item_builders::build_command_execution_begin_item;
 use crate::protocol::item_builders::build_command_execution_end_item;
 use crate::protocol::item_builders::build_file_change_approval_request_item;
@@ -5,9 +6,6 @@ use crate::protocol::item_builders::build_file_change_begin_item;
 use crate::protocol::item_builders::build_file_change_end_item;
 use crate::protocol::item_builders::build_item_from_guardian_event;
 use crate::protocol::item_builders::review_output_text;
-use crate::protocol::v2::CollabAgentState;
-use crate::protocol::v2::CollabAgentTool;
-use crate::protocol::v2::CollabAgentToolCallStatus;
 use crate::protocol::v2::CommandExecutionStatus;
 use crate::protocol::v2::DynamicToolCallOutputContentItem;
 use crate::protocol::v2::DynamicToolCallStatus;
@@ -23,6 +21,12 @@ use crate::protocol::v2::TurnItemsView;
 use crate::protocol::v2::TurnStatus;
 use crate::protocol::v2::UserInput;
 #[cfg(test)]
+use crate::protocol::v2::CollabAgentState;
+#[cfg(test)]
+use crate::protocol::v2::CollabAgentTool;
+#[cfg(test)]
+use crate::protocol::v2::CollabAgentToolCallStatus;
+#[cfg(test)]
 use crate::protocol::v2::WebSearchAction;
 use crate::protocol::v2::WebSearchItem;
 use crate::protocol::v2::web_search_action_from_core;
@@ -31,6 +35,7 @@ use codex_protocol::items::parse_hook_prompt_message;
 use codex_protocol::models::MessagePhase;
 use codex_protocol::protocol::AgentReasoningEvent;
 use codex_protocol::protocol::AgentReasoningRawContentEvent;
+#[cfg(test)]
 use codex_protocol::protocol::AgentStatus;
 use codex_protocol::protocol::ApplyPatchApprovalRequestEvent;
 use codex_protocol::protocol::CompactedItem;
@@ -329,6 +334,10 @@ impl ThreadHistoryBuilder {
     /// This function should handle all EventMsg variants that can be persisted in a rollout file.
     /// See `should_persist_event_msg` in `codex-rs/core/rollout/policy.rs`.
     pub fn handle_event(&mut self, event: &EventMsg) {
+        if let Some(projection) = collaboration_item_from_event(event) {
+            self.upsert_item_in_current_turn(projection.item);
+            return;
+        }
         match event {
             EventMsg::UserMessage(payload) => self.handle_user_message(payload),
             EventMsg::AgentMessage(payload) => self.handle_agent_message(
@@ -361,23 +370,19 @@ impl ThreadHistoryBuilder {
             EventMsg::ViewImageToolCall(payload) => self.handle_view_image_tool_call(payload),
             EventMsg::ImageGenerationBegin(payload) => self.handle_image_generation_begin(payload),
             EventMsg::ImageGenerationEnd(payload) => self.handle_image_generation_end(payload),
-            EventMsg::CollabAgentSpawnBegin(payload) => {
-                self.handle_collab_agent_spawn_begin(payload)
+            EventMsg::CollabAgentSpawnBegin(_)
+            | EventMsg::CollabAgentSpawnEnd(_)
+            | EventMsg::CollabAgentInteractionBegin(_)
+            | EventMsg::CollabAgentInteractionEnd(_)
+            | EventMsg::SubAgentActivity(_)
+            | EventMsg::CollabWaitingBegin(_)
+            | EventMsg::CollabWaitingEnd(_)
+            | EventMsg::CollabCloseBegin(_)
+            | EventMsg::CollabCloseEnd(_)
+            | EventMsg::CollabResumeBegin(_)
+            | EventMsg::CollabResumeEnd(_) => {
+                unreachable!("collaboration events are projected before the history event match")
             }
-            EventMsg::CollabAgentSpawnEnd(payload) => self.handle_collab_agent_spawn_end(payload),
-            EventMsg::CollabAgentInteractionBegin(payload) => {
-                self.handle_collab_agent_interaction_begin(payload)
-            }
-            EventMsg::CollabAgentInteractionEnd(payload) => {
-                self.handle_collab_agent_interaction_end(payload)
-            }
-            EventMsg::SubAgentActivity(payload) => self.handle_sub_agent_activity(payload),
-            EventMsg::CollabWaitingBegin(payload) => self.handle_collab_waiting_begin(payload),
-            EventMsg::CollabWaitingEnd(payload) => self.handle_collab_waiting_end(payload),
-            EventMsg::CollabCloseBegin(payload) => self.handle_collab_close_begin(payload),
-            EventMsg::CollabCloseEnd(payload) => self.handle_collab_close_end(payload),
-            EventMsg::CollabResumeBegin(payload) => self.handle_collab_resume_begin(payload),
-            EventMsg::CollabResumeEnd(payload) => self.handle_collab_resume_end(payload),
             EventMsg::ContextCompacted(payload) => self.handle_context_compacted(payload),
             EventMsg::ContextAnchorSaved(payload) => self.handle_context_anchor_saved(payload),
             EventMsg::ContextRewoundToAnchor(payload) => {
@@ -879,302 +884,6 @@ impl ThreadHistoryBuilder {
             saved_path: payload.saved_path.clone(),
         });
         self.upsert_item_in_current_turn(item);
-    }
-
-    fn handle_collab_agent_spawn_begin(
-        &mut self,
-        payload: &codex_protocol::protocol::CollabAgentSpawnBeginEvent,
-    ) {
-        let item = ThreadItem::CollabAgentToolCall {
-            id: payload.call_id.clone(),
-            tool: CollabAgentTool::SpawnAgent,
-            status: CollabAgentToolCallStatus::InProgress,
-            sender_thread_id: payload.sender_thread_id.to_string(),
-            receiver_thread_ids: Vec::new(),
-            prompt: Some(payload.prompt.clone()),
-            model: Some(payload.model.clone()),
-            reasoning_effort: Some(payload.reasoning_effort.clone()),
-            service_tier: payload.service_tier.clone(),
-            context_inheritance: payload.context_inheritance.clone().map(Into::into),
-            mode: None,
-            snapshot_revision: None,
-            agents_states: HashMap::new(),
-        };
-        self.upsert_item_in_current_turn(item);
-    }
-
-    fn handle_collab_agent_spawn_end(
-        &mut self,
-        payload: &codex_protocol::protocol::CollabAgentSpawnEndEvent,
-    ) {
-        let has_receiver = payload.new_thread_id.is_some();
-        let status = match &payload.status {
-            AgentStatus::Errored(_) | AgentStatus::NotFound => CollabAgentToolCallStatus::Failed,
-            _ if has_receiver => CollabAgentToolCallStatus::Completed,
-            _ => CollabAgentToolCallStatus::Failed,
-        };
-        let (receiver_thread_ids, agents_states) = match &payload.new_thread_id {
-            Some(id) => {
-                let receiver_id = id.to_string();
-                let received_status = CollabAgentState::from(payload.status.clone());
-                (
-                    vec![receiver_id.clone()],
-                    [(receiver_id, received_status)].into_iter().collect(),
-                )
-            }
-            None => (Vec::new(), HashMap::new()),
-        };
-        self.upsert_item_in_current_turn(ThreadItem::CollabAgentToolCall {
-            id: payload.call_id.clone(),
-            tool: CollabAgentTool::SpawnAgent,
-            status,
-            sender_thread_id: payload.sender_thread_id.to_string(),
-            receiver_thread_ids,
-            prompt: Some(payload.prompt.clone()),
-            model: Some(payload.model.clone()),
-            reasoning_effort: Some(payload.reasoning_effort.clone()),
-            service_tier: payload.service_tier.clone(),
-            context_inheritance: payload.context_inheritance.clone().map(Into::into),
-            mode: None,
-            snapshot_revision: None,
-            agents_states,
-        });
-    }
-
-    fn handle_collab_agent_interaction_begin(
-        &mut self,
-        payload: &codex_protocol::protocol::CollabAgentInteractionBeginEvent,
-    ) {
-        let item = ThreadItem::CollabAgentToolCall {
-            id: payload.call_id.clone(),
-            tool: CollabAgentTool::SendInput,
-            status: CollabAgentToolCallStatus::InProgress,
-            sender_thread_id: payload.sender_thread_id.to_string(),
-            receiver_thread_ids: vec![payload.receiver_thread_id.to_string()],
-            prompt: Some(payload.prompt.clone()),
-            model: None,
-            reasoning_effort: None,
-            service_tier: None,
-            context_inheritance: None,
-            mode: None,
-            snapshot_revision: None,
-            agents_states: HashMap::new(),
-        };
-        self.upsert_item_in_current_turn(item);
-    }
-
-    fn handle_collab_agent_interaction_end(
-        &mut self,
-        payload: &codex_protocol::protocol::CollabAgentInteractionEndEvent,
-    ) {
-        let status = match &payload.status {
-            AgentStatus::Errored(_) | AgentStatus::NotFound => CollabAgentToolCallStatus::Failed,
-            _ => CollabAgentToolCallStatus::Completed,
-        };
-        let receiver_id = payload.receiver_thread_id.to_string();
-        let received_status = CollabAgentState::from(payload.status.clone());
-        self.upsert_item_in_current_turn(ThreadItem::CollabAgentToolCall {
-            id: payload.call_id.clone(),
-            tool: CollabAgentTool::SendInput,
-            status,
-            sender_thread_id: payload.sender_thread_id.to_string(),
-            receiver_thread_ids: vec![receiver_id.clone()],
-            prompt: Some(payload.prompt.clone()),
-            model: None,
-            reasoning_effort: None,
-            service_tier: None,
-            context_inheritance: None,
-            mode: None,
-            snapshot_revision: None,
-            agents_states: [(receiver_id, received_status)].into_iter().collect(),
-        });
-    }
-
-    fn handle_sub_agent_activity(
-        &mut self,
-        payload: &codex_protocol::protocol::SubAgentActivityEvent,
-    ) {
-        self.upsert_item_in_current_turn(ThreadItem::SubAgentActivity {
-            id: payload.event_id.clone(),
-            kind: payload.kind.into(),
-            agent_thread_id: payload.agent_thread_id.to_string(),
-            agent_path: String::from(payload.agent_path.clone()),
-            operation: payload.operation.map(Into::into),
-            outcome: payload.outcome.map(Into::into),
-            model: payload.model.clone(),
-            reasoning_effort: payload.reasoning_effort.clone(),
-            service_tier: payload.service_tier.clone(),
-            context_inheritance: payload.context_inheritance.clone().map(Into::into),
-        });
-    }
-
-    fn handle_collab_waiting_begin(
-        &mut self,
-        payload: &codex_protocol::protocol::CollabWaitingBeginEvent,
-    ) {
-        let item = ThreadItem::CollabAgentToolCall {
-            id: payload.call_id.clone(),
-            tool: CollabAgentTool::Wait,
-            status: CollabAgentToolCallStatus::InProgress,
-            sender_thread_id: payload.sender_thread_id.to_string(),
-            receiver_thread_ids: payload
-                .receiver_thread_ids
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
-            prompt: None,
-            model: None,
-            reasoning_effort: None,
-            service_tier: None,
-            context_inheritance: None,
-            mode: None,
-            snapshot_revision: None,
-            agents_states: HashMap::new(),
-        };
-        self.upsert_item_in_current_turn(item);
-    }
-
-    fn handle_collab_waiting_end(
-        &mut self,
-        payload: &codex_protocol::protocol::CollabWaitingEndEvent,
-    ) {
-        let status = if payload
-            .statuses
-            .values()
-            .any(|status| matches!(status, AgentStatus::Errored(_) | AgentStatus::NotFound))
-        {
-            CollabAgentToolCallStatus::Failed
-        } else {
-            CollabAgentToolCallStatus::Completed
-        };
-        let mut receiver_thread_ids: Vec<String> =
-            payload.statuses.keys().map(ToString::to_string).collect();
-        receiver_thread_ids.sort();
-        let agents_states = payload
-            .statuses
-            .iter()
-            .map(|(id, status)| (id.to_string(), CollabAgentState::from(status.clone())))
-            .collect();
-        self.upsert_item_in_current_turn(ThreadItem::CollabAgentToolCall {
-            id: payload.call_id.clone(),
-            tool: CollabAgentTool::Wait,
-            status,
-            sender_thread_id: payload.sender_thread_id.to_string(),
-            receiver_thread_ids,
-            prompt: None,
-            model: None,
-            reasoning_effort: None,
-            service_tier: None,
-            context_inheritance: None,
-            mode: None,
-            snapshot_revision: None,
-            agents_states,
-        });
-    }
-
-    fn handle_collab_close_begin(
-        &mut self,
-        payload: &codex_protocol::protocol::CollabCloseBeginEvent,
-    ) {
-        let item = ThreadItem::CollabAgentToolCall {
-            id: payload.call_id.clone(),
-            tool: CollabAgentTool::CloseAgent,
-            status: CollabAgentToolCallStatus::InProgress,
-            sender_thread_id: payload.sender_thread_id.to_string(),
-            receiver_thread_ids: vec![payload.receiver_thread_id.to_string()],
-            prompt: None,
-            model: None,
-            reasoning_effort: None,
-            service_tier: None,
-            context_inheritance: None,
-            mode: None,
-            snapshot_revision: None,
-            agents_states: HashMap::new(),
-        };
-        self.upsert_item_in_current_turn(item);
-    }
-
-    fn handle_collab_close_end(&mut self, payload: &codex_protocol::protocol::CollabCloseEndEvent) {
-        let status = match &payload.status {
-            AgentStatus::Errored(_) | AgentStatus::NotFound => CollabAgentToolCallStatus::Failed,
-            _ => CollabAgentToolCallStatus::Completed,
-        };
-        let receiver_id = payload.receiver_thread_id.to_string();
-        let agents_states = [(
-            receiver_id.clone(),
-            CollabAgentState::from(payload.status.clone()),
-        )]
-        .into_iter()
-        .collect();
-        self.upsert_item_in_current_turn(ThreadItem::CollabAgentToolCall {
-            id: payload.call_id.clone(),
-            tool: CollabAgentTool::CloseAgent,
-            status,
-            sender_thread_id: payload.sender_thread_id.to_string(),
-            receiver_thread_ids: vec![receiver_id],
-            prompt: None,
-            model: None,
-            reasoning_effort: None,
-            service_tier: None,
-            context_inheritance: None,
-            mode: None,
-            snapshot_revision: None,
-            agents_states,
-        });
-    }
-
-    fn handle_collab_resume_begin(
-        &mut self,
-        payload: &codex_protocol::protocol::CollabResumeBeginEvent,
-    ) {
-        let item = ThreadItem::CollabAgentToolCall {
-            id: payload.call_id.clone(),
-            tool: CollabAgentTool::ResumeAgent,
-            status: CollabAgentToolCallStatus::InProgress,
-            sender_thread_id: payload.sender_thread_id.to_string(),
-            receiver_thread_ids: vec![payload.receiver_thread_id.to_string()],
-            prompt: None,
-            model: None,
-            reasoning_effort: None,
-            service_tier: None,
-            context_inheritance: None,
-            mode: None,
-            snapshot_revision: None,
-            agents_states: HashMap::new(),
-        };
-        self.upsert_item_in_current_turn(item);
-    }
-
-    fn handle_collab_resume_end(
-        &mut self,
-        payload: &codex_protocol::protocol::CollabResumeEndEvent,
-    ) {
-        let status = match &payload.status {
-            AgentStatus::Errored(_) | AgentStatus::NotFound => CollabAgentToolCallStatus::Failed,
-            _ => CollabAgentToolCallStatus::Completed,
-        };
-        let receiver_id = payload.receiver_thread_id.to_string();
-        let agents_states = [(
-            receiver_id.clone(),
-            CollabAgentState::from(payload.status.clone()),
-        )]
-        .into_iter()
-        .collect();
-        self.upsert_item_in_current_turn(ThreadItem::CollabAgentToolCall {
-            id: payload.call_id.clone(),
-            tool: CollabAgentTool::ResumeAgent,
-            status,
-            sender_thread_id: payload.sender_thread_id.to_string(),
-            receiver_thread_ids: vec![receiver_id],
-            prompt: None,
-            model: None,
-            reasoning_effort: None,
-            service_tier: None,
-            context_inheritance: None,
-            mode: None,
-            snapshot_revision: None,
-            agents_states,
-        });
     }
 
     fn handle_context_compacted(&mut self, _payload: &ContextCompactedEvent) {

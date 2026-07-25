@@ -9,6 +9,8 @@ use super::NetworkPolicyAmendment;
 use super::RequestPermissionProfile;
 use super::UserInput;
 use super::shared::v2_enum_from_core;
+use crate::protocol::collaboration_items::collab_agent_tool_call_from_core;
+use crate::protocol::collaboration_items::sub_agent_activity_from_core;
 use crate::protocol::item_builders::command_actions_for_path_uri;
 use crate::protocol::item_builders::convert_patch_changes;
 use crate::protocol::item_builders::review_output_text;
@@ -922,41 +924,8 @@ impl From<CoreTurnItem> for ThreadItem {
                     .duration
                     .and_then(|duration| i64::try_from(duration.as_millis()).ok()),
             },
-            CoreTurnItem::CollabAgentToolCall(call) => ThreadItem::CollabAgentToolCall {
-                id: call.id,
-                tool: call.tool.into(),
-                status: call.status.into(),
-                sender_thread_id: call.sender_thread_id.to_string(),
-                receiver_thread_ids: call
-                    .receiver_thread_ids
-                    .into_iter()
-                    .map(String::from)
-                    .collect(),
-                prompt: call.prompt,
-                model: call.model,
-                reasoning_effort: call.reasoning_effort,
-                service_tier: call.service_tier,
-                context_inheritance: call.context_inheritance.map(Into::into),
-                mode: call.mode.map(AskParentMode::from),
-                snapshot_revision: call.snapshot_revision,
-                agents_states: call
-                    .agents_states
-                    .into_iter()
-                    .map(|(thread_id, status)| (thread_id.to_string(), status.into()))
-                    .collect(),
-            },
-            CoreTurnItem::SubAgentActivity(activity) => ThreadItem::SubAgentActivity {
-                id: activity.id,
-                kind: activity.kind.into(),
-                agent_thread_id: activity.agent_thread_id.to_string(),
-                agent_path: String::from(activity.agent_path),
-                operation: activity.operation.map(Into::into),
-                outcome: activity.outcome.map(Into::into),
-                model: activity.model,
-                reasoning_effort: activity.reasoning_effort,
-                service_tier: activity.service_tier,
-                context_inheritance: activity.context_inheritance.map(Into::into),
-            },
+            CoreTurnItem::CollabAgentToolCall(call) => collab_agent_tool_call_from_core(call),
+            CoreTurnItem::SubAgentActivity(activity) => sub_agent_activity_from_core(activity),
             CoreTurnItem::WebSearch(search) => ThreadItem::WebSearch(WebSearchItem {
                 id: search.id,
                 query: search.query,

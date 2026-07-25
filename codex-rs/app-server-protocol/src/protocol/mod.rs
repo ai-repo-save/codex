@@ -2,6 +2,7 @@
 // Exposes protocol pieces used by `lib.rs` via `pub use protocol::common::*;`.
 
 pub mod common;
+mod collaboration_items;
 pub mod event_mapping;
 pub mod item_builders;
 mod mappers;
