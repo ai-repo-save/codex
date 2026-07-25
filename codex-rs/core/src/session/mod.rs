@@ -2141,8 +2141,8 @@ impl Session {
                 format!("{}-{}", self.thread_id, turn_context.sub_id),
             ));
         }
-        if capture_terminal_messages
-            && self
+        if capture_terminal_messages {
+            if self
                 .services
                 .agent_control
                 .try_claim_terminal_message(
@@ -2152,8 +2152,10 @@ impl Session {
                     &status,
                 )
                 .await
-        {
-            return;
+            {
+                return;
+            }
+            communication.id = None;
         }
         let context =
             AgentCommunicationContext::new(AgentCommunicationKind::Result, self.thread_id);

@@ -687,17 +687,19 @@ impl AgentControl {
                         format!("{child_thread_id}-fallback"),
                     ));
                 }
-                if capture_terminal_messages
-                    && control
-                    .try_claim_terminal_message(
-                        child_thread_id,
-                        parent_thread_id,
-                        &communication,
-                        &status,
-                    )
-                    .await
-                {
-                    return;
+                if capture_terminal_messages {
+                    if control
+                        .try_claim_terminal_message(
+                            child_thread_id,
+                            parent_thread_id,
+                            &communication,
+                            &status,
+                        )
+                        .await
+                    {
+                        return;
+                    }
+                    communication.id = None;
                 }
                 let context =
                     AgentCommunicationContext::new(AgentCommunicationKind::Result, child_thread_id);
