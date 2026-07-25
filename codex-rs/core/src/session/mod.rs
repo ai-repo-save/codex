@@ -2068,6 +2068,7 @@ impl Session {
                     recipient_thread_id,
                     communication,
                     status,
+                    recipient_thread_store: &self.services.thread_extension_data,
                 })
                 .await
             {

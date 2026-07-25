@@ -3,6 +3,8 @@ use codex_protocol::ThreadId;
 use codex_protocol::protocol::AgentStatus;
 use codex_protocol::protocol::InterAgentCommunication;
 
+use crate::ExtensionData;
+
 /// Inputs supplied when the host is about to deliver an automatic terminal
 /// message from a child agent to its direct parent.
 ///
@@ -17,6 +19,7 @@ pub struct TerminalMessageInput<'a> {
     pub recipient_thread_id: ThreadId,
     pub communication: &'a InterAgentCommunication,
     pub status: &'a AgentStatus,
+    pub recipient_thread_store: &'a ExtensionData,
 }
 
 /// Result of one terminal-message contribution.

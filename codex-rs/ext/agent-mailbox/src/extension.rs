@@ -48,12 +48,16 @@ pub(crate) struct AgentMailboxRuntime {
     pub(crate) thread_id: ThreadId,
     pub(crate) root_thread_id: ThreadId,
     pub(crate) agent_path: AgentPath,
+    persistent_thread_state_available: bool,
     enabled: AtomicBool,
 }
 
 impl AgentMailboxRuntime {
     fn set_enabled(&self, enabled: bool) {
-        self.enabled.store(enabled, Ordering::Release);
+        self.enabled.store(
+            self.persistent_thread_state_available && enabled,
+            Ordering::Release,
+        );
     }
 
     fn enabled(&self) -> bool {
@@ -106,6 +110,7 @@ impl ThreadLifecycleContributor<Config> for AgentMailboxExtension {
                     thread_id,
                     root_thread_id,
                     agent_path,
+                    persistent_thread_state_available: input.persistent_thread_state_available,
                     enabled: AtomicBool::new(enabled),
                 })
                 .set_enabled(enabled);
@@ -193,6 +198,15 @@ impl TerminalMessageContributor for AgentMailboxExtension {
         input: TerminalMessageInput<'a>,
     ) -> ExtensionFuture<'a, Result<TerminalMessageDisposition, String>> {
         Box::pin(async move {
+            let Some(runtime) = input
+                .recipient_thread_store
+                .get::<AgentMailboxRuntime>()
+            else {
+                return Ok(TerminalMessageDisposition::Unclaimed);
+            };
+            if !runtime.enabled() {
+                return Ok(TerminalMessageDisposition::Unclaimed);
+            }
             let category = match input.status {
                 AgentStatus::Completed(_) => AgentMailboxCategory::Result,
                 AgentStatus::Errored(_) | AgentStatus::Shutdown | AgentStatus::NotFound => {
