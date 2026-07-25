@@ -3,6 +3,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 use codex_extension_api::GoalTurnHostHandle;
+use codex_extension_api::GoalTurnHostRejection;
 use codex_protocol::ThreadId;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::ThreadGoal;
@@ -433,16 +434,23 @@ impl GoalRuntimeHandle {
         }
         let item = continuation_steering_item(&protocol_goal_from_state(goal));
 
-        if let Err(reason) = self
+        match self
             .inner
             .goal_turn_host
             .start_goal_turn_if_idle(self.inner.thread_id, vec![item])
             .await
         {
-            tracing::debug!(
-                ?reason,
-                "skipping goal continuation because automatic idle work was rejected"
-            );
+            Ok(()) => {}
+            Err(GoalTurnHostRejection::HostUnavailable)
+            | Err(GoalTurnHostRejection::ThreadUnavailable) => {
+                return Ok(());
+            }
+            Err(reason) => {
+                tracing::debug!(
+                    ?reason,
+                    "skipping goal continuation because automatic idle work was rejected"
+                );
+            }
         }
 
         let current_turn_is_goal_active = self
