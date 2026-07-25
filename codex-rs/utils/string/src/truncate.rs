@@ -3,15 +3,21 @@
 
 const APPROX_BYTES_PER_TOKEN: usize = 4;
 
-/// Truncate a string to `max_bytes` using a character-count marker.
+/// Truncate a string using `max_bytes` for the retained prefix and suffix.
+///
+/// The character-count marker is added outside that budget, so the returned
+/// string can be longer than `max_bytes`.
 pub fn truncate_middle_chars(s: &str, max_bytes: usize) -> String {
     truncate_with_byte_estimate(s, max_bytes, /*use_tokens*/ false)
 }
 
-/// Truncate the middle of a UTF-8 string to at most `max_tokens` approximate
-/// tokens, preserving the beginning and the end. Returns the possibly
-/// truncated string and `Some(original_token_count)` if truncation occurred;
-/// otherwise returns the original string and `None`.
+/// Truncate the middle of a UTF-8 string using `max_tokens` as the approximate
+/// budget for the retained beginning and end.
+///
+/// The truncation marker is added outside that budget, so the returned string
+/// can exceed `max_tokens` approximate tokens. Returns the possibly truncated
+/// string and `Some(original_token_count)` if truncation occurred; otherwise
+/// returns the original string and `None`.
 pub fn truncate_middle_with_token_budget(s: &str, max_tokens: usize) -> (String, Option<u64>) {
     if s.is_empty() {
         return (String::new(), None);
