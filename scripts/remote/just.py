@@ -29,6 +29,7 @@ remote checkout. The command is executed with the remote sccache and fast-linker
 environment used by standalone builds.
 """
 
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = tuple(argv if argv is not None else sys.argv[1:])
     if not args:
