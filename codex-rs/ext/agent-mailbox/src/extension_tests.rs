@@ -21,6 +21,7 @@ use pretty_assertions::assert_eq;
 use super::AgentMailboxExtension;
 use super::AgentMailboxRuntime;
 use crate::NoopAgentMailboxStatusNotifier;
+use crate::MAX_AGENT_MAILBOX_PAYLOAD_BYTES;
 
 const SENDER_THREAD_ID: &str = "00000000-0000-0000-0000-000000000701";
 const RECIPIENT_THREAD_ID: &str = "00000000-0000-0000-0000-000000000702";
@@ -132,6 +133,79 @@ async fn terminal_capture_leaves_disabled_or_ephemeral_recipients_unclaimed() ->
                 .map_err(anyhow::Error::msg)?
         );
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn terminal_capture_enforces_the_encrypted_payload_budget() -> anyhow::Result<()> {
+    let temporary_home = tempfile::tempdir()?;
+    let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
+    let session_id = SessionId::new();
+    let sender_thread_id = thread_id(SENDER_THREAD_ID);
+    let recipient_thread_id = thread_id(RECIPIENT_THREAD_ID);
+    let recipient_store = enabled_recipient_store(session_id, recipient_thread_id);
+    let extension = AgentMailboxExtension::new(
+        Arc::clone(&state),
+        Weak::<ThreadManager>::new(),
+        Arc::new(NoopAgentMailboxStatusNotifier),
+    );
+    let status = AgentStatus::Completed(/*final_message*/ None);
+    let mut accepted_communication = terminal_communication();
+    accepted_communication.encrypted_content = Some("x".repeat(MAX_AGENT_MAILBOX_PAYLOAD_BYTES));
+
+    assert_eq!(
+        TerminalMessageDisposition::Committed,
+        extension
+            .contribute(TerminalMessageInput {
+                session_id,
+                sender_thread_id,
+                recipient_thread_id,
+                communication: &accepted_communication,
+                status: &status,
+                recipient_thread_store: &recipient_store,
+            })
+            .await
+            .map_err(anyhow::Error::msg)?
+    );
+    assert_eq!(
+        1,
+        state
+            .agent_mailbox()
+            .unread_snapshot(session_id.into(), recipient_thread_id)
+            .await?
+            .total
+    );
+
+    let mut oversized_communication = terminal_communication();
+    oversized_communication.id = Some(ResponseItemId::from_server("message-terminal-oversized".to_string()));
+    oversized_communication.encrypted_content = Some("x".repeat(MAX_AGENT_MAILBOX_PAYLOAD_BYTES + 1));
+    let Err(error) = extension
+        .contribute(TerminalMessageInput {
+            session_id,
+            sender_thread_id,
+            recipient_thread_id,
+            communication: &oversized_communication,
+            status: &status,
+            recipient_thread_store: &recipient_store,
+        })
+        .await
+    else {
+        panic!("oversized encrypted terminal message should not be captured");
+    };
+    assert_eq!(
+        format!(
+            "failed to capture terminal agent mailbox message: agent mailbox message exceeds the {MAX_AGENT_MAILBOX_PAYLOAD_BYTES}-byte limit"
+        ),
+        error
+    );
+    assert_eq!(
+        1,
+        state
+            .agent_mailbox()
+            .unread_snapshot(session_id.into(), recipient_thread_id)
+            .await?
+            .total
+    );
     Ok(())
 }
 

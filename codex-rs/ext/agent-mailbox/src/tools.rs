@@ -17,7 +17,6 @@ use codex_state::AgentMailboxMessageInput;
 use codex_state::AgentMailboxPayload;
 use codex_state::AgentMailboxReadRequest;
 use codex_state::StateRuntime;
-use codex_state::MAX_AGENT_MAILBOX_READ_LIMIT;
 use codex_tools::ResponsesApiNamespace;
 use codex_tools::ResponsesApiNamespaceTool;
 use codex_tools::default_namespace_description;
@@ -34,7 +33,9 @@ use crate::extension::AgentMailboxRuntime;
 use crate::extension::AgentMailboxStatusNotifier;
 use crate::output::AgentMailboxReadOutput;
 use crate::output::snapshot_json;
+use crate::output::validate_message_input_for_read_output;
 use crate::schema::input_schema_for;
+use crate::MAX_AGENT_MAILBOX_READ_MESSAGES;
 
 const DEFAULT_READ_LIMIT: usize = 1;
 
@@ -137,22 +138,25 @@ impl AgentMailboxTool {
             .await
             .map_err(|err| FunctionCallError::RespondToModel(err.to_string()))?;
         let message_id = Uuid::new_v4().to_string();
+        let input = AgentMailboxMessageInput {
+            id: message_id,
+            root_thread_id: self.runtime.root_thread_id,
+            sender_thread_id: self.runtime.thread_id,
+            sender_agent_path: self.runtime.agent_path.to_string(),
+            recipient_thread_id: target.thread_id,
+            recipient_agent_path: target.agent_path.to_string(),
+            category: args.category.into(),
+            payload: AgentMailboxPayload::Plaintext {
+                content: message.to_string(),
+            },
+            created_at: Utc::now(),
+        };
+        validate_message_input_for_read_output(&input)
+            .map_err(FunctionCallError::RespondToModel)?;
         let outcome = self
             .state
             .agent_mailbox()
-            .enqueue(AgentMailboxMessageInput {
-                id: message_id,
-                root_thread_id: self.runtime.root_thread_id,
-                sender_thread_id: self.runtime.thread_id,
-                sender_agent_path: self.runtime.agent_path.to_string(),
-                recipient_thread_id: target.thread_id,
-                recipient_agent_path: target.agent_path.to_string(),
-                category: args.category.into(),
-                payload: AgentMailboxPayload::Plaintext {
-                    content: message.to_string(),
-                },
-                created_at: Utc::now(),
-            })
+            .enqueue(input)
             .await
             .map_err(|err| {
                 FunctionCallError::RespondToModel(format!(
@@ -182,10 +186,7 @@ impl AgentMailboxTool {
         invocation: &ToolCall,
     ) -> Result<Box<dyn ToolOutput>, FunctionCallError> {
         let args: ReadArgs = parse_args(invocation)?;
-        let limit = args
-            .limit
-            .unwrap_or(DEFAULT_READ_LIMIT)
-            .clamp(1, MAX_AGENT_MAILBOX_READ_LIMIT);
+        let limit = read_limit(args.limit)?;
         let (sender_thread_id, sender_agent_path) =
             sender_filter(self.runtime.as_ref(), args.sender.as_deref())?;
         let outcome = self
@@ -214,6 +215,16 @@ impl AgentMailboxTool {
             outcome.snapshot,
         )))
     }
+}
+
+fn read_limit(requested: Option<usize>) -> Result<usize, FunctionCallError> {
+    let limit = requested.unwrap_or(DEFAULT_READ_LIMIT).max(1);
+    if limit > MAX_AGENT_MAILBOX_READ_MESSAGES {
+        return Err(FunctionCallError::RespondToModel(format!(
+            "agent mailbox read limit must be at most {MAX_AGENT_MAILBOX_READ_MESSAGES} to fit the output budget"
+        )));
+    }
+    Ok(limit)
 }
 
 impl ToolExecutor<ToolCall> for AgentMailboxTool {
@@ -297,3 +308,7 @@ fn mailbox_function_tool<I: JsonSchema>(name: &str, description: &str) -> ToolSp
         })],
     })
 }
+
+#[cfg(test)]
+#[path = "tools_tests.rs"]
+mod tests;

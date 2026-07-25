@@ -33,6 +33,7 @@ use uuid::Uuid;
 
 use crate::tools::AgentMailboxTool;
 use crate::world_state::mailbox_world_state_section;
+use crate::output::validate_message_input_for_read_output;
 
 pub trait AgentMailboxStatusNotifier: Send + Sync {
     fn status_updated(&self, thread_id: ThreadId, snapshot: AgentMailboxUnreadSnapshot);
@@ -231,20 +232,23 @@ impl TerminalMessageContributor for AgentMailboxExtension {
                 .map(ToString::to_string)
                 .unwrap_or_else(|| Uuid::new_v4().to_string());
             let root_thread_id: ThreadId = input.session_id.into();
+            let message = AgentMailboxMessageInput {
+                id: message_id,
+                root_thread_id,
+                sender_thread_id: input.sender_thread_id,
+                sender_agent_path: input.communication.author.to_string(),
+                recipient_thread_id: input.recipient_thread_id,
+                recipient_agent_path: input.communication.recipient.to_string(),
+                category,
+                payload,
+                created_at: Utc::now(),
+            };
+            validate_message_input_for_read_output(&message)
+                .map_err(|err| format!("failed to capture terminal agent mailbox message: {err}"))?;
             let outcome = self
                 .state
                 .agent_mailbox()
-                .enqueue(AgentMailboxMessageInput {
-                    id: message_id,
-                    root_thread_id,
-                    sender_thread_id: input.sender_thread_id,
-                    sender_agent_path: input.communication.author.to_string(),
-                    recipient_thread_id: input.recipient_thread_id,
-                    recipient_agent_path: input.communication.recipient.to_string(),
-                    category,
-                    payload,
-                    created_at: Utc::now(),
-                })
+                .enqueue(message)
                 .await
                 .map_err(|err| format!("failed to capture terminal agent mailbox message: {err}"))?;
             self.notifier
