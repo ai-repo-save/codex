@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run python
-from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -34,22 +34,31 @@ TUI_SMOKE_JUST_ARGS = (
     "codex-tui",
     "embedded_app_server_supports_thread_start_rpc",
 )
-NO_ARGUMENTS_MESSAGE = (
-    "scripts/remote/tui_smoke.py does not accept arguments; it runs the fixed "
-    "codex-tui smoke validation command."
-)
+
+
+def argument_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Compile the remote TUI test graph and run the fixed embedded "
+            "app-server RPC smoke check."
+        ),
+        epilog=("Example: scripts/remote/tui_smoke.py --branch sync/rust-v0.146.0"),
+    )
+    parser.add_argument(
+        "--branch",
+        default=DEFAULT_BRANCH,
+        help=f"local and remote Git branch to synchronize (default: {DEFAULT_BRANCH})",
+    )
+    return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = tuple(argv if argv is not None else sys.argv[1:])
-    if args:
-        print(NO_ARGUMENTS_MESSAGE, file=sys.stderr)
-        return 2
+    args = argument_parser().parse_args(argv)
 
     return run_remote_workflow(
         RemoteWorkflow(
             host=DEFAULT_HOST,
-            branch=DEFAULT_BRANCH,
+            branch=args.branch,
             remote_path=DEFAULT_REMOTE_PATH,
             command=remote_codex_rs_just_command(TUI_SMOKE_JUST_ARGS),
         )

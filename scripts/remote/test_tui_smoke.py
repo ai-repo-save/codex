@@ -5,6 +5,7 @@ import contextlib
 import io
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -18,34 +19,35 @@ class RemoteTuiSmokeTest(unittest.TestCase):
     def test_rejects_arguments(self) -> None:
         stderr = io.StringIO()
 
-        with contextlib.redirect_stderr(stderr):
-            exit_code = tui_smoke.main(("test",))
+        with (
+            contextlib.redirect_stderr(stderr),
+            self.assertRaises(SystemExit) as raised,
+        ):
+            tui_smoke.main(("test",))
 
-        self.assertEqual(exit_code, 2)
-        self.assertIn("does not accept arguments", stderr.getvalue())
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("unrecognized arguments", stderr.getvalue())
 
     def test_runs_fixed_codex_tui_smoke_command(self) -> None:
-        captured_commands: list[tuple[str, ...]] = []
-        original_run_remote_workflow = tui_smoke.run_remote_workflow
-
-        def capture_run_remote_workflow(config: tui_smoke.RemoteWorkflow) -> int:
-            captured_commands.append(config.command)
-            return 0
-
-        tui_smoke.run_remote_workflow = capture_run_remote_workflow
-        try:
+        with mock.patch.object(tui_smoke, "run_remote_workflow", return_value=0) as run:
             exit_code = tui_smoke.main(())
-        finally:
-            tui_smoke.run_remote_workflow = original_run_remote_workflow
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(len(captured_commands), 1)
-        shell_command = captured_commands[0][2]
+        config = run.call_args.args[0]
+        self.assertEqual(config.branch, tui_smoke.DEFAULT_BRANCH)
+        shell_command = config.command[2]
         self.assertIn(
             "cd codex-rs && just test -p codex-tui "
             "embedded_app_server_supports_thread_start_rpc",
             shell_command,
         )
+
+    def test_runs_smoke_command_on_selected_sync_branch(self) -> None:
+        with mock.patch.object(tui_smoke, "run_remote_workflow", return_value=0) as run:
+            exit_code = tui_smoke.main(("--branch", "sync/rust-v0.146.0"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(run.call_args.args[0].branch, "sync/rust-v0.146.0")
 
 
 if __name__ == "__main__":

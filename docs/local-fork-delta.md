@@ -1,7 +1,7 @@
 # Local Fork Capability Contract
 
 This repository carries a maintained Codex Rust fork on top of upstream stable release tags. The
-current integration baseline is `rust-v0.144.1`. Future stable syncs preserve the capabilities in
+current integration baseline is `rust-v0.145.0`. Future stable syncs preserve the capabilities in
 this document as behavioral contracts rather than reproducing a historical commit range.
 
 ## Stable Sync Invariants
@@ -22,11 +22,13 @@ All routine Codex Rust compilation, execution, testing, code generation, and sta
 run on `192.168.50.8` through `scripts/remote/`. The scripts own repository synchronization,
 sccache, fast-linker configuration, diagnostics, artifact transfer, and local installation.
 
-- `scripts/remote/just.py` is the only supported path for `codex-rs` `just` recipes.
-- `scripts/remote/build_sync.py` performs the remote compile-and-execute smoke workflow.
+- `scripts/remote/just.py` is the only supported path for `codex-rs` `just` recipes. Its
+  `--branch` option validates a stable-sync branch before it reaches `main`.
+- `scripts/remote/build_sync.py` performs the remote compile-and-execute smoke workflow and accepts
+  the same branch selection.
 - `scripts/remote/install_local_standalone.py` builds remotely, transfers a compressed standalone
   package, installs it locally, and reports timing and diagnostic information.
-- `scripts/remote/doctor.py` checks the remote Git, network, and toolchain prerequisites.
+- `scripts/remote/doctor.py` checks the remote Git, network, toolchain, and selected origin branch.
 - Repository hooks guard against accidental local Rust build, test, and code-generation commands.
 - The local checkout remains the source of truth. Generated files retained from a remote workflow
   are copied back before review and commit.
@@ -313,16 +315,24 @@ uv run --project scripts python scripts/remote/just.py write-app-server-schema -
 
 ## Stable Sync Procedure
 
-1. Start from a clean worktree and create a backup branch.
-2. Fetch and verify the target stable tag, then merge it into `main` with a merge commit.
-3. Resolve conflicts against the capability contracts in this document and the current focused
-   tests, not against an obsolete implementation shape.
-4. Regenerate every affected config, protocol, TypeScript, JSON schema, Cargo lock, and Bazel lock
-   artifact through the remote workflows.
-5. Run focused remote validation for every touched capability group. Use the complete remote test
+1. Start from a clean `main`, fetch and verify the target stable tag, then create
+   `sync/rust-vX.Y.Z` and merge the tag into that branch with a merge commit.
+2. Configure the checkout with `rerere.enabled=true`, `rerere.autoupdate=false`, and
+   `merge.conflictstyle=zdiff3`. Recorded resolutions remain subject to review before staging.
+3. Resolve source conflicts against the capability contracts and focused tests. Keep repair
+   commits separated by capability so rewind, multi-agent, mailbox, and unrelated behavior remain
+   independently reviewable.
+4. After source behavior is stable, update manifests and regenerate lockfiles, regular and
+   experimental schemas, and snapshots in that order. Generated artifacts derive from the resolved
+   source and are not manually merged.
+5. Run formatting after generated outputs have been reviewed. Use `--branch sync/rust-vX.Y.Z` for
+   `just.py`, `build_sync.py`, `tui_smoke.py`, and `doctor.py` throughout validation.
+6. Run focused remote validation for every touched capability group. Use the complete remote test
    suite when the merge crosses shared core or protocol boundaries broadly enough that focused
    coverage cannot bound the risk.
-6. Review model-visible tool schemas and runtime gates with at least one supported current model,
+7. Review model-visible tool schemas and runtime gates with at least one supported current model,
    including `CodeModeOnly` planning when session-control tools are affected.
-7. Install the validated standalone build locally and smoke the resulting CLI before declaring the
-   stable sync complete.
+8. Merge the accepted sync branch into `main`, update this document's integration baseline, and
+   push the reviewed result.
+9. Run `install_local_standalone.py` from clean `main`; installation intentionally does not accept
+   a branch override. Smoke the installed CLI before declaring the stable sync complete.

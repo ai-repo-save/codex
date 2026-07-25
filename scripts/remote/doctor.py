@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run python
-from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -8,6 +8,7 @@ from typing import Sequence
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _sync import DEFAULT_BRANCH
     from _sync import DEFAULT_HOST
     from _sync import DEFAULT_REMOTE_PATH
     from _sync import RemoteWorkflow
@@ -15,6 +16,7 @@ if __package__ in (None, ""):
     from _sync import shell_quote
     from _sync import ssh_command
 else:
+    from ._sync import DEFAULT_BRANCH
     from ._sync import DEFAULT_HOST
     from ._sync import DEFAULT_REMOTE_PATH
     from ._sync import RemoteWorkflow
@@ -23,15 +25,28 @@ else:
     from ._sync import ssh_command
 
 
+def argument_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Check remote Git, network, and toolchain prerequisites for a "
+            "Codex workflow."
+        ),
+        epilog=("Example: scripts/remote/doctor.py --branch sync/rust-v0.146.0"),
+    )
+    parser.add_argument(
+        "--branch",
+        default=DEFAULT_BRANCH,
+        help=f"origin branch whose availability is checked (default: {DEFAULT_BRANCH})",
+    )
+    return parser
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = tuple(argv if argv is not None else sys.argv[1:])
-    if args:
-        print("scripts/remote/doctor.py does not accept arguments", file=sys.stderr)
-        return 2
+    args = argument_parser().parse_args(argv)
 
     config = RemoteWorkflow(
         host=DEFAULT_HOST,
-        branch="main",
+        branch=args.branch,
         remote_path=DEFAULT_REMOTE_PATH,
         command=(),
     )
@@ -49,7 +64,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         'timeout 15 curl -I -L --connect-timeout 5 https://www.google.com 2>&1 | sed -n "1,12p"; '
         'printf "%s\\n" "== remote git origin =="; '
         f"cd {shell_quote(config.remote_path)}; "
-        'timeout 45 git ls-remote --heads origin main 2>&1 | sed -n "1,40p"'
+        "timeout 45 git ls-remote --heads origin "
+        f'{shell_quote(config.branch)} 2>&1 | sed -n "1,40p"'
     )
     run(ssh_command(config, command))
     return 0

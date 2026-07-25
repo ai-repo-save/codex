@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run python
-from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -22,22 +22,31 @@ else:
 
 
 SMOKE_COMMAND = ("just", "codex", "--version")
-NO_ARGUMENTS_MESSAGE = (
-    "scripts/remote/build_sync.py does not accept arguments; it only runs the "
-    "fixed remote smoke workflow."
-)
+
+
+def argument_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Compile and execute the Codex version smoke check on the remote "
+            "execution host."
+        ),
+        epilog=("Example: scripts/remote/build_sync.py --branch sync/rust-v0.146.0"),
+    )
+    parser.add_argument(
+        "--branch",
+        default=DEFAULT_BRANCH,
+        help=f"local and remote Git branch to synchronize (default: {DEFAULT_BRANCH})",
+    )
+    return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = tuple(argv if argv is not None else sys.argv[1:])
-    if args:
-        print(NO_ARGUMENTS_MESSAGE, file=sys.stderr)
-        return 2
+    args = argument_parser().parse_args(argv)
 
     return run_remote_workflow(
         RemoteWorkflow(
             host=DEFAULT_HOST,
-            branch=DEFAULT_BRANCH,
+            branch=args.branch,
             remote_path=DEFAULT_REMOTE_PATH,
             command=SMOKE_COMMAND,
         )
