@@ -237,6 +237,11 @@ impl ChatWidget {
             ThreadItem::HookPrompt { .. } => {}
             ThreadItem::DynamicToolCall { .. } => {}
             ThreadItem::Sleep(_) => {}
+            ThreadItem::CollabAgentToolCall { .. }
+            | ThreadItem::SubAgentActivity { .. }
+            | ThreadItem::MemoryMutation(_) => {
+                unreachable!("feature-owned thread items are handled before replay rendering")
+            }
         }
 
         if matches!(replay_kind, Some(ReplayKind::ThreadSnapshot)) && turn_id.is_empty() {
