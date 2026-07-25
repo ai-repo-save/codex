@@ -113,3 +113,7 @@ fn message_metadata(message: &AgentMailboxMessage) -> Value {
         "receivedAt": message.created_at.timestamp(),
     })
 }
+
+#[cfg(test)]
+#[path = "output_tests.rs"]
+mod tests;

@@ -68,3 +68,7 @@ fn render_snapshot(snapshot: &AgentMailboxUnreadSnapshot) -> String {
         categories.join(", ")
     )
 }
+
+#[cfg(test)]
+#[path = "world_state_tests.rs"]
+mod tests;
