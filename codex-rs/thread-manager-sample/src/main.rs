@@ -62,7 +62,6 @@ use codex_core_api::arg0_dispatch_or_else;
 use codex_core_api::build_models_manager;
 use codex_core_api::built_in_model_providers;
 use codex_core_api::builtin_collaboration_mode_presets;
-use codex_core_api::empty_extension_registry;
 use codex_core_api::find_codex_home;
 use codex_core_api::init_state_db;
 use codex_core_api::install_image_generation_extension;
@@ -259,6 +258,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         agent_interrupt_message_enabled: false,
         agent_max_depth: 1,
         agent_roles: BTreeMap::new(),
+        agent_mailbox: Default::default(),
         memories: MemoriesConfig::default(),
         sqlite_home: codex_home.to_path_buf(),
         log_dir: codex_home.join("log").to_path_buf(),
