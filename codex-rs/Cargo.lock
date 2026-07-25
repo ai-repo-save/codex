@@ -3174,7 +3174,6 @@ dependencies = [
  "chrono",
  "codex-analytics",
  "codex-context-fragments",
- "codex-core",
  "codex-extension-api",
  "codex-otel",
  "codex-protocol",
