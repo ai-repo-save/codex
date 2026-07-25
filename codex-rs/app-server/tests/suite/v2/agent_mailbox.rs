@@ -7,7 +7,6 @@ use app_test_support::create_mock_responses_server_repeating_assistant;
 use app_test_support::to_response;
 use app_test_support::write_models_cache;
 use chrono::Utc;
-use codex_app_server_protocol::JSONRPCNotification;
 use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ThreadAgentMailboxGetResponse;
@@ -97,15 +96,9 @@ async fn thread_agent_mailbox_get_and_resume_hydration_are_count_only() -> Resul
     )
     .await??;
     let _: ThreadResumeResponse = to_response(resume_response)?;
-    let notification: JSONRPCNotification = timeout(
-        DEFAULT_READ_TIMEOUT,
-        app_server.read_stream_until_notification_message("thread/agentMailbox/updated"),
-    )
-    .await??;
-    let notification_json = serde_json::to_string(&notification)?;
-    assert!(notification_json.contains("\"total\":1"));
-    assert!(notification_json.contains("\"actionRequired\":1"));
-    assert!(!notification_json.contains(MESSAGE_BODY));
+    let notification = wait_for_mailbox_update(&mut app_server, &first_thread.id, 1).await?;
+    assert_eq!(notification.mailbox.total, 1);
+    assert_eq!(notification.mailbox.action_required, 1);
 
     Ok(())
 }
@@ -218,7 +211,7 @@ async fn agent_mailbox_body_reaches_parent_only_after_explicit_read() -> Result<
     start_turn(&mut app_server, &thread.id, PARENT_SPAWN_PROMPT).await?;
     wait_for_turn_completion(&mut app_server, &thread.id).await?;
 
-    let mailbox_update = wait_for_mailbox_update(&mut app_server, &thread.id).await?;
+    let mailbox_update = wait_for_mailbox_update(&mut app_server, &thread.id, 1).await?;
     assert_eq!(mailbox_update.mailbox.total, 1);
     assert_eq!(mailbox_update.mailbox.progress, 0);
     assert_eq!(mailbox_update.mailbox.result, 1);
@@ -311,6 +304,7 @@ async fn wait_for_turn_completion(app_server: &mut TestAppServer, thread_id: &st
 async fn wait_for_mailbox_update(
     app_server: &mut TestAppServer,
     thread_id: &str,
+    revision: u64,
 ) -> Result<ThreadAgentMailboxUpdatedNotification> {
     Ok(timeout(DEFAULT_READ_TIMEOUT, async {
         loop {
@@ -322,7 +316,7 @@ async fn wait_for_mailbox_update(
                 .expect("thread/agentMailbox/updated params");
             assert!(!params.to_string().contains(MESSAGE_BODY));
             let updated: ThreadAgentMailboxUpdatedNotification = serde_json::from_value(params)?;
-            if updated.thread_id == thread_id {
+            if updated.thread_id == thread_id && updated.mailbox.revision >= revision {
                 return Ok::<ThreadAgentMailboxUpdatedNotification, anyhow::Error>(updated);
             }
         }
