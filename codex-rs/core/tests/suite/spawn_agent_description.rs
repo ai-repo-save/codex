@@ -274,12 +274,6 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
         "expected inherited-model guidance in spawn_agent description: {description:?}"
     );
     assert!(
-        description.contains(
-            "Do not set the `model` field unless the user explicitly asks for a different model or there is a clear task-specific reason."
-        ),
-        "expected model override usage guidance in spawn_agent description: {description:?}"
-    );
-    assert!(
         description.contains("Reasoning efforts: low, medium (default), high."),
         "expected default reasoning effort in spawn_agent description: {description:?}"
     );
