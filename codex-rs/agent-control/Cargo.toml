@@ -5,6 +5,7 @@ name = "codex-agent-control"
 version.workspace = true
 
 [lib]
+doctest = false
 name = "codex_agent_control"
 path = "src/lib.rs"
 
@@ -15,6 +16,8 @@ workspace = true
 codex-protocol = { workspace = true }
 codex-tools = { workspace = true }
 serde_json = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+uuid = { workspace = true, features = ["v7"] }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

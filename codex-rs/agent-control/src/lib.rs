@@ -8,6 +8,12 @@ use serde_json::Value;
 use serde_json::json;
 use std::collections::BTreeMap;
 
+mod parent_requests;
+
+pub use parent_requests::ParentReplyClaim;
+pub use parent_requests::ParentRequestBroker;
+pub use parent_requests::ParentRequestOutcome;
+
 pub const MULTI_AGENT_V1_NAMESPACE: &str = "multi_agent_v1";
 const MULTI_AGENT_V1_NAMESPACE_DESCRIPTION: &str = "Tools for spawning and managing sub-agents.";
 

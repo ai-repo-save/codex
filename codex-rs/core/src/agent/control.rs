@@ -54,15 +54,15 @@ use tracing::warn;
 
 pub(crate) use self::execution::AgentExecutionGuard;
 use self::execution::AgentExecutionLimiter;
-pub(crate) use self::parent_requests::ParentReplyClaim;
-pub(crate) use self::parent_requests::ParentRequestOutcome;
 use self::residency::V2Residency;
+pub(crate) use codex_agent_control::ParentReplyClaim;
+use codex_agent_control::ParentRequestBroker;
+pub(crate) use codex_agent_control::ParentRequestOutcome;
 
 const ROOT_LAST_TASK_MESSAGE: &str = "Main thread";
 
 mod execution;
 mod legacy;
-mod parent_requests;
 mod residency;
 mod spawn;
 
@@ -120,7 +120,7 @@ pub(crate) struct AgentControl {
     agent_execution_limiter: Arc<AgentExecutionLimiter>,
     /// Session-scoped state shared by the root thread and every cloned sub-agent control handle.
     rollout_budget: Arc<RolloutBudget>,
-    parent_requests: Arc<parent_requests::ParentRequestBroker>,
+    parent_requests: Arc<ParentRequestBroker>,
 }
 
 impl AgentControl {
@@ -166,7 +166,7 @@ impl AgentControl {
         parent_thread_id: ThreadId,
     ) -> (
         String,
-        tokio::sync::oneshot::Receiver<parent_requests::ParentRequestOutcome>,
+        tokio::sync::oneshot::Receiver<ParentRequestOutcome>,
     ) {
         self.parent_requests
             .register(child_thread_id, parent_thread_id)

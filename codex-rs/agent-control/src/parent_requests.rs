@@ -5,7 +5,7 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 #[derive(Debug)]
-pub(crate) enum ParentRequestOutcome {
+pub enum ParentRequestOutcome {
     Answered {
         answer: String,
         acknowledgment: oneshot::Sender<()>,
@@ -13,13 +13,13 @@ pub(crate) enum ParentRequestOutcome {
     ParentUnavailable,
 }
 
-pub(crate) struct ParentReplyClaim {
+pub struct ParentReplyClaim {
     request_id: String,
     sender: oneshot::Sender<ParentRequestOutcome>,
 }
 
 impl ParentReplyClaim {
-    pub(crate) async fn deliver(self, answer: String) -> Result<(), String> {
+    pub async fn deliver(self, answer: String) -> Result<(), String> {
         let (acknowledgment, acknowledged) = oneshot::channel();
         self.sender
             .send(ParentRequestOutcome::Answered {
@@ -43,12 +43,12 @@ struct PendingParentRequest {
 }
 
 #[derive(Default)]
-pub(super) struct ParentRequestBroker {
+pub struct ParentRequestBroker {
     pending: Mutex<HashMap<String, PendingParentRequest>>,
 }
 
 impl ParentRequestBroker {
-    pub(super) fn register(
+    pub fn register(
         &self,
         child_thread_id: ThreadId,
         parent_thread_id: ThreadId,
@@ -69,7 +69,7 @@ impl ParentRequestBroker {
         (request_id, receiver)
     }
 
-    pub(super) fn claim_reply(
+    pub fn claim_reply(
         &self,
         request_id: &str,
         parent_thread_id: ThreadId,
@@ -98,7 +98,7 @@ impl ParentRequestBroker {
         })
     }
 
-    pub(super) fn cancel(&self, request_id: &str) -> bool {
+    pub fn cancel(&self, request_id: &str) -> bool {
         self.pending
             .lock()
             .unwrap_or_else(|err| err.into_inner())
@@ -106,7 +106,7 @@ impl ParentRequestBroker {
             .is_some()
     }
 
-    pub(super) fn cancel_for_thread(&self, thread_id: ThreadId) {
+    pub fn cancel_for_thread(&self, thread_id: ThreadId) {
         let mut pending = self.pending.lock().unwrap_or_else(|err| err.into_inner());
         let request_ids = pending
             .iter()

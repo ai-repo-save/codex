@@ -1843,6 +1843,8 @@ dependencies = [
  "codex-tools",
  "pretty_assertions",
  "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
