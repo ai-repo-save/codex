@@ -9,9 +9,10 @@ struct RewindContributionFragment {
     text: String,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Default)]
 pub(super) struct RewindContributions {
-    fragments: Vec<RewindContributionFragment>,
+    prompt_fragments: Vec<RewindContributionFragment>,
+    contextual_fragments: Vec<Box<dyn ContextualUserFragment + Send>>,
 }
 
 impl RewindContributions {
@@ -21,28 +22,17 @@ impl RewindContributions {
             Item = Box<dyn ContextualUserFragment + Send>,
         >,
     ) -> Self {
-        let mut fragments = prompt_fragments
+        let prompt_fragments = prompt_fragments
             .into_iter()
             .map(|fragment| RewindContributionFragment {
                 slot: fragment.slot(),
                 text: fragment.text().to_string(),
             })
             .collect::<Vec<_>>();
-        fragments.extend(contextual_fragments.into_iter().filter_map(|fragment| {
-            let slot = match fragment.role() {
-                "developer" => PromptSlot::DeveloperPolicy,
-                "user" => PromptSlot::ContextualUser,
-                role => {
-                    tracing::warn!(role, "extension contributed unsupported rewind fragment role");
-                    return None;
-                }
-            };
-            Some(RewindContributionFragment {
-                slot,
-                text: fragment.render(),
-            })
-        }));
-        Self { fragments }
+        Self {
+            prompt_fragments,
+            contextual_fragments: contextual_fragments.into_iter().collect(),
+        }
     }
 
     pub(super) fn into_response_items(self) -> Vec<ResponseItem> {
@@ -50,7 +40,7 @@ impl RewindContributions {
         let mut contextual_user_sections = Vec::new();
         let mut separate_developer_sections = Vec::new();
 
-        for fragment in self.fragments {
+        for fragment in self.prompt_fragments {
             match fragment.slot {
                 PromptSlot::DeveloperPolicy | PromptSlot::DeveloperCapabilities => {
                     developer_sections.push(fragment.text);
@@ -62,12 +52,27 @@ impl RewindContributions {
             }
         }
 
-        let mut contribution_items = Vec::with_capacity(3);
+        let mut typed_developer_items = Vec::new();
+        let mut typed_user_items = Vec::new();
+        for fragment in self.contextual_fragments {
+            match fragment.role() {
+                "developer" => typed_developer_items.push(fragment.into_boxed_response_item()),
+                "user" => typed_user_items.push(fragment.into_boxed_response_item()),
+                role => {
+                    tracing::warn!(role, "extension contributed unsupported rewind fragment role");
+                }
+            }
+        }
+
+        let mut contribution_items = Vec::with_capacity(
+            3 + typed_developer_items.len() + typed_user_items.len(),
+        );
         if let Some(developer_message) =
             crate::context_manager::updates::build_developer_update_item(developer_sections)
         {
             contribution_items.push(developer_message);
         }
+        contribution_items.extend(typed_developer_items);
         for section in separate_developer_sections {
             if let Some(developer_message) =
                 crate::context_manager::updates::build_developer_update_item(vec![section])
@@ -80,6 +85,7 @@ impl RewindContributions {
         {
             contribution_items.push(contextual_user_message);
         }
+        contribution_items.extend(typed_user_items);
         contribution_items
     }
 }

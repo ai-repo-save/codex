@@ -25,6 +25,7 @@ use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_response_created;
+use core_test_support::responses::mount_sse_once;
 use core_test_support::responses::mount_sse_sequence;
 use core_test_support::responses::sse;
 use core_test_support::responses::start_mock_server;
@@ -42,7 +43,8 @@ const LIST_CONTEXT_ANCHORS_TOOL_NAME: &str = "list_context_anchors";
 const REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME: &str = "rewind_context_to_anchor";
 const TEST_MODEL: &str = "gpt-5.4";
 const INITIAL_TYPED_CONTEXT: &str = "initial typed context";
-const REWIND_TYPED_CONTEXT: &str = "rewind typed context";
+const FIRST_REWIND_TYPED_CONTEXT: &str = "first rewind typed context";
+const SECOND_REWIND_TYPED_CONTEXT: &str = "second rewind typed context";
 
 struct TypedContextContributor;
 
@@ -63,10 +65,30 @@ impl ContextContributor for TypedContextContributor {
         _input: RewindContextContributionInput<'a>,
     ) -> ExtensionFuture<'a, Vec<Box<dyn ContextualUserFragment + Send>>> {
         Box::pin(std::future::ready(vec![
-            Box::new(ScopedMemoryContextFragment::new(REWIND_TYPED_CONTEXT))
+            Box::new(ScopedMemoryContextFragment::new(FIRST_REWIND_TYPED_CONTEXT))
+                as Box<dyn ContextualUserFragment + Send>,
+            Box::new(ScopedMemoryContextFragment::new(SECOND_REWIND_TYPED_CONTEXT))
                 as Box<dyn ContextualUserFragment + Send>,
         ]))
     }
+}
+
+fn rewind_typed_context_groups(groups: Vec<Vec<String>>) -> Vec<Vec<String>> {
+    groups
+        .into_iter()
+        .filter(|texts| {
+            texts.iter().any(|text| {
+                text.contains(FIRST_REWIND_TYPED_CONTEXT) || text.contains(SECOND_REWIND_TYPED_CONTEXT)
+            })
+        })
+        .collect()
+}
+
+fn expected_rewind_typed_context_groups() -> Vec<Vec<String>> {
+    vec![
+        vec![ScopedMemoryContextFragment::new(FIRST_REWIND_TYPED_CONTEXT).render()],
+        vec![ScopedMemoryContextFragment::new(SECOND_REWIND_TYPED_CONTEXT).render()],
+    ]
 }
 
 async fn submit_turn_with_mode(test: &TestCodex, prompt: &str, mode: ModeKind) -> Result<()> {
@@ -287,12 +309,8 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
     assert_eq!(requests.len(), 3);
     for request in &requests[1..] {
         assert_eq!(
-            request
-                .message_input_texts("user")
-                .iter()
-                .filter(|text| text.contains(REWIND_TYPED_CONTEXT))
-                .count(),
-            1
+            rewind_typed_context_groups(request.message_input_text_groups("user")),
+            expected_rewind_typed_context_groups()
         );
     }
 
@@ -383,7 +401,7 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
 
     let rollout_path = test.codex.rollout_path().expect("rollout path");
     let rollout = tokio::fs::read_to_string(rollout_path).await?;
-    let persisted_rewind_context_count = rollout
+    let persisted_rewind_context_groups = rollout
         .lines()
         .map(serde_json::from_str::<RolloutLine>)
         .collect::<std::result::Result<Vec<_>, _>>()?
@@ -392,14 +410,43 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
             RolloutItem::ResponseItem(ResponseItem::Message { content, .. }) => Some(content),
             _ => None,
         })
-        .flatten()
-        .filter_map(|item| match item {
-            ContentItem::InputText { text } => Some(text),
-            _ => None,
+        .map(|content| {
+            content
+                .into_iter()
+                .filter_map(|item| match item {
+                    ContentItem::InputText { text } => Some(text),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
         })
-        .filter(|text| text.contains(REWIND_TYPED_CONTEXT))
-        .count();
-    assert_eq!(persisted_rewind_context_count, 1);
+        .collect::<Vec<_>>();
+    assert_eq!(
+        rewind_typed_context_groups(persisted_rewind_context_groups),
+        expected_rewind_typed_context_groups()
+    );
+
+    let resume_mock = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-8"), ev_completed("resp-8")]),
+    )
+    .await;
+    let rollout_path = test
+        .session_configured
+        .rollout_path
+        .clone()
+        .expect("rollout path");
+    let resumed = builder.resume(&server, test.home.clone(), rollout_path).await?;
+    resumed
+        .submit_turn_with_approval_and_permission_profile(
+            "continue after rewind resume",
+            AskForApproval::Never,
+            PermissionProfile::Disabled,
+        )
+        .await?;
+    assert_eq!(
+        rewind_typed_context_groups(resume_mock.single_request().message_input_text_groups("user")),
+        expected_rewind_typed_context_groups()
+    );
 
     Ok(())
 }
