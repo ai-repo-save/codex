@@ -1,6 +1,6 @@
 use super::*;
 use crate::agent::inspect::InspectedAgent;
-use crate::tools::handlers::multi_agents_spec::create_inspect_agent_tool;
+use codex_agent_control::create_inspect_agent_tool;
 use codex_tools::ToolSpec;
 
 pub(crate) struct Handler;

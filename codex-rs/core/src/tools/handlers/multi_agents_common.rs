@@ -27,38 +27,6 @@ use serde_json::Value as JsonValue;
 pub(crate) const MIN_WAIT_TIMEOUT_MS: i64 = DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS;
 pub(crate) const DEFAULT_WAIT_TIMEOUT_MS: i64 = 30_000;
 pub(crate) const MAX_WAIT_TIMEOUT_MS: i64 = HARD_MAX_MULTI_AGENT_V2_TIMEOUT_MS;
-const MAX_SPAWN_AGENT_MODEL_OVERRIDES: usize = 7;
-const PREFERRED_SPAWN_AGENT_MODELS: [&str; 2] =
-    ["gpt-5.6-luna", "gpt-5.3-codex-spark"];
-
-pub(crate) fn spawn_agent_model_overrides(models: &[ModelPreset]) -> Vec<&ModelPreset> {
-    let preferred_count = models
-        .iter()
-        .filter(|model| {
-            model.show_in_picker && PREFERRED_SPAWN_AGENT_MODELS.contains(&model.model.as_str())
-        })
-        .count()
-        .min(MAX_SPAWN_AGENT_MODEL_OVERRIDES);
-    let mut regular_count = 0;
-    models
-        .iter()
-        .filter(|model| model.show_in_picker)
-        .filter(|model| {
-            if PREFERRED_SPAWN_AGENT_MODELS.contains(&model.model.as_str()) {
-                true
-            } else if regular_count
-                < MAX_SPAWN_AGENT_MODEL_OVERRIDES.saturating_sub(preferred_count)
-            {
-                regular_count += 1;
-                true
-            } else {
-                false
-            }
-        })
-        .take(MAX_SPAWN_AGENT_MODEL_OVERRIDES)
-        .collect()
-}
-
 pub(crate) fn function_arguments(payload: ToolPayload) -> Result<String, FunctionCallError> {
     match payload {
         ToolPayload::Function { arguments } => Ok(arguments),
@@ -423,7 +391,8 @@ fn find_spawn_agent_model_name(
         .find(|model| model.model == requested_model)
         .map(|model| model.model.clone())
         .ok_or_else(|| {
-            let available = spawn_agent_model_overrides(available_models)
+            let available =
+                codex_agent_control::select_spawn_agent_model_summaries(available_models)
                 .into_iter()
                 .map(|model| model.model.as_str())
                 .collect::<Vec<_>>()

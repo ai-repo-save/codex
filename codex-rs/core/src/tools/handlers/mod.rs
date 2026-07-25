@@ -18,7 +18,6 @@ mod mcp_resource;
 pub(crate) mod mcp_resource_spec;
 pub(crate) mod multi_agents;
 pub(crate) mod multi_agents_common;
-pub(crate) mod multi_agents_spec;
 pub(crate) mod multi_agents_v2;
 mod new_context_window;
 pub(crate) mod new_context_window_spec;

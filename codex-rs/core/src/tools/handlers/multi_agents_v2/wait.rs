@@ -1,7 +1,7 @@
 use super::*;
 use crate::session::InputQueueActivity;
-use crate::tools::handlers::multi_agents_spec::WaitAgentTimeoutOptions;
-use crate::tools::handlers::multi_agents_spec::create_wait_agent_tool_v2;
+use codex_agent_control::WaitAgentTimeoutOptions;
+use codex_agent_control::create_wait_agent_tool_v2;
 use codex_tools::ToolSpec;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -10,9 +10,20 @@ use tokio::time::timeout_at;
 
 pub(crate) const AGENT_MAILBOX_ACTIVITY_MESSAGE: &str = "Agent mailbox activity is available.";
 
-#[derive(Default)]
 pub(crate) struct Handler {
     options: WaitAgentTimeoutOptions,
+}
+
+impl Default for Handler {
+    fn default() -> Self {
+        Self {
+            options: WaitAgentTimeoutOptions {
+                default_timeout_ms: DEFAULT_WAIT_TIMEOUT_MS,
+                min_timeout_ms: MIN_WAIT_TIMEOUT_MS,
+                max_timeout_ms: MAX_WAIT_TIMEOUT_MS,
+            },
+        }
+    }
 }
 
 impl Handler {

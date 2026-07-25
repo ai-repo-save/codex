@@ -5,8 +5,8 @@ use crate::agent::control::render_input_preview;
 use crate::agent::exceeds_thread_spawn_depth_limit;
 use crate::agent::next_thread_spawn_depth;
 use crate::agent::role::DEFAULT_ROLE_NAME;
-use crate::tools::handlers::multi_agents_spec::SpawnAgentToolOptions;
-use crate::tools::handlers::multi_agents_spec::create_spawn_agent_tool_v1;
+use codex_agent_control::SpawnAgentToolOptions;
+use codex_agent_control::create_spawn_agent_tool_v1;
 use codex_protocol::protocol::SpawnContextInheritance;
 use codex_tools::ToolSpec;
 

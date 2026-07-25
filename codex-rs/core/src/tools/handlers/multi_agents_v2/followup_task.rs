@@ -2,8 +2,8 @@ use super::message_tool::FollowupTaskArgs;
 use super::message_tool::MessageDeliveryMode;
 use super::message_tool::handle_message_string_tool;
 use super::*;
-use crate::tools::handlers::multi_agents_spec::MessageToolOptions;
-use crate::tools::handlers::multi_agents_spec::create_followup_task_tool;
+use codex_agent_control::MessageToolOptions;
+use codex_agent_control::create_followup_task_tool;
 use codex_tools::ToolSpec;
 
 #[derive(Default)]

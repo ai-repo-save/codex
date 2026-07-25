@@ -45,7 +45,7 @@ use crate::session::turn_context::TurnContext;
 use crate::skills::SkillLoadOutcome;
 use crate::tools::handlers::McpHandler;
 use crate::tools::handlers::ToolSearchHandlerCache;
-use crate::tools::handlers::multi_agents_spec::MULTI_AGENT_V1_NAMESPACE;
+use codex_agent_control::MULTI_AGENT_V1_NAMESPACE;
 use crate::tools::registry::CoreToolRuntime;
 use crate::tools::registry::override_tool_exposure;
 use crate::tools::router::ToolRouter;

@@ -1,4 +1,3 @@
-use super::multi_agents_common::spawn_agent_model_overrides;
 use codex_protocol::openai_models::ModelPreset;
 use codex_tools::JsonSchema;
 use codex_tools::ResponsesApiNamespace;
@@ -19,6 +18,9 @@ const SPAWN_AGENT_MODEL_OVERRIDE_DESCRIPTION: &str =
 const SPAWN_AGENT_SERVICE_TIER_OVERRIDE_DESCRIPTION: &str =
     "Service tier override for the new agent. Omit unless explicitly requested.";
 const MAX_REASONING_EFFORT_CHARS_IN_SPAWN_AGENT_DESCRIPTION: usize = 64;
+const MAX_SPAWN_AGENT_MODEL_SUMMARIES: usize = 7;
+const PREFERRED_SPAWN_AGENT_MODELS: [&str; 2] =
+    ["gpt-5.6-luna", "gpt-5.3-codex-spark"];
 
 #[derive(Debug, Clone)]
 pub struct SpawnAgentToolOptions {
@@ -57,16 +59,6 @@ pub struct WaitAgentTimeoutOptions {
     pub default_timeout_ms: i64,
     pub min_timeout_ms: i64,
     pub max_timeout_ms: i64,
-}
-
-impl Default for WaitAgentTimeoutOptions {
-    fn default() -> Self {
-        Self {
-            default_timeout_ms: super::multi_agents_common::DEFAULT_WAIT_TIMEOUT_MS,
-            min_timeout_ms: super::multi_agents_common::MIN_WAIT_TIMEOUT_MS,
-            max_timeout_ms: super::multi_agents_common::MAX_WAIT_TIMEOUT_MS,
-        }
-    }
 }
 
 pub fn create_spawn_agent_tool_v1(options: SpawnAgentToolOptions) -> ToolSpec {
@@ -991,7 +983,7 @@ This session is configured with {max_concurrent_threads_per_session} concurrentl
 }
 
 fn spawn_agent_models_description(models: &[ModelPreset]) -> String {
-    let visible_models = spawn_agent_model_overrides(models);
+    let visible_models = select_spawn_agent_model_summaries(models);
     if visible_models.is_empty() {
         return "No picker-visible model overrides are currently loaded.".to_string();
     }
@@ -1049,6 +1041,34 @@ fn spawn_agent_models_description(models: &[ModelPreset]) -> String {
     )
 }
 
+pub fn select_spawn_agent_model_summaries(models: &[ModelPreset]) -> Vec<&ModelPreset> {
+    let preferred_count = models
+        .iter()
+        .filter(|model| {
+            model.show_in_picker && PREFERRED_SPAWN_AGENT_MODELS.contains(&model.model.as_str())
+        })
+        .count()
+        .min(MAX_SPAWN_AGENT_MODEL_SUMMARIES);
+    let mut regular_count = 0;
+    models
+        .iter()
+        .filter(|model| model.show_in_picker)
+        .filter(|model| {
+            if PREFERRED_SPAWN_AGENT_MODELS.contains(&model.model.as_str()) {
+                true
+            } else if regular_count
+                < MAX_SPAWN_AGENT_MODEL_SUMMARIES.saturating_sub(preferred_count)
+            {
+                regular_count += 1;
+                true
+            } else {
+                false
+            }
+        })
+        .take(MAX_SPAWN_AGENT_MODEL_SUMMARIES)
+        .collect()
+}
+
 fn wait_agent_tool_parameters_v1(options: WaitAgentTimeoutOptions) -> JsonSchema {
     let properties = BTreeMap::from([
         (
@@ -1090,5 +1110,5 @@ fn wait_agent_tool_parameters_v2(options: WaitAgentTimeoutOptions) -> JsonSchema
 }
 
 #[cfg(test)]
-#[path = "multi_agents_spec_tests.rs"]
+#[path = "spec_tests.rs"]
 mod tests;

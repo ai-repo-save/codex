@@ -1,8 +1,8 @@
 use super::*;
 use crate::agent::status::is_final;
 use crate::session::session::Session;
-use crate::tools::handlers::multi_agents_spec::WaitAgentTimeoutOptions;
-use crate::tools::handlers::multi_agents_spec::create_wait_agent_tool_v1;
+use codex_agent_control::WaitAgentTimeoutOptions;
+use codex_agent_control::create_wait_agent_tool_v1;
 use codex_protocol::error::CodexErr;
 use codex_tools::ToolSpec;
 use futures::FutureExt;
@@ -16,9 +16,20 @@ use tokio::time::Instant;
 
 use tokio::time::timeout_at;
 
-#[derive(Default)]
 pub(crate) struct Handler {
     options: WaitAgentTimeoutOptions,
+}
+
+impl Default for Handler {
+    fn default() -> Self {
+        Self {
+            options: WaitAgentTimeoutOptions {
+                default_timeout_ms: DEFAULT_WAIT_TIMEOUT_MS,
+                min_timeout_ms: MIN_WAIT_TIMEOUT_MS,
+                max_timeout_ms: MAX_WAIT_TIMEOUT_MS,
+            },
+        }
+    }
 }
 
 impl Handler {

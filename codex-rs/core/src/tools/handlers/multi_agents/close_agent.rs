@@ -1,5 +1,5 @@
 use super::*;
-use crate::tools::handlers::multi_agents_spec::create_close_agent_tool_v1;
+use codex_agent_control::create_close_agent_tool_v1;
 use codex_protocol::error::CodexErr;
 use codex_tools::ToolSpec;
 
