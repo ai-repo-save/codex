@@ -16,6 +16,12 @@ use codex_utils_output_truncation::approx_token_count;
 use serde::Serialize;
 use uuid::Uuid;
 
+mod contribution;
+mod plan;
+
+use contribution::RewindContributions;
+use plan::RewindPlan;
+
 pub(crate) const CONTEXT_REWIND_SIGNIFICANT_RECLAIM_PERCENT: u32 = 20;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -585,87 +591,57 @@ impl Session {
         };
         let completed_items =
             completed_turn_items_since_anchor(&stored_history.items, &active_anchor.anchor_id);
-        let mut developer_sections = Vec::new();
-        let mut contextual_user_sections = Vec::new();
-        let mut separate_developer_sections = Vec::new();
+        let mut contribution_fragments = Vec::new();
         for contributor in self.services.extensions.context_contributors() {
-            for fragment in contributor
-                .contribute_rewind_context(RewindContextContributionInput {
-                    session_store: &self.services.session_extension_data,
-                    thread_store: &self.services.thread_extension_data,
+            contribution_fragments.extend(
+                contributor
+                    .contribute_rewind_context(RewindContextContributionInput {
+                        session_store: &self.services.session_extension_data,
+                        thread_store: &self.services.thread_extension_data,
                     completed_items: &completed_items,
                 })
-                .await
-            {
-                super::push_prompt_fragment(
-                    fragment,
-                    &mut developer_sections,
-                    &mut contextual_user_sections,
-                    &mut separate_developer_sections,
-                );
-            }
+                .await,
+            );
         }
-        let mut contribution_items = Vec::with_capacity(3);
-        if let Some(developer_message) =
-            crate::context_manager::updates::build_developer_update_item(developer_sections)
-        {
-            contribution_items.push(developer_message);
-        }
-        for section in separate_developer_sections {
-            if let Some(developer_message) =
-                crate::context_manager::updates::build_developer_update_item(vec![section])
-            {
-                contribution_items.push(developer_message);
-            }
-        }
-        if let Some(contextual_user_message) =
-            crate::context_manager::updates::build_contextual_user_message(contextual_user_sections)
-        {
-            contribution_items.push(contextual_user_message);
-        }
-        let replay_items = stored_history
-            .items
-            .iter()
-            .cloned()
-            .chain(std::iter::once(RolloutItem::EventMsg(
-                EventMsg::ContextRewoundToAnchor(rewind_event.clone()),
-            )))
-            .chain(
-                contribution_items
-                    .iter()
-                    .cloned()
-                    .map(RolloutItem::ResponseItem),
-            )
-            .collect::<Vec<_>>();
-        self.apply_rollout_reconstruction(turn_context, replay_items.as_slice())
-            .await;
-        let replacement_anchor = ContextAnchorSavedEvent {
-            anchor_id: replacement_anchor_id.clone(),
-            label: Some(format!("after rewind from {anchor_id}")),
-            history_boundary: u64::try_from(self.clone_history().await.raw_items().len())
-                .unwrap_or(u64::MAX),
-            created_at: crate::turn_timing::now_unix_timestamp_ms() / 1000,
-            collaboration_mode_kind: Some(turn_context.collaboration_mode().mode),
-        };
-        self.recompute_token_usage(turn_context).await;
-
-        let persisted_items = std::iter::once(RolloutItem::EventMsg(
-            EventMsg::ContextRewoundToAnchor(rewind_event.clone()),
-        ))
-        .chain(
-            contribution_items
-                .into_iter()
-                .map(RolloutItem::ResponseItem),
-        )
-        .chain(std::iter::once(RolloutItem::EventMsg(
-            EventMsg::ContextAnchorSaved(replacement_anchor.clone()),
-        )))
-        .collect::<Vec<_>>();
-        self.persist_rollout_items(&persisted_items).await;
-        self.flush_rollout().await.map_err(CodexErr::Io)?;
-        Ok(RewindContextToAnchorResult::Rewound {
+        let contribution_items =
+            RewindContributions::from_prompt_fragments(contribution_fragments).into_response_items();
+        let plan = RewindPlan::new(
+            stored_history.items,
             rewind_event,
-            replacement_anchor,
+            contribution_items,
+            replacement_anchor_id,
+        );
+        let replay_items_before_replacement = plan.replay_items_before_replacement();
+        let reconstructed = self
+            .reconstruct_history_from_rollout(turn_context, &replay_items_before_replacement)
+            .await;
+        let history_boundary = u64::try_from(reconstructed.history.len()).unwrap_or(u64::MAX);
+        let plan = plan.finalize(
+            history_boundary,
+            crate::turn_timing::now_unix_timestamp_ms() / 1000,
+            turn_context.collaboration_mode().mode,
+        );
+
+        live_thread
+            .append_items(&plan.persisted_items)
+            .await
+            .map_err(|err| {
+                CodexErr::Io(std::io::Error::other(format!(
+                    "failed to persist context rewind transaction: {err}"
+                )))
+            })?;
+        live_thread.flush().await.map_err(|err| {
+            CodexErr::Io(std::io::Error::other(format!(
+                "failed to flush context rewind transaction: {err}"
+            )))
+        })?;
+
+        self.apply_rollout_reconstruction(turn_context, &plan.replay_items)
+            .await;
+        self.recompute_token_usage(turn_context).await;
+        Ok(RewindContextToAnchorResult::Rewound {
+            rewind_event: plan.rewind_event,
+            replacement_anchor: plan.replacement_anchor,
         })
     }
 
