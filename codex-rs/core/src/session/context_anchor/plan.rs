@@ -58,6 +58,7 @@ impl RewindPlan {
         created_at: i64,
         collaboration_mode_kind: ModeKind,
     ) -> FinalizedRewindPlan {
+        let replay_items_before_replacement = self.replay_items_before_replacement();
         let replacement_anchor = ContextAnchorSavedEvent {
             anchor_id: self.replacement_anchor_id,
             label: Some(format!(
@@ -81,8 +82,7 @@ impl RewindPlan {
             EventMsg::ContextAnchorSaved(replacement_anchor.clone()),
         )))
         .collect();
-        let replay_items = self
-            .replay_items_before_replacement()
+        let replay_items = replay_items_before_replacement
             .into_iter()
             .chain(std::iter::once(RolloutItem::EventMsg(
                 EventMsg::ContextAnchorSaved(replacement_anchor.clone()),
