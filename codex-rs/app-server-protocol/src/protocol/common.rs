@@ -552,6 +552,12 @@ client_request_definitions! {
         serialization: thread_id(params.thread_id),
         response: v2::ThreadGoalGetResponse,
     },
+    #[experimental("thread/agentMailbox/get")]
+    ThreadAgentMailboxGet => "thread/agentMailbox/get" {
+        params: v2::ThreadAgentMailboxGetParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadAgentMailboxGetResponse,
+    },
     ThreadGoalClear => "thread/goal/clear" {
         params: v2::ThreadGoalClearParams,
         serialization: thread_id(params.thread_id),
@@ -1653,6 +1659,8 @@ server_notification_definitions! {
     ThreadNameUpdated => "thread/name/updated" (v2::ThreadNameUpdatedNotification),
     ThreadGoalUpdated => "thread/goal/updated" (v2::ThreadGoalUpdatedNotification),
     ThreadGoalCleared => "thread/goal/cleared" (v2::ThreadGoalClearedNotification),
+    #[experimental("thread/agentMailbox/updated")]
+    ThreadAgentMailboxUpdated => "thread/agentMailbox/updated" (v2::ThreadAgentMailboxUpdatedNotification),
     #[experimental("thread/environment/connected")]
     EnvironmentConnected => "thread/environment/connected" (v2::EnvironmentConnectionNotification),
     #[experimental("thread/environment/disconnected")]
@@ -3929,6 +3937,63 @@ mod tests {
             crate::experimental_api::ExperimentalApi::experimental_reason(&cleared),
             None
         );
+    }
+
+    #[test]
+    fn thread_agent_mailbox_protocol_is_experimental_and_count_only() -> Result<()> {
+        let mailbox = v2::AgentMailboxStatus {
+            total: 4,
+            progress: 2,
+            result: 1,
+            action_required: 1,
+            revision: 7,
+        };
+        let request = ClientRequest::ThreadAgentMailboxGet {
+            request_id: RequestId::Integer(1),
+            params: v2::ThreadAgentMailboxGetParams {
+                thread_id: "thr_123".to_string(),
+            },
+        };
+        let notification = ServerNotification::ThreadAgentMailboxUpdated(
+            v2::ThreadAgentMailboxUpdatedNotification {
+                thread_id: "thr_123".to_string(),
+                mailbox,
+            },
+        );
+
+        assert_eq!(
+            json!({
+                "method": "thread/agentMailbox/get",
+                "id": 1,
+                "params": { "threadId": "thr_123" }
+            }),
+            serde_json::to_value(&request)?,
+        );
+        assert_eq!(
+            json!({
+                "method": "thread/agentMailbox/updated",
+                "params": {
+                    "threadId": "thr_123",
+                    "mailbox": {
+                        "total": 4,
+                        "progress": 2,
+                        "result": 1,
+                        "actionRequired": 1,
+                        "revision": 7
+                    }
+                }
+            }),
+            serde_json::to_value(&notification)?,
+        );
+        assert_eq!(
+            crate::experimental_api::ExperimentalApi::experimental_reason(&request),
+            Some("thread/agentMailbox/get")
+        );
+        assert_eq!(
+            crate::experimental_api::ExperimentalApi::experimental_reason(&notification),
+            Some("thread/agentMailbox/updated")
+        );
+        Ok(())
     }
 
     #[test]

@@ -954,6 +954,31 @@ pub struct ThreadGoalGetResponse {
     pub goal: Option<ThreadGoal>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentMailboxStatus {
+    pub total: u64,
+    pub progress: u64,
+    pub result: u64,
+    pub action_required: u64,
+    pub revision: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadAgentMailboxGetParams {
+    pub thread_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadAgentMailboxGetResponse {
+    pub mailbox: AgentMailboxStatus,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
@@ -1700,6 +1725,14 @@ pub struct ThreadGoalUpdatedNotification {
     pub thread_id: String,
     pub turn_id: Option<String>,
     pub goal: ThreadGoal,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadAgentMailboxUpdatedNotification {
+    pub thread_id: String,
+    pub mailbox: AgentMailboxStatus,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

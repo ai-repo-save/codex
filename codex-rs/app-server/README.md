@@ -157,6 +157,8 @@ Example with notification opt-out:
 - `thread/goal/clear` — clear the current persisted goal for a materialized thread; returns whether a goal was removed and emits `thread/goal/cleared` when state changes.
 - `thread/goal/updated` — notification emitted whenever a thread goal changes; includes the full current goal.
 - `thread/goal/cleared` — notification emitted whenever a thread goal is removed.
+- `thread/agentMailbox/get` — experimental; fetch the count-only unread agent mailbox snapshot for a thread. The snapshot contains `total`, `progress`, `result`, `actionRequired`, and monotonically increasing `revision`; it never includes message bodies. When the mailbox extension is unavailable, all counts and `revision` are zero.
+- `thread/agentMailbox/updated` — experimental notification emitted when the unread agent mailbox snapshot changes. Clients use `revision` to ignore stale snapshots.
 - `thread/settings/updated` — experimental notification emitted to subscribed clients when a loaded thread’s effective next-turn settings change; includes `threadId` and the full `threadSettings`.
 - `thread/status/changed` — notification emitted when a loaded thread’s status changes (`threadId` + new `status`).
 - `thread/archive` — move a thread’s rollout file into the archived directory and attempt to move any spawned descendant thread rollout files; returns `{}` on success and emits `thread/archived` for each archived thread.
