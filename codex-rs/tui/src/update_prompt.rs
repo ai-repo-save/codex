@@ -271,7 +271,13 @@ mod tests {
         terminal
             .draw(|frame| frame.render_widget_ref(&screen, frame.area()))
             .expect("render update prompt");
-        insta::assert_snapshot!("update_prompt_modal", terminal.backend());
+        let visible = crate::terminal_hyperlinks::strip_osc8(&terminal.backend().to_string());
+        let visible = visible
+            .lines()
+            .map(str::trim_end)
+            .collect::<Vec<_>>()
+            .join("\n");
+        insta::assert_snapshot!("update_prompt_modal", visible);
     }
 
     #[test]

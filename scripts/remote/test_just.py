@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 
-import contextlib
-import io
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -15,14 +13,13 @@ import just  # noqa: E402
 
 
 class RemoteJustTest(unittest.TestCase):
-    def test_rejects_unfiltered_codex_tui_test(self) -> None:
-        stderr = io.StringIO()
-
-        with contextlib.redirect_stderr(stderr):
+    def test_forwards_unfiltered_codex_tui_test(self) -> None:
+        with mock.patch.object(just, "run_remote_workflow", return_value=0) as run:
             exit_code = just.main(("test", "-p", "codex-tui"))
 
-        self.assertEqual(exit_code, 2)
-        self.assertIn("scripts/remote/tui_smoke.py", stderr.getvalue())
+        self.assertEqual(exit_code, 0)
+        workflow = run.call_args.args[0]
+        self.assertIn("just test -p codex-tui", workflow.command[-1])
 
 
 if __name__ == "__main__":

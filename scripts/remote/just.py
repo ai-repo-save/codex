@@ -1,5 +1,4 @@
 #!/usr/bin/env -S uv run python
-from __future__ import annotations
 
 import sys
 from pathlib import Path
@@ -30,25 +29,10 @@ remote checkout. The command is executed with the remote sccache and fast-linker
 environment used by standalone builds.
 """
 
-CODEX_TUI_FULL_TEST_ARGS = ("test", "-p", "codex-tui")
-CODEX_TUI_FULL_TEST_MESSAGE = (
-    "`scripts/remote/just.py test -p codex-tui` runs the full TUI crate, "
-    "including its platform-sensitive snapshot set. Version-bearing snapshots "
-    "use stable fixtures. Use "
-    "`scripts/remote/tui_smoke.py` only for a fast compile/RPC smoke check; "
-    "run `scripts/remote/just.py test -p codex-tui <test-filter>` for the "
-    "behavior you changed, or an explicit snapshot filter when you intend to "
-    "review snapshot output."
-)
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     args = tuple(argv if argv is not None else sys.argv[1:])
     if not args:
         print(USAGE, file=sys.stderr)
-        return 2
-    if args == CODEX_TUI_FULL_TEST_ARGS:
-        print(CODEX_TUI_FULL_TEST_MESSAGE, file=sys.stderr)
         return 2
 
     return run_remote_workflow(
