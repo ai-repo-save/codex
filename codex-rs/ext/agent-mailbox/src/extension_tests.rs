@@ -54,7 +54,8 @@ async fn terminal_capture_claims_only_after_persisting_the_completed_message() -
                 status: &status,
                 recipient_thread_store: &recipient_store,
             })
-            .await?
+            .await
+            .map_err(anyhow::Error::msg)?
     );
     let outcome = state
         .agent_mailbox()
@@ -127,7 +128,8 @@ async fn terminal_capture_leaves_disabled_or_ephemeral_recipients_unclaimed() ->
                     status: &status,
                     recipient_thread_store,
                 })
-                .await?
+                .await
+                .map_err(anyhow::Error::msg)?
         );
     }
     Ok(())
