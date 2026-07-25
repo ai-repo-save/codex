@@ -207,16 +207,17 @@ async fn wait_for_activity(
     pending_agent_mailbox_activity: bool,
     deadline: Instant,
 ) -> WaitOutcome {
-    if pending_agent_mailbox_activity {
-        return WaitOutcome::AgentMailboxActivity;
-    }
     if let Some(activity) = pending_activity {
         return match activity {
             InputQueueActivity::Mailbox => WaitOutcome::MailboxActivity,
             InputQueueActivity::Steer => WaitOutcome::Steered,
         };
     }
+    if pending_agent_mailbox_activity {
+        return WaitOutcome::AgentMailboxActivity;
+    }
     tokio::select! {
+        biased;
         result = timeout_at(deadline, activity_rx.changed()) => {
             match result {
                 Ok(Ok(())) => match *activity_rx.borrow_and_update() {
