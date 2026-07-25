@@ -46,6 +46,7 @@ use std::sync::atomic::AtomicI64;
 use std::time::Instant;
 use tracing::warn;
 
+mod agent_mailbox;
 mod backfill;
 mod external_agent_config_imports;
 mod goals;
@@ -57,6 +58,12 @@ mod remote_control;
 pub(crate) mod test_support;
 mod threads;
 
+#[cfg(test)]
+#[path = "runtime/agent_mailbox_tests.rs"]
+mod agent_mailbox_tests;
+
+pub use agent_mailbox::AgentMailboxStore;
+pub use agent_mailbox::MAX_AGENT_MAILBOX_READ_LIMIT;
 pub use external_agent_config_imports::ExternalAgentConfigImportDetailsRecord;
 pub use external_agent_config_imports::ExternalAgentConfigImportFailureRecord;
 pub use external_agent_config_imports::ExternalAgentConfigImportHistoryRecord;
@@ -154,6 +161,7 @@ pub struct StateRuntime {
     default_provider: String,
     pool: Arc<sqlx::SqlitePool>,
     logs_pool: Arc<sqlx::SqlitePool>,
+    agent_mailbox: AgentMailboxStore,
     thread_goals: GoalStore,
     memories: MemoryStore,
     thread_updated_at_millis: Arc<AtomicI64>,
@@ -306,6 +314,7 @@ impl StateRuntime {
         let thread_updated_at_millis = thread_updated_at_millis.unwrap_or(0);
         let thread_recency_at_millis = thread_recency_at_millis.unwrap_or(0);
         let runtime = Arc::new(Self {
+            agent_mailbox: AgentMailboxStore::new(Arc::clone(&pool)),
             thread_goals: GoalStore::new(Arc::clone(&goals_pool)),
             memories: MemoryStore::new(Arc::clone(&memories_pool), Arc::clone(&pool)),
             pool,
@@ -331,6 +340,10 @@ impl StateRuntime {
 
     pub fn thread_goals(&self) -> &GoalStore {
         &self.thread_goals
+    }
+
+    pub fn agent_mailbox(&self) -> &AgentMailboxStore {
+        &self.agent_mailbox
     }
 
     pub fn memories(&self) -> &MemoryStore {

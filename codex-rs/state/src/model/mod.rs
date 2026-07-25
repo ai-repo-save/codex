@@ -1,3 +1,4 @@
+mod agent_mailbox;
 mod backfill_state;
 mod graph;
 mod log;
@@ -5,6 +6,14 @@ mod memories;
 mod thread_goal;
 mod thread_metadata;
 
+pub use agent_mailbox::AgentMailboxCategory;
+pub use agent_mailbox::AgentMailboxEnqueueOutcome;
+pub use agent_mailbox::AgentMailboxMessage;
+pub use agent_mailbox::AgentMailboxMessageInput;
+pub use agent_mailbox::AgentMailboxPayload;
+pub use agent_mailbox::AgentMailboxReadOutcome;
+pub use agent_mailbox::AgentMailboxReadRequest;
+pub use agent_mailbox::AgentMailboxUnreadSnapshot;
 pub use backfill_state::BackfillState;
 pub use backfill_state::BackfillStatus;
 pub use graph::DirectionalThreadSpawnEdgeStatus;
