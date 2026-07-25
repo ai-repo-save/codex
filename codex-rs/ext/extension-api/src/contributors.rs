@@ -85,9 +85,10 @@ pub trait McpServerContributor<C: Sync>: Send + Sync {
 pub trait ContextContributor: Send + Sync {
     /// Contributes stable, typed context fragments for thread prompt assembly.
     ///
-    /// Implementations retain ownership of source-specific size bounds. The
-    /// host preserves each fragment's role and markers when it renders the
-    /// fragment into model-visible history.
+    /// Implementations retain ownership of source-specific size bounds and
+    /// must return fragments whose role is either `user` or `developer`. The
+    /// host rejects unsupported roles and preserves supported roles and
+    /// markers when it renders model-visible history.
     fn contribute_thread_context_fragments<'a>(
         &'a self,
         session_store: &'a ExtensionData,
@@ -129,7 +130,9 @@ pub trait ContextContributor: Send + Sync {
     ///
     /// `completed_items` contains only items completed after the target anchor.
     /// Implementations should derive bounded incremental context from those
-    /// items instead of reconstructing their full thread context.
+    /// items instead of reconstructing their full thread context. Typed
+    /// fragments must use the `user` or `developer` role; the host rejects
+    /// unsupported roles.
     fn contribute_rewind_context_fragments<'a>(
         &'a self,
         input: RewindContextContributionInput<'a>,
