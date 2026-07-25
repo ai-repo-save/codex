@@ -9,6 +9,8 @@ pub(crate) use codex_utils_absolute_path::test_support::test_path_buf;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+pub(crate) const TEST_CLI_VERSION: &str = "0.0.0";
+
 pub(crate) static TEST_MODEL_PRESETS: LazyLock<Vec<ModelPreset>> = LazyLock::new(|| {
     let mut response = bundled_models_response()
         .unwrap_or_else(|err| panic!("bundled models.json should parse: {err}"));
