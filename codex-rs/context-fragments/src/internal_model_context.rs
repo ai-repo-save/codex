@@ -1,6 +1,6 @@
 //! Hidden user-context fragment for extension-owned model steering.
 
-use super::ContextualUserFragment;
+use crate::ContextualUserFragment;
 use std::error::Error;
 use std::fmt;
 

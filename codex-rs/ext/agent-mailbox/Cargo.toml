@@ -16,7 +16,6 @@ workspace = true
 chrono = { workspace = true }
 codex-core = { workspace = true }
 codex-extension-api = { workspace = true }
-codex-features = { workspace = true }
 codex-protocol = { workspace = true }
 codex-state = { workspace = true }
 codex-tools = { workspace = true }

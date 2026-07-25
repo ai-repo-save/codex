@@ -73,6 +73,11 @@ where
             state_db.clone(),
             thread_manager.clone(),
             agent_mailbox_status_notifier,
+            |config: &Config| codex_agent_mailbox_extension::AgentMailboxExtensionConfig {
+                enabled: config
+                    .features
+                    .enabled(codex_features::Feature::AgentMailbox),
+            },
         );
         codex_goal_extension::install_with_backend(
             &mut builder,
@@ -85,7 +90,22 @@ where
         );
     }
     codex_guardian::install(&mut builder, guardian_agent_spawner);
-    codex_memories_extension::install(&mut builder, codex_otel::global());
+    codex_memories_extension::install(
+        &mut builder,
+        codex_otel::global(),
+        |config: &Config| {
+            let memory_tool_enabled = config
+                .features
+                .enabled(codex_features::Feature::MemoryTool);
+            codex_memories_extension::MemoriesExtensionConfig {
+                global_enabled: memory_tool_enabled && config.memories.use_memories,
+                scoped_enabled: memory_tool_enabled && config.memories.use_scoped_memories,
+                dedicated_tools: config.memories.dedicated_tools,
+                codex_home: config.codex_home.clone(),
+                project_root: config.project_root.clone(),
+            }
+        },
+    );
     codex_mcp_extension::install(&mut builder);
     codex_mcp_extension::install_executor_plugins(&mut builder, environment_manager);
     codex_web_search_extension::install(&mut builder, auth_manager.clone());

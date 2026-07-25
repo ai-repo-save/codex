@@ -7,6 +7,7 @@ mod tools;
 mod world_state;
 
 pub use extension::AgentMailboxExtension;
+pub use extension::AgentMailboxExtensionConfig;
 pub use extension::AgentMailboxStatusNotifier;
 pub use extension::NoopAgentMailboxStatusNotifier;
 pub use extension::install_with_backend;

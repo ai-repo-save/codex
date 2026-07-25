@@ -1,6 +1,6 @@
-use codex_core::context::ContextualUserFragment;
-use codex_core::context::InternalContextSource;
-use codex_core::context::InternalModelContextFragment;
+use codex_context_fragments::ContextualUserFragment;
+use codex_context_fragments::InternalContextSource;
+use codex_context_fragments::InternalModelContextFragment;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::ThreadGoal;
 use codex_utils_template::Template;

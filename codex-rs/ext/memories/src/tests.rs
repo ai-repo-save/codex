@@ -166,8 +166,16 @@ fn scoped_tools_are_contributed_without_global_memories() {
 
 #[test]
 fn install_registers_dedicated_tool_contributor() {
-    let mut builder = ExtensionRegistryBuilder::<codex_core::config::Config>::new();
-    crate::install(&mut builder, /*metrics_client*/ None);
+    let mut builder = ExtensionRegistryBuilder::<()>::new();
+    crate::install(&mut builder, /*metrics_client*/ None, |_| {
+        MemoriesExtensionConfig {
+            global_enabled: false,
+            scoped_enabled: false,
+            dedicated_tools: false,
+            codex_home: test_path_buf("/tmp/codex-home").abs(),
+            project_root: test_path_buf("/tmp/project").abs(),
+        }
+    });
     let registry = builder.build();
     let thread_store = ExtensionData::new("thread");
     thread_store.insert(MemoriesExtensionConfig {

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use codex_core::config::Config;
 use codex_extension_api::ConfigContributor;
 use codex_extension_api::ContextContributor;
 use codex_extension_api::ExtensionData;
@@ -12,7 +11,6 @@ use codex_extension_api::RewindContextContributionInput;
 use codex_extension_api::ThreadLifecycleContributor;
 use codex_extension_api::ThreadStartInput;
 use codex_extension_api::ToolContributor;
-use codex_features::Feature;
 use codex_otel::MetricsClient;
 use codex_utils_absolute_path::AbsolutePathBuf;
 
@@ -32,28 +30,22 @@ impl MemoriesExtension {
     }
 }
 
+/// Host-derived memories configuration captured for one thread.
 #[derive(Clone, Debug)]
-pub(crate) struct MemoriesExtensionConfig {
-    pub(crate) global_enabled: bool,
-    pub(crate) scoped_enabled: bool,
-    pub(crate) dedicated_tools: bool,
-    pub(crate) codex_home: AbsolutePathBuf,
-    pub(crate) project_root: AbsolutePathBuf,
+pub struct MemoriesExtensionConfig {
+    /// Whether global memory context and tools are enabled.
+    pub global_enabled: bool,
+    /// Whether session and project scoped memory context and tools are enabled.
+    pub scoped_enabled: bool,
+    /// Whether the dedicated memories namespace is exposed to the model.
+    pub dedicated_tools: bool,
+    /// Root directory for Codex-owned memory storage.
+    pub codex_home: AbsolutePathBuf,
+    /// Project root used to select project-scoped memory storage.
+    pub project_root: AbsolutePathBuf,
 }
 
 impl MemoriesExtensionConfig {
-    fn from_config(config: &Config) -> Self {
-        Self {
-            global_enabled: config.features.enabled(Feature::MemoryTool)
-                && config.memories.use_memories,
-            scoped_enabled: config.features.enabled(Feature::MemoryTool)
-                && config.memories.use_scoped_memories,
-            dedicated_tools: config.memories.dedicated_tools,
-            codex_home: config.codex_home.clone(),
-            project_root: config.project_root.clone(),
-        }
-    }
-
     fn backends(&self, thread_id: &str) -> MemoryToolBackends {
         MemoryToolBackends::new(
             &self.codex_home,
@@ -62,6 +54,20 @@ impl MemoriesExtensionConfig {
             thread_id,
             &self.project_root,
         )
+    }
+}
+
+struct MemoriesConfigContributor<C> {
+    config_from_host: Arc<dyn Fn(&C) -> MemoriesExtensionConfig + Send + Sync>,
+}
+
+impl<C> MemoriesConfigContributor<C> {
+    fn new(
+        config_from_host: impl Fn(&C) -> MemoriesExtensionConfig + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            config_from_host: Arc::new(config_from_host),
+        }
     }
 }
 
@@ -117,28 +123,34 @@ impl ContextContributor for MemoriesExtension {
     }
 }
 
-impl ThreadLifecycleContributor<Config> for MemoriesExtension {
+impl<C> ThreadLifecycleContributor<C> for MemoriesConfigContributor<C>
+where
+    C: Send + Sync + 'static,
+{
     fn on_thread_start<'a>(
         &'a self,
-        input: ThreadStartInput<'a, Config>,
+        input: ThreadStartInput<'a, C>,
     ) -> ExtensionFuture<'a, ()> {
         Box::pin(async move {
             input
                 .thread_store
-                .insert(MemoriesExtensionConfig::from_config(input.config));
+                .insert((self.config_from_host)(input.config));
         })
     }
 }
 
-impl ConfigContributor<Config> for MemoriesExtension {
+impl<C> ConfigContributor<C> for MemoriesConfigContributor<C>
+where
+    C: Send + Sync + 'static,
+{
     fn on_config_changed(
         &self,
         _session_store: &ExtensionData,
         thread_store: &ExtensionData,
-        _previous_config: &Config,
-        new_config: &Config,
+        _previous_config: &C,
+        new_config: &C,
     ) {
-        thread_store.insert(MemoriesExtensionConfig::from_config(new_config));
+        thread_store.insert((self.config_from_host)(new_config));
     }
 }
 
@@ -163,13 +175,17 @@ impl ToolContributor for MemoriesExtension {
 }
 
 /// Installs the memories extension contributors into the extension registry.
-pub fn install(
-    registry: &mut ExtensionRegistryBuilder<Config>,
+pub fn install<C>(
+    registry: &mut ExtensionRegistryBuilder<C>,
     metrics_client: Option<MetricsClient>,
-) {
+    config_from_host: impl Fn(&C) -> MemoriesExtensionConfig + Send + Sync + 'static,
+) where
+    C: Send + Sync + 'static,
+{
+    let config_contributor = Arc::new(MemoriesConfigContributor::new(config_from_host));
     let extension = Arc::new(MemoriesExtension::new(metrics_client));
-    registry.thread_lifecycle_contributor(extension.clone());
-    registry.config_contributor(extension.clone());
+    registry.thread_lifecycle_contributor(config_contributor.clone());
+    registry.config_contributor(config_contributor);
     registry.prompt_contributor(extension.clone());
     registry.tool_contributor(extension);
 }

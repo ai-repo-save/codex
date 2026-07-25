@@ -8,6 +8,7 @@ mod scoped;
 mod tools;
 
 pub use extension::install;
+pub use extension::MemoriesExtensionConfig;
 
 pub(crate) const DEFAULT_LIST_MAX_RESULTS: usize = 2_000;
 pub(crate) const MAX_LIST_RESULTS: usize = 2_000;

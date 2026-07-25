@@ -5,7 +5,6 @@ use std::sync::atomic::Ordering;
 
 use chrono::Utc;
 use codex_core::ThreadManager;
-use codex_core::config::Config;
 use codex_extension_api::ConfigContributor;
 use codex_extension_api::ContextContributor;
 use codex_extension_api::ExtensionData;
@@ -19,7 +18,6 @@ use codex_extension_api::ThreadStartInput;
 use codex_extension_api::ToolContributor;
 use codex_extension_api::WorldStateContributionInput;
 use codex_extension_api::WorldStateSectionContribution;
-use codex_features::Feature;
 use codex_protocol::AgentPath;
 use codex_protocol::SessionId;
 use codex_protocol::ThreadId;
@@ -45,6 +43,13 @@ impl AgentMailboxStatusNotifier for NoopAgentMailboxStatusNotifier {
     fn status_updated(&self, _thread_id: ThreadId, _snapshot: AgentMailboxUnreadSnapshot) {}
 }
 
+/// Host-derived mailbox configuration captured for one thread.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AgentMailboxExtensionConfig {
+    /// Whether mailbox tools and contributions are enabled for the thread.
+    pub enabled: bool,
+}
+
 pub(crate) struct AgentMailboxRuntime {
     pub(crate) thread_id: ThreadId,
     pub(crate) root_thread_id: ThreadId,
@@ -63,6 +68,20 @@ impl AgentMailboxRuntime {
 
     fn enabled(&self) -> bool {
         self.enabled.load(Ordering::Acquire)
+    }
+}
+
+struct AgentMailboxConfigContributor<C> {
+    config_from_host: Arc<dyn Fn(&C) -> AgentMailboxExtensionConfig + Send + Sync>,
+}
+
+impl<C> AgentMailboxConfigContributor<C> {
+    fn new(
+        config_from_host: impl Fn(&C) -> AgentMailboxExtensionConfig + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            config_from_host: Arc::new(config_from_host),
+        }
     }
 }
 
@@ -86,10 +105,13 @@ impl AgentMailboxExtension {
     }
 }
 
-impl ThreadLifecycleContributor<Config> for AgentMailboxExtension {
+impl<C> ThreadLifecycleContributor<C> for AgentMailboxConfigContributor<C>
+where
+    C: Send + Sync + 'static,
+{
     fn on_thread_start<'a>(
         &'a self,
-        input: ThreadStartInput<'a, Config>,
+        input: ThreadStartInput<'a, C>,
     ) -> ExtensionFuture<'a, ()> {
         Box::pin(async move {
             let Ok(thread_id) = ThreadId::from_string(input.thread_store.level_id()) else {
@@ -104,7 +126,7 @@ impl ThreadLifecycleContributor<Config> for AgentMailboxExtension {
                 .get_agent_path()
                 .unwrap_or_else(AgentPath::root);
             let enabled = input.persistent_thread_state_available
-                && input.config.features.enabled(Feature::AgentMailbox);
+                && (self.config_from_host)(input.config).enabled;
             input
                 .thread_store
                 .get_or_init::<AgentMailboxRuntime>(|| AgentMailboxRuntime {
@@ -119,16 +141,19 @@ impl ThreadLifecycleContributor<Config> for AgentMailboxExtension {
     }
 }
 
-impl ConfigContributor<Config> for AgentMailboxExtension {
+impl<C> ConfigContributor<C> for AgentMailboxConfigContributor<C>
+where
+    C: Send + Sync + 'static,
+{
     fn on_config_changed(
         &self,
         _session_store: &ExtensionData,
         thread_store: &ExtensionData,
-        _previous_config: &Config,
-        new_config: &Config,
+        _previous_config: &C,
+        new_config: &C,
     ) {
         if let Some(runtime) = thread_store.get::<AgentMailboxRuntime>() {
-            runtime.set_enabled(new_config.features.enabled(Feature::AgentMailbox));
+            runtime.set_enabled((self.config_from_host)(new_config).enabled);
         }
     }
 }
@@ -268,15 +293,19 @@ impl TerminalMessageContributor for AgentMailboxExtension {
     }
 }
 
-pub fn install_with_backend(
-    registry: &mut ExtensionRegistryBuilder<Config>,
+pub fn install_with_backend<C>(
+    registry: &mut ExtensionRegistryBuilder<C>,
     state: Arc<StateRuntime>,
     thread_manager: Weak<ThreadManager>,
     notifier: Arc<dyn AgentMailboxStatusNotifier>,
-) {
+    config_from_host: impl Fn(&C) -> AgentMailboxExtensionConfig + Send + Sync + 'static,
+) where
+    C: Send + Sync + 'static,
+{
+    let config_contributor = Arc::new(AgentMailboxConfigContributor::new(config_from_host));
     let extension = Arc::new(AgentMailboxExtension::new(state, thread_manager, notifier));
-    registry.thread_lifecycle_contributor(extension.clone());
-    registry.config_contributor(extension.clone());
+    registry.thread_lifecycle_contributor(config_contributor.clone());
+    registry.config_contributor(config_contributor);
     registry.prompt_contributor(extension.clone());
     registry.terminal_message_contributor(extension.clone());
     registry.tool_contributor(extension);
