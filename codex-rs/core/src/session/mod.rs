@@ -66,6 +66,8 @@ use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::LoadedUserInstructions;
 use codex_extension_api::PromptFragment;
 use codex_extension_api::PromptSlot;
+use codex_extension_api::TerminalMessageDisposition;
+use codex_extension_api::TerminalMessageInput;
 use codex_extension_api::TurnContextContributionInput;
 use codex_features::FEATURES;
 use codex_features::Feature;
@@ -1992,10 +1994,6 @@ impl Session {
             return;
         }
 
-        if !matches!(msg, EventMsg::TurnComplete(_) | EventMsg::TurnAborted(_)) {
-            return;
-        }
-
         let SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
             parent_thread_id,
             agent_path: Some(child_agent_path),
@@ -2004,6 +2002,26 @@ impl Session {
         else {
             return;
         };
+        let standard_terminal =
+            matches!(msg, EventMsg::TurnComplete(_) | EventMsg::TurnAborted(_));
+        let additional_captured_terminal = matches!(
+            msg,
+            EventMsg::Error(error)
+                if error
+                    .codex_error_info
+                    .as_ref()
+                    .is_some_and(CodexErrorInfo::affects_turn_status)
+        ) || matches!(msg, EventMsg::ShutdownComplete);
+        if !standard_terminal
+            && !(additional_captured_terminal
+                && self
+                    .services
+                    .agent_control
+                    .terminal_message_capture_enabled(*parent_thread_id)
+                    .await)
+        {
+            return;
+        }
 
         let status = match turn_context.terminal_error.lock().await.take() {
             Some(error) => {
@@ -2029,6 +2047,50 @@ impl Session {
             status,
         )
         .await;
+    }
+
+    pub(crate) async fn try_claim_terminal_message(
+        &self,
+        session_id: SessionId,
+        sender_thread_id: ThreadId,
+        recipient_thread_id: ThreadId,
+        communication: &InterAgentCommunication,
+        status: &AgentStatus,
+    ) -> bool {
+        if !self.terminal_message_capture_enabled().await {
+            return false;
+        }
+        for contributor in self.services.extensions.terminal_message_contributors() {
+            match contributor
+                .contribute(TerminalMessageInput {
+                    session_id,
+                    sender_thread_id,
+                    recipient_thread_id,
+                    communication,
+                    status,
+                })
+                .await
+            {
+                Ok(TerminalMessageDisposition::Committed) => return true,
+                Ok(TerminalMessageDisposition::Unclaimed) => {}
+                Err(err) => debug!("terminal message contributor failed open: {err}"),
+            }
+        }
+        false
+    }
+
+    pub(crate) async fn terminal_message_capture_enabled(&self) -> bool {
+        if !self.features.enabled(Feature::AgentMailbox) {
+            return false;
+        }
+        self
+            .state
+            .lock()
+            .await
+            .session_configuration
+            .original_config_do_not_use
+            .agent_mailbox
+            .capture_terminal_messages
     }
 
     /// Sends the standard completion envelope from a spawned MultiAgentV2 child to its parent.
@@ -2061,13 +2123,30 @@ impl Session {
             .rollout_thread_trace
             .is_enabled()
             .then(|| message.clone());
-        let communication = InterAgentCommunication::new(
+        let mut communication = InterAgentCommunication::new(
             child_agent_path.clone(),
             parent_agent_path,
             Vec::new(),
             message,
             /*trigger_turn*/ false,
         );
+        communication.id = Some(ResponseItemId::with_suffix(
+            "agent_terminal",
+            format!("{}-{}", self.thread_id, turn_context.sub_id),
+        ));
+        if self
+            .services
+            .agent_control
+            .try_claim_terminal_message(
+                self.thread_id,
+                parent_thread_id,
+                &communication,
+                &status,
+            )
+            .await
+        {
+            return;
+        }
         let context =
             AgentCommunicationContext::new(AgentCommunicationKind::Result, self.thread_id);
         if let Err(err) = self

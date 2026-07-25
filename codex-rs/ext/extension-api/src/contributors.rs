@@ -16,6 +16,7 @@ mod mcp;
 mod prompt;
 mod rewind_context;
 mod skill_invocation;
+mod terminal_message;
 mod thread_lifecycle;
 mod tool_lifecycle;
 mod turn_input;
@@ -30,6 +31,8 @@ pub use prompt::PromptSlot;
 pub use rewind_context::RewindContextContributionInput;
 pub use skill_invocation::SkillInvocationInput;
 pub use skill_invocation::SkillInvocationKind;
+pub use terminal_message::TerminalMessageDisposition;
+pub use terminal_message::TerminalMessageInput;
 pub use thread_lifecycle::ThreadIdleInput;
 pub use thread_lifecycle::ThreadOriginator;
 pub use thread_lifecycle::ThreadResumeInput;
@@ -335,4 +338,16 @@ pub trait TurnItemContributor: Send + Sync {
         turn_store: &'a ExtensionData,
         item: &'a mut TurnItem,
     ) -> ExtensionFuture<'a, Result<(), String>>;
+}
+
+/// Contributor that can durably claim automatic child terminal messages.
+///
+/// Contributors run in registration order. A committed claim prevents normal
+/// direct delivery. Errors and unclaimed results leave the host free to try
+/// later contributors or use its original delivery path.
+pub trait TerminalMessageContributor: Send + Sync {
+    fn contribute<'a>(
+        &'a self,
+        input: TerminalMessageInput<'a>,
+    ) -> ExtensionFuture<'a, Result<TerminalMessageDisposition, String>>;
 }

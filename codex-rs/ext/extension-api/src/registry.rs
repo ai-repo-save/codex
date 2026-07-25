@@ -10,6 +10,7 @@ use crate::ExtensionEventSink;
 use crate::McpServerContributor;
 use crate::NoopExtensionEventSink;
 use crate::SkillInvocationContributor;
+use crate::TerminalMessageContributor;
 use crate::ThreadLifecycleContributor;
 use crate::TokenUsageContributor;
 use crate::ToolContributor;
@@ -33,6 +34,7 @@ pub struct ExtensionRegistryBuilder<C: Sync> {
     tool_lifecycle_contributors: Vec<Arc<dyn ToolLifecycleContributor>>,
     turn_item_contributors: Vec<Arc<dyn TurnItemContributor>>,
     approval_review_contributors: Vec<Arc<dyn ApprovalReviewContributor>>,
+    terminal_message_contributors: Vec<Arc<dyn TerminalMessageContributor>>,
 }
 
 impl<C: Sync> Default for ExtensionRegistryBuilder<C> {
@@ -51,6 +53,7 @@ impl<C: Sync> Default for ExtensionRegistryBuilder<C> {
             tool_contributors: Vec::new(),
             tool_lifecycle_contributors: Vec::new(),
             turn_item_contributors: Vec::new(),
+            terminal_message_contributors: Vec::new(),
         }
     }
 }
@@ -140,6 +143,14 @@ impl<C: Sync> ExtensionRegistryBuilder<C> {
         self.turn_item_contributors.push(contributor);
     }
 
+    /// Registers one automatic terminal-message contributor.
+    pub fn terminal_message_contributor(
+        &mut self,
+        contributor: Arc<dyn TerminalMessageContributor>,
+    ) {
+        self.terminal_message_contributors.push(contributor);
+    }
+
     /// Finishes construction and returns the immutable registry.
     pub fn build(self) -> ExtensionRegistry<C> {
         ExtensionRegistry {
@@ -156,6 +167,7 @@ impl<C: Sync> ExtensionRegistryBuilder<C> {
             tool_contributors: self.tool_contributors,
             tool_lifecycle_contributors: self.tool_lifecycle_contributors,
             turn_item_contributors: self.turn_item_contributors,
+            terminal_message_contributors: self.terminal_message_contributors,
         }
     }
 }
@@ -175,6 +187,7 @@ pub struct ExtensionRegistry<C: Sync> {
     tool_lifecycle_contributors: Vec<Arc<dyn ToolLifecycleContributor>>,
     turn_item_contributors: Vec<Arc<dyn TurnItemContributor>>,
     approval_review_contributors: Vec<Arc<dyn ApprovalReviewContributor>>,
+    terminal_message_contributors: Vec<Arc<dyn TerminalMessageContributor>>,
 }
 
 impl<C: Sync> ExtensionRegistry<C> {
@@ -256,6 +269,11 @@ impl<C: Sync> ExtensionRegistry<C> {
     /// Returns the registered ordered turn-item contributors.
     pub fn turn_item_contributors(&self) -> &[Arc<dyn TurnItemContributor>] {
         &self.turn_item_contributors
+    }
+
+    /// Returns registered automatic terminal-message contributors.
+    pub fn terminal_message_contributors(&self) -> &[Arc<dyn TerminalMessageContributor>] {
+        &self.terminal_message_contributors
     }
 }
 

@@ -8,6 +8,9 @@ use std::time::Duration;
 use tokio::time::Instant;
 use tokio::time::timeout_at;
 
+pub(crate) const AGENT_MAILBOX_ACTIVITY_MESSAGE: &str =
+    "Agent mailbox activity is available.";
+
 #[derive(Default)]
 pub(crate) struct Handler {
     options: WaitAgentTimeoutOptions,
@@ -73,6 +76,8 @@ impl Handler {
             .input_queue
             .subscribe_activity(turn_state.as_deref())
             .await;
+        let (mut agent_mailbox_activity_rx, pending_agent_mailbox_activity) =
+            session.input_queue.subscribe_agent_mailbox_activity();
 
         session
             .emit_turn_item_started(
@@ -97,7 +102,17 @@ impl Handler {
             .await;
 
         let deadline = Instant::now() + Duration::from_millis(timeout_ms as u64);
-        let outcome = wait_for_activity(&mut activity_rx, pending_activity, deadline).await;
+        let outcome = wait_for_activity(
+            &mut activity_rx,
+            pending_activity,
+            &mut agent_mailbox_activity_rx,
+            pending_agent_mailbox_activity,
+            deadline,
+        )
+        .await;
+        if outcome == WaitOutcome::AgentMailboxActivity {
+            session.input_queue.consume_agent_mailbox_activity();
+        }
         let result = WaitAgentResult::from_outcome(outcome);
 
         session
@@ -147,6 +162,7 @@ pub(crate) struct WaitAgentResult {
 impl WaitAgentResult {
     fn from_outcome(outcome: WaitOutcome) -> Self {
         let message = match outcome {
+            WaitOutcome::AgentMailboxActivity => AGENT_MAILBOX_ACTIVITY_MESSAGE,
             WaitOutcome::MailboxActivity => "Wait completed.",
             WaitOutcome::Steered => "Wait interrupted by new input.",
             WaitOutcome::TimedOut => "Wait timed out.",
@@ -178,6 +194,7 @@ impl ToolOutput for WaitAgentResult {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WaitOutcome {
+    AgentMailboxActivity,
     MailboxActivity,
     Steered,
     TimedOut,
@@ -186,19 +203,37 @@ enum WaitOutcome {
 async fn wait_for_activity(
     activity_rx: &mut tokio::sync::watch::Receiver<InputQueueActivity>,
     pending_activity: Option<InputQueueActivity>,
+    agent_mailbox_activity_rx: &mut tokio::sync::watch::Receiver<()>,
+    pending_agent_mailbox_activity: bool,
     deadline: Instant,
 ) -> WaitOutcome {
+    if pending_agent_mailbox_activity {
+        return WaitOutcome::AgentMailboxActivity;
+    }
     if let Some(activity) = pending_activity {
         return match activity {
             InputQueueActivity::Mailbox => WaitOutcome::MailboxActivity,
             InputQueueActivity::Steer => WaitOutcome::Steered,
         };
     }
-    match timeout_at(deadline, activity_rx.changed()).await {
-        Ok(Ok(())) => match *activity_rx.borrow_and_update() {
-            InputQueueActivity::Mailbox => WaitOutcome::MailboxActivity,
-            InputQueueActivity::Steer => WaitOutcome::Steered,
-        },
-        Ok(Err(_)) | Err(_) => WaitOutcome::TimedOut,
+    tokio::select! {
+        result = timeout_at(deadline, activity_rx.changed()) => {
+            match result {
+                Ok(Ok(())) => match *activity_rx.borrow_and_update() {
+                    InputQueueActivity::Mailbox => WaitOutcome::MailboxActivity,
+                    InputQueueActivity::Steer => WaitOutcome::Steered,
+                },
+                Ok(Err(_)) | Err(_) => WaitOutcome::TimedOut,
+            }
+        }
+        result = timeout_at(deadline, agent_mailbox_activity_rx.changed()) => {
+            match result {
+                Ok(Ok(())) => {
+                    agent_mailbox_activity_rx.borrow_and_update();
+                    WaitOutcome::AgentMailboxActivity
+                }
+                Ok(Err(_)) | Err(_) => WaitOutcome::TimedOut,
+            }
+        }
     }
 }

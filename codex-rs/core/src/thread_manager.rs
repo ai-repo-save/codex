@@ -44,6 +44,7 @@ use codex_model_provider_info::OPENAI_PROVIDER_ID;
 use codex_models_manager::collaboration_mode_presets::builtin_collaboration_mode_presets;
 use codex_models_manager::manager::RefreshStrategy;
 use codex_models_manager::manager::SharedModelsManager;
+use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::CollaborationModeMask;
 use codex_protocol::error::CodexErr;
@@ -187,6 +188,13 @@ enum ShutdownOutcome {
 pub struct ThreadManager {
     state: Arc<ThreadManagerState>,
     _test_codex_home_guard: Option<TempCodexHomeGuard>,
+}
+
+/// Live agent target resolved for an extension-owned mailbox operation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedAgentMailboxTarget {
+    pub thread_id: ThreadId,
+    pub agent_path: AgentPath,
 }
 
 pub struct StartThreadOptions {
@@ -589,6 +597,54 @@ impl ThreadManager {
 
     pub async fn get_thread(&self, thread_id: ThreadId) -> CodexResult<Arc<CodexThread>> {
         self.state.get_thread(thread_id).await
+    }
+
+    /// Notifies a live thread that its durable agent mailbox changed.
+    ///
+    /// This is a count-only activity edge: it wakes an active `wait_agent`
+    /// call without submitting model-visible input or starting an idle turn.
+    pub async fn notify_agent_mailbox_activity(&self, thread_id: ThreadId) -> CodexResult<()> {
+        let thread = self.state.get_thread(thread_id).await?;
+        thread.session.input_queue.notify_agent_mailbox_activity();
+        Ok(())
+    }
+
+    /// Resolves a mailbox target using the same agent-path rules as native
+    /// multi-agent tools.
+    pub async fn resolve_agent_mailbox_target(
+        &self,
+        current_thread_id: ThreadId,
+        target: &str,
+    ) -> CodexResult<ResolvedAgentMailboxTarget> {
+        let current_thread = self.state.get_thread(current_thread_id).await?;
+        let agent_control = &current_thread.session.services.agent_control;
+        let thread_id = match ThreadId::from_string(target) {
+            Ok(thread_id) => {
+                self.state.get_thread(thread_id).await?;
+                thread_id
+            }
+            Err(_) => {
+                agent_control
+                    .resolve_agent_reference(
+                        current_thread_id,
+                        &current_thread.session_source,
+                        target,
+                    )
+                    .await?
+            }
+        };
+        let agent_path = agent_control
+            .get_agent_metadata(thread_id)
+            .and_then(|metadata| metadata.agent_path)
+            .ok_or_else(|| {
+                CodexErr::UnsupportedOperation(format!(
+                    "live agent path for thread `{thread_id}` not found"
+                ))
+            })?;
+        Ok(ResolvedAgentMailboxTarget {
+            thread_id,
+            agent_path,
+        })
     }
 
     /// Updates metadata for loaded and cold threads through one entrypoint.

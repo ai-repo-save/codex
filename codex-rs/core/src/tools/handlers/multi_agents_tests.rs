@@ -4202,6 +4202,77 @@ async fn multi_agent_v2_wait_agent_returns_summary_for_mailbox_activity() {
 }
 
 #[tokio::test]
+async fn multi_agent_v2_wait_agent_consumes_agent_mailbox_activity_once() {
+    let (_session, mut turn) = make_session_and_context().await;
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .enable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    config.multi_agent_v2.min_wait_timeout_ms = 1;
+    config.multi_agent_v2.max_wait_timeout_ms = 1_000;
+    config.multi_agent_v2.default_wait_timeout_ms = 1;
+    set_turn_config(&mut turn, config.clone());
+
+    let manager = thread_manager();
+    let root = manager
+        .start_thread(config)
+        .await
+        .expect("root thread should start");
+    let session = Arc::clone(&root.thread.session);
+    let turn = Arc::new(turn);
+    manager
+        .notify_agent_mailbox_activity(root.thread_id)
+        .await
+        .expect("live thread should accept mailbox activity");
+
+    let output = WaitAgentHandlerV2::default()
+        .handle(invocation(
+            Arc::clone(&session),
+            Arc::clone(&turn),
+            "wait_agent",
+            function_payload(json!({})),
+        ))
+        .await
+        .expect("wait_agent should observe mailbox activity");
+    let (content, success) = expect_text_output(output);
+    let result: crate::tools::handlers::multi_agents_v2::wait::WaitAgentResult =
+        serde_json::from_str(&content).expect("wait_agent result should be json");
+    assert_eq!(
+        result,
+        crate::tools::handlers::multi_agents_v2::wait::WaitAgentResult {
+            message:
+                crate::tools::handlers::multi_agents_v2::wait::AGENT_MAILBOX_ACTIVITY_MESSAGE
+                    .to_string(),
+            timed_out: false,
+        }
+    );
+    assert_eq!(success, None);
+    assert!(!session.input_queue.has_pending_mailbox_items().await);
+
+    let output = WaitAgentHandlerV2::default()
+        .handle(invocation(
+            session,
+            turn,
+            "wait_agent",
+            function_payload(json!({})),
+        ))
+        .await
+        .expect("second wait_agent should succeed");
+    let (content, success) = expect_text_output(output);
+    let result: crate::tools::handlers::multi_agents_v2::wait::WaitAgentResult =
+        serde_json::from_str(&content).expect("wait_agent result should be json");
+    assert_eq!(
+        result,
+        crate::tools::handlers::multi_agents_v2::wait::WaitAgentResult {
+            message: "Wait timed out.".to_string(),
+            timed_out: true,
+        }
+    );
+    assert_eq!(success, None);
+}
+
+#[tokio::test]
 async fn multi_agent_v2_wait_agent_returns_for_already_queued_mail() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();

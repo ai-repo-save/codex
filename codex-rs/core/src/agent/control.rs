@@ -22,6 +22,7 @@ use crate::thread_manager::ResumeThreadWithHistoryOptions;
 use crate::thread_manager::ThreadManagerState;
 use crate::thread_rollout_truncation::truncate_rollout_to_last_n_fork_turns;
 use codex_protocol::AgentPath;
+use codex_protocol::ResponseItemId;
 use codex_protocol::SessionId;
 use codex_protocol::ThreadId;
 use codex_protocol::error::CodexErr;
@@ -188,6 +189,47 @@ impl AgentControl {
 
     pub(crate) fn cancel_parent_requests_for_thread(&self, thread_id: ThreadId) {
         self.parent_requests.cancel_for_thread(thread_id);
+    }
+
+    pub(crate) async fn try_claim_terminal_message(
+        &self,
+        sender_thread_id: ThreadId,
+        recipient_thread_id: ThreadId,
+        communication: &InterAgentCommunication,
+        status: &AgentStatus,
+    ) -> bool {
+        let Ok(state) = self.upgrade() else {
+            return false;
+        };
+        let Ok(recipient_thread) = state.get_thread(recipient_thread_id).await else {
+            return false;
+        };
+        recipient_thread
+            .session
+            .try_claim_terminal_message(
+                self.session_id,
+                sender_thread_id,
+                recipient_thread_id,
+                communication,
+                status,
+            )
+            .await
+    }
+
+    pub(crate) async fn terminal_message_capture_enabled(
+        &self,
+        recipient_thread_id: ThreadId,
+    ) -> bool {
+        let Ok(state) = self.upgrade() else {
+            return false;
+        };
+        let Ok(recipient_thread) = state.get_thread(recipient_thread_id).await else {
+            return false;
+        };
+        recipient_thread
+            .session
+            .terminal_message_capture_enabled()
+            .await
     }
 
     /// Send rich user input items to an existing agent thread.
@@ -609,6 +651,12 @@ impl AgentControl {
                 None => true,
             };
             if child_agent_path.is_some() && child_uses_multi_agent_v2 {
+                let capture_terminal_messages = control
+                    .terminal_message_capture_enabled(parent_thread_id)
+                    .await;
+                if capture_terminal_messages && child_thread.is_some() {
+                    return;
+                }
                 let Some(child_agent_path) = child_agent_path.clone() else {
                     return;
                 };
@@ -626,13 +674,29 @@ impl AgentControl {
                 ) else {
                     return;
                 };
-                let communication = InterAgentCommunication::new(
+                let mut communication = InterAgentCommunication::new(
                     child_agent_path,
                     parent_agent_path,
                     Vec::new(),
                     message,
                     /*trigger_turn*/ false,
                 );
+                communication.id = Some(ResponseItemId::with_suffix(
+                    "agent_terminal",
+                    format!("{child_thread_id}-fallback"),
+                ));
+                if capture_terminal_messages
+                    && control
+                    .try_claim_terminal_message(
+                        child_thread_id,
+                        parent_thread_id,
+                        &communication,
+                        &status,
+                    )
+                    .await
+                {
+                    return;
+                }
                 let context =
                     AgentCommunicationContext::new(AgentCommunicationKind::Result, child_thread_id);
                 let _ = control

@@ -6,6 +6,8 @@ use codex_protocol::protocol::InterAgentCommunication;
 use codex_protocol::user_input::UserInput;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use tokio::sync::Mutex;
 use tokio::sync::watch;
 
@@ -34,14 +36,19 @@ pub(crate) struct TurnInputQueue {
 /// Session-scoped pending input storage and active-turn mailbox delivery coordination.
 pub(crate) struct InputQueue {
     activity_tx: watch::Sender<InputQueueActivity>,
+    agent_mailbox_activity_tx: watch::Sender<()>,
+    agent_mailbox_activity_pending: AtomicBool,
     mailbox_pending_mails: Mutex<VecDeque<InterAgentCommunication>>,
 }
 
 impl InputQueue {
     pub(crate) fn new() -> Self {
         let (activity_tx, _) = watch::channel(InputQueueActivity::Mailbox);
+        let (agent_mailbox_activity_tx, _) = watch::channel(());
         Self {
             activity_tx,
+            agent_mailbox_activity_tx,
+            agent_mailbox_activity_pending: AtomicBool::new(false),
             mailbox_pending_mails: Mutex::new(VecDeque::new()),
         }
     }
@@ -67,6 +74,24 @@ impl InputQueue {
             None
         };
         (activity_rx, pending_activity)
+    }
+
+    pub(crate) fn notify_agent_mailbox_activity(&self) {
+        self.agent_mailbox_activity_pending
+            .store(true, Ordering::Release);
+        self.agent_mailbox_activity_tx.send_replace(());
+    }
+
+    pub(crate) fn subscribe_agent_mailbox_activity(&self) -> (watch::Receiver<()>, bool) {
+        (
+            self.agent_mailbox_activity_tx.subscribe(),
+            self.agent_mailbox_activity_pending.load(Ordering::Acquire),
+        )
+    }
+
+    pub(crate) fn consume_agent_mailbox_activity(&self) {
+        self.agent_mailbox_activity_pending
+            .store(false, Ordering::Release);
     }
 
     pub(crate) async fn enqueue_mailbox_communication(
