@@ -31,6 +31,7 @@ use codex_utils_absolute_path::test_support::PathExt;
 use codex_utils_absolute_path::test_support::test_path_buf;
 use codex_utils_output_truncation::TruncationPolicy;
 use codex_utils_output_truncation::approx_token_count;
+use codex_utils_output_truncation::truncate_text;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 use unicode_segmentation::UnicodeSegmentation;
@@ -40,6 +41,7 @@ use crate::extension::MemoriesExtensionConfig;
 use crate::scoped::GLOBAL_MEMORY_MAINTENANCE_POLICY;
 use crate::scoped::MemoryScope;
 use crate::scoped::MemoryToolBackends;
+use crate::scoped::PROJECT_CONTEXT_TOKEN_LIMIT;
 use crate::scoped::PROJECT_MEMORY_MAINTENANCE_POLICY;
 use crate::scoped::SESSION_CONTEXT_TOKEN_LIMIT;
 use crate::scoped::SESSION_MEMORY_MAINTENANCE_POLICY;
@@ -344,11 +346,6 @@ async fn typed_prompt_contribution_includes_scoped_memory_when_global_memories_a
 
 #[tokio::test]
 async fn typed_scoped_memory_fragments_bound_each_model_visible_item() {
-    const SESSION_PREFIX: &str = "session-prefix";
-    const SESSION_SUFFIX: &str = "session-suffix";
-    const PROJECT_PREFIX: &str = "project-prefix";
-    const PROJECT_SUFFIX: &str = "project-suffix";
-
     let tempdir = tempfile::tempdir().expect("tempdir");
     let project_root = tempfile::tempdir().expect("project root");
     let backends = MemoryToolBackends::new(
@@ -358,28 +355,30 @@ async fn typed_scoped_memory_fragments_bound_each_model_visible_item() {
         "thread-1",
         &project_root.path().abs(),
     );
-    backends
-        .write_note(
-            MemoryScope::Session,
-            "Large session memory".to_string(),
-            format!(
-                "{SESSION_PREFIX}\n{}\n{SESSION_SUFFIX}",
-                "session memory ".repeat(SESSION_CONTEXT_TOKEN_LIMIT)
-            ),
-        )
-        .await
-        .expect("write session note");
-    backends
-        .write_note(
-            MemoryScope::Project,
-            "Large project memory".to_string(),
-            format!(
-                "{PROJECT_PREFIX}\n{}\n{PROJECT_SUFFIX}",
-                "project memory ".repeat(SESSION_CONTEXT_TOKEN_LIMIT)
-            ),
-        )
-        .await
-        .expect("write project note");
+    let mut session_notes = Vec::new();
+    for title in ["A large session memory", "Z large session memory"] {
+        let note = format!(
+            "{title} prefix\n{}\n{title} suffix",
+            "session memory ".repeat(SESSION_CONTEXT_TOKEN_LIMIT / 2)
+        );
+        let response = backends
+            .write_note(MemoryScope::Session, title.to_string(), note.clone())
+            .await
+            .expect("write session note");
+        session_notes.push((response.path, note));
+    }
+    let mut project_notes = Vec::new();
+    for title in ["A large project memory", "Z large project memory"] {
+        let note = format!(
+            "{title} prefix\n{}\n{title} suffix",
+            "project memory ".repeat(PROJECT_CONTEXT_TOKEN_LIMIT / 2)
+        );
+        let response = backends
+            .write_note(MemoryScope::Project, title.to_string(), note.clone())
+            .await
+            .expect("write project note");
+        project_notes.push((response.path, note));
+    }
 
     let fragments = backends.scoped_context_fragments().await;
     let rendered = fragments
@@ -387,18 +386,64 @@ async fn typed_scoped_memory_fragments_bound_each_model_visible_item() {
         .map(|fragment| fragment.render())
         .collect::<Vec<_>>();
 
-    assert!(fragments.len() > 3);
     assert!(
         rendered
             .iter()
             .all(|fragment| approx_token_count(fragment) <= SESSION_CONTEXT_TOKEN_LIMIT)
     );
+    let section_content = |title: &str| {
+        let prefix = format!("<scoped_memory_context>\n## Scoped Memory\n### {title}\n");
+        rendered
+            .iter()
+            .filter_map(|fragment| {
+                fragment
+                    .strip_prefix(&prefix)
+                    .and_then(|content| content.strip_suffix("\n</scoped_memory_context>"))
+            })
+            .collect::<String>()
+    };
+    let selected_section = |mut notes: Vec<(String, String)>, token_limit| {
+        notes.sort_by(|left, right| left.0.cmp(&right.0));
+        let notes = notes
+            .into_iter()
+            .map(|(path, note)| {
+                let filename = Path::new(&path)
+                    .file_name()
+                    .and_then(|filename| filename.to_str())
+                    .expect("memory filename");
+                format!("### {filename}\n{note}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        truncate_text(&notes, TruncationPolicy::Tokens(token_limit))
+    };
+    assert_eq!(
+        section_content("Session memory"),
+        selected_section(session_notes, SESSION_CONTEXT_TOKEN_LIMIT)
+    );
+    assert_eq!(
+        section_content("Project memory"),
+        selected_section(project_notes, PROJECT_CONTEXT_TOKEN_LIMIT)
+    );
+
+    let session_indexes = rendered
+        .iter()
+        .enumerate()
+        .filter_map(|(index, fragment)| fragment.contains("### Session memory").then_some(index))
+        .collect::<Vec<_>>();
+    let project_indexes = rendered
+        .iter()
+        .enumerate()
+        .filter_map(|(index, fragment)| fragment.contains("### Project memory").then_some(index))
+        .collect::<Vec<_>>();
+    assert!(session_indexes.len() > 1);
+    assert!(project_indexes.len() > 1);
+    assert!(
+        session_indexes.last().expect("session fragment")
+            < project_indexes.first().expect("project fragment")
+    );
+
     let combined = rendered.concat();
-    assert!(combined.contains(SESSION_PREFIX));
-    assert!(combined.contains(SESSION_SUFFIX));
-    assert!(combined.contains(PROJECT_PREFIX));
-    assert!(combined.contains(PROJECT_SUFFIX));
-    assert!(combined.contains("tokens truncated"));
     assert_eq!(
         combined.matches(SESSION_MEMORY_MAINTENANCE_POLICY).count(),
         1

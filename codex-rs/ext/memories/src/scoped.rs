@@ -39,7 +39,7 @@ const SCOPED_MEMORIES_DIR: &str = "scoped-memories";
 const NOTES_DIR: &str = "notes";
 const PROJECT_METADATA_FILENAME: &str = "metadata.toml";
 pub(crate) const SESSION_CONTEXT_TOKEN_LIMIT: usize = 10_000;
-const PROJECT_CONTEXT_TOKEN_LIMIT: usize = 15_000;
+pub(crate) const PROJECT_CONTEXT_TOKEN_LIMIT: usize = 15_000;
 const SCOPED_CONTEXT_FRAGMENT_TOKEN_LIMIT: usize = 10_000;
 
 pub(crate) const SESSION_MEMORY_MAINTENANCE_POLICY: &str = "Session memory is working memory for the current thread. Codex may proactively create, update, or delete session notes when doing so helps complete the current task; no explicit user request is required.";
