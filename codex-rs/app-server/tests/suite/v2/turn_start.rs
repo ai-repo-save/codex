@@ -4092,12 +4092,12 @@ async fn direct_input_to_multi_agent_v2_subagent_is_rejected() -> Result<()> {
             {
                 assert_eq!(
                     params["item"]["contextInheritance"],
-                    json!({ "type": "none" })
+                    json!({ "type": "full" })
                 );
                 assert_eq!(operation, None);
                 assert_eq!(outcome, None);
                 assert_eq!(model.as_deref(), Some("gpt-5.4"));
-                assert_eq!(context_inheritance, Some(SpawnContextInheritance::None));
+                assert_eq!(context_inheritance, Some(SpawnContextInheritance::Full));
                 return Ok::<String, anyhow::Error>(agent_thread_id);
             }
         }
