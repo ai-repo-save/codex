@@ -175,7 +175,7 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
                 description: "Balanced".to_string(),
             }],
             Vec::new(),
-            None,
+            /*multi_agent_version*/ None,
         )
     }));
     picker_visible_models.push(test_model_info(
@@ -203,7 +203,7 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
             },
         ],
         Vec::new(),
-        None,
+        /*multi_agent_version*/ None,
     ));
     picker_visible_models.push(test_model_info(
         "hidden-model",
@@ -216,7 +216,7 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
             description: "Not visible".to_string(),
         }],
         Vec::new(),
-        None,
+        /*multi_agent_version*/ None,
     ));
     mount_models_once(
         &server,
