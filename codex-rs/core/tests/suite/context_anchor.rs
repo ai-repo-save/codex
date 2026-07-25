@@ -1,11 +1,25 @@
+use std::sync::Arc;
+
 use anyhow::Result;
+use codex_context_fragments::ScopedMemoryContextFragment;
+use codex_core::config::Config;
+use codex_extension_api::ContextContributor;
+use codex_extension_api::ContextualUserFragment;
+use codex_extension_api::ExtensionData;
+use codex_extension_api::ExtensionFuture;
+use codex_extension_api::ExtensionRegistryBuilder;
+use codex_extension_api::RewindContextContributionInput;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::Settings;
+use codex_protocol::models::ContentItem;
 use codex_protocol::models::PermissionProfile;
+use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::Op;
+use codex_protocol::protocol::RolloutItem;
+use codex_protocol::protocol::RolloutLine;
 use codex_protocol::user_input::UserInput;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
@@ -27,6 +41,33 @@ const SAVE_CONTEXT_ANCHOR_TOOL_NAME: &str = "save_context_anchor";
 const LIST_CONTEXT_ANCHORS_TOOL_NAME: &str = "list_context_anchors";
 const REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME: &str = "rewind_context_to_anchor";
 const TEST_MODEL: &str = "gpt-5.4";
+const INITIAL_TYPED_CONTEXT: &str = "initial typed context";
+const REWIND_TYPED_CONTEXT: &str = "rewind typed context";
+
+struct TypedContextContributor;
+
+impl ContextContributor for TypedContextContributor {
+    fn contribute_thread_context_fragments<'a>(
+        &'a self,
+        _session_store: &'a ExtensionData,
+        _thread_store: &'a ExtensionData,
+    ) -> ExtensionFuture<'a, Vec<Box<dyn ContextualUserFragment + Send>>> {
+        Box::pin(std::future::ready(vec![
+            Box::new(ScopedMemoryContextFragment::new(INITIAL_TYPED_CONTEXT))
+                as Box<dyn ContextualUserFragment + Send>,
+        ]))
+    }
+
+    fn contribute_rewind_context_fragments<'a>(
+        &'a self,
+        _input: RewindContextContributionInput<'a>,
+    ) -> ExtensionFuture<'a, Vec<Box<dyn ContextualUserFragment + Send>>> {
+        Box::pin(std::future::ready(vec![
+            Box::new(ScopedMemoryContextFragment::new(REWIND_TYPED_CONTEXT))
+                as Box<dyn ContextualUserFragment + Send>,
+        ]))
+    }
+}
 
 async fn submit_turn_with_mode(test: &TestCodex, prompt: &str, mode: ModeKind) -> Result<()> {
     let (sandbox_policy, permission_profile) =
@@ -168,7 +209,10 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
     )
     .await;
 
-    let mut builder = test_codex();
+    let mut extension_builder = ExtensionRegistryBuilder::<Config>::new();
+    extension_builder.prompt_contributor(Arc::new(TypedContextContributor));
+    let mut builder =
+        test_codex().with_extensions(Arc::new(extension_builder.build()));
     let test = builder.build(&server).await?;
     test.submit_turn_with_approval_and_permission_profile(
         "save anchor",
@@ -179,6 +223,14 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
 
     let first_requests = first_mock.requests();
     assert_eq!(first_requests.len(), 2);
+    assert_eq!(
+        first_requests[0]
+            .message_input_texts("user")
+            .iter()
+            .filter(|text| text.contains(INITIAL_TYPED_CONTEXT))
+            .count(),
+        1
+    );
 
     let save_text = first_requests[1]
         .function_call_output_text(save_call_id)
@@ -233,6 +285,16 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
 
     let requests = second_mock.requests();
     assert_eq!(requests.len(), 3);
+    for request in &requests[1..] {
+        assert_eq!(
+            request
+                .message_input_texts("user")
+                .iter()
+                .filter(|text| text.contains(REWIND_TYPED_CONTEXT))
+                .count(),
+            1
+        );
+    }
 
     let rewind_text = requests[1]
         .function_call_output_text(rewind_call_id)
@@ -305,6 +367,26 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
             "reason": "unknown_context_anchor",
         })
     );
+
+    let rollout_path = test.codex.rollout_path().expect("rollout path");
+    let rollout = tokio::fs::read_to_string(rollout_path).await?;
+    let persisted_rewind_context_count = rollout
+        .lines()
+        .map(serde_json::from_str::<RolloutLine>)
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter_map(|line| match line.item {
+            RolloutItem::ResponseItem(ResponseItem::Message { content, .. }) => Some(content),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|item| match item {
+            ContentItem::InputText { text } => Some(text),
+            _ => None,
+        })
+        .filter(|text| text.contains(REWIND_TYPED_CONTEXT))
+        .count();
+    assert_eq!(persisted_rewind_context_count, 1);
 
     Ok(())
 }
