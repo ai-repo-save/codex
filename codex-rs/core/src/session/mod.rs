@@ -14,6 +14,7 @@ use crate::agent::AgentControl;
 use crate::agent::AgentStatus;
 use crate::agent::agent_status_from_event;
 use crate::agent::status::is_final;
+use crate::agent::terminal_delivery::prepare_terminal_delivery;
 use crate::agent_communication::AgentCommunicationContext;
 use crate::agent_communication::AgentCommunicationKind;
 use crate::attestation::AttestationProvider;
@@ -43,7 +44,6 @@ use crate::parse_turn_item;
 use crate::realtime_conversation::RealtimeConversationManager;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnEnvironment;
-use crate::session_prefix::format_inter_agent_completion_message;
 use crate::skills::SkillRenderSideEffects;
 use crate::skills_load_input_from_config;
 use crate::turn_metadata::TurnMetadataState;
@@ -2116,19 +2116,16 @@ impl Session {
         child_agent_path: &codex_protocol::AgentPath,
         status: AgentStatus,
     ) {
-        let Some(parent_agent_path) = child_agent_path
-            .as_str()
-            .rsplit_once('/')
-            .and_then(|(parent, _)| codex_protocol::AgentPath::try_from(parent).ok())
-        else {
-            return;
-        };
-
-        let Some(message) = format_inter_agent_completion_message(
-            parent_agent_path.clone(),
+        let Some(communication) = prepare_terminal_delivery(
+            &self.services.agent_control,
+            self.thread_id,
+            parent_thread_id,
             child_agent_path.clone(),
             &status,
-        ) else {
+            format!("{}-{}", self.thread_id, turn_context.sub_id),
+        )
+        .await
+        else {
             return;
         };
         // `communication` owns the message. Keep a second copy only when the
@@ -2137,41 +2134,7 @@ impl Session {
             .services
             .rollout_thread_trace
             .is_enabled()
-            .then(|| message.clone());
-        let mut communication = InterAgentCommunication::new(
-            child_agent_path.clone(),
-            parent_agent_path,
-            Vec::new(),
-            message,
-            /*trigger_turn*/ false,
-        );
-        let capture_terminal_messages = self
-            .services
-            .agent_control
-            .terminal_message_capture_enabled(parent_thread_id)
-            .await;
-        if capture_terminal_messages {
-            communication.id = Some(ResponseItemId::with_suffix(
-                "agent_terminal",
-                format!("{}-{}", self.thread_id, turn_context.sub_id),
-            ));
-        }
-        if capture_terminal_messages {
-            if self
-                .services
-                .agent_control
-                .try_claim_terminal_message(
-                    self.thread_id,
-                    parent_thread_id,
-                    &communication,
-                    &status,
-                )
-                .await
-            {
-                return;
-            }
-            communication.id = None;
-        }
+            .then(|| communication.content.clone());
         let context =
             AgentCommunicationContext::new(AgentCommunicationKind::Result, self.thread_id);
         if let Err(err) = self

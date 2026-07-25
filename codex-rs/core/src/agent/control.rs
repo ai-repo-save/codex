@@ -6,6 +6,7 @@ use crate::agent::registry::AgentRegistry;
 use crate::agent::role::DEFAULT_ROLE_NAME;
 use crate::agent::role::resolve_role_config;
 use crate::agent::status::is_final;
+use crate::agent::terminal_delivery::prepare_terminal_delivery;
 use crate::agent_communication::AgentCommunicationContext;
 use crate::agent_communication::AgentCommunicationKind;
 use crate::codex_thread::ThreadConfigSnapshot;
@@ -15,14 +16,12 @@ use crate::environment_selection::TurnEnvironmentSnapshot;
 use crate::rollout_budget::RolloutBudget;
 use crate::session::ConsultSessionSnapshot;
 use crate::session::emit_subagent_session_started;
-use crate::session_prefix::format_inter_agent_completion_message;
 use crate::session_prefix::format_subagent_context_line;
 use crate::session_prefix::format_subagent_notification_message;
 use crate::thread_manager::ResumeThreadWithHistoryOptions;
 use crate::thread_manager::ThreadManagerState;
 use crate::thread_rollout_truncation::truncate_rollout_to_last_n_fork_turns;
 use codex_protocol::AgentPath;
-use codex_protocol::ResponseItemId;
 use codex_protocol::SessionId;
 use codex_protocol::ThreadId;
 use codex_protocol::error::CodexErr;
@@ -660,47 +659,18 @@ impl AgentControl {
                 let Some(child_agent_path) = child_agent_path.clone() else {
                     return;
                 };
-                let Some(parent_agent_path) = child_agent_path
-                    .as_str()
-                    .rsplit_once('/')
-                    .and_then(|(parent, _)| AgentPath::try_from(parent).ok())
+                let Some(communication) = prepare_terminal_delivery(
+                    &control,
+                    child_thread_id,
+                    parent_thread_id,
+                    child_agent_path,
+                    &status,
+                    format!("{child_thread_id}-fallback"),
+                )
+                .await
                 else {
                     return;
                 };
-                let Some(message) = format_inter_agent_completion_message(
-                    parent_agent_path.clone(),
-                    child_agent_path.clone(),
-                    &status,
-                ) else {
-                    return;
-                };
-                let mut communication = InterAgentCommunication::new(
-                    child_agent_path,
-                    parent_agent_path,
-                    Vec::new(),
-                    message,
-                    /*trigger_turn*/ false,
-                );
-                if capture_terminal_messages {
-                    communication.id = Some(ResponseItemId::with_suffix(
-                        "agent_terminal",
-                        format!("{child_thread_id}-fallback"),
-                    ));
-                }
-                if capture_terminal_messages {
-                    if control
-                        .try_claim_terminal_message(
-                            child_thread_id,
-                            parent_thread_id,
-                            &communication,
-                            &status,
-                        )
-                        .await
-                    {
-                        return;
-                    }
-                    communication.id = None;
-                }
                 let context =
                     AgentCommunicationContext::new(AgentCommunicationKind::Result, child_thread_id);
                 let _ = control
