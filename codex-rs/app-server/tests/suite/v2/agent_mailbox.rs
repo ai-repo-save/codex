@@ -54,6 +54,8 @@ async fn thread_agent_mailbox_get_and_resume_hydration_are_count_only() -> Resul
 
     let first_thread = start_thread(&mut app_server).await?;
     let second_thread = start_thread(&mut app_server).await?;
+    start_turn(&mut app_server, &first_thread.id, "materialize mailbox thread").await?;
+    wait_for_turn_completion(&mut app_server, &first_thread.id).await?;
     let first_thread_id = ThreadId::from_string(&first_thread.id)?;
     state_db
         .agent_mailbox()
@@ -113,7 +115,7 @@ async fn agent_mailbox_body_reaches_parent_only_after_explicit_read() -> Result<
     let server = responses::start_mock_server().await;
     let spawn_args = serde_json::to_string(&json!({
         "message": CHILD_PROMPT,
-        "task_name": "mailbox-worker",
+        "task_name": "mailbox_worker",
     }))?;
     let send_args = serde_json::to_string(&json!({
         "target": "/root",
