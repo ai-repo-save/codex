@@ -192,7 +192,10 @@ fn uncommitted_rewind_keeps_original_anchor_active() {
         Some(ANCHOR_ID.to_string())
     );
     assert_eq!(active_replacement_anchor_id(&items, ANCHOR_ID), None);
-    assert_eq!(count_user_turns_since_anchor(&items, ANCHOR_ID), Ok(1));
+    assert_eq!(
+        count_user_turns_since_anchor(&items, ANCHOR_ID).expect("saved anchor should remain active"),
+        1
+    );
     assert_eq!(
         list_context_anchors_from_rollout(&items, &current_history, 10, ModeKind::Default)
             .active_anchor_count,

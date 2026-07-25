@@ -545,7 +545,7 @@ async fn multi_agent_v2_spawn_accepts_available_model_with_different_backend_met
         ),
         (
             Some(true),
-            Some("gpt-5.4".to_string()),
+            "gpt-5.4".to_string(),
             Some(codex_protocol::protocol::MultiAgentVersion::V2),
         )
     );
