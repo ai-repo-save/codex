@@ -40,6 +40,12 @@ use std::path::PathBuf;
 use std::time::Duration;
 use ts_rs::TS;
 
+mod lifecycle;
+
+pub use lifecycle::CompletedItemPersistence;
+pub use lifecycle::MaterializedItemHandling;
+pub use lifecycle::TurnItemLifecyclePolicy;
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema)]
 #[serde(tag = "type")]

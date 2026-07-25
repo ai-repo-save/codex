@@ -1,7 +1,5 @@
 use crate::protocol::EventMsg;
 use crate::protocol::RolloutItem;
-use codex_extension_items::ExtensionItem;
-use codex_protocol::items::TurnItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::ThreadHistoryMode;
 
@@ -86,18 +84,11 @@ pub fn should_persist_response_item_for_memories(item: &ResponseItem) -> bool {
 #[inline]
 pub fn should_persist_event_msg(ev: &EventMsg, history_mode: ThreadHistoryMode) -> bool {
     match ev {
-        EventMsg::ItemCompleted(event) => {
-            // Paginated rollouts store TurnItems.
-            // Legacy rollouts keep only items with no raw ResponseItem or legacy equivalent.
-            matches!(history_mode, ThreadHistoryMode::Paginated)
-                || matches!(
-                    event.item,
-                    TurnItem::Plan(_)
-                        | TurnItem::Extension(
-                            ExtensionItem::Sleep(_) | ExtensionItem::MemoryMutation(_)
-                        )
-                )
-        }
+        EventMsg::ItemCompleted(event) => event
+            .item
+            .lifecycle_policy()
+            .completed_item_persistence()
+            .includes(history_mode),
         EventMsg::TokenCount(_)
         | EventMsg::ThreadGoalUpdated(_)
         | EventMsg::ThreadGoalCleared(_)

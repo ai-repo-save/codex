@@ -31,6 +31,7 @@ use crate::protocol::v2::WebSearchAction;
 use crate::protocol::v2::WebSearchItem;
 use crate::protocol::v2::web_search_action_from_core;
 use codex_extension_items::image_generation::ImageGenerationItem;
+use codex_protocol::items::MaterializedItemHandling;
 use codex_protocol::items::parse_hook_prompt_message;
 use codex_protocol::models::MessagePhase;
 use codex_protocol::protocol::AgentReasoningEvent;
@@ -332,7 +333,8 @@ impl ThreadHistoryBuilder {
     /// tracking used by running thread resume/rejoin.
     ///
     /// This function should handle all EventMsg variants that can be persisted in a rollout file.
-    /// See `should_persist_event_msg` in `codex-rs/core/rollout/policy.rs`.
+    /// See `TurnItem::lifecycle_policy` and `should_persist_event_msg` in
+    /// `codex-rs/rollout/src/policy.rs`.
     pub fn handle_event(&mut self, event: &EventMsg) {
         if let Some(projection) = collaboration_item_from_event(event) {
             self.upsert_item_in_current_turn(projection.item);
@@ -616,27 +618,13 @@ impl ThreadHistoryBuilder {
             codex_protocol::items::TurnItem::EnteredReviewMode(_)
                 | codex_protocol::items::TurnItem::ExitedReviewMode(_)
         );
-        let should_upsert = match item {
-            codex_protocol::items::TurnItem::Plan(plan) => !plan.text.is_empty(),
-            codex_protocol::items::TurnItem::SkillLoad(_)
-            | codex_protocol::items::TurnItem::HookPrompt(_)
-            | codex_protocol::items::TurnItem::CommandExecution(_)
-            | codex_protocol::items::TurnItem::DynamicToolCall(_)
-            | codex_protocol::items::TurnItem::CollabAgentToolCall(_)
-            | codex_protocol::items::TurnItem::SubAgentActivity(_)
-            | codex_protocol::items::TurnItem::Extension(_)
-            | codex_protocol::items::TurnItem::EnteredReviewMode(_)
-            | codex_protocol::items::TurnItem::ExitedReviewMode(_) => true,
-            codex_protocol::items::TurnItem::UserMessage(_)
-            | codex_protocol::items::TurnItem::AgentMessage(_)
-            | codex_protocol::items::TurnItem::Reasoning(_)
-            | codex_protocol::items::TurnItem::WebSearch(_)
-            | codex_protocol::items::TurnItem::ImageView(_)
-            | codex_protocol::items::TurnItem::ImageGeneration(_)
-            | codex_protocol::items::TurnItem::FileChange(_)
-            | codex_protocol::items::TurnItem::McpToolCall(_)
-            | codex_protocol::items::TurnItem::ContextCompaction(_) => false,
-        };
+        let should_upsert = matches!(
+            item.lifecycle_policy().materialized_item_handling(),
+            MaterializedItemHandling::CanonicalLifecycle
+        ) && !matches!(
+            item,
+            codex_protocol::items::TurnItem::Plan(plan) if plan.text.is_empty()
+        );
 
         if should_upsert {
             let item = ThreadItem::from(item.clone());

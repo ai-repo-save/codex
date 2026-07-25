@@ -3,9 +3,11 @@ use codex_extension_items::memory_mutation::MemoryMutation;
 use codex_extension_items::memory_mutation::MemoryMutationScope;
 use codex_extension_items::memory_mutation::MemoryMutationStatus;
 use codex_extension_items::web_search::WebSearchItem;
+use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
 use codex_protocol::items::EnteredReviewModeItem;
 use codex_protocol::items::ExitedReviewModeItem;
+use codex_protocol::items::SubAgentActivityItem;
 use codex_protocol::items::TurnItem;
 use codex_protocol::items::UserMessageItem;
 use codex_protocol::models::ContentItem;
@@ -13,9 +15,11 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::EnteredReviewModeEvent;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::ExitedReviewModeEvent;
+use codex_protocol::protocol::HasLegacyEvent;
 use codex_protocol::protocol::ItemCompletedEvent;
 use codex_protocol::protocol::ReviewTarget;
 use codex_protocol::protocol::RolloutItem;
+use codex_protocol::protocol::SubAgentActivityKind;
 use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::TurnAbortReason;
 use codex_protocol::protocol::TurnAbortedEvent;
@@ -355,6 +359,49 @@ fn memory_mutation_completion_is_durable_in_all_history_modes() {
             super::PersistenceDecision::Kept,
             super::PersistenceDecision::Kept,
         ]
+    );
+}
+
+#[test]
+fn sub_agent_activity_uses_history_mode_specific_durable_representation() {
+    let thread_id = ThreadId::default();
+    let completed = ItemCompletedEvent {
+        thread_id,
+        turn_id: "turn".to_string(),
+        item: TurnItem::SubAgentActivity(SubAgentActivityItem {
+            id: "activity".to_string(),
+            kind: SubAgentActivityKind::Started,
+            agent_thread_id: ThreadId::new(),
+            agent_path: AgentPath::try_from("/root/worker").expect("valid agent path"),
+            operation: None,
+            outcome: None,
+            model: None,
+            reasoning_effort: None,
+            service_tier: None,
+            context_inheritance: None,
+        }),
+        completed_at_ms: 1,
+    };
+    let canonical = RolloutItem::EventMsg(EventMsg::ItemCompleted(completed.clone()));
+    let [legacy_event] = completed
+        .as_legacy_events(/*show_raw_agent_reasoning*/ false)
+        .try_into()
+        .expect("sub-agent activity has one legacy projection");
+    let legacy = RolloutItem::EventMsg(legacy_event);
+    let items = vec![canonical.clone(), legacy.clone()];
+
+    let (persisted_legacy, _) =
+        measure_and_filter_rollout_items(&items, ThreadHistoryMode::Legacy);
+    assert_eq!(
+        serde_json::to_value(persisted_legacy).expect("serialize legacy persisted items"),
+        serde_json::to_value([legacy]).expect("serialize expected legacy item")
+    );
+
+    let (persisted_paginated, _) =
+        measure_and_filter_rollout_items(&items, ThreadHistoryMode::Paginated);
+    assert_eq!(
+        serde_json::to_value(persisted_paginated).expect("serialize paginated persisted items"),
+        serde_json::to_value([canonical]).expect("serialize expected paginated item")
     );
 }
 
