@@ -4419,6 +4419,26 @@
           "properties": {
             "method": {
               "enum": [
+                "thread/agentMailbox/updated"
+              ],
+              "title": "Thread/agentMailbox/updatedNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ThreadAgentMailboxUpdatedNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Thread/agentMailbox/updatedNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
                 "thread/environment/connected"
               ],
               "title": "Thread/environment/connectedNotificationMethod",
@@ -6309,6 +6329,43 @@
             ]
           }
         },
+        "type": "object"
+      },
+      "AgentMailboxStatus": {
+        "properties": {
+          "actionRequired": {
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "progress": {
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "result": {
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "total": {
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "actionRequired",
+          "progress",
+          "result",
+          "revision",
+          "total"
+        ],
         "type": "object"
       },
       "AgentMessageDeltaNotification": {
@@ -18227,6 +18284,23 @@
           "waitingOnUserInput"
         ],
         "type": "string"
+      },
+      "ThreadAgentMailboxUpdatedNotification": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "mailbox": {
+            "$ref": "#/definitions/v2/AgentMailboxStatus"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mailbox",
+          "threadId"
+        ],
+        "title": "ThreadAgentMailboxUpdatedNotification",
+        "type": "object"
       },
       "ThreadApproveGuardianDeniedActionParams": {
         "$schema": "http://json-schema.org/draft-07/schema#",
