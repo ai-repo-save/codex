@@ -1,5 +1,6 @@
 mod approvals;
 pub(crate) mod code_mode;
+mod collaboration_plan;
 pub(crate) mod context;
 pub(crate) mod events;
 pub(crate) mod handlers;

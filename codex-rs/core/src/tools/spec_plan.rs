@@ -1,10 +1,7 @@
-use crate::agent::exceeds_thread_spawn_depth_limit;
-use crate::agent::next_thread_spawn_depth;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
 use crate::tools::code_mode::default_exec_yield_time_override_ms;
 use crate::tools::code_mode::execute_spec::create_code_mode_tool;
-use crate::tools::context::ToolInvocation;
 use crate::tools::effective_tool_mode;
 use crate::tools::handlers::AccountRateLimitsHandler;
 use crate::tools::handlers::ApplyPatchHandler;
@@ -39,22 +36,6 @@ use crate::tools::handlers::ViewImageHandler;
 use crate::tools::handlers::WaitForEnvironmentHandler;
 use crate::tools::handlers::WriteStdinHandler;
 use crate::tools::handlers::extension_tools::ExtensionToolAdapter;
-use crate::tools::handlers::multi_agents::CloseAgentHandler;
-use crate::tools::handlers::multi_agents::ResumeAgentHandler;
-use crate::tools::handlers::multi_agents::SendInputHandler;
-use crate::tools::handlers::multi_agents::SpawnAgentHandler;
-use crate::tools::handlers::multi_agents::WaitAgentHandler;
-use crate::tools::handlers::multi_agents_common::DEFAULT_WAIT_TIMEOUT_MS;
-use crate::tools::handlers::multi_agents_common::MAX_WAIT_TIMEOUT_MS;
-use crate::tools::handlers::multi_agents_common::MIN_WAIT_TIMEOUT_MS;
-use crate::tools::handlers::multi_agents_v2::AskParentHandler;
-use crate::tools::handlers::multi_agents_v2::FollowupTaskHandler as FollowupTaskHandlerV2;
-use crate::tools::handlers::multi_agents_v2::InspectAgentHandlerV2;
-use crate::tools::handlers::multi_agents_v2::InterruptAgentHandler;
-use crate::tools::handlers::multi_agents_v2::ListAgentsHandler as ListAgentsHandlerV2;
-use crate::tools::handlers::multi_agents_v2::SendMessageHandler as SendMessageHandlerV2;
-use crate::tools::handlers::multi_agents_v2::SpawnAgentHandler as SpawnAgentHandlerV2;
-use crate::tools::handlers::multi_agents_v2::WaitAgentHandler as WaitAgentHandlerV2;
 use crate::tools::handlers::view_image_spec::ViewImageToolOptions;
 use crate::tools::hosted_spec::WebSearchToolOptions;
 use crate::tools::hosted_spec::create_web_search_tool;
@@ -65,8 +46,6 @@ use crate::tools::registry::override_tool_exposure;
 use crate::tools::router::ToolRouter;
 use crate::tools::router::ToolRouterParams;
 use codex_features::Feature;
-use codex_agent_control::SpawnAgentToolOptions;
-use codex_agent_control::WaitAgentTimeoutOptions;
 use codex_login::AuthManager;
 use codex_protocol::config_types::WebSearchMode;
 use codex_protocol::dynamic_tools::DynamicToolNamespaceTool;
@@ -74,15 +53,11 @@ use codex_protocol::dynamic_tools::DynamicToolSpec;
 use codex_protocol::openai_models::ConfigShellToolType;
 use codex_protocol::openai_models::InputModality;
 use codex_protocol::openai_models::ToolMode;
-use codex_protocol::protocol::MultiAgentVersion;
-use codex_tools::ResponsesApiNamespace;
-use codex_tools::ResponsesApiNamespaceTool;
 use codex_tools::TOOL_SEARCH_TOOL_NAME;
 use codex_tools::ToolCall as ExtensionToolCall;
 use codex_tools::ToolEnvironmentMode;
 use codex_tools::ToolExecutor;
 use codex_tools::ToolName;
-use codex_tools::ToolSearchInfo;
 use codex_tools::ToolSpec;
 use codex_tools::UnifiedExecShellMode;
 use codex_tools::can_request_original_image_detail;
@@ -98,7 +73,6 @@ use std::sync::Arc;
 use tracing::instrument;
 use tracing::warn;
 
-const MULTI_AGENT_V2_NAMESPACE_DESCRIPTION: &str = "Tools for spawning and managing sub-agents.";
 const IMAGE_GEN_NAMESPACE: &str = "image_gen";
 const IMAGEGEN_TOOL_NAME: &str = "imagegen";
 
@@ -154,8 +128,6 @@ struct CoreToolPlanContext<'a> {
     extension_tool_executors: &'a [Arc<dyn ToolExecutor<ExtensionToolCall>>],
     dynamic_tools: &'a [DynamicToolSpec],
     tool_search_handler_cache: &'a ToolSearchHandlerCache,
-    default_agent_type_description: &'a str,
-    wait_agent_timeouts: WaitAgentTimeoutOptions,
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -182,8 +154,6 @@ fn build_tool_specs_and_registry(
         extension_tool_executors,
         dynamic_tools,
     } = params;
-    let default_agent_type_description =
-        crate::agent::role::spawn_tool_spec::build(&std::collections::BTreeMap::new());
     let context = CoreToolPlanContext {
         step_context,
         tool_runtimes: &tool_runtimes,
@@ -191,8 +161,6 @@ fn build_tool_specs_and_registry(
         extension_tool_executors: &extension_tool_executors,
         dynamic_tools,
         tool_search_handler_cache,
-        default_agent_type_description: &default_agent_type_description,
-        wait_agent_timeouts: wait_agent_timeout_options(turn_context),
     };
     let mut planned_tools = PlannedTools::default();
     add_tool_sources(&context, &mut planned_tools);
@@ -337,21 +305,6 @@ fn namespace_tools_enabled(turn_context: &TurnContext) -> bool {
     turn_context.provider.capabilities().namespace_tools
 }
 
-fn multi_agent_v2_enabled(turn_context: &TurnContext) -> bool {
-    turn_context.multi_agent_version == MultiAgentVersion::V2
-}
-
-fn collab_tools_enabled(turn_context: &TurnContext) -> bool {
-    match turn_context.multi_agent_version {
-        MultiAgentVersion::Disabled => false,
-        MultiAgentVersion::V1 => !exceeds_thread_spawn_depth_limit(
-            next_thread_spawn_depth(&turn_context.session_source),
-            turn_context.config.agent_max_depth,
-        ),
-        MultiAgentVersion::V2 => true,
-    }
-}
-
 fn image_generation_available(turn_context: &TurnContext) -> bool {
     if !turn_context
         .config
@@ -382,35 +335,6 @@ fn image_generation_available(turn_context: &TurnContext) -> bool {
                 .auth_manager
                 .as_deref()
                 .is_some_and(AuthManager::current_auth_uses_codex_backend))
-}
-
-fn wait_agent_timeout_options(turn_context: &TurnContext) -> WaitAgentTimeoutOptions {
-    if multi_agent_v2_enabled(turn_context) {
-        return WaitAgentTimeoutOptions {
-            default_timeout_ms: turn_context.config.multi_agent_v2.default_wait_timeout_ms,
-            min_timeout_ms: turn_context.config.multi_agent_v2.min_wait_timeout_ms,
-            max_timeout_ms: turn_context.config.multi_agent_v2.max_wait_timeout_ms,
-        };
-    }
-
-    WaitAgentTimeoutOptions {
-        default_timeout_ms: DEFAULT_WAIT_TIMEOUT_MS,
-        min_timeout_ms: MIN_WAIT_TIMEOUT_MS,
-        max_timeout_ms: MAX_WAIT_TIMEOUT_MS,
-    }
-}
-
-fn agent_type_description(
-    turn_context: &TurnContext,
-    default_agent_type_description: &str,
-) -> String {
-    let agent_type_description =
-        crate::agent::role::spawn_tool_spec::build(&turn_context.config.agent_roles);
-    if agent_type_description.is_empty() {
-        default_agent_type_description.to_string()
-    } else {
-        agent_type_description
-    }
 }
 
 fn is_hidden_by_code_mode_only(
@@ -603,7 +527,9 @@ fn add_tool_sources(context: &CoreToolPlanContext<'_>, planned_tools: &mut Plann
     add_shell_tools(context, planned_tools);
     add_mcp_resource_tools(context, planned_tools);
     add_core_utility_tools(context, planned_tools);
-    add_collaboration_tools(context, planned_tools);
+    planned_tools
+        .runtimes
+        .extend(crate::tools::collaboration_plan::build(turn_context));
     for runtime in context.tool_runtimes {
         planned_tools.add_arc(Arc::clone(runtime));
     }
@@ -799,121 +725,6 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
     }
 }
 
-#[instrument(level = "trace", skip_all)]
-fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut PlannedTools) {
-    let turn_context = context.step_context.turn.as_ref();
-    if collab_tools_enabled(turn_context) {
-        if multi_agent_v2_enabled(turn_context) {
-            let exposure = if turn_context.config.multi_agent_v2.non_code_mode_only {
-                ToolExposure::DirectModelOnly
-            } else {
-                ToolExposure::Direct
-            };
-            let tool_namespace = namespace_tools_enabled(turn_context)
-                .then_some(turn_context.config.multi_agent_v2.tool_namespace.as_deref())
-                .flatten();
-            let agent_type_description =
-                agent_type_description(turn_context, context.default_agent_type_description);
-            let hide_spawn_agent_metadata =
-                turn_context.config.multi_agent_v2.hide_spawn_agent_metadata;
-            planned_tools.add_arc(override_tool_exposure(
-                multi_agent_v2_handler(
-                    SpawnAgentHandlerV2::new(SpawnAgentToolOptions {
-                        available_models: turn_context.available_models.clone(),
-                        agent_type_description,
-                        expose_agent_type: !turn_context.config.agent_roles.is_empty(),
-                        hide_agent_type_model_reasoning: hide_spawn_agent_metadata,
-                        expose_spawn_agent_model_overrides: turn_context
-                            .config
-                            .multi_agent_v2
-                            .expose_spawn_agent_model_overrides,
-                        usage_hint_text: turn_context.config.multi_agent_v2.usage_hint_text.clone(),
-                        max_concurrent_threads_per_session: Some(
-                            turn_context
-                                .config
-                                .multi_agent_v2
-                                .max_concurrent_threads_per_session,
-                        ),
-                        encrypt_messages: turn_context.config.multi_agent_v2.encrypt_messages,
-                    }),
-                    tool_namespace,
-                ),
-                exposure,
-            ));
-            planned_tools.add_arc(override_tool_exposure(
-                multi_agent_v2_handler(
-                    SendMessageHandlerV2::new(turn_context.config.multi_agent_v2.encrypt_messages),
-                    tool_namespace,
-                ),
-                exposure,
-            ));
-            planned_tools.add_arc(override_tool_exposure(
-                multi_agent_v2_handler(
-                    FollowupTaskHandlerV2::new(turn_context.config.multi_agent_v2.encrypt_messages),
-                    tool_namespace,
-                ),
-                exposure,
-            ));
-            if turn_context.parent_thread_id.is_some() {
-                planned_tools.add_arc(override_tool_exposure(
-                    multi_agent_v2_handler(AskParentHandler, tool_namespace),
-                    exposure,
-                ));
-            }
-            planned_tools.add_arc(override_tool_exposure(
-                multi_agent_v2_handler(
-                    WaitAgentHandlerV2::new(context.wait_agent_timeouts),
-                    tool_namespace,
-                ),
-                exposure,
-            ));
-            planned_tools.add_arc(override_tool_exposure(
-                multi_agent_v2_handler(InterruptAgentHandler, tool_namespace),
-                exposure,
-            ));
-            planned_tools.add_arc(override_tool_exposure(
-                multi_agent_v2_handler(ListAgentsHandlerV2, tool_namespace),
-                exposure,
-            ));
-            planned_tools.add_arc(override_tool_exposure(
-                multi_agent_v2_handler(InspectAgentHandlerV2, tool_namespace),
-                exposure,
-            ));
-        } else {
-            let agent_type_description =
-                agent_type_description(turn_context, context.default_agent_type_description);
-            let exposure = if search_tool_enabled(turn_context) {
-                ToolExposure::Deferred
-            } else {
-                ToolExposure::Direct
-            };
-            planned_tools.add_with_exposure(
-                SpawnAgentHandler::new(SpawnAgentToolOptions {
-                    available_models: turn_context.available_models.clone(),
-                    agent_type_description,
-                    expose_agent_type: !turn_context.config.agent_roles.is_empty(),
-                    hide_agent_type_model_reasoning: false,
-                    expose_spawn_agent_model_overrides: true,
-                    usage_hint_text: turn_context.config.multi_agent_v2.usage_hint_text.clone(),
-                    max_concurrent_threads_per_session: Some(
-                        turn_context
-                            .config
-                            .multi_agent_v2
-                            .max_concurrent_threads_per_session,
-                    ),
-                    encrypt_messages: false,
-                }),
-                exposure,
-            );
-            planned_tools.add_with_exposure(SendInputHandler, exposure);
-            planned_tools.add_with_exposure(ResumeAgentHandler, exposure);
-            planned_tools
-                .add_with_exposure(WaitAgentHandler::new(context.wait_agent_timeouts), exposure);
-            planned_tools.add_with_exposure(CloseAgentHandler, exposure);
-        }
-    }
-}
-
 #[instrument(level = "trace", skip_all, fields(dynamic_tool_count = context.dynamic_tools.len()))]
 fn add_dynamic_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut PlannedTools) {
     for spec in context.dynamic_tools {
@@ -1043,69 +854,6 @@ fn append_extension_tool_executors(
             continue;
         }
         planned_tools.add(ExtensionToolAdapter::new(executor));
-    }
-}
-
-fn multi_agent_v2_handler(
-    handler: impl CoreToolRuntime + 'static,
-    namespace: Option<&str>,
-) -> Arc<dyn CoreToolRuntime> {
-    match namespace {
-        Some(namespace) => Arc::new(MultiAgentV2NamespaceOverride {
-            handler: Arc::new(handler),
-            namespace: namespace.to_string(),
-        }),
-        None => Arc::new(handler),
-    }
-}
-
-struct MultiAgentV2NamespaceOverride {
-    handler: Arc<dyn CoreToolRuntime>,
-    namespace: String,
-}
-
-impl ToolExecutor<ToolInvocation> for MultiAgentV2NamespaceOverride {
-    fn tool_name(&self) -> ToolName {
-        ToolName::namespaced(self.namespace.clone(), self.handler.tool_name().name)
-    }
-
-    fn spec(&self) -> ToolSpec {
-        match self.handler.spec() {
-            ToolSpec::Function(tool) => ToolSpec::Namespace(ResponsesApiNamespace {
-                name: self.namespace.clone(),
-                description: MULTI_AGENT_V2_NAMESPACE_DESCRIPTION.to_string(),
-                tools: vec![ResponsesApiNamespaceTool::Function(tool)],
-            }),
-            spec => spec,
-        }
-    }
-
-    fn exposure(&self) -> ToolExposure {
-        self.handler.exposure()
-    }
-
-    fn supports_parallel_tool_calls(&self) -> bool {
-        self.handler.supports_parallel_tool_calls()
-    }
-
-    fn search_info(&self) -> Option<ToolSearchInfo> {
-        self.handler.search_info()
-    }
-
-    fn handle(&self, invocation: ToolInvocation) -> codex_tools::ToolExecutorFuture<'_> {
-        self.handler.handle(invocation)
-    }
-}
-
-impl CoreToolRuntime for MultiAgentV2NamespaceOverride {
-    fn matches_kind(&self, payload: &crate::tools::context::ToolPayload) -> bool {
-        self.handler.matches_kind(payload)
-    }
-
-    fn create_diff_consumer(
-        &self,
-    ) -> Option<Box<dyn crate::tools::registry::ToolArgumentDiffConsumer>> {
-        self.handler.create_diff_consumer()
     }
 }
 
