@@ -17,6 +17,7 @@ use crate::pager_overlay::TranscriptOverlay;
 use crate::status::StatusAccountDisplay;
 use crate::status::remote_connection::RemoteConnectionStatus;
 use crate::test_support::PathBufExt;
+use crate::test_support::TEST_CLI_VERSION;
 use crate::test_support::test_path_buf;
 use crate::token_usage::TokenUsage;
 use crate::token_usage::TokenUsageInfo;
@@ -759,6 +760,7 @@ async fn status_model_provider_uses_bedrock_runtime_base_url_and_gates_usage_lin
         None,
         captured_at,
         &model_slug,
+        TEST_CLI_VERSION,
         /*collaboration_mode*/ None,
         /*reasoning_effort_override*/ None,
         "<none>".to_string(),
@@ -800,6 +802,7 @@ async fn status_model_provider_uses_bedrock_runtime_base_url_and_gates_usage_lin
         None,
         captured_at,
         &model_slug,
+        TEST_CLI_VERSION,
         /*collaboration_mode*/ None,
         /*reasoning_effort_override*/ None,
         "<none>".to_string(),
@@ -1610,6 +1613,7 @@ async fn status_snapshot_uses_default_reasoning_when_config_empty() {
         None,
         now,
         &model_slug,
+        TEST_CLI_VERSION,
         /*collaboration_mode*/ None,
         /*reasoning_effort_override*/ Some(Some(ReasoningEffort::Medium)),
         "<none>".to_string(),
@@ -1719,6 +1723,7 @@ async fn transcript_overlay_remeasures_status_after_rate_limit_refresh() {
         None,
         now,
         &model_slug,
+        TEST_CLI_VERSION,
         /*collaboration_mode*/ None,
         /*reasoning_effort_override*/ None,
         "<none>".to_string(),

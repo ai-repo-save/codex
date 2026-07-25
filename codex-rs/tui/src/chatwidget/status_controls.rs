@@ -239,6 +239,7 @@ impl ChatWidget {
             self.plan_type,
             Local::now(),
             self.model_display_name(),
+            crate::version::CODEX_CLI_VERSION,
             collaboration_mode,
             reasoning_effort_override,
             agents_summary,

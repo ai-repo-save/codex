@@ -6,7 +6,8 @@ use crate::history_cell::with_border_with_inner_width;
 use crate::legacy_core::config::Config;
 use crate::token_usage::TokenUsage;
 use crate::token_usage::TokenUsageInfo;
-use crate::version::CODEX_CLI_VERSION;
+#[cfg(test)]
+use crate::test_support::TEST_CLI_VERSION;
 use chrono::DateTime;
 use chrono::Local;
 use codex_app_server_protocol::AskForApproval;
@@ -104,6 +105,7 @@ impl StatusHistoryHandle {
 
 #[derive(Debug)]
 struct StatusHistoryCell {
+    cli_version: String,
     model_name: String,
     model_details: Vec<String>,
     directory: PathBuf,
@@ -189,6 +191,7 @@ pub(crate) fn new_status_output_with_rate_limits(
         _plan_type,
         now,
         model_name,
+        TEST_CLI_VERSION,
         collaboration_mode,
         reasoning_effort_override,
         "<none>".to_string(),
@@ -212,6 +215,7 @@ pub(crate) fn new_status_output_with_rate_limits_handle(
     _plan_type: Option<PlanType>,
     now: DateTime<Local>,
     model_name: &str,
+    cli_version: &str,
     collaboration_mode: Option<&str>,
     reasoning_effort_override: Option<Option<ReasoningEffort>>,
     agents_summary: String,
@@ -232,6 +236,7 @@ pub(crate) fn new_status_output_with_rate_limits_handle(
         _plan_type,
         now,
         model_name,
+        cli_version,
         collaboration_mode,
         reasoning_effort_override,
         agents_summary,
@@ -260,6 +265,7 @@ impl StatusHistoryCell {
         _plan_type: Option<PlanType>,
         now: DateTime<Local>,
         model_name: &str,
+        cli_version: &str,
         collaboration_mode: Option<&str>,
         reasoning_effort_override: Option<Option<ReasoningEffort>>,
         agents_summary: String,
@@ -353,6 +359,7 @@ impl StatusHistoryCell {
 
         (
             Self {
+                cli_version: cli_version.to_string(),
                 model_name,
                 model_details,
                 directory: config.cwd.to_path_buf(),
@@ -712,7 +719,7 @@ impl HistoryCell for StatusHistoryCell {
             Span::from(format!("{}>_ ", FieldFormatter::INDENT)).dim(),
             Span::from("OpenAI Codex").bold(),
             Span::from(" ").dim(),
-            Span::from(format!("(v{CODEX_CLI_VERSION})")).dim(),
+            Span::from(format!("(v{})", self.cli_version)).dim(),
         ]));
 
         let available_inner_width = usize::from(width.saturating_sub(4));
