@@ -76,11 +76,7 @@ pub(crate) fn validate_message_input_for_read_output(
         AgentMailboxPayload::Plaintext { content } => content.len(),
         AgentMailboxPayload::Encrypted { encrypted_content } => encrypted_content.len(),
     };
-    if payload_bytes > MAX_AGENT_MAILBOX_PAYLOAD_BYTES {
-        return Err(format!(
-            "agent mailbox message exceeds the {MAX_AGENT_MAILBOX_PAYLOAD_BYTES}-byte limit"
-        ));
-    }
+    validate_payload_bytes(payload_bytes)?;
 
     let message = AgentMailboxMessage {
         id: input.id.clone(),
@@ -96,6 +92,15 @@ pub(crate) fn validate_message_input_for_read_output(
     };
     if message_content_item_bytes(&message) > MAX_AGENT_MAILBOX_SINGLE_OUTPUT_BYTES {
         return Err("agent mailbox message metadata and content exceed the read output limit".to_string());
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_payload_bytes(payload_bytes: usize) -> Result<(), String> {
+    if payload_bytes > MAX_AGENT_MAILBOX_PAYLOAD_BYTES {
+        return Err(format!(
+            "agent mailbox message exceeds the {MAX_AGENT_MAILBOX_PAYLOAD_BYTES}-byte limit"
+        ));
     }
     Ok(())
 }

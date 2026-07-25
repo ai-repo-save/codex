@@ -34,6 +34,7 @@ use crate::extension::AgentMailboxStatusNotifier;
 use crate::output::AgentMailboxReadOutput;
 use crate::output::snapshot_json;
 use crate::output::validate_message_input_for_read_output;
+use crate::output::validate_payload_bytes;
 use crate::schema::input_schema_for;
 use crate::MAX_AGENT_MAILBOX_READ_MESSAGES;
 
@@ -130,6 +131,7 @@ impl AgentMailboxTool {
                 "agent mailbox message must not be empty".to_string(),
             ));
         }
+        validate_payload_bytes(message.len()).map_err(FunctionCallError::RespondToModel)?;
         let manager = self.thread_manager.upgrade().ok_or_else(|| {
             FunctionCallError::RespondToModel("agent thread manager is unavailable".to_string())
         })?;
