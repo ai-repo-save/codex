@@ -49,8 +49,8 @@ pub(crate) struct AgentMailboxRuntime {
     pub(crate) thread_id: ThreadId,
     pub(crate) root_thread_id: ThreadId,
     pub(crate) agent_path: AgentPath,
-    persistent_thread_state_available: bool,
-    enabled: AtomicBool,
+    pub(crate) persistent_thread_state_available: bool,
+    pub(crate) enabled: AtomicBool,
 }
 
 impl AgentMailboxRuntime {
