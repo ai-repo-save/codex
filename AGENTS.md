@@ -161,10 +161,20 @@ Codex maintains a context (history of messages) that is sent to the model in inf
 
 1. No history rewrite - the context must be built up incrementally.
 2. Avoid frequent changes to context that cause cache misses.
-3. No unbounded items - everything injected in the model context must have a bounded size and a hard cap.
-4. No items larger than 10K tokens.
-5. Highlight new individual items that can cross >1k tokens as P0. These need an additional manual review.
-6. All injected fragments must be defined as structs in `core/context` and implement ContextualUserFragment trait
+3. Before adding a model-visible limit, trace the complete path from the content producer through
+   contribution, `ResponseItem`, context history, and request assembly, then reuse the existing
+   budget owner for that path.
+4. The content producer owns semantic and collection budgets and validates the final rendered
+   fragment, including wrappers and truncation markers. Shared tool-output serialization owns
+   generic tool-result truncation. Session and request assembly own the full context-window budget.
+5. Adapters, persistence, replay, and protocol projection preserve already-budgeted content. They
+   do not introduce another limit or re-truncate it.
+6. The 10K-token rule is the maximum review boundary for one model-visible item, not a default
+   budget to recreate at every layer. A truncation marker is part of the measured final item.
+7. Highlight new individual items that can cross >1K tokens as P0. These need an additional manual
+   review.
+8. Injected fragment types live in `codex-rs/context-fragments` and implement
+   `ContextualUserFragment`; `codex-core` registers and assembles them.
 
 ### Breaking changes
 
