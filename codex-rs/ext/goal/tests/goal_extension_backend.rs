@@ -4,7 +4,6 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::PoisonError;
-use std::sync::Weak;
 use std::time::Duration;
 
 use codex_analytics::AnalyticsEventsClient;
@@ -13,6 +12,7 @@ use codex_extension_api::ExtensionEventSink;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::FunctionCallError;
 use codex_extension_api::NoopTurnItemEmitter;
+use codex_extension_api::NoopGoalTurnHost;
 use codex_extension_api::ThreadResumeInput;
 use codex_extension_api::ThreadStartInput;
 use codex_extension_api::ThreadStopInput;
@@ -1182,7 +1182,7 @@ async fn installed_tools_with_start(
         runtime,
         AnalyticsEventsClient::disabled(),
         /*metrics_client*/ None,
-        Weak::new(),
+        NoopGoalTurnHost,
         goal_service,
         |_| true,
     );
@@ -1234,7 +1234,7 @@ impl GoalExtensionHarness {
             runtime,
             AnalyticsEventsClient::disabled(),
             /*metrics_client*/ None,
-            Weak::new(),
+            NoopGoalTurnHost,
             Arc::clone(&goal_service),
             |_| true,
         );

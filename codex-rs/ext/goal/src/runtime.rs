@@ -1,9 +1,8 @@
 use std::sync::Arc;
-use std::sync::Weak;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
-use codex_core::ThreadManager;
+use codex_extension_api::GoalTurnHostHandle;
 use codex_protocol::ThreadId;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::ThreadGoal;
@@ -42,7 +41,7 @@ struct GoalRuntimeInner {
     analytics: GoalAnalytics,
     event_emitter: GoalEventEmitter,
     metrics: GoalMetrics,
-    thread_manager: Weak<ThreadManager>,
+    goal_turn_host: GoalTurnHostHandle,
     accounting_state: Arc<GoalAccountingState>,
     enabled: AtomicBool,
     tools_available_for_thread: bool,
@@ -83,7 +82,7 @@ impl GoalRuntimeHandle {
         state_dbs: Arc<codex_state::StateRuntime>,
         event_emitter: GoalEventEmitter,
         metrics: GoalMetrics,
-        thread_manager: Weak<ThreadManager>,
+        goal_turn_host: GoalTurnHostHandle,
         accounting_state: Arc<GoalAccountingState>,
         config: GoalRuntimeConfig,
     ) -> Self {
@@ -94,7 +93,7 @@ impl GoalRuntimeHandle {
                 analytics: config.analytics,
                 event_emitter,
                 metrics,
-                thread_manager,
+                goal_turn_host,
                 accounting_state,
                 enabled: AtomicBool::new(config.enabled),
                 tools_available_for_thread: config.tools_available_for_thread,
@@ -417,15 +416,6 @@ impl GoalRuntimeHandle {
             return Ok(());
         }
 
-        let Some(thread_manager) = self.inner.thread_manager.upgrade() else {
-            tracing::debug!("skipping goal continuation because thread manager is unavailable");
-            return Ok(());
-        };
-        let Ok(thread) = thread_manager.get_thread(self.inner.thread_id).await else {
-            tracing::debug!("skipping goal continuation because live thread is unavailable");
-            return Ok(());
-        };
-
         let Some(goal) = self
             .inner
             .state_dbs
@@ -443,8 +433,12 @@ impl GoalRuntimeHandle {
         }
         let item = continuation_steering_item(&protocol_goal_from_state(goal));
 
-        if let Err(err) = thread.try_start_turn_if_idle(vec![item]).await {
-            let reason = err.reason();
+        if let Err(reason) = self
+            .inner
+            .goal_turn_host
+            .start_goal_turn_if_idle(self.inner.thread_id, vec![item])
+            .await
+        {
             tracing::debug!(
                 ?reason,
                 "skipping goal continuation because automatic idle work was rejected"
@@ -467,16 +461,13 @@ impl GoalRuntimeHandle {
     }
 
     pub(crate) async fn inject_active_turn_steering(&self, item: ResponseItem) {
-        let Some(thread_manager) = self.inner.thread_manager.upgrade() else {
-            tracing::debug!("skipping goal steering because thread manager is unavailable");
-            return;
-        };
-        let Ok(thread) = thread_manager.get_thread(self.inner.thread_id).await else {
-            tracing::debug!("skipping goal steering because live thread is unavailable");
-            return;
-        };
-        if thread.inject_if_running(vec![item]).await.is_err() {
-            tracing::debug!("skipping goal steering because no turn is active");
+        if let Err(reason) = self
+            .inner
+            .goal_turn_host
+            .inject_goal_turn_items(self.inner.thread_id, vec![item])
+            .await
+        {
+            tracing::debug!(?reason, "skipping goal steering because input was rejected");
         }
     }
 

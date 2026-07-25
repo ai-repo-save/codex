@@ -8,6 +8,7 @@ use codex_app_server_protocol::ThreadGoal;
 use codex_app_server_protocol::ThreadGoalClearedNotification;
 use codex_app_server_protocol::ThreadGoalUpdatedNotification;
 use codex_core::NewThread;
+use codex_core::GoalTurnHostAdapter;
 use codex_core::StartThreadOptions;
 use codex_core::ThreadManager;
 use codex_core::config::Config;
@@ -84,7 +85,7 @@ where
             state_db,
             analytics_events_client,
             codex_otel::global(),
-            thread_manager,
+            GoalTurnHostAdapter::new(thread_manager),
             goal_service,
             |config: &Config| config.features.enabled(codex_features::Feature::Goals),
         );

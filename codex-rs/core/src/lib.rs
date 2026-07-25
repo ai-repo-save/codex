@@ -31,6 +31,7 @@ pub use codex_thread::CodexThreadSettingsOverrides;
 pub use codex_thread::ThreadConfigSnapshot;
 pub use codex_thread::TryStartTurnIfIdleError;
 pub use codex_thread::TryStartTurnIfIdleRejectionReason;
+pub use goal_turn_host::GoalTurnHostAdapter;
 pub use session::turn_context::TurnContext;
 mod agent;
 mod agent_communication;
@@ -50,6 +51,7 @@ mod exec_policy;
 #[cfg(test)]
 mod git_info_tests;
 mod guardian;
+mod goal_turn_host;
 mod hook_prompt;
 mod hook_runtime;
 mod image_preparation;
