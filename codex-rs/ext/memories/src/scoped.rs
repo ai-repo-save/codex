@@ -182,7 +182,7 @@ impl MemoryToolBackends {
         store.write_note(title, note).await
     }
 
-    pub(crate) async fn scoped_context_fragment(&self) -> Option<String> {
+    pub(crate) async fn scoped_context_fragment(&self) -> Option<ScopedMemoryContextFragment> {
         let mut sections = Vec::new();
         if let Some(session) = self.session.as_ref()
             && let Some(section) = session
@@ -208,13 +208,13 @@ impl MemoryToolBackends {
             SESSION_MEMORY_MAINTENANCE_POLICY,
             PROJECT_MEMORY_MAINTENANCE_POLICY,
         );
-        Some(ScopedMemoryContextFragment::new(body).render())
+        Some(ScopedMemoryContextFragment::new(body))
     }
 
     pub(crate) async fn rewind_session_context_fragment(
         &self,
         completed_items: &[TurnItem],
-    ) -> Option<String> {
+    ) -> Option<ScopedMemoryContextFragment> {
         let session = self.session.as_ref()?;
         let mut mutation_ids = HashSet::new();
         let mut paths = HashSet::new();
@@ -300,10 +300,13 @@ impl MemoryToolBackends {
     }
 }
 
-fn render_scoped_memory_context(body: String, token_limit: usize) -> String {
-    let rendered = ScopedMemoryContextFragment::new(&body).render();
-    if approx_token_count(&rendered) <= token_limit {
-        return rendered;
+fn render_scoped_memory_context(
+    body: String,
+    token_limit: usize,
+) -> ScopedMemoryContextFragment {
+    let fragment = ScopedMemoryContextFragment::new(&body);
+    if approx_token_count(&fragment.render()) <= token_limit {
+        return fragment;
     }
 
     let (start_marker, end_marker) = ScopedMemoryContextFragment::type_markers();
@@ -312,17 +315,17 @@ fn render_scoped_memory_context(body: String, token_limit: usize) -> String {
 
     while body_token_budget > 0 {
         let truncated_body = truncate_text(&body, TruncationPolicy::Tokens(body_token_budget));
-        let rendered = ScopedMemoryContextFragment::new(truncated_body).render();
-        let rendered_tokens = approx_token_count(&rendered);
+        let fragment = ScopedMemoryContextFragment::new(truncated_body);
+        let rendered_tokens = approx_token_count(&fragment.render());
         if rendered_tokens <= token_limit {
-            return rendered;
+            return fragment;
         }
 
         let overflow_tokens = rendered_tokens.saturating_sub(token_limit);
         body_token_budget = body_token_budget.saturating_sub(overflow_tokens.max(/*other*/ 1));
     }
 
-    ScopedMemoryContextFragment::new(String::new()).render()
+    ScopedMemoryContextFragment::new(String::new())
 }
 
 #[derive(Debug, Clone)]

@@ -1,3 +1,4 @@
+use crate::context::ContextualUserFragment;
 use codex_extension_api::PromptFragment;
 use codex_extension_api::PromptSlot;
 use codex_protocol::models::ResponseItem;
@@ -14,14 +15,33 @@ pub(super) struct RewindContributions {
 }
 
 impl RewindContributions {
-    pub(super) fn from_prompt_fragments(fragments: impl IntoIterator<Item = PromptFragment>) -> Self {
-        let fragments = fragments
+    pub(super) fn from_fragments(
+        prompt_fragments: impl IntoIterator<Item = PromptFragment>,
+        contextual_fragments: impl IntoIterator<
+            Item = Box<dyn ContextualUserFragment + Send>,
+        >,
+    ) -> Self {
+        let mut fragments = prompt_fragments
             .into_iter()
             .map(|fragment| RewindContributionFragment {
                 slot: fragment.slot(),
                 text: fragment.text().to_string(),
             })
-            .collect();
+            .collect::<Vec<_>>();
+        fragments.extend(contextual_fragments.into_iter().filter_map(|fragment| {
+            let slot = match fragment.role() {
+                "developer" => PromptSlot::DeveloperPolicy,
+                "user" => PromptSlot::ContextualUser,
+                role => {
+                    tracing::warn!(role, "extension contributed unsupported rewind fragment role");
+                    return None;
+                }
+            };
+            Some(RewindContributionFragment {
+                slot,
+                text: fragment.render(),
+            })
+        }));
         Self { fragments }
     }
 

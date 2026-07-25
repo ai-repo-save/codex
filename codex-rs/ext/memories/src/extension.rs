@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use codex_extension_api::ConfigContributor;
 use codex_extension_api::ContextContributor;
+use codex_extension_api::ContextualUserFragment;
 use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionFuture;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::PromptFragment;
-use codex_extension_api::PromptSlot;
 use codex_extension_api::RewindContextContributionInput;
 use codex_extension_api::ThreadLifecycleContributor;
 use codex_extension_api::ThreadStartInput;
@@ -72,6 +72,30 @@ impl<C> MemoriesConfigContributor<C> {
 }
 
 impl ContextContributor for MemoriesExtension {
+    fn contribute_thread_context_fragments<'a>(
+        &'a self,
+        _session_store: &'a ExtensionData,
+        thread_store: &'a ExtensionData,
+    ) -> ExtensionFuture<'a, Vec<Box<dyn ContextualUserFragment + Send>>> {
+        Box::pin(async move {
+            let Some(config) = thread_store.get::<MemoriesExtensionConfig>() else {
+                return Vec::new();
+            };
+            if !config.scoped_enabled {
+                return Vec::new();
+            }
+            config
+                .backends(thread_store.level_id())
+                .scoped_context_fragment()
+                .await
+                .map(|fragment| {
+                    Box::new(fragment) as Box<dyn ContextualUserFragment + Send>
+                })
+                .into_iter()
+                .collect()
+        })
+    }
+
     fn contribute_thread_context<'a>(
         &'a self,
         _session_store: &'a ExtensionData,
@@ -81,29 +105,20 @@ impl ContextContributor for MemoriesExtension {
             let Some(config) = thread_store.get::<MemoriesExtensionConfig>() else {
                 return Vec::new();
             };
-            let mut fragments = Vec::new();
             if config.global_enabled
                 && let Some(instructions) =
                     build_memory_tool_developer_instructions(&config.codex_home).await
             {
-                fragments.push(PromptFragment::developer_policy(instructions));
+                return vec![PromptFragment::developer_policy(instructions)];
             }
-            if config.scoped_enabled
-                && let Some(context) = config
-                    .backends(thread_store.level_id())
-                    .scoped_context_fragment()
-                    .await
-            {
-                fragments.push(PromptFragment::new(PromptSlot::ContextualUser, context));
-            }
-            fragments
+            Vec::new()
         })
     }
 
-    fn contribute_rewind_context<'a>(
+    fn contribute_rewind_context_fragments<'a>(
         &'a self,
         input: RewindContextContributionInput<'a>,
-    ) -> ExtensionFuture<'a, Vec<PromptFragment>> {
+    ) -> ExtensionFuture<'a, Vec<Box<dyn ContextualUserFragment + Send>>> {
         Box::pin(async move {
             let Some(config) = input.thread_store.get::<MemoriesExtensionConfig>() else {
                 return Vec::new();
@@ -111,14 +126,14 @@ impl ContextContributor for MemoriesExtension {
             if !config.scoped_enabled {
                 return Vec::new();
             }
-            let Some(context) = config
+            let Some(fragment) = config
                 .backends(input.thread_store.level_id())
                 .rewind_session_context_fragment(input.completed_items)
                 .await
             else {
                 return Vec::new();
             };
-            vec![PromptFragment::new(PromptSlot::ContextualUser, context)]
+            vec![Box::new(fragment) as Box<dyn ContextualUserFragment + Send>]
         })
     }
 }

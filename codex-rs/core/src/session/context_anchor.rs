@@ -619,20 +619,30 @@ impl Session {
         };
         let completed_items =
             completed_turn_items_since_anchor(&stored_history.items, &active_anchor.anchor_id);
-        let mut contribution_fragments = Vec::new();
+        let mut prompt_fragments = Vec::new();
+        let mut contextual_fragments = Vec::new();
         for contributor in self.services.extensions.context_contributors() {
-            contribution_fragments.extend(
+            let input = RewindContextContributionInput {
+                session_store: &self.services.session_extension_data,
+                thread_store: &self.services.thread_extension_data,
+                completed_items: &completed_items,
+            };
+            prompt_fragments.extend(
                 contributor
-                    .contribute_rewind_context(RewindContextContributionInput {
-                        session_store: &self.services.session_extension_data,
-                        thread_store: &self.services.thread_extension_data,
-                    completed_items: &completed_items,
-                })
-                .await,
+                    .contribute_rewind_context(input)
+                    .await,
+            );
+            contextual_fragments.extend(
+                contributor
+                    .contribute_rewind_context_fragments(input)
+                    .await,
             );
         }
-        let contribution_items =
-            RewindContributions::from_prompt_fragments(contribution_fragments).into_response_items();
+        let contribution_items = RewindContributions::from_fragments(
+            prompt_fragments,
+            contextual_fragments,
+        )
+        .into_response_items();
         let plan = RewindPlan::new(
             stored_history.items,
             rewind_event,

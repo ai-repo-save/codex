@@ -83,6 +83,24 @@ pub trait McpServerContributor<C: Sync>: Send + Sync {
 /// fragment: thread/session context for stable inputs, and turn context for
 /// fragments that depend on turn-local host state.
 pub trait ContextContributor: Send + Sync {
+    /// Contributes stable, typed context fragments for thread prompt assembly.
+    ///
+    /// Implementations retain ownership of source-specific size bounds. The
+    /// host preserves each fragment's role and markers when it renders the
+    /// fragment into model-visible history.
+    fn contribute_thread_context_fragments<'a>(
+        &'a self,
+        session_store: &'a ExtensionData,
+        thread_store: &'a ExtensionData,
+    ) -> ExtensionFuture<'a, Vec<Box<dyn ContextualUserFragment + Send>>> {
+        Box::pin(async move {
+            let _self = self;
+            let _session_store = session_store;
+            let _thread_store = thread_store;
+            Vec::new()
+        })
+    }
+
     fn contribute_thread_context<'a>(
         &'a self,
         session_store: &'a ExtensionData,
@@ -112,6 +130,18 @@ pub trait ContextContributor: Send + Sync {
     /// `completed_items` contains only items completed after the target anchor.
     /// Implementations should derive bounded incremental context from those
     /// items instead of reconstructing their full thread context.
+    fn contribute_rewind_context_fragments<'a>(
+        &'a self,
+        input: RewindContextContributionInput<'a>,
+    ) -> ExtensionFuture<'a, Vec<Box<dyn ContextualUserFragment + Send>>> {
+        Box::pin(async move {
+            let _self = self;
+            let _input = input;
+            Vec::new()
+        })
+    }
+
+    /// Contributes legacy text slots restored after a context-anchor rewind.
     fn contribute_rewind_context<'a>(
         &'a self,
         input: RewindContextContributionInput<'a>,

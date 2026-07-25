@@ -1006,6 +1006,22 @@ fn push_prompt_fragment(
     }
 }
 
+fn push_typed_context_fragment(
+    fragment: Box<dyn ContextualUserFragment + Send>,
+    developer_sections: &mut Vec<String>,
+    contextual_user_sections: &mut Vec<String>,
+) {
+    let role = fragment.role();
+    let text = fragment.render();
+    match role {
+        "developer" => developer_sections.push(text),
+        "user" => contextual_user_sections.push(text),
+        _ => {
+            tracing::warn!(role, "extension contributed unsupported context fragment role");
+        }
+    }
+}
+
 impl Session {
     pub(crate) async fn app_server_client_metadata(&self) -> AppServerClientMetadata {
         let state = self.state.lock().await;
@@ -3643,6 +3659,19 @@ impl Session {
                     &mut developer_sections,
                     &mut contextual_user_sections,
                     &mut separate_developer_sections,
+                );
+            }
+            for fragment in contributor
+                .contribute_thread_context_fragments(
+                    &self.services.session_extension_data,
+                    &self.services.thread_extension_data,
+                )
+                .await
+            {
+                push_typed_context_fragment(
+                    fragment,
+                    &mut developer_sections,
+                    &mut contextual_user_sections,
                 );
             }
         }

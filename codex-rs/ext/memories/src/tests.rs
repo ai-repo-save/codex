@@ -3,11 +3,13 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use codex_extension_api::ContextContributor;
+use codex_extension_api::ContextualUserFragment;
 use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::ExtensionTurnItem;
 use codex_extension_api::NoopTurnItemEmitter;
 use codex_extension_api::PromptSlot;
+use codex_extension_api::RewindContextContributionInput;
 use codex_extension_api::ToolCall;
 use codex_extension_api::ToolContributor;
 use codex_extension_api::ToolExecutor;
@@ -295,7 +297,7 @@ async fn prompt_contribution_uses_memory_summary_when_enabled() {
 }
 
 #[tokio::test]
-async fn prompt_contribution_includes_scoped_memory_when_global_memories_are_disabled() {
+async fn typed_prompt_contribution_includes_scoped_memory_when_global_memories_are_disabled() {
     let tempdir = tempfile::tempdir().expect("tempdir");
     let project_root = tempfile::tempdir().expect("project root");
     let backends = MemoryToolBackends::new(
@@ -325,27 +327,16 @@ async fn prompt_contribution_includes_scoped_memory_when_global_memories_are_dis
     });
 
     let fragments = extension
-        .contribute_thread_context(&ExtensionData::new("session"), &thread_store)
+        .contribute_thread_context_fragments(&ExtensionData::new("session"), &thread_store)
         .await;
 
     assert_eq!(fragments.len(), 1);
-    assert_eq!(fragments[0].slot(), PromptSlot::ContextualUser);
-    assert!(fragments[0].text().contains("<scoped_memory_context>"));
-    assert!(
-        fragments[0]
-            .text()
-            .contains(SESSION_MEMORY_MAINTENANCE_POLICY)
-    );
-    assert!(
-        fragments[0]
-            .text()
-            .contains(PROJECT_MEMORY_MAINTENANCE_POLICY)
-    );
-    assert!(
-        fragments[0]
-            .text()
-            .contains("Remember this only for the current session.")
-    );
+    assert_eq!(fragments[0].role(), "user");
+    let rendered = fragments[0].render();
+    assert!(rendered.contains("<scoped_memory_context>"));
+    assert!(rendered.contains(SESSION_MEMORY_MAINTENANCE_POLICY));
+    assert!(rendered.contains(PROJECT_MEMORY_MAINTENANCE_POLICY));
+    assert!(rendered.contains("Remember this only for the current session."));
 }
 
 #[tokio::test]
@@ -769,7 +760,7 @@ async fn replacing_scoped_notes_removes_obsolete_notes_from_context() {
 }
 
 #[tokio::test]
-async fn rewind_context_includes_each_completed_session_write_once() {
+async fn typed_rewind_context_includes_each_completed_session_write_once() {
     const NOTE: &str = "Remember this after rewinding.";
 
     let tempdir = tempfile::tempdir().expect("tempdir");
@@ -822,11 +813,26 @@ async fn rewind_context_includes_each_completed_session_write_once() {
         )),
     ];
 
-    let context = backends
-        .rewind_session_context_fragment(&completed_items)
-        .await
-        .expect("successful session write should contribute context");
-    assert_eq!(context.matches(NOTE).count(), 1);
+    let extension = MemoriesExtension::default();
+    let session_store = ExtensionData::new("session");
+    let thread_store = ExtensionData::new("thread-1");
+    thread_store.insert(MemoriesExtensionConfig {
+        global_enabled: false,
+        scoped_enabled: true,
+        dedicated_tools: true,
+        codex_home: tempdir.path().abs(),
+        project_root: project_root.path().abs(),
+    });
+    let fragments = extension
+        .contribute_rewind_context_fragments(RewindContextContributionInput {
+            session_store: &session_store,
+            thread_store: &thread_store,
+            completed_items: &completed_items,
+        })
+        .await;
+    assert_eq!(fragments.len(), 1);
+    assert_eq!(fragments[0].role(), "user");
+    assert_eq!(fragments[0].render().matches(NOTE).count(), 1);
 
     backends
         .delete(
@@ -837,11 +843,15 @@ async fn rewind_context_includes_each_completed_session_write_once() {
         )
         .await
         .expect("delete session note");
-    assert_eq!(
-        backends
-            .rewind_session_context_fragment(&completed_items)
-            .await,
-        None
+    assert!(
+        extension
+            .contribute_rewind_context_fragments(RewindContextContributionInput {
+                session_store: &session_store,
+                thread_store: &thread_store,
+                completed_items: &completed_items,
+            })
+            .await
+            .is_empty()
     );
 }
 
@@ -880,6 +890,7 @@ async fn rewind_session_context_fragment_respects_model_visible_token_limit() {
         .rewind_session_context_fragment(&completed_items)
         .await
         .expect("oversized rewind note should contribute context");
+    let rewind_context = rewind_context.render();
     assert!(
         approx_token_count(&rewind_context) <= SESSION_CONTEXT_TOKEN_LIMIT,
         "rewind context used {} approximate tokens",
@@ -926,7 +937,7 @@ async fn assert_replacing_scoped_note_removes_obsolete_note_from_context(scope: 
         backends
             .scoped_context_fragment()
             .await
-            .is_some_and(|context| context.contains(OBSOLETE_NOTE))
+            .is_some_and(|context| context.render().contains(OBSOLETE_NOTE))
     );
 
     let replacement_payload = ToolPayload::Function {
@@ -974,7 +985,8 @@ async fn assert_replacing_scoped_note_removes_obsolete_note_from_context(scope: 
     let context = backends
         .scoped_context_fragment()
         .await
-        .expect("replacement note should remain in context");
+        .expect("replacement note should remain in context")
+        .render();
     assert!(!context.contains(OBSOLETE_NOTE));
     assert!(context.contains(REPLACEMENT_NOTE));
 }
