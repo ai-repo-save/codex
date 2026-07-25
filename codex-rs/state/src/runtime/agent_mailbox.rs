@@ -42,7 +42,7 @@ INSERT INTO agent_mailbox_recipients (
 )
 SELECT ?, ?, ?, 1, 0
 WHERE NOT EXISTS (
-    SELECT 1 FROM agent_mailbox_messages WHERE id = ?
+    SELECT 1 FROM agent_mailbox_deliveries WHERE id = ?
 )
 ON CONFLICT(root_thread_id, recipient_thread_id) DO UPDATE SET
     recipient_agent_path = excluded.recipient_agent_path
@@ -64,7 +64,7 @@ SET
 WHERE root_thread_id = ?
   AND recipient_thread_id = ?
   AND NOT EXISTS (
-      SELECT 1 FROM agent_mailbox_messages WHERE id = ?
+      SELECT 1 FROM agent_mailbox_deliveries WHERE id = ?
   )
 RETURNING next_sequence - 1 AS sequence
             "#,
@@ -76,9 +76,9 @@ RETURNING next_sequence - 1 AS sequence
         .await?;
 
         let Some(reserved) = reserved else {
-            let existing = message_by_id(&mut transaction, &message.id)
+            let existing = delivery_by_id(&mut transaction, &message.id)
                 .await?
-                .ok_or_else(|| anyhow::anyhow!("agent mailbox idempotency lookup lost message"))?;
+                .ok_or_else(|| anyhow::anyhow!("agent mailbox idempotency lookup lost delivery"))?;
             let snapshot = unread_snapshot_in_transaction(
                 &mut transaction,
                 existing.root_thread_id,
@@ -94,6 +94,36 @@ RETURNING next_sequence - 1 AS sequence
         };
         let sequence: i64 = reserved.try_get("sequence")?;
         let (payload_kind, payload) = message.payload.kind_and_content();
+        sqlx::query(
+            r#"
+INSERT INTO agent_mailbox_deliveries (
+    id,
+    root_thread_id,
+    sender_thread_id,
+    sender_agent_path,
+    recipient_thread_id,
+    recipient_agent_path,
+    category,
+    payload_kind,
+    payload,
+    created_at_ms,
+    sequence
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&message.id)
+        .bind(message.root_thread_id.to_string())
+        .bind(message.sender_thread_id.to_string())
+        .bind(&message.sender_agent_path)
+        .bind(message.recipient_thread_id.to_string())
+        .bind(&message.recipient_agent_path)
+        .bind(message.category.as_str())
+        .bind(payload_kind)
+        .bind(payload)
+        .bind(datetime_to_epoch_millis(message.created_at))
+        .bind(sequence)
+        .execute(&mut *transaction)
+        .await?;
         sqlx::query(
             r#"
 INSERT INTO agent_mailbox_messages (
@@ -262,7 +292,7 @@ WHERE root_thread_id = ? AND recipient_thread_id = ?
     }
 }
 
-async fn message_by_id(
+async fn delivery_by_id(
     transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     id: &str,
 ) -> anyhow::Result<Option<AgentMailboxMessage>> {
@@ -280,7 +310,7 @@ SELECT
     payload,
     created_at_ms,
     sequence
-FROM agent_mailbox_messages
+FROM agent_mailbox_deliveries
 WHERE id = ?
         "#,
     )

@@ -172,7 +172,7 @@ async fn mailbox_reads_filtered_messages_in_global_arrival_order() -> anyhow::Re
 }
 
 #[tokio::test]
-async fn mailbox_enqueue_is_idempotent_after_runtime_restart() -> anyhow::Result<()> {
+async fn mailbox_enqueue_is_idempotent_after_consumption_and_runtime_restart() -> anyhow::Result<()> {
     let codex_home = unique_temp_dir();
     let first_runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string()).await?;
     let input = message(
@@ -185,19 +185,11 @@ async fn mailbox_enqueue_is_idempotent_after_runtime_restart() -> anyhow::Result
     );
     let inserted = first_runtime.agent_mailbox().enqueue(input.clone()).await?;
     assert_eq!(true, inserted.inserted);
-    first_runtime.close().await;
-
-    let resumed_runtime = StateRuntime::init(codex_home, "test-provider".to_string()).await?;
-    let duplicate = resumed_runtime.agent_mailbox().enqueue(input).await?;
-    assert_eq!(false, duplicate.inserted);
-    assert_eq!(inserted.message, duplicate.message);
-    assert_eq!(inserted.snapshot, duplicate.snapshot);
-
-    let consumed = resumed_runtime
+    let consumed = first_runtime
         .agent_mailbox()
         .consume(read_request(/*category*/ None))
         .await?;
-    assert_eq!(vec![inserted.message], consumed.messages);
+    assert_eq!(vec![inserted.message.clone()], consumed.messages);
     assert_eq!(
         expected_snapshot(
             /*total*/ 0,
@@ -207,6 +199,29 @@ async fn mailbox_enqueue_is_idempotent_after_runtime_restart() -> anyhow::Result
             /*revision*/ 2,
         ),
         consumed.snapshot
+    );
+    first_runtime.close().await;
+
+    let resumed_runtime = StateRuntime::init(codex_home, "test-provider".to_string()).await?;
+    let duplicate = resumed_runtime.agent_mailbox().enqueue(input).await?;
+    assert_eq!(false, duplicate.inserted);
+    assert_eq!(inserted.message, duplicate.message);
+    assert_eq!(consumed.snapshot, duplicate.snapshot);
+
+    let replayed = resumed_runtime
+        .agent_mailbox()
+        .consume(read_request(/*category*/ None))
+        .await?;
+    assert_eq!(Vec::new(), replayed.messages);
+    assert_eq!(
+        expected_snapshot(
+            /*total*/ 0,
+            /*progress*/ 0,
+            /*result*/ 0,
+            /*action_required*/ 0,
+            /*revision*/ 2,
+        ),
+        replayed.snapshot
     );
     Ok(())
 }
@@ -284,17 +299,15 @@ async fn deleting_recipient_thread_removes_its_mailbox() -> anyhow::Result<()> {
             codex_home.clone(),
         ))
         .await?;
-    runtime
-        .agent_mailbox()
-        .enqueue(message(
-            MESSAGE_ONE_ID,
-            thread_id(SENDER_THREAD_ID),
-            SENDER_AGENT_PATH,
-            AgentMailboxCategory::Result,
-            MESSAGE_ONE_CONTENT,
-            timestamp(/*seconds*/ 1_700_000_001),
-        ))
-        .await?;
+    let input = message(
+        MESSAGE_ONE_ID,
+        thread_id(SENDER_THREAD_ID),
+        SENDER_AGENT_PATH,
+        AgentMailboxCategory::Result,
+        MESSAGE_ONE_CONTENT,
+        timestamp(/*seconds*/ 1_700_000_001),
+    );
+    runtime.agent_mailbox().enqueue(input.clone()).await?;
 
     runtime.delete_thread(recipient_thread_id).await?;
 
@@ -310,6 +323,18 @@ async fn deleting_recipient_thread_removes_its_mailbox() -> anyhow::Result<()> {
             .agent_mailbox()
             .unread_snapshot(thread_id(ROOT_THREAD_ID), recipient_thread_id)
             .await?
+    );
+    let reinserted = runtime.agent_mailbox().enqueue(input).await?;
+    assert_eq!(true, reinserted.inserted);
+    assert_eq!(
+        expected_snapshot(
+            /*total*/ 1,
+            /*progress*/ 0,
+            /*result*/ 1,
+            /*action_required*/ 0,
+            /*revision*/ 1,
+        ),
+        reinserted.snapshot
     );
     Ok(())
 }
