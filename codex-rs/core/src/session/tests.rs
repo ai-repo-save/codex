@@ -8559,6 +8559,8 @@ async fn make_multi_agent_v2_usage_hint_test_session(
 
 struct PromptExtensionTestContributor;
 struct PromptExtensionTestState;
+const FIRST_TYPED_CONTEXT_ITEM: &str = "first typed context item";
+const SECOND_TYPED_CONTEXT_ITEM: &str = "second typed context item";
 struct TypedPromptExtensionTestContributor;
 struct TurnContextExtensionTestContributor;
 struct TurnContextExtensionTestState {
@@ -8604,10 +8606,10 @@ impl codex_extension_api::ContextContributor for TypedPromptExtensionTestContrib
         Box::pin(async {
             vec![
                 Box::new(crate::context::ScopedMemoryContextFragment::new(
-                    "first typed context item",
+                    FIRST_TYPED_CONTEXT_ITEM,
                 )) as Box<dyn ContextualUserFragment + Send>,
                 Box::new(crate::context::ScopedMemoryContextFragment::new(
-                    "second typed context item",
+                    SECOND_TYPED_CONTEXT_ITEM,
                 )) as Box<dyn ContextualUserFragment + Send>,
             ]
         })
@@ -8692,10 +8694,10 @@ async fn build_initial_context_keeps_typed_extension_fragments_as_independent_it
         typed_items,
         vec![
             ContextualUserFragment::into(crate::context::ScopedMemoryContextFragment::new(
-                "first typed context item",
+                FIRST_TYPED_CONTEXT_ITEM,
             )),
             ContextualUserFragment::into(crate::context::ScopedMemoryContextFragment::new(
-                "second typed context item",
+                SECOND_TYPED_CONTEXT_ITEM,
             )),
         ]
     );
