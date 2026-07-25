@@ -59,6 +59,24 @@ fn history_contains_text(history: &[ResponseItem], needle: &str) -> bool {
     })
 }
 
+fn history_text_occurrences(history: &[ResponseItem], needle: &str) -> usize {
+    history
+        .iter()
+        .map(|item| match item {
+            ResponseItem::Message { content, .. } => content
+                .iter()
+                .map(|content_item| match content_item {
+                    ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+                        text.matches(needle).count()
+                    }
+                    _ => 0,
+                })
+                .sum(),
+            _ => 0,
+        })
+        .sum()
+}
+
 fn inter_agent_assistant_message(text: &str) -> ResponseItem {
     let communication = InterAgentCommunication::new(
         AgentPath::root(),
@@ -132,6 +150,7 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
     let anchor_assistant = assistant_message("anchor assistant");
     let future_user = user_message("discarded future user");
     let future_assistant = assistant_message("discarded future assistant");
+    let contribution = user_message("persisted rewind contribution");
     let rollout_items = vec![
         RolloutItem::ResponseItem(anchor_user.clone()),
         RolloutItem::ResponseItem(anchor_assistant.clone()),
@@ -157,6 +176,14 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
                 note: "carry this back".to_string(),
             },
         )),
+        RolloutItem::ResponseItem(contribution),
+        RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
+            anchor_id: REPLACEMENT_ANCHOR_ID.to_string(),
+            label: Some("after rewind".to_string()),
+            history_boundary: 4,
+            created_at: 2,
+            collaboration_mode_kind: None,
+        })),
     ];
 
     let reconstructed = session
@@ -165,8 +192,8 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
 
     assert_eq!(
         reconstructed.history.len(),
-        3,
-        "anchor history plus carry-forward fragment should survive"
+        4,
+        "anchor history, carry-forward, and persisted contribution should survive"
     );
     assert_eq!(reconstructed.history[0], anchor_user);
     assert_eq!(reconstructed.history[1], anchor_assistant);
@@ -201,6 +228,58 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
     assert!(!history_contains_text(
         &reconstructed.history,
         "discarded future"
+    ));
+    assert_eq!(
+        history_text_occurrences(&reconstructed.history, "persisted rewind contribution"),
+        1
+    );
+}
+
+#[tokio::test]
+async fn reconstruct_history_ignores_uncommitted_context_rewind_transaction() {
+    const CONSUMED_ANCHOR_ID: &str = "anchor-1";
+    const REPLACEMENT_ANCHOR_ID: &str = "anchor-2";
+    let (session, turn_context) = make_session_and_context().await;
+    let anchor_item = user_message("anchor state");
+    let future_item = assistant_message("future remains");
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(anchor_item.clone()),
+        RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
+            anchor_id: CONSUMED_ANCHOR_ID.to_string(),
+            label: None,
+            history_boundary: 1,
+            created_at: 1,
+            collaboration_mode_kind: None,
+        })),
+        RolloutItem::ResponseItem(future_item.clone()),
+        RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(
+            ContextRewoundToAnchorEvent {
+                anchor_id: CONSUMED_ANCHOR_ID.to_string(),
+                replacement_anchor_id: Some(REPLACEMENT_ANCHOR_ID.to_string()),
+                dropped_turns: 1,
+                response_items_reclaimed: 1,
+                approx_tokens_reclaimed: 10,
+                reclaim_threshold_percent: 20,
+                reclaim_threshold_tokens: Some(100),
+                reclaim_threshold_met: Some(false),
+                note: "uncommitted carry".to_string(),
+            },
+        )),
+        RolloutItem::ResponseItem(user_message("uncommitted contribution")),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+
+    assert_eq!(reconstructed.history, vec![anchor_item, future_item]);
+    assert!(!history_contains_text(
+        &reconstructed.history,
+        "uncommitted carry"
+    ));
+    assert!(!history_contains_text(
+        &reconstructed.history,
+        "uncommitted contribution"
     ));
 }
 

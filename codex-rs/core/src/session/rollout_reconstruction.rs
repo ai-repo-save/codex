@@ -2,6 +2,7 @@ use super::context_anchor::context_rewind_carry_forward_item;
 use super::*;
 use crate::context::world_state::WorldStateSnapshot;
 use crate::context_manager::is_user_turn_boundary;
+use codex_protocol::protocol::ContextRewoundToAnchorEvent;
 use codex_protocol::protocol::SessionContextWindow;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -26,6 +27,13 @@ struct ReconstructedWindow {
     first_id: Option<Uuid>,
     previous_id: Option<Uuid>,
     id: Option<Uuid>,
+}
+
+#[derive(Debug)]
+struct PendingContextRewind {
+    rewind: ContextRewoundToAnchorEvent,
+    anchor_history: Option<Vec<ResponseItem>>,
+    contribution_items: Vec<ResponseItem>,
 }
 
 #[derive(Debug, Default)]
@@ -318,6 +326,7 @@ impl Session {
 
         let mut history = ContextManager::new();
         let mut context_anchors: HashMap<String, Vec<ResponseItem>> = HashMap::new();
+        let mut pending_context_rewind: Option<PendingContextRewind> = None;
         let mut saw_legacy_compaction_without_replacement_history = false;
         if let Some(base_replacement_history) = base_replacement_history {
             history.replace(base_replacement_history.to_vec());
@@ -326,6 +335,60 @@ impl Session {
         // design should keep this same replay shape, but drive it from a resumable reverse source
         // instead of an eagerly loaded `&[RolloutItem]`.
         for item in rollout_suffix {
+            if let Some(mut pending_rewind) = pending_context_rewind.take() {
+                match item {
+                    RolloutItem::ResponseItem(response_item) => {
+                        pending_rewind
+                            .contribution_items
+                            .push(response_item.clone());
+                        pending_context_rewind = Some(pending_rewind);
+                        continue;
+                    }
+                    RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(anchor))
+                        if pending_rewind.rewind.replacement_anchor_id.as_deref()
+                            == Some(anchor.anchor_id.as_str()) =>
+                    {
+                        if let Some(anchor_history) = pending_rewind.anchor_history {
+                            context_anchors.clear();
+                            history.replace(anchor_history);
+                            let carry_forward = context_rewind_carry_forward_item(
+                                pending_rewind.rewind.anchor_id,
+                                pending_rewind.rewind.replacement_anchor_id,
+                                pending_rewind.rewind.dropped_turns,
+                                pending_rewind.rewind.response_items_reclaimed,
+                                pending_rewind.rewind.approx_tokens_reclaimed,
+                                pending_rewind.rewind.reclaim_threshold_percent,
+                                pending_rewind.rewind.reclaim_threshold_tokens,
+                                pending_rewind.rewind.reclaim_threshold_met,
+                                pending_rewind.rewind.note,
+                            );
+                            history.record_items(
+                                std::iter::once(&carry_forward),
+                                turn_context.model_info.truncation_policy.into(),
+                            );
+                            history.record_items(
+                                pending_rewind.contribution_items.iter(),
+                                turn_context.model_info.truncation_policy.into(),
+                            );
+                            context_anchors
+                                .insert(anchor.anchor_id.clone(), history.raw_items().to_vec());
+                        } else {
+                            warn!(
+                                anchor_id = %pending_rewind.rewind.anchor_id,
+                                "committed context rewind referenced an unknown anchor during rollout reconstruction"
+                            );
+                        }
+                        continue;
+                    }
+                    _ => {
+                        warn!(
+                            anchor_id = %pending_rewind.rewind.anchor_id,
+                            "ignored context rewind transaction without a matching replacement anchor"
+                        );
+                    }
+                }
+            }
+
             match item {
                 RolloutItem::ResponseItem(response_item) => {
                     history.record_items(
@@ -373,7 +436,15 @@ impl Session {
                     context_anchors.insert(anchor.anchor_id.clone(), history.raw_items().to_vec());
                 }
                 RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
-                    if let Some(anchor_history) = context_anchors.get(&rewind.anchor_id).cloned() {
+                    if rewind.replacement_anchor_id.is_some() {
+                        pending_context_rewind = Some(PendingContextRewind {
+                            rewind: rewind.clone(),
+                            anchor_history: context_anchors.get(&rewind.anchor_id).cloned(),
+                            contribution_items: Vec::new(),
+                        });
+                    } else if let Some(anchor_history) =
+                        context_anchors.get(&rewind.anchor_id).cloned()
+                    {
                         context_anchors.clear();
                         history.replace(anchor_history);
                         let carry_forward = context_rewind_carry_forward_item(
@@ -403,6 +474,12 @@ impl Session {
                 | RolloutItem::WorldState(_)
                 | RolloutItem::SessionMeta(_) => {}
             }
+        }
+        if let Some(pending_rewind) = pending_context_rewind {
+            warn!(
+                anchor_id = %pending_rewind.rewind.anchor_id,
+                "ignored trailing context rewind transaction without a replacement anchor"
+            );
         }
 
         let reference_context_item = match reference_context_item {

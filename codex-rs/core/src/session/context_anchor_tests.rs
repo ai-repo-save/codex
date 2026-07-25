@@ -174,6 +174,32 @@ fn active_replacement_anchor_id_does_not_cross_compaction() {
     assert_eq!(active_replacement_anchor_id(&items, ANCHOR_ID), None);
 }
 
+#[test]
+fn uncommitted_rewind_keeps_original_anchor_active() {
+    const REPLACEMENT_ID: &str = "replacement";
+    let items = vec![
+        saved_anchor(
+            ANCHOR_ID, /*label*/ None, /*boundary*/ 0, /*created_at*/ 0,
+        ),
+        user_message(),
+        rewind_with_replacement(ANCHOR_ID, Some(REPLACEMENT_ID)),
+        RolloutItem::ResponseItem(history_item("uncommitted contribution")),
+    ];
+    let current_history = vec![history_item("current")];
+
+    assert_eq!(
+        latest_active_anchor_event(&items, ANCHOR_ID).map(|anchor| anchor.anchor_id),
+        Some(ANCHOR_ID.to_string())
+    );
+    assert_eq!(active_replacement_anchor_id(&items, ANCHOR_ID), None);
+    assert_eq!(count_user_turns_since_anchor(&items, ANCHOR_ID), Ok(1));
+    assert_eq!(
+        list_context_anchors_from_rollout(&items, &current_history, 10, ModeKind::Default)
+            .active_anchor_count,
+        1
+    );
+}
+
 fn history_item(text: &str) -> ResponseItem {
     ResponseItem::Message {
         id: None,

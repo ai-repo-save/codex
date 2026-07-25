@@ -1,12 +1,6 @@
 use codex_extension_api::PromptFragment;
 use codex_extension_api::PromptSlot;
 use codex_protocol::models::ResponseItem;
-use codex_utils_output_truncation::TruncationPolicy;
-use codex_utils_output_truncation::approx_token_count;
-use codex_utils_output_truncation::truncate_text;
-
-const MAX_REWIND_CONTRIBUTION_FRAGMENTS: usize = 32;
-const MAX_REWIND_CONTRIBUTION_TOKENS: usize = 10_000;
 
 #[derive(Clone, Debug)]
 struct RewindContributionFragment {
@@ -21,34 +15,14 @@ pub(super) struct RewindContributions {
 
 impl RewindContributions {
     pub(super) fn from_prompt_fragments(fragments: impl IntoIterator<Item = PromptFragment>) -> Self {
-        let mut remaining_tokens = MAX_REWIND_CONTRIBUTION_TOKENS;
-        let mut bounded_fragments = Vec::new();
-
-        for fragment in fragments
+        let fragments = fragments
             .into_iter()
-            .take(MAX_REWIND_CONTRIBUTION_FRAGMENTS)
-        {
-            if remaining_tokens == 0 {
-                break;
-            }
-            let text = fragment.text();
-            let token_count = approx_token_count(text);
-            let text = if token_count > remaining_tokens {
-                truncate_text(text, TruncationPolicy::Tokens(remaining_tokens))
-            } else {
-                text.to_string()
-            };
-            remaining_tokens =
-                remaining_tokens.saturating_sub(approx_token_count(text.as_str()));
-            bounded_fragments.push(RewindContributionFragment {
+            .map(|fragment| RewindContributionFragment {
                 slot: fragment.slot(),
-                text,
-            });
-        }
-
-        Self {
-            fragments: bounded_fragments,
-        }
+                text: fragment.text().to_string(),
+            })
+            .collect();
+        Self { fragments }
     }
 
     pub(super) fn into_response_items(self) -> Vec<ResponseItem> {

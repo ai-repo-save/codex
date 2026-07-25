@@ -113,7 +113,7 @@ fn latest_active_anchor_event(
 ) -> Option<ContextAnchorSavedEvent> {
     let mut active_anchors: Vec<ContextAnchorSavedEvent> = Vec::new();
     let mut current_collaboration_mode_kind = None;
-    for item in rollout_items {
+    for (index, item) in rollout_items.iter().enumerate() {
         match item {
             RolloutItem::Compacted(_) => {
                 active_anchors.clear();
@@ -138,7 +138,8 @@ fn latest_active_anchor_event(
                 active_anchors.push(event);
             }
             RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
-                if active_anchors
+                if context_rewind_is_committed(rollout_items, index, rewind)
+                    && active_anchors
                     .iter()
                     .position(|anchor| anchor.anchor_id == rewind.anchor_id)
                     .is_some()
@@ -166,7 +167,7 @@ fn active_replacement_anchor_id(
     let mut active_anchor_ids = Vec::new();
     let mut replacements = Vec::new();
 
-    for item in &rollout_items[segment_start..] {
+    for (offset, item) in rollout_items[segment_start..].iter().enumerate() {
         match item {
             RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(event)) => {
                 if !active_anchor_ids.contains(&event.anchor_id) {
@@ -174,7 +175,12 @@ fn active_replacement_anchor_id(
                 }
             }
             RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
-                if active_anchor_ids.contains(&rewind.anchor_id) {
+                if context_rewind_is_committed(
+                    rollout_items,
+                    segment_start.saturating_add(offset),
+                    rewind,
+                ) && active_anchor_ids.contains(&rewind.anchor_id)
+                {
                     active_anchor_ids.clear();
                     if let Some(replacement_anchor_id) = &rewind.replacement_anchor_id {
                         replacements
@@ -210,7 +216,7 @@ fn count_user_turns_since_anchor(
 ) -> CodexResult<u32> {
     let mut active_anchors: Vec<(String, u32)> = Vec::new();
     let mut user_turn_total = 0u32;
-    for item in rollout_items {
+    for (index, item) in rollout_items.iter().enumerate() {
         match item {
             RolloutItem::Compacted(_) => {
                 active_anchors.clear();
@@ -226,7 +232,8 @@ fn count_user_turns_since_anchor(
                 active_anchors.push((event.anchor_id.clone(), user_turn_total));
             }
             RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
-                if let Some(anchor_index) = active_anchors
+                if context_rewind_is_committed(rollout_items, index, rewind)
+                    && let Some(anchor_index) = active_anchors
                     .iter()
                     .position(|(active_anchor_id, _)| active_anchor_id == &rewind.anchor_id)
                 {
@@ -285,7 +292,7 @@ fn list_context_anchors_from_rollout(
     let mut user_turn_total = 0u32;
     let mut latest_collaboration_mode_kind = None;
 
-    for item in rollout_items {
+    for (index, item) in rollout_items.iter().enumerate() {
         match item {
             RolloutItem::Compacted(_) => {
                 invalidated_anchor_count =
@@ -316,7 +323,8 @@ fn list_context_anchors_from_rollout(
                 });
             }
             RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
-                if let Some(anchor_index) = active_anchors
+                if context_rewind_is_committed(rollout_items, index, rewind)
+                    && let Some(anchor_index) = active_anchors
                     .iter()
                     .position(|anchor| anchor.event.anchor_id == rewind.anchor_id)
                 {
@@ -379,6 +387,26 @@ fn list_context_anchors_from_rollout(
         active_anchor_count,
         invalidated_anchor_count,
     }
+}
+
+fn context_rewind_is_committed(
+    rollout_items: &[RolloutItem],
+    rewind_index: usize,
+    rewind: &ContextRewoundToAnchorEvent,
+) -> bool {
+    let Some(replacement_anchor_id) = rewind.replacement_anchor_id.as_deref() else {
+        return true;
+    };
+    for item in &rollout_items[rewind_index.saturating_add(1)..] {
+        match item {
+            RolloutItem::ResponseItem(_) => {}
+            RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(anchor)) => {
+                return anchor.anchor_id == replacement_anchor_id;
+            }
+            _ => return false,
+        }
+    }
+    false
 }
 
 fn approx_tokens_for_items(items: &[ResponseItem]) -> usize {
@@ -622,19 +650,17 @@ impl Session {
             turn_context.collaboration_mode().mode,
         );
 
-        live_thread
-            .append_items(&plan.persisted_items)
-            .await
-            .map_err(|err| {
-                CodexErr::Io(std::io::Error::other(format!(
+        if let Err(err) = live_thread.append_items(&plan.persisted_items).await {
+            let committed = live_thread
+                .load_history(/*include_archived*/ false)
+                .await
+                .is_ok_and(|history| plan.is_committed_in(&history.items));
+            if !committed {
+                return Err(CodexErr::Io(std::io::Error::other(format!(
                     "failed to persist context rewind transaction: {err}"
-                )))
-            })?;
-        live_thread.flush().await.map_err(|err| {
-            CodexErr::Io(std::io::Error::other(format!(
-                "failed to flush context rewind transaction: {err}"
-            )))
-        })?;
+                ))));
+            }
+        }
 
         self.apply_rollout_reconstruction(turn_context, &plan.replay_items)
             .await;
