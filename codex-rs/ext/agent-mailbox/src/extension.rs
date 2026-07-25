@@ -29,7 +29,7 @@ use codex_state::AgentMailboxUnreadSnapshot;
 use codex_state::StateRuntime;
 use uuid::Uuid;
 
-use crate::output::validate_message_input_for_read_output;
+use crate::output::validate_payload;
 use crate::tools::AgentMailboxTool;
 use crate::world_state::mailbox_world_state_section;
 
@@ -265,7 +265,7 @@ impl TerminalMessageContributor for AgentMailboxExtension {
                 payload,
                 created_at: Utc::now(),
             };
-            validate_message_input_for_read_output(&message).map_err(|err| {
+            validate_payload(&message.payload).map_err(|err| {
                 format!("failed to capture terminal agent mailbox message: {err}")
             })?;
             let outcome = self

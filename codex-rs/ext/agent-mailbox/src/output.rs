@@ -3,16 +3,14 @@ use codex_extension_api::ToolPayload;
 use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ResponseInputItem;
+use codex_protocol::protocol::TruncationPolicy;
 use codex_state::AgentMailboxMessage;
-use codex_state::AgentMailboxMessageInput;
 use codex_state::AgentMailboxPayload;
 use codex_state::AgentMailboxUnreadSnapshot;
 use serde_json::Value;
 use serde_json::json;
 
 use crate::MAX_AGENT_MAILBOX_PAYLOAD_BYTES;
-use crate::MAX_AGENT_MAILBOX_READ_OUTPUT_BYTES;
-use crate::MAX_AGENT_MAILBOX_SINGLE_OUTPUT_BYTES;
 
 pub(crate) struct AgentMailboxReadOutput {
     content_items: Vec<FunctionCallOutputContentItem>,
@@ -24,78 +22,74 @@ impl AgentMailboxReadOutput {
         messages: Vec<AgentMailboxMessage>,
         snapshot: AgentMailboxUnreadSnapshot,
     ) -> Self {
-        let mut content_items = Vec::new();
-        let mut sanitized_messages = Vec::new();
-        for message in messages {
-            let metadata = message_metadata(&message);
-            match message.payload {
-                AgentMailboxPayload::Plaintext { content } => {
-                    content_items.push(plaintext_content_item(metadata.clone(), content));
-                    sanitized_messages.push(json!({
-                        "message": metadata,
-                        "encrypted": false,
-                    }));
-                }
-                AgentMailboxPayload::Encrypted { encrypted_content } => {
-                    content_items.push(FunctionCallOutputContentItem::InputText {
-                        text: json!({
-                            "message": metadata,
-                            "encrypted": true,
-                        })
-                        .to_string(),
-                    });
-                    content_items.push(FunctionCallOutputContentItem::EncryptedContent {
-                        encrypted_content,
-                    });
-                    sanitized_messages.push(json!({
-                        "message": metadata,
-                        "encrypted": true,
-                    }));
-                }
-            }
-        }
-        let remaining = snapshot_json(&snapshot);
-        content_items.push(remaining_content_item(remaining.clone()));
-        debug_assert!(
-            rendered_content_items_bytes(&content_items) <= MAX_AGENT_MAILBOX_READ_OUTPUT_BYTES
-        );
+        let (content_items, sanitized) = render_output(&messages, &snapshot);
         Self {
             content_items,
-            sanitized: json!({
-                "messages": sanitized_messages,
-                "remaining": remaining,
-            }),
+            sanitized,
         }
+    }
+
+    pub(crate) fn fits_truncation_policy(
+        messages: &[AgentMailboxMessage],
+        snapshot: &AgentMailboxUnreadSnapshot,
+        policy: TruncationPolicy,
+    ) -> bool {
+        let (content_items, _) = render_output(messages, snapshot);
+        rendered_content_items_bytes(&content_items) <= policy.byte_budget()
     }
 }
 
-pub(crate) fn validate_message_input_for_read_output(
-    input: &AgentMailboxMessageInput,
-) -> Result<(), String> {
-    let payload_bytes = match &input.payload {
+fn render_output(
+    messages: &[AgentMailboxMessage],
+    snapshot: &AgentMailboxUnreadSnapshot,
+) -> (Vec<FunctionCallOutputContentItem>, Value) {
+    let mut content_items = Vec::new();
+    let mut sanitized_messages = Vec::new();
+    for message in messages {
+        let metadata = message_metadata(message);
+        match &message.payload {
+            AgentMailboxPayload::Plaintext { content } => {
+                content_items.push(plaintext_content_item(metadata.clone(), content.clone()));
+                sanitized_messages.push(json!({
+                    "message": metadata,
+                    "encrypted": false,
+                }));
+            }
+            AgentMailboxPayload::Encrypted { encrypted_content } => {
+                content_items.push(FunctionCallOutputContentItem::InputText {
+                    text: json!({
+                        "message": metadata,
+                        "encrypted": true,
+                    })
+                    .to_string(),
+                });
+                content_items.push(FunctionCallOutputContentItem::EncryptedContent {
+                    encrypted_content: encrypted_content.clone(),
+                });
+                sanitized_messages.push(json!({
+                    "message": metadata,
+                    "encrypted": true,
+                }));
+            }
+        }
+    }
+    let remaining = snapshot_json(snapshot);
+    content_items.push(remaining_content_item(remaining.clone()));
+    (
+        content_items,
+        json!({
+            "messages": sanitized_messages,
+            "remaining": remaining,
+        }),
+    )
+}
+
+pub(crate) fn validate_payload(payload: &AgentMailboxPayload) -> Result<(), String> {
+    let payload_bytes = match payload {
         AgentMailboxPayload::Plaintext { content } => content.len(),
         AgentMailboxPayload::Encrypted { encrypted_content } => encrypted_content.len(),
     };
-    validate_payload_bytes(payload_bytes)?;
-
-    let message = AgentMailboxMessage {
-        id: input.id.clone(),
-        root_thread_id: input.root_thread_id,
-        sender_thread_id: input.sender_thread_id,
-        sender_agent_path: input.sender_agent_path.clone(),
-        recipient_thread_id: input.recipient_thread_id,
-        recipient_agent_path: input.recipient_agent_path.clone(),
-        category: input.category,
-        payload: input.payload.clone(),
-        created_at: input.created_at,
-        sequence: 0,
-    };
-    if message_content_item_bytes(&message) > MAX_AGENT_MAILBOX_SINGLE_OUTPUT_BYTES {
-        return Err(
-            "agent mailbox message metadata and content exceed the read output limit".to_string(),
-        );
-    }
-    Ok(())
+    validate_payload_bytes(payload_bytes)
 }
 
 pub(crate) fn validate_payload_bytes(payload_bytes: usize) -> Result<(), String> {
@@ -124,28 +118,6 @@ fn remaining_content_item(remaining: serde_json::Value) -> FunctionCallOutputCon
     FunctionCallOutputContentItem::InputText {
         text: json!({ "remaining": remaining }).to_string(),
     }
-}
-
-fn message_content_item_bytes(message: &AgentMailboxMessage) -> usize {
-    let metadata = message_metadata(message);
-    let content_items = match &message.payload {
-        AgentMailboxPayload::Plaintext { content } => {
-            vec![plaintext_content_item(metadata, content.clone())]
-        }
-        AgentMailboxPayload::Encrypted { encrypted_content } => vec![
-            FunctionCallOutputContentItem::InputText {
-                text: json!({
-                    "message": metadata,
-                    "encrypted": true,
-                })
-                .to_string(),
-            },
-            FunctionCallOutputContentItem::EncryptedContent {
-                encrypted_content: encrypted_content.clone(),
-            },
-        ],
-    };
-    rendered_content_items_bytes(&content_items)
 }
 
 fn rendered_content_items_bytes(content_items: &[FunctionCallOutputContentItem]) -> usize {

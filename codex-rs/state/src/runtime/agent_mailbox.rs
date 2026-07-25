@@ -189,6 +189,18 @@ INSERT INTO agent_mailbox_messages (
         &self,
         request: AgentMailboxReadRequest,
     ) -> anyhow::Result<AgentMailboxReadOutcome> {
+        self.consume_fitting_prefix(request, |_, _| true).await
+    }
+
+    pub async fn consume_fitting_prefix(
+        &self,
+        request: AgentMailboxReadRequest,
+        mut prefix_fits: impl FnMut(
+            &[AgentMailboxMessage],
+            &AgentMailboxUnreadSnapshot,
+        ) -> bool
+        + Send,
+    ) -> anyhow::Result<AgentMailboxReadOutcome> {
         let limit = request.limit.min(MAX_AGENT_MAILBOX_READ_LIMIT);
         if limit == 0 {
             return Ok(AgentMailboxReadOutcome {
@@ -203,22 +215,10 @@ INSERT INTO agent_mailbox_messages (
             .sender_thread_id
             .map(|thread_id| thread_id.to_string());
         let category = request.category.map(AgentMailboxCategory::as_str);
-        let mut transaction = self.pool.begin().await?;
+        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let rows = sqlx::query(
             r#"
-DELETE FROM agent_mailbox_messages
-WHERE id IN (
-    SELECT id
-    FROM agent_mailbox_messages
-    WHERE root_thread_id = ?
-      AND recipient_thread_id = ?
-      AND (? IS NULL OR sender_thread_id = ?)
-      AND (? IS NULL OR sender_agent_path = ?)
-      AND (? IS NULL OR category = ?)
-    ORDER BY sequence ASC
-    LIMIT ?
-)
-RETURNING
+SELECT
     id,
     root_thread_id,
     sender_thread_id,
@@ -230,6 +230,14 @@ RETURNING
     payload,
     created_at_ms,
     sequence
+FROM agent_mailbox_messages
+WHERE root_thread_id = ?
+  AND recipient_thread_id = ?
+  AND (? IS NULL OR sender_thread_id = ?)
+  AND (? IS NULL OR sender_agent_path = ?)
+  AND (? IS NULL OR category = ?)
+ORDER BY sequence ASC
+LIMIT ?
             "#,
         )
         .bind(request.root_thread_id.to_string())
@@ -247,8 +255,36 @@ RETURNING
             .iter()
             .map(agent_mailbox_message_from_row)
             .collect::<anyhow::Result<Vec<_>>>()?;
-        messages.sort_by_key(|message| message.sequence);
+        let current_snapshot = unread_snapshot_in_transaction(
+            &mut transaction,
+            request.root_thread_id,
+            request.recipient_thread_id,
+        )
+        .await?;
+        let mut accepted_count = 0;
+        for prefix_len in 1..=messages.len() {
+            let projected_snapshot =
+                snapshot_after_consuming(&current_snapshot, &messages[..prefix_len]);
+            if !prefix_fits(&messages[..prefix_len], &projected_snapshot) {
+                break;
+            }
+            accepted_count = prefix_len;
+        }
+        messages.truncate(accepted_count);
         if !messages.is_empty() {
+            for message in &messages {
+                sqlx::query(
+                    r#"
+DELETE FROM agent_mailbox_messages
+WHERE id = ? AND root_thread_id = ? AND recipient_thread_id = ?
+                    "#,
+                )
+                .bind(&message.id)
+                .bind(request.root_thread_id.to_string())
+                .bind(request.recipient_thread_id.to_string())
+                .execute(&mut *transaction)
+                .await?;
+            }
             sqlx::query(
                 r#"
 UPDATE agent_mailbox_recipients
@@ -291,6 +327,23 @@ WHERE root_thread_id = ? AND recipient_thread_id = ?
         transaction.commit().await?;
         Ok(())
     }
+}
+
+fn snapshot_after_consuming(
+    snapshot: &AgentMailboxUnreadSnapshot,
+    messages: &[AgentMailboxMessage],
+) -> AgentMailboxUnreadSnapshot {
+    let mut projected = snapshot.clone();
+    for message in messages {
+        projected.total -= 1;
+        match message.category {
+            AgentMailboxCategory::Progress => projected.progress -= 1,
+            AgentMailboxCategory::Result => projected.result -= 1,
+            AgentMailboxCategory::ActionRequired => projected.action_required -= 1,
+        }
+    }
+    projected.revision += 1;
+    projected
 }
 
 async fn delivery_by_id(
