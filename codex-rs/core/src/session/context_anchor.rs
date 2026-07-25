@@ -140,9 +140,9 @@ fn latest_active_anchor_event(
             RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
                 if context_rewind_is_committed(rollout_items, index, rewind)
                     && active_anchors
-                    .iter()
-                    .position(|anchor| anchor.anchor_id == rewind.anchor_id)
-                    .is_some()
+                        .iter()
+                        .position(|anchor| anchor.anchor_id == rewind.anchor_id)
+                        .is_some()
                 {
                     active_anchors.clear();
                 }
@@ -234,8 +234,8 @@ fn count_user_turns_since_anchor(
             RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
                 if context_rewind_is_committed(rollout_items, index, rewind)
                     && let Some(anchor_index) = active_anchors
-                    .iter()
-                    .position(|(active_anchor_id, _)| active_anchor_id == &rewind.anchor_id)
+                        .iter()
+                        .position(|(active_anchor_id, _)| active_anchor_id == &rewind.anchor_id)
                 {
                     user_turn_total = active_anchors[anchor_index].1;
                     active_anchors.clear();
@@ -325,8 +325,8 @@ fn list_context_anchors_from_rollout(
             RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
                 if context_rewind_is_committed(rollout_items, index, rewind)
                     && let Some(anchor_index) = active_anchors
-                    .iter()
-                    .position(|anchor| anchor.event.anchor_id == rewind.anchor_id)
+                        .iter()
+                        .position(|anchor| anchor.event.anchor_id == rewind.anchor_id)
                 {
                     let user_turn_total_at_save =
                         active_anchors[anchor_index].user_turn_total_at_save;
@@ -627,22 +627,13 @@ impl Session {
                 thread_store: &self.services.thread_extension_data,
                 completed_items: &completed_items,
             };
-            prompt_fragments.extend(
-                contributor
-                    .contribute_rewind_context(input)
-                    .await,
-            );
-            contextual_fragments.extend(
-                contributor
-                    .contribute_rewind_context_fragments(input)
-                    .await,
-            );
+            prompt_fragments.extend(contributor.contribute_rewind_context(input).await);
+            contextual_fragments
+                .extend(contributor.contribute_rewind_context_fragments(input).await);
         }
-        let contribution_items = RewindContributions::from_fragments(
-            prompt_fragments,
-            contextual_fragments,
-        )
-        .into_response_items();
+        let contribution_items =
+            RewindContributions::from_fragments(prompt_fragments, contextual_fragments)
+                .into_response_items();
         let plan = RewindPlan::new(
             stored_history.items,
             rewind_event,
@@ -651,9 +642,11 @@ impl Session {
         );
         let created_at = crate::turn_timing::now_unix_timestamp_ms() / 1000;
         let collaboration_mode_kind = turn_context.collaboration_mode().mode;
-        let provisional_plan =
-            plan.clone()
-                .finalize(/*history_boundary*/ 0, created_at, collaboration_mode_kind);
+        let provisional_plan = plan.clone().finalize(
+            /*history_boundary*/ 0,
+            created_at,
+            collaboration_mode_kind,
+        );
         let reconstructed = self
             .reconstruct_history_from_rollout(turn_context, &provisional_plan.replay_items)
             .await;

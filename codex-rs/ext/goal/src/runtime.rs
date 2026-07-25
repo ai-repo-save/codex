@@ -423,7 +423,10 @@ impl GoalRuntimeHandle {
             .ensure_goal_thread_available(self.inner.thread_id)
             .await
         {
-            tracing::debug!(?reason, "skipping goal continuation because live thread is unavailable");
+            tracing::debug!(
+                ?reason,
+                "skipping goal continuation because live thread is unavailable"
+            );
             return Ok(());
         }
 

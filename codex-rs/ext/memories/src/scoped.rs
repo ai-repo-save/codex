@@ -209,8 +209,7 @@ impl MemoryToolBackends {
             .collect::<Vec<_>>();
         let policy_body = format!(
             "\n## Scoped Memory\n{}\n\n{}\n\nUse `memories.write_note` and `memories.delete` to maintain scoped memory under these rules. To replace a note, write the corrected note, then delete the obsolete file.\n",
-            SESSION_MEMORY_MAINTENANCE_POLICY,
-            PROJECT_MEMORY_MAINTENANCE_POLICY,
+            SESSION_MEMORY_MAINTENANCE_POLICY, PROJECT_MEMORY_MAINTENANCE_POLICY,
         );
         fragments.push(render_scoped_memory_context(
             policy_body,
@@ -308,10 +307,7 @@ impl MemoryToolBackends {
     }
 }
 
-fn render_scoped_memory_context(
-    body: String,
-    token_limit: usize,
-) -> ScopedMemoryContextFragment {
+fn render_scoped_memory_context(body: String, token_limit: usize) -> ScopedMemoryContextFragment {
     let fragment = ScopedMemoryContextFragment::new(&body);
     if approx_token_count(&fragment.render()) <= token_limit {
         return fragment;
@@ -362,7 +358,10 @@ impl ScopedMemorySection {
             while !remaining.is_empty() && !scoped_memory_content_fits(&self.title, remaining) {
                 let split_at = scoped_memory_content_split(&self.title, remaining);
                 let (chunk, rest) = remaining.split_at(split_at);
-                fragments.push(scoped_memory_content_fragment(&self.title, chunk.to_string()));
+                fragments.push(scoped_memory_content_fragment(
+                    &self.title,
+                    chunk.to_string(),
+                ));
                 remaining = rest;
             }
             current.push_str(remaining);
@@ -377,11 +376,7 @@ impl ScopedMemorySection {
 
 fn note_units(content: &str) -> Vec<&str> {
     let mut starts = vec![0];
-    starts.extend(
-        content
-            .match_indices("\n\n### ")
-            .map(|(index, _)| index),
-    );
+    starts.extend(content.match_indices("\n\n### ").map(|(index, _)| index));
     starts.push(content.len());
     starts
         .windows(2)
@@ -392,13 +387,8 @@ fn note_units(content: &str) -> Vec<&str> {
         .collect()
 }
 
-fn scoped_memory_content_fragment(
-    title: &str,
-    content: String,
-) -> ScopedMemoryContextFragment {
-    ScopedMemoryContextFragment::new(format!(
-        "\n## Scoped Memory\n### {title}\n{content}\n"
-    ))
+fn scoped_memory_content_fragment(title: &str, content: String) -> ScopedMemoryContextFragment {
+    ScopedMemoryContextFragment::new(format!("\n## Scoped Memory\n### {title}\n{content}\n"))
 }
 
 fn scoped_memory_content_fits(title: &str, content: &str) -> bool {

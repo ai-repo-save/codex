@@ -67,8 +67,9 @@ impl ContextContributor for TypedContextContributor {
         Box::pin(std::future::ready(vec![
             Box::new(ScopedMemoryContextFragment::new(FIRST_REWIND_TYPED_CONTEXT))
                 as Box<dyn ContextualUserFragment + Send>,
-            Box::new(ScopedMemoryContextFragment::new(SECOND_REWIND_TYPED_CONTEXT))
-                as Box<dyn ContextualUserFragment + Send>,
+            Box::new(ScopedMemoryContextFragment::new(
+                SECOND_REWIND_TYPED_CONTEXT,
+            )) as Box<dyn ContextualUserFragment + Send>,
         ]))
     }
 }
@@ -78,7 +79,8 @@ fn rewind_typed_context_groups(groups: Vec<Vec<String>>) -> Vec<Vec<String>> {
         .into_iter()
         .filter(|texts| {
             texts.iter().any(|text| {
-                text.contains(FIRST_REWIND_TYPED_CONTEXT) || text.contains(SECOND_REWIND_TYPED_CONTEXT)
+                text.contains(FIRST_REWIND_TYPED_CONTEXT)
+                    || text.contains(SECOND_REWIND_TYPED_CONTEXT)
             })
         })
         .collect()
@@ -233,8 +235,7 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
 
     let mut extension_builder = ExtensionRegistryBuilder::<Config>::new();
     extension_builder.prompt_contributor(Arc::new(TypedContextContributor));
-    let mut builder =
-        test_codex().with_extensions(Arc::new(extension_builder.build()));
+    let mut builder = test_codex().with_extensions(Arc::new(extension_builder.build()));
     let test = builder.build(&server).await?;
     test.submit_turn_with_approval_and_permission_profile(
         "save anchor",
@@ -435,7 +436,9 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
         .rollout_path
         .clone()
         .expect("rollout path");
-    let resumed = builder.resume(&server, test.home.clone(), rollout_path).await?;
+    let resumed = builder
+        .resume(&server, test.home.clone(), rollout_path)
+        .await?;
     resumed
         .submit_turn_with_approval_and_permission_profile(
             "continue after rewind resume",
@@ -444,7 +447,11 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
         )
         .await?;
     assert_eq!(
-        rewind_typed_context_groups(resume_mock.single_request().message_input_text_groups("user")),
+        rewind_typed_context_groups(
+            resume_mock
+                .single_request()
+                .message_input_text_groups("user")
+        ),
         expected_rewind_typed_context_groups()
     );
 

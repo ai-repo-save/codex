@@ -115,12 +115,9 @@ async fn user_requested_batch_limit_leaves_mailbox_unchanged_when_rejected() -> 
             .total
     );
 
-    tool.handle(tool_call(
-        READ_TOOL_NAME,
-        json!({ "limit": 2 }),
-    ))
-    .await
-    .expect("bounded batch read should succeed");
+    tool.handle(tool_call(READ_TOOL_NAME, json!({ "limit": 2 })))
+        .await
+        .expect("bounded batch read should succeed");
     assert_eq!(
         1,
         state
@@ -145,8 +142,8 @@ async fn user_requested_batch_limit_leaves_mailbox_unchanged_when_rejected() -> 
 }
 
 #[tokio::test]
-async fn read_consumes_only_messages_fully_delivered_within_invocation_budget()
--> anyhow::Result<()> {
+async fn read_consumes_only_messages_fully_delivered_within_invocation_budget() -> anyhow::Result<()>
+{
     let temporary_home = tempfile::tempdir()?;
     let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
     let root_thread_id = thread_id(ROOT_THREAD_ID);

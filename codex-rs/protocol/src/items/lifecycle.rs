@@ -68,9 +68,7 @@ impl TurnItem {
             | Self::SubAgentActivity(_)
             | Self::WebSearch(_)
             | Self::ImageView(_)
-            | Self::Extension(
-                ExtensionItem::ImageGeneration(_) | ExtensionItem::WebSearch(_),
-            )
+            | Self::Extension(ExtensionItem::ImageGeneration(_) | ExtensionItem::WebSearch(_))
             | Self::ImageGeneration(_)
             | Self::EnteredReviewMode(_)
             | Self::ExitedReviewMode(_)

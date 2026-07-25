@@ -528,9 +528,11 @@ fn add_tool_sources(context: &CoreToolPlanContext<'_>, planned_tools: &mut Plann
     add_shell_tools(context, planned_tools);
     add_mcp_resource_tools(context, planned_tools);
     add_core_utility_tools(context, planned_tools);
-    planned_tools.runtimes.extend(
-        crate::tools::collaboration_plan::build(context.step_context.turn.as_ref()),
-    );
+    planned_tools
+        .runtimes
+        .extend(crate::tools::collaboration_plan::build(
+            context.step_context.turn.as_ref(),
+        ));
     for runtime in context.tool_runtimes {
         planned_tools.add_arc(Arc::clone(runtime));
     }

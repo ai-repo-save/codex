@@ -64,10 +64,7 @@ trait ErasedAgentMailboxHost: Send + Sync {
         target: &'a str,
     ) -> AgentMailboxHostFuture<'a, AgentMailboxTarget>;
 
-    fn notify_activity(
-        &self,
-        recipient_thread_id: ThreadId,
-    ) -> AgentMailboxHostFuture<'_, ()>;
+    fn notify_activity(&self, recipient_thread_id: ThreadId) -> AgentMailboxHostFuture<'_, ()>;
 }
 
 impl<H> ErasedAgentMailboxHost for H
@@ -86,14 +83,8 @@ where
         ))
     }
 
-    fn notify_activity(
-        &self,
-        recipient_thread_id: ThreadId,
-    ) -> AgentMailboxHostFuture<'_, ()> {
-        Box::pin(AgentMailboxHost::notify_activity(
-            self,
-            recipient_thread_id,
-        ))
+    fn notify_activity(&self, recipient_thread_id: ThreadId) -> AgentMailboxHostFuture<'_, ()> {
+        Box::pin(AgentMailboxHost::notify_activity(self, recipient_thread_id))
     }
 }
 
@@ -121,10 +112,7 @@ impl AgentMailboxHostHandle {
     }
 
     /// Publishes one count-only mailbox activity edge through the host.
-    pub fn notify_activity(
-        &self,
-        recipient_thread_id: ThreadId,
-    ) -> AgentMailboxHostFuture<'_, ()> {
+    pub fn notify_activity(&self, recipient_thread_id: ThreadId) -> AgentMailboxHostFuture<'_, ()> {
         self.inner.notify_activity(recipient_thread_id)
     }
 }

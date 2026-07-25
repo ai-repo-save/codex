@@ -148,12 +148,9 @@ pub(crate) fn collaboration_item_from_event(
                     let receiver_id = id.to_string();
                     (
                         vec![receiver_id.clone()],
-                        [(
-                            receiver_id,
-                            CollabAgentState::from(event.status.clone()),
-                        )]
-                        .into_iter()
-                        .collect(),
+                        [(receiver_id, CollabAgentState::from(event.status.clone()))]
+                            .into_iter()
+                            .collect(),
                     )
                 }
                 None => (Vec::new(), HashMap::new()),
@@ -216,12 +213,9 @@ pub(crate) fn collaboration_item_from_event(
                     runtime: None,
                     mode: None,
                     snapshot_revision: None,
-                    agents_states: [(
-                        receiver_id,
-                        CollabAgentState::from(event.status.clone()),
-                    )]
-                    .into_iter()
-                    .collect(),
+                    agents_states: [(receiver_id, CollabAgentState::from(event.status.clone()))]
+                        .into_iter()
+                        .collect(),
                 },
                 CollaborationItemLifecycle::Completed {
                     at_ms: event.completed_at_ms,
@@ -379,12 +373,9 @@ fn terminal_projection(
             runtime: None,
             mode: None,
             snapshot_revision: None,
-            agents_states: [(
-                receiver_thread_id,
-                CollabAgentState::from(status.clone()),
-            )]
-            .into_iter()
-            .collect(),
+            agents_states: [(receiver_thread_id, CollabAgentState::from(status.clone()))]
+                .into_iter()
+                .collect(),
         },
         CollaborationItemLifecycle::Completed {
             at_ms: completed_at_ms,

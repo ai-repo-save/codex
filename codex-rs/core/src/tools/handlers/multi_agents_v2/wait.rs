@@ -121,9 +121,7 @@ impl Handler {
         )
         .await;
         if let WaitOutcome::AgentMailboxActivity(revision) = outcome {
-            session
-                .input_queue
-                .consume_agent_mailbox_activity(revision);
+            session.input_queue.consume_agent_mailbox_activity(revision);
         }
         let result = WaitAgentResult::from_outcome(outcome);
 

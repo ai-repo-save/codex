@@ -61,10 +61,7 @@ impl RewindPlan {
         let replay_items_before_replacement = self.replay_items_before_replacement();
         let replacement_anchor = ContextAnchorSavedEvent {
             anchor_id: self.replacement_anchor_id,
-            label: Some(format!(
-                "after rewind from {}",
-                self.rewind_event.anchor_id
-            )),
+            label: Some(format!("after rewind from {}", self.rewind_event.anchor_id)),
             history_boundary,
             created_at,
             collaboration_mode_kind: Some(collaboration_mode_kind),

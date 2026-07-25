@@ -8597,9 +8597,8 @@ impl codex_extension_api::ContextContributor for TypedPromptExtensionTestContrib
         _thread_store: &'a codex_extension_api::ExtensionData,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<
-                    Output = Vec<Box<dyn ContextualUserFragment + Send>>,
-                > + Send
+            dyn std::future::Future<Output = Vec<Box<dyn ContextualUserFragment + Send>>>
+                + Send
                 + 'a,
         >,
     > {

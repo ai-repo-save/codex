@@ -164,10 +164,7 @@ impl AgentControl {
         &self,
         child_thread_id: ThreadId,
         parent_thread_id: ThreadId,
-    ) -> (
-        String,
-        tokio::sync::oneshot::Receiver<ParentRequestOutcome>,
-    ) {
+    ) -> (String, tokio::sync::oneshot::Receiver<ParentRequestOutcome>) {
         self.parent_requests
             .register(child_thread_id, parent_thread_id)
     }

@@ -1,6 +1,6 @@
-use crate::protocol::common::ServerNotification;
 use crate::protocol::collaboration_items::CollaborationItemLifecycle;
 use crate::protocol::collaboration_items::collaboration_item_from_event;
+use crate::protocol::common::ServerNotification;
 use crate::protocol::item_builders::build_command_execution_begin_item;
 use crate::protocol::item_builders::build_command_execution_end_item;
 use crate::protocol::item_builders::convert_patch_changes;

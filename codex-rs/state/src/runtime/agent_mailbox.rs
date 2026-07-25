@@ -195,11 +195,7 @@ INSERT INTO agent_mailbox_messages (
     pub async fn consume_fitting_prefix(
         &self,
         request: AgentMailboxReadRequest,
-        mut prefix_fits: impl FnMut(
-            &[AgentMailboxMessage],
-            &AgentMailboxUnreadSnapshot,
-        ) -> bool
-        + Send,
+        mut prefix_fits: impl FnMut(&[AgentMailboxMessage], &AgentMailboxUnreadSnapshot) -> bool + Send,
     ) -> anyhow::Result<AgentMailboxReadOutcome> {
         let limit = request.limit.min(MAX_AGENT_MAILBOX_READ_LIMIT);
         if limit == 0 {

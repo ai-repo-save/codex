@@ -81,9 +81,7 @@ impl InputQueue {
             .send_modify(|revision| *revision = revision.saturating_add(1));
     }
 
-    pub(crate) fn subscribe_agent_mailbox_activity(
-        &self,
-    ) -> (watch::Receiver<i64>, Option<i64>) {
+    pub(crate) fn subscribe_agent_mailbox_activity(&self) -> (watch::Receiver<i64>, Option<i64>) {
         let activity_rx = self.agent_mailbox_activity_tx.subscribe();
         let revision = *activity_rx.borrow();
         let consumed_revision = self
@@ -355,8 +353,7 @@ mod tests {
     #[tokio::test]
     async fn consuming_observed_mailbox_revision_preserves_newer_activity() {
         let input_queue = InputQueue::new();
-        let (mut activity_rx, pending_revision) =
-            input_queue.subscribe_agent_mailbox_activity();
+        let (mut activity_rx, pending_revision) = input_queue.subscribe_agent_mailbox_activity();
         assert_eq!(pending_revision, None);
 
         input_queue.notify_agent_mailbox_activity();

@@ -1015,7 +1015,10 @@ fn push_typed_context_fragment(
         "developer" => developer_items.push(fragment.into_boxed_response_item()),
         "user" => contextual_user_items.push(fragment.into_boxed_response_item()),
         _ => {
-            tracing::warn!(role = fragment.role(), "extension contributed unsupported context fragment role");
+            tracing::warn!(
+                role = fragment.role(),
+                "extension contributed unsupported context fragment role"
+            );
         }
     }
 }

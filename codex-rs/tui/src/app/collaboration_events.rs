@@ -3,9 +3,7 @@
 use super::*;
 
 /// Extracts receiver thread ids from collaboration tool-call notifications.
-pub(super) fn collab_receiver_thread_ids(
-    notification: &ServerNotification,
-) -> Option<&[String]> {
+pub(super) fn collab_receiver_thread_ids(notification: &ServerNotification) -> Option<&[String]> {
     match notification {
         ServerNotification::ItemStarted(notification) => {
             collab_receiver_thread_ids_from_item(&notification.item)
@@ -27,11 +25,11 @@ fn collab_receiver_thread_ids_from_item(item: &ThreadItem) -> Option<&[String]> 
     }
 }
 
-pub(super) fn sub_agent_activity_item(
-    notification: &ServerNotification,
-) -> Option<&ThreadItem> {
+pub(super) fn sub_agent_activity_item(notification: &ServerNotification) -> Option<&ThreadItem> {
     match notification {
-        ServerNotification::ItemStarted(notification) => sub_agent_activity_from_item(&notification.item),
+        ServerNotification::ItemStarted(notification) => {
+            sub_agent_activity_from_item(&notification.item)
+        }
         ServerNotification::ItemCompleted(notification) => {
             sub_agent_activity_from_item(&notification.item)
         }

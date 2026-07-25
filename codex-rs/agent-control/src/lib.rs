@@ -25,8 +25,7 @@ const SPAWN_AGENT_SERVICE_TIER_OVERRIDE_DESCRIPTION: &str =
     "Service tier override for the new agent. Omit unless explicitly requested.";
 const MAX_REASONING_EFFORT_CHARS_IN_SPAWN_AGENT_DESCRIPTION: usize = 64;
 const MAX_SPAWN_AGENT_MODEL_SUMMARIES: usize = 7;
-const PREFERRED_SPAWN_AGENT_MODELS: [&str; 2] =
-    ["gpt-5.6-luna", "gpt-5.3-codex-spark"];
+const PREFERRED_SPAWN_AGENT_MODELS: [&str; 2] = ["gpt-5.6-luna", "gpt-5.3-codex-spark"];
 
 #[derive(Debug, Clone)]
 pub struct SpawnAgentToolOptions {
@@ -68,9 +67,8 @@ pub struct WaitAgentTimeoutOptions {
 }
 
 pub fn create_spawn_agent_tool_v1(options: SpawnAgentToolOptions) -> ToolSpec {
-    let available_models_description = (!options.hide_agent_type_model_reasoning).then(|| {
-        spawn_agent_models_description(&options.available_models)
-    });
+    let available_models_description = (!options.hide_agent_type_model_reasoning)
+        .then(|| spawn_agent_models_description(&options.available_models));
     let inherited_model_guidance =
         (!options.hide_agent_type_model_reasoning).then_some(SPAWN_AGENT_INHERITED_MODEL_GUIDANCE);
     let return_value_description =
@@ -103,9 +101,9 @@ pub fn create_spawn_agent_tool_v1(options: SpawnAgentToolOptions) -> ToolSpec {
 }
 
 pub fn create_spawn_agent_tool_v2(options: SpawnAgentToolOptions) -> ToolSpec {
-    let available_models_description = options.expose_spawn_agent_model_overrides.then(|| {
-        spawn_agent_models_description(&options.available_models)
-    });
+    let available_models_description = options
+        .expose_spawn_agent_model_overrides
+        .then(|| spawn_agent_models_description(&options.available_models));
     let inherited_model_guidance = (options.expose_spawn_agent_model_overrides
         && !options.hide_agent_type_model_reasoning)
         .then_some(SPAWN_AGENT_INHERITED_MODEL_GUIDANCE);

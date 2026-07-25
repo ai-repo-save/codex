@@ -390,8 +390,7 @@ fn sub_agent_activity_uses_history_mode_specific_durable_representation() {
     let legacy = RolloutItem::EventMsg(legacy_event);
     let items = vec![canonical.clone(), legacy.clone()];
 
-    let (persisted_legacy, _) =
-        measure_and_filter_rollout_items(&items, ThreadHistoryMode::Legacy);
+    let (persisted_legacy, _) = measure_and_filter_rollout_items(&items, ThreadHistoryMode::Legacy);
     assert_eq!(
         serde_json::to_value(persisted_legacy).expect("serialize legacy persisted items"),
         serde_json::to_value([legacy]).expect("serialize expected legacy item")

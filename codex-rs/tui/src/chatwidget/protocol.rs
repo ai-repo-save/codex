@@ -292,10 +292,9 @@ impl ChatWidget {
         notification: ItemStartedNotification,
         from_replay: bool,
     ) {
-        let Some(item) = self.handle_feature_thread_item(
-            notification.item,
-            FeatureItemLifecycle::Started,
-        ) else {
+        let Some(item) =
+            self.handle_feature_thread_item(notification.item, FeatureItemLifecycle::Started)
+        else {
             return;
         };
         match item {

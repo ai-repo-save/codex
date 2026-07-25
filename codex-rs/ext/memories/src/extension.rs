@@ -89,9 +89,7 @@ impl ContextContributor for MemoriesExtension {
                 .scoped_context_fragments()
                 .await
                 .into_iter()
-                .map(|fragment| {
-                    Box::new(fragment) as Box<dyn ContextualUserFragment + Send>
-                })
+                .map(|fragment| Box::new(fragment) as Box<dyn ContextualUserFragment + Send>)
                 .collect()
         })
     }
@@ -142,10 +140,7 @@ impl<C> ThreadLifecycleContributor<C> for MemoriesConfigContributor<C>
 where
     C: Send + Sync + 'static,
 {
-    fn on_thread_start<'a>(
-        &'a self,
-        input: ThreadStartInput<'a, C>,
-    ) -> ExtensionFuture<'a, ()> {
+    fn on_thread_start<'a>(&'a self, input: ThreadStartInput<'a, C>) -> ExtensionFuture<'a, ()> {
         Box::pin(async move {
             input
                 .thread_store

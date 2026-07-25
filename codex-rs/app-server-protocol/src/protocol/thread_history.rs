@@ -6,6 +6,12 @@ use crate::protocol::item_builders::build_file_change_begin_item;
 use crate::protocol::item_builders::build_file_change_end_item;
 use crate::protocol::item_builders::build_item_from_guardian_event;
 use crate::protocol::item_builders::review_output_text;
+#[cfg(test)]
+use crate::protocol::v2::CollabAgentState;
+#[cfg(test)]
+use crate::protocol::v2::CollabAgentTool;
+#[cfg(test)]
+use crate::protocol::v2::CollabAgentToolCallStatus;
 use crate::protocol::v2::CommandExecutionStatus;
 use crate::protocol::v2::DynamicToolCallOutputContentItem;
 use crate::protocol::v2::DynamicToolCallStatus;
@@ -20,12 +26,6 @@ use crate::protocol::v2::TurnError;
 use crate::protocol::v2::TurnItemsView;
 use crate::protocol::v2::TurnStatus;
 use crate::protocol::v2::UserInput;
-#[cfg(test)]
-use crate::protocol::v2::CollabAgentState;
-#[cfg(test)]
-use crate::protocol::v2::CollabAgentTool;
-#[cfg(test)]
-use crate::protocol::v2::CollabAgentToolCallStatus;
 #[cfg(test)]
 use crate::protocol::v2::WebSearchAction;
 use crate::protocol::v2::WebSearchItem;

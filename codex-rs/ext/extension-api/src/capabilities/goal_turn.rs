@@ -77,7 +77,9 @@ where
         thread_id: ThreadId,
         items: Vec<ResponseItem>,
     ) -> GoalTurnHostFuture<'_> {
-        Box::pin(GoalTurnHost::start_goal_turn_if_idle(self, thread_id, items))
+        Box::pin(GoalTurnHost::start_goal_turn_if_idle(
+            self, thread_id, items,
+        ))
     }
 
     fn inject_goal_turn_items(

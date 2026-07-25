@@ -18,9 +18,7 @@ pub(super) struct RewindContributions {
 impl RewindContributions {
     pub(super) fn from_fragments(
         prompt_fragments: impl IntoIterator<Item = PromptFragment>,
-        contextual_fragments: impl IntoIterator<
-            Item = Box<dyn ContextualUserFragment + Send>,
-        >,
+        contextual_fragments: impl IntoIterator<Item = Box<dyn ContextualUserFragment + Send>>,
     ) -> Self {
         let prompt_fragments = prompt_fragments
             .into_iter()
@@ -59,14 +57,16 @@ impl RewindContributions {
                 "developer" => typed_developer_items.push(fragment.into_boxed_response_item()),
                 "user" => typed_user_items.push(fragment.into_boxed_response_item()),
                 role => {
-                    tracing::warn!(role, "extension contributed unsupported rewind fragment role");
+                    tracing::warn!(
+                        role,
+                        "extension contributed unsupported rewind fragment role"
+                    );
                 }
             }
         }
 
-        let mut contribution_items = Vec::with_capacity(
-            3 + typed_developer_items.len() + typed_user_items.len(),
-        );
+        let mut contribution_items =
+            Vec::with_capacity(3 + typed_developer_items.len() + typed_user_items.len());
         if let Some(developer_message) =
             crate::context_manager::updates::build_developer_update_item(developer_sections)
         {

@@ -102,11 +102,8 @@ async fn terminal_capture_leaves_disabled_or_ephemeral_recipients_unclaimed() ->
     let session_id = SessionId::new();
     let sender_thread_id = thread_id(SENDER_THREAD_ID);
     let recipient_thread_id = thread_id(RECIPIENT_THREAD_ID);
-    let extension = AgentMailboxExtension::new(
-        state,
-        noop_host(),
-        Arc::new(NoopAgentMailboxStatusNotifier),
-    );
+    let extension =
+        AgentMailboxExtension::new(state, noop_host(), Arc::new(NoopAgentMailboxStatusNotifier));
     let communication = terminal_communication();
     let status = AgentStatus::Completed(/*final_message*/ None);
     let missing_runtime_store = ExtensionData::new(recipient_thread_id.to_string());

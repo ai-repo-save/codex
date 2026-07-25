@@ -250,10 +250,7 @@ pub(crate) async fn apply_requested_spawn_agent_model_overrides(
             .models_manager
             .list_models(RefreshStrategy::Offline, config.http_client_factory())
             .await;
-        let selected_model_name = find_spawn_agent_model_name(
-            &available_models,
-            requested_model,
-        )?;
+        let selected_model_name = find_spawn_agent_model_name(&available_models, requested_model)?;
         let selected_model_info = session
             .services
             .models_manager
@@ -393,10 +390,10 @@ fn find_spawn_agent_model_name(
         .ok_or_else(|| {
             let available =
                 codex_agent_control::select_spawn_agent_model_summaries(available_models)
-                .into_iter()
-                .map(|model| model.model.as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
+                    .into_iter()
+                    .map(|model| model.model.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
             FunctionCallError::RespondToModel(format!(
                 "Unknown model `{requested_model}` for spawn_agent. Available models: {available}"
             ))

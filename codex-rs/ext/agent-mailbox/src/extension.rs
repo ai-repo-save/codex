@@ -109,10 +109,7 @@ impl<C> ThreadLifecycleContributor<C> for AgentMailboxConfigContributor<C>
 where
     C: Send + Sync + 'static,
 {
-    fn on_thread_start<'a>(
-        &'a self,
-        input: ThreadStartInput<'a, C>,
-    ) -> ExtensionFuture<'a, ()> {
+    fn on_thread_start<'a>(&'a self, input: ThreadStartInput<'a, C>) -> ExtensionFuture<'a, ()> {
         Box::pin(async move {
             let Ok(thread_id) = ThreadId::from_string(input.thread_store.level_id()) else {
                 return;

@@ -193,7 +193,8 @@ fn uncommitted_rewind_keeps_original_anchor_active() {
     );
     assert_eq!(active_replacement_anchor_id(&items, ANCHOR_ID), None);
     assert_eq!(
-        count_user_turns_since_anchor(&items, ANCHOR_ID).expect("saved anchor should remain active"),
+        count_user_turns_since_anchor(&items, ANCHOR_ID)
+            .expect("saved anchor should remain active"),
         1
     );
     assert_eq!(
@@ -203,7 +204,7 @@ fn uncommitted_rewind_keeps_original_anchor_active() {
             /*limit*/ 10,
             ModeKind::Default,
         )
-            .active_anchor_count,
+        .active_anchor_count,
         1
     );
 }
