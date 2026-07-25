@@ -579,7 +579,7 @@ async fn record_post_compact_supplement(
     turn_context: &TurnContext,
     supplement: String,
 ) {
-    let supplement = supplement.trim();
+    let supplement = supplement.trim().to_string();
     if supplement.is_empty() {
         return;
     }
