@@ -310,7 +310,7 @@ async fn wait_for_mailbox_update(
     app_server: &mut TestAppServer,
     thread_id: &str,
 ) -> Result<ThreadAgentMailboxUpdatedNotification> {
-    timeout(DEFAULT_READ_TIMEOUT, async {
+    Ok(timeout(DEFAULT_READ_TIMEOUT, async {
         loop {
             let notification = app_server
                 .read_stream_until_notification_message("thread/agentMailbox/updated")
@@ -325,8 +325,7 @@ async fn wait_for_mailbox_update(
             }
         }
     })
-    .await
-    .map_err(Into::into)
+    .await??)
 }
 
 async fn get_mailbox(
