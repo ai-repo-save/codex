@@ -94,7 +94,7 @@ async fn mailbox_reads_filtered_messages_in_global_arrival_order() -> anyhow::Re
             SENDER_AGENT_PATH,
             AgentMailboxCategory::Progress,
             MESSAGE_ONE_CONTENT,
-            timestamp(1_700_000_001),
+            timestamp(/*seconds*/ 1_700_000_001),
         ))
         .await?;
     let mut encrypted_message = message(
@@ -103,7 +103,7 @@ async fn mailbox_reads_filtered_messages_in_global_arrival_order() -> anyhow::Re
         SECOND_SENDER_AGENT_PATH,
         AgentMailboxCategory::Result,
         MESSAGE_TWO_CONTENT,
-        timestamp(1_700_000_002),
+        timestamp(/*seconds*/ 1_700_000_002),
     );
     encrypted_message.payload = AgentMailboxPayload::Encrypted {
         encrypted_content: MESSAGE_TWO_CONTENT.to_string(),
@@ -116,7 +116,7 @@ async fn mailbox_reads_filtered_messages_in_global_arrival_order() -> anyhow::Re
             SENDER_AGENT_PATH,
             AgentMailboxCategory::ActionRequired,
             MESSAGE_THREE_CONTENT,
-            timestamp(1_700_000_003),
+            timestamp(/*seconds*/ 1_700_000_003),
         ))
         .await?;
 
@@ -132,7 +132,16 @@ async fn mailbox_reads_filtered_messages_in_global_arrival_order() -> anyhow::Re
             .map(|message| message.id.clone())
             .collect::<Vec<_>>()
     );
-    assert_eq!(expected_snapshot(2, 1, 1, 0, 4), result.snapshot);
+    assert_eq!(
+        expected_snapshot(
+            /*total*/ 2,
+            /*progress*/ 1,
+            /*result*/ 1,
+            /*action_required*/ 0,
+            /*revision*/ 4,
+        ),
+        result.snapshot
+    );
 
     let remaining = mailbox.consume(read_request(/*category*/ None)).await?;
     assert_eq!(
@@ -149,7 +158,16 @@ async fn mailbox_reads_filtered_messages_in_global_arrival_order() -> anyhow::Re
         },
         remaining.messages[1].payload
     );
-    assert_eq!(expected_snapshot(0, 0, 0, 0, 5), remaining.snapshot);
+    assert_eq!(
+        expected_snapshot(
+            /*total*/ 0,
+            /*progress*/ 0,
+            /*result*/ 0,
+            /*action_required*/ 0,
+            /*revision*/ 5,
+        ),
+        remaining.snapshot
+    );
     Ok(())
 }
 
@@ -163,7 +181,7 @@ async fn mailbox_enqueue_is_idempotent_after_runtime_restart() -> anyhow::Result
         SENDER_AGENT_PATH,
         AgentMailboxCategory::Result,
         MESSAGE_ONE_CONTENT,
-        timestamp(1_700_000_001),
+        timestamp(/*seconds*/ 1_700_000_001),
     );
     let inserted = first_runtime.agent_mailbox().enqueue(input.clone()).await?;
     assert_eq!(true, inserted.inserted);
@@ -180,7 +198,16 @@ async fn mailbox_enqueue_is_idempotent_after_runtime_restart() -> anyhow::Result
         .consume(read_request(/*category*/ None))
         .await?;
     assert_eq!(vec![inserted.message], consumed.messages);
-    assert_eq!(expected_snapshot(0, 0, 0, 0, 2), consumed.snapshot);
+    assert_eq!(
+        expected_snapshot(
+            /*total*/ 0,
+            /*progress*/ 0,
+            /*result*/ 0,
+            /*action_required*/ 0,
+            /*revision*/ 2,
+        ),
+        consumed.snapshot
+    );
     Ok(())
 }
 
@@ -195,7 +222,7 @@ async fn concurrent_mailbox_reads_do_not_return_the_same_message() -> anyhow::Re
             SENDER_AGENT_PATH,
             AgentMailboxCategory::Progress,
             MESSAGE_ONE_CONTENT,
-            timestamp(1_700_000_001),
+            timestamp(/*seconds*/ 1_700_000_001),
         ))
         .await?;
     mailbox
@@ -205,7 +232,7 @@ async fn concurrent_mailbox_reads_do_not_return_the_same_message() -> anyhow::Re
             SECOND_SENDER_AGENT_PATH,
             AgentMailboxCategory::Result,
             MESSAGE_TWO_CONTENT,
-            timestamp(1_700_000_002),
+            timestamp(/*seconds*/ 1_700_000_002),
         ))
         .await?;
 
@@ -231,7 +258,13 @@ async fn concurrent_mailbox_reads_do_not_return_the_same_message() -> anyhow::Re
         message_ids
     );
     assert_eq!(
-        expected_snapshot(0, 0, 0, 0, 4),
+        expected_snapshot(
+            /*total*/ 0,
+            /*progress*/ 0,
+            /*result*/ 0,
+            /*action_required*/ 0,
+            /*revision*/ 4,
+        ),
         mailbox
             .unread_snapshot(thread_id(ROOT_THREAD_ID), thread_id(RECIPIENT_THREAD_ID))
             .await?
@@ -259,14 +292,20 @@ async fn deleting_recipient_thread_removes_its_mailbox() -> anyhow::Result<()> {
             SENDER_AGENT_PATH,
             AgentMailboxCategory::Result,
             MESSAGE_ONE_CONTENT,
-            timestamp(1_700_000_001),
+            timestamp(/*seconds*/ 1_700_000_001),
         ))
         .await?;
 
     runtime.delete_thread(recipient_thread_id).await?;
 
     assert_eq!(
-        expected_snapshot(0, 0, 0, 0, 0),
+        expected_snapshot(
+            /*total*/ 0,
+            /*progress*/ 0,
+            /*result*/ 0,
+            /*action_required*/ 0,
+            /*revision*/ 0,
+        ),
         runtime
             .agent_mailbox()
             .unread_snapshot(thread_id(ROOT_THREAD_ID), recipient_thread_id)
