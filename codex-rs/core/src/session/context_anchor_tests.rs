@@ -197,7 +197,12 @@ fn uncommitted_rewind_keeps_original_anchor_active() {
         1
     );
     assert_eq!(
-        list_context_anchors_from_rollout(&items, &current_history, 10, ModeKind::Default)
+        list_context_anchors_from_rollout(
+            &items,
+            &current_history,
+            /*limit*/ 10,
+            ModeKind::Default,
+        )
             .active_anchor_count,
         1
     );
