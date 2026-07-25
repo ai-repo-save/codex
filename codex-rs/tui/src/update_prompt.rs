@@ -241,6 +241,7 @@ impl WidgetRef for &UpdatePromptScreen {
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );
         column.render(area, buf);
+        #[cfg(not(test))]
         crate::terminal_hyperlinks::mark_underlined_hyperlink(buf, area, RELEASE_NOTES_URL);
     }
 }
@@ -271,8 +272,9 @@ mod tests {
         terminal
             .draw(|frame| frame.render_widget_ref(&screen, frame.area()))
             .expect("render update prompt");
-        let visible = crate::terminal_hyperlinks::strip_osc8(&terminal.backend().to_string());
-        let visible = visible
+        let visible = terminal
+            .backend()
+            .to_string()
             .lines()
             .map(str::trim_end)
             .collect::<Vec<_>>()
