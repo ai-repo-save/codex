@@ -85,6 +85,9 @@ impl ChatWidget {
     ) {
         let from_replay = render_source.is_replay();
         let replay_kind = render_source.replay_kind();
+        let Some(item) = self.handle_feature_thread_item(item, FeatureItemLifecycle::Status) else {
+            return;
+        };
         match item {
             ThreadItem::UserMessage { content, .. } => {
                 self.on_committed_user_message(&content, from_replay);
@@ -232,41 +235,6 @@ impl ChatWidget {
                 );
             }
             ThreadItem::HookPrompt { .. } => {}
-            item @ ThreadItem::MemoryMutation(codex_app_server_protocol::MemoryMutation {
-                status: codex_app_server_protocol::MemoryMutationStatus::InProgress,
-                ..
-            }) => self.on_memory_mutation_started(item),
-            item @ ThreadItem::MemoryMutation(_) => self.on_memory_mutation_completed(item),
-            ThreadItem::CollabAgentToolCall {
-                id,
-                tool,
-                status,
-                sender_thread_id,
-                receiver_thread_ids,
-                prompt,
-                model,
-                reasoning_effort,
-                service_tier,
-                context_inheritance,
-                mode,
-                snapshot_revision,
-                agents_states,
-            } => self.on_collab_agent_tool_call(ThreadItem::CollabAgentToolCall {
-                id,
-                tool,
-                status,
-                sender_thread_id,
-                receiver_thread_ids,
-                prompt,
-                model,
-                reasoning_effort,
-                service_tier,
-                context_inheritance,
-                mode,
-                snapshot_revision,
-                agents_states,
-            }),
-            item @ ThreadItem::SubAgentActivity { .. } => self.on_sub_agent_activity(item),
             ThreadItem::DynamicToolCall { .. } => {}
             ThreadItem::Sleep(_) => {}
         }

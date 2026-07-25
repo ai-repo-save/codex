@@ -292,7 +292,13 @@ impl ChatWidget {
         notification: ItemStartedNotification,
         from_replay: bool,
     ) {
-        match notification.item {
+        let Some(item) = self.handle_feature_thread_item(
+            notification.item,
+            FeatureItemLifecycle::Started,
+        ) else {
+            return;
+        };
+        match item {
             item @ ThreadItem::CommandExecution { .. } => self.on_command_execution_started(item),
             ThreadItem::FileChange { id: _, changes, .. } => {
                 self.on_patch_apply_begin(file_update_changes_to_display(changes));
@@ -304,37 +310,6 @@ impl ChatWidget {
             ThreadItem::ImageGeneration(_) => {
                 self.on_image_generation_begin();
             }
-            item @ ThreadItem::MemoryMutation(_) => self.on_memory_mutation_started(item),
-            ThreadItem::CollabAgentToolCall {
-                id,
-                tool,
-                status,
-                sender_thread_id,
-                receiver_thread_ids,
-                prompt,
-                model,
-                reasoning_effort,
-                service_tier,
-                context_inheritance,
-                mode,
-                snapshot_revision,
-                agents_states,
-            } => self.on_collab_agent_tool_call(ThreadItem::CollabAgentToolCall {
-                id,
-                tool,
-                status,
-                sender_thread_id,
-                receiver_thread_ids,
-                prompt,
-                model,
-                reasoning_effort,
-                service_tier,
-                context_inheritance,
-                mode,
-                snapshot_revision,
-                agents_states,
-            }),
-            item @ ThreadItem::SubAgentActivity { .. } => self.on_sub_agent_activity(item),
             ThreadItem::EnteredReviewMode { review, .. } if !from_replay => {
                 self.enter_review_mode_with_hint(review, /*from_replay*/ false);
             }

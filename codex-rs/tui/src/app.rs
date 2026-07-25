@@ -206,6 +206,7 @@ mod app_server_events;
 pub(crate) mod app_server_requests;
 mod background_requests;
 mod config_persistence;
+mod collaboration_events;
 mod event_dispatch;
 mod history_ui;
 mod input;
@@ -229,6 +230,7 @@ mod thread_settings;
 use self::agent_navigation::AgentNavigationDirection;
 use self::agent_navigation::AgentNavigationState;
 use self::app_server_requests::PendingAppServerRequests;
+use self::collaboration_events::*;
 use self::loaded_threads::find_loaded_subagent_threads_for_primary;
 use self::pending_interactive_replay::PendingInteractiveReplayState;
 use self::platform_actions::*;
@@ -245,64 +247,6 @@ enum ThreadInteractiveRequest {
     AppLink(AppLinkViewParams),
     Approval(ApprovalRequest),
     McpServerElicitation(McpServerElicitationFormRequest),
-}
-
-/// Extracts `receiver_thread_ids` from collab agent tool-call notifications.
-///
-/// Only `ItemStarted` and `ItemCompleted` notifications with a `CollabAgentToolCall` item carry
-/// receiver thread ids. All other notification variants return `None`.
-fn collab_receiver_thread_ids(notification: &ServerNotification) -> Option<&[String]> {
-    match notification {
-        ServerNotification::ItemStarted(notification) => match &notification.item {
-            ThreadItem::CollabAgentToolCall {
-                receiver_thread_ids,
-                ..
-            } => Some(receiver_thread_ids),
-            _ => None,
-        },
-        ServerNotification::ItemCompleted(notification) => match &notification.item {
-            ThreadItem::CollabAgentToolCall {
-                receiver_thread_ids,
-                ..
-            } => Some(receiver_thread_ids),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-fn sub_agent_activity_item(notification: &ServerNotification) -> Option<&ThreadItem> {
-    match notification {
-        ServerNotification::ItemStarted(notification) => match &notification.item {
-            ThreadItem::SubAgentActivity { .. } => Some(&notification.item),
-            _ => None,
-        },
-        ServerNotification::ItemCompleted(notification) => match &notification.item {
-            ThreadItem::SubAgentActivity { .. } => Some(&notification.item),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-fn collab_receiver_is_not_found(
-    notification: &ServerNotification,
-    receiver_thread_id: &str,
-) -> bool {
-    match notification {
-        ServerNotification::ItemCompleted(notification) => match &notification.item {
-            ThreadItem::CollabAgentToolCall { agents_states, .. } => {
-                agents_states.get(receiver_thread_id).is_some_and(|state| {
-                    matches!(
-                        &state.status,
-                        codex_app_server_protocol::CollabAgentStatus::NotFound
-                    )
-                })
-            }
-            _ => false,
-        },
-        _ => false,
-    }
 }
 
 fn default_exec_approval_decisions(

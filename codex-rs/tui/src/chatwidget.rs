@@ -417,6 +417,7 @@ use self::status_surfaces::CachedProjectRootName;
 mod tokens;
 pub(crate) use self::tokens::TokenActivityView;
 mod tool_lifecycle;
+use self::tool_lifecycle::feature_items::FeatureItemLifecycle;
 mod tool_requests;
 mod transcript;
 use self::transcript::TranscriptState;

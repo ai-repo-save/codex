@@ -756,7 +756,10 @@ impl ChatWidget {
             StatusLineItem::AgentMailbox => self
                 .agent_mailbox_status
                 .as_ref()
-                .and_then(|status| (status.total > 0).then(|| format_agent_mailbox_status(status))),
+                .and_then(|status| {
+                    (status.total > 0)
+                        .then(|| agent_mailbox::format_agent_mailbox_status(status))
+                }),
         }
     }
 
@@ -1140,20 +1143,6 @@ fn approval_mode_display(config: &Config) -> String {
     }
 
     config.permissions.approval_policy.value().to_string()
-}
-
-fn format_agent_mailbox_status(status: &AgentMailboxStatus) -> String {
-    let mut categories = Vec::new();
-    if status.action_required > 0 {
-        categories.push(format!("action {}", status.action_required));
-    }
-    if status.result > 0 {
-        categories.push(format!("result {}", status.result));
-    }
-    if status.progress > 0 {
-        categories.push(format!("progress {}", status.progress));
-    }
-    format!("Inbox {} ({})", status.total, categories.join(", "))
 }
 
 fn parse_items_with_invalids<T>(ids: impl IntoIterator<Item = String>) -> (Vec<T>, Vec<String>)

@@ -4,9 +4,11 @@
 //! events as transcript cells.
 
 use super::*;
-use codex_app_server_protocol::CollabAgentTool;
-use codex_app_server_protocol::CollabAgentToolCallStatus;
 use codex_utils_path_uri::LegacyAppPathString;
+
+mod collaboration;
+pub(super) mod feature_items;
+mod memory_mutation;
 
 impl ChatWidget {
     pub(super) fn on_patch_apply_begin(&mut self, changes: HashMap<PathBuf, FileChange>) {
@@ -108,88 +110,6 @@ impl ChatWidget {
             self.add_to_history(history_cell::new_web_search_call(call_id, query, action));
         }
         self.transcript.had_work_activity = true;
-    }
-
-    pub(super) fn on_collab_event(&mut self, cell: PlainHistoryCell) {
-        self.flush_answer_stream_with_separator();
-        self.add_to_history(cell);
-        self.request_redraw();
-    }
-
-    pub(super) fn on_collab_agent_tool_call(&mut self, item: ThreadItem) {
-        let ThreadItem::CollabAgentToolCall {
-            id, tool, status, ..
-        } = &item
-        else {
-            return;
-        };
-
-        if matches!(tool, CollabAgentTool::SpawnAgent)
-            && let Some(spawn_request) = multi_agents::spawn_request_summary(&item)
-        {
-            self.pending_collab_spawn_requests
-                .insert(id.clone(), spawn_request);
-        }
-
-        let cached_spawn_request = if matches!(tool, CollabAgentTool::SpawnAgent)
-            && !matches!(status, CollabAgentToolCallStatus::InProgress)
-        {
-            self.pending_collab_spawn_requests.remove(id)
-        } else {
-            None
-        };
-
-        if let Some(cell) = multi_agents::tool_call_history_cell_with_spawn_request(
-            &item,
-            cached_spawn_request.as_ref(),
-            |thread_id| self.collab_agent_metadata(thread_id),
-        ) {
-            self.on_collab_event(cell);
-        }
-    }
-
-    pub(super) fn on_sub_agent_activity(&mut self, item: ThreadItem) {
-        if let Some(cell) = multi_agents::sub_agent_activity_history_cell(&item) {
-            self.on_collab_event(cell);
-        }
-    }
-
-    pub(super) fn on_memory_mutation_started(&mut self, item: ThreadItem) {
-        if let Some(cell) = crate::memory_mutation::memory_mutation_history_cell(&item) {
-            self.flush_answer_stream_with_separator();
-            self.flush_active_cell();
-            self.transcript.active_cell = Some(Box::new(cell));
-            self.bump_active_cell_revision();
-            self.request_redraw();
-        }
-    }
-
-    pub(super) fn on_memory_mutation_completed(&mut self, item: ThreadItem) {
-        let Some(completed_cell) = crate::memory_mutation::memory_mutation_history_cell(&item)
-        else {
-            return;
-        };
-
-        self.flush_answer_stream_with_separator();
-        let mut handled = false;
-        if let Some(active_cell) = self.transcript.active_cell.as_mut().and_then(|cell| {
-            cell.as_any_mut()
-                .downcast_mut::<crate::memory_mutation::MemoryMutationCell>()
-        }) && active_cell.id() == completed_cell.id()
-        {
-            active_cell.update(completed_cell.mutation().clone());
-            self.bump_active_cell_revision();
-            self.flush_active_cell();
-            handled = true;
-        }
-
-        if !handled {
-            self.transcript.needs_final_message_separator = true;
-            self.app_event_tx
-                .send(AppEvent::InsertHistoryCell(Box::new(completed_cell)));
-        }
-        self.transcript.had_work_activity = true;
-        self.request_redraw();
     }
 
     pub(crate) fn handle_file_change_completed_now(&mut self, item: ThreadItem) {
