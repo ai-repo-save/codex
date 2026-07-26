@@ -356,6 +356,7 @@ WHERE thread_id = ? AND turn_id = ?
             | ThreadItem::DynamicToolCall { .. }
             | ThreadItem::CollabAgentToolCall { .. }
             | ThreadItem::SubAgentActivity { .. }
+            | ThreadItem::AgentMailboxAction(_)
             | ThreadItem::MemoryMutation(_)
             | ThreadItem::WebSearch(_)
             | ThreadItem::ImageView { .. }

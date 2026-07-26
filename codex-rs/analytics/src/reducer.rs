@@ -417,7 +417,8 @@ impl TurnToolCounts {
             | ThreadItem::ExitedReviewMode { .. }
             | ThreadItem::ContextAnchorSaved { .. }
             | ThreadItem::ContextAnchorRewound { .. }
-            | ThreadItem::ContextCompaction { .. } => return,
+            | ThreadItem::ContextCompaction { .. }
+            | ThreadItem::AgentMailboxAction(_) => return,
         }
         self.total += 1;
     }
@@ -1761,7 +1762,8 @@ fn tracked_tool_item_id(item: &ThreadItem) -> Option<&str> {
         | ThreadItem::ExitedReviewMode { .. }
         | ThreadItem::ContextAnchorSaved { .. }
         | ThreadItem::ContextAnchorRewound { .. }
-        | ThreadItem::ContextCompaction { .. } => None,
+        | ThreadItem::ContextCompaction { .. }
+        | ThreadItem::AgentMailboxAction(_) => None,
     }
 }
 

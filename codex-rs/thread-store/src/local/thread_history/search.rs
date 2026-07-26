@@ -266,6 +266,7 @@ fn searchable_text(item: &ThreadItem) -> Option<Cow<'_, str>> {
         | ThreadItem::DynamicToolCall { .. }
         | ThreadItem::CollabAgentToolCall { .. }
         | ThreadItem::SubAgentActivity { .. }
+        | ThreadItem::AgentMailboxAction(_)
         | ThreadItem::MemoryMutation(_)
         | ThreadItem::WebSearch(_)
         | ThreadItem::ImageView { .. }
