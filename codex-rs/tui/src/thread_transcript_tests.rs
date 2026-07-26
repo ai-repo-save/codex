@@ -1,6 +1,12 @@
 use super::*;
 use crate::test_support::PathBufExt;
 use crate::test_support::test_path_buf;
+use codex_app_server_protocol::AgentMailboxAction;
+use codex_app_server_protocol::AgentMailboxActionKind;
+use codex_app_server_protocol::AgentMailboxActionStatus;
+use codex_app_server_protocol::AgentMailboxMessageCategory;
+use codex_app_server_protocol::AgentMailboxMessagePreview;
+use codex_app_server_protocol::AgentMailboxMessagePreviewContent;
 use codex_app_server_protocol::CollabAgentTool;
 use codex_app_server_protocol::CollabAgentToolCallStatus;
 use codex_app_server_protocol::SpawnContextInheritance;
@@ -67,6 +73,29 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
                     path: Some("memories/project/repository-conventions.md".to_string()),
                     preview: Some("Run focused tests remotely.".to_string()),
                 }),
+                ThreadItem::AgentMailboxAction(AgentMailboxAction {
+                    id: "mailbox-read-1".to_string(),
+                    status: AgentMailboxActionStatus::Succeeded,
+                    action: AgentMailboxActionKind::Read {
+                        sender: None,
+                        category: None,
+                        limit: 2,
+                        messages: vec![
+                            AgentMailboxMessagePreview {
+                                sender: "/root/research".to_string(),
+                                category: AgentMailboxMessageCategory::Result,
+                                content: AgentMailboxMessagePreviewContent::Plaintext {
+                                    preview: Some("Completed integration.".to_string()),
+                                },
+                            },
+                            AgentMailboxMessagePreview {
+                                sender: "/root/private".to_string(),
+                                category: AgentMailboxMessageCategory::Result,
+                                content: AgentMailboxMessagePreviewContent::Encrypted,
+                            },
+                        ],
+                    },
+                }),
                 ThreadItem::CollabAgentToolCall {
                     id: "spawn-1".to_string(),
                     tool: CollabAgentTool::SpawnAgent,
@@ -107,6 +136,10 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
         @r###"
 Started /root/research (gpt-5.6, high, fast) · context: last 4 turns
 Wrote memory · scope: project · title: Repository conventions · path: memories/project/repository-conventions.md · preview: Run focused tests remotely.
+• Read 2 mailbox messages
+  └ Limit: 2
+    /root/research · result: Completed integration.
+    /root/private · result: <encrypted message>
 Spawned an agent · context: all
 "###,
     );
