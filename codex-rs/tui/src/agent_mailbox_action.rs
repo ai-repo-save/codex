@@ -59,7 +59,11 @@ impl HistoryCell for AgentMailboxActionCell {
             lines.extend(word_wrap_lines(
                 std::iter::once(detail),
                 RtOptions::new(width as usize)
-                    .initial_indent(if index == 0 { "  └ ".dim() } else { "    ".into() })
+                    .initial_indent(if index == 0 {
+                        "  └ ".dim().into()
+                    } else {
+                        "    ".into()
+                    })
                     .subsequent_indent("    ".into()),
             ));
         }
