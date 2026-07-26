@@ -1364,6 +1364,11 @@ impl ChatWidget {
                 .downcast_mut::<crate::memory_mutation::MemoryMutationCell>()
             {
                 memory.mark_failed();
+            } else if let Some(action) = cell
+                .as_any_mut()
+                .downcast_mut::<crate::agent_mailbox_action::AgentMailboxActionCell>()
+            {
+                action.mark_failed();
             }
             self.add_boxed_history(cell);
             self.request_pending_usage_output_insertion();

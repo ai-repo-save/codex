@@ -239,6 +239,7 @@ impl ChatWidget {
             ThreadItem::Sleep(_) => {}
             ThreadItem::CollabAgentToolCall { .. }
             | ThreadItem::SubAgentActivity { .. }
+            | ThreadItem::AgentMailboxAction(_)
             | ThreadItem::MemoryMutation(_) => {
                 unreachable!("feature-owned thread items are handled before replay rendering")
             }

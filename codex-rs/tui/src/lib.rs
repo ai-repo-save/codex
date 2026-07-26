@@ -147,6 +147,7 @@ mod markdown;
 mod markdown_render;
 mod markdown_stream;
 mod markdown_text_merge;
+mod agent_mailbox_action;
 mod memory_mutation;
 mod mention_codec;
 mod model_catalog;

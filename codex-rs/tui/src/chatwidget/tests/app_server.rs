@@ -1181,6 +1181,198 @@ async fn live_app_server_memory_mutations_render_history() {
 }
 
 #[tokio::test]
+async fn live_app_server_agent_mailbox_actions_render_history() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let send = |id: &str, status| {
+        AppServerThreadItem::AgentMailboxAction(codex_app_server_protocol::AgentMailboxAction {
+            id: id.to_string(),
+            status,
+            action: codex_app_server_protocol::AgentMailboxActionKind::Send {
+                target: "/root/research".to_string(),
+                recipient: Some("/root/research".to_string()),
+                category: codex_app_server_protocol::AgentMailboxMessageCategory::Progress,
+                preview: Some("I found the integration point.".to_string()),
+            },
+        })
+    };
+    let read = |id: &str, status, messages| {
+        AppServerThreadItem::AgentMailboxAction(codex_app_server_protocol::AgentMailboxAction {
+            id: id.to_string(),
+            status,
+            action: codex_app_server_protocol::AgentMailboxActionKind::Read {
+                sender: Some("/root/research".to_string()),
+                category: None,
+                limit: 4,
+                messages,
+            },
+        })
+    };
+
+    chat.handle_server_notification(
+        ServerNotification::ItemStarted(ItemStartedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            started_at_ms: 0,
+            item: send(
+                "mailbox-send-1",
+                codex_app_server_protocol::AgentMailboxActionStatus::InProgress,
+            ),
+        }),
+        /*replay_kind*/ None,
+    );
+    let active = chat
+        .transcript
+        .active_cell
+        .as_ref()
+        .expect("mailbox send should remain active")
+        .display_lines(/*width*/ 42);
+    insta::assert_snapshot!(lines_to_single_string(&active), @r###"
+• Sending mailbox message
+  └ Recipient: /root/research
+    Category: progress
+    Preview: I found the integration point.
+"###);
+
+    for notification in [
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: send(
+                "mailbox-send-1",
+                codex_app_server_protocol::AgentMailboxActionStatus::Succeeded,
+            ),
+        }),
+        ServerNotification::ItemStarted(ItemStartedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            started_at_ms: 0,
+            item: read(
+                "mailbox-read-1",
+                codex_app_server_protocol::AgentMailboxActionStatus::InProgress,
+                Vec::new(),
+            ),
+        }),
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: read(
+                "mailbox-read-1",
+                codex_app_server_protocol::AgentMailboxActionStatus::Succeeded,
+                vec![
+                    codex_app_server_protocol::AgentMailboxMessagePreview {
+                        sender: "/root/research".to_string(),
+                        category: codex_app_server_protocol::AgentMailboxMessageCategory::Result,
+                        content: codex_app_server_protocol::AgentMailboxMessagePreviewContent::Plaintext {
+                            preview: Some("Tests are green.".to_string()),
+                        },
+                    },
+                    codex_app_server_protocol::AgentMailboxMessagePreview {
+                        sender: "/root/research".to_string(),
+                        category: codex_app_server_protocol::AgentMailboxMessageCategory::ActionRequired,
+                        content: codex_app_server_protocol::AgentMailboxMessagePreviewContent::Encrypted,
+                    },
+                ],
+            ),
+        }),
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: read(
+                "mailbox-read-empty",
+                codex_app_server_protocol::AgentMailboxActionStatus::Succeeded,
+                Vec::new(),
+            ),
+        }),
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: send(
+                "mailbox-send-failed",
+                codex_app_server_protocol::AgentMailboxActionStatus::Failed,
+            ),
+        }),
+    ] {
+        chat.handle_server_notification(notification, /*replay_kind*/ None);
+    }
+
+    let history = drain_insert_history(&mut rx);
+    assert_eq!(history.len(), 4);
+    assert!(chat.transcript.active_cell.is_none());
+    let combined = history
+        .iter()
+        .map(|lines| lines_to_single_string(lines))
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!(combined, @r###"
+• Sent mailbox message
+  └ Recipient: /root/research
+    Category: progress
+    Preview: I found the integration point.
+
+
+• Read 2 mailbox messages
+  └ Sender: /root/research
+    Limit: 4
+    /root/research · result: Tests are green.
+    /root/research · action required: <encrypted message>
+
+
+• No mailbox messages found
+  └ Sender: /root/research
+    Limit: 4
+
+
+• Failed to send mailbox message
+  └ Recipient: /root/research
+    Category: progress
+    Preview: I found the integration point.
+"###);
+}
+
+#[tokio::test]
+async fn interrupted_agent_mailbox_action_is_finalized_as_failed() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.handle_server_notification(
+        ServerNotification::ItemStarted(ItemStartedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            started_at_ms: 0,
+            item: AppServerThreadItem::AgentMailboxAction(
+                codex_app_server_protocol::AgentMailboxAction {
+                    id: "mailbox-read-interrupted".to_string(),
+                    status: codex_app_server_protocol::AgentMailboxActionStatus::InProgress,
+                    action: codex_app_server_protocol::AgentMailboxActionKind::Read {
+                        sender: None,
+                        category: Some(
+                            codex_app_server_protocol::AgentMailboxMessageCategory::ActionRequired,
+                        ),
+                        limit: 1,
+                        messages: Vec::new(),
+                    },
+                },
+            ),
+        }),
+        /*replay_kind*/ None,
+    );
+    assert!(drain_insert_history(&mut rx).is_empty());
+
+    chat.finalize_turn();
+
+    let history = drain_insert_history(&mut rx);
+    assert_eq!(history.len(), 1);
+    assert!(chat.transcript.active_cell.is_none());
+    insta::assert_snapshot!(lines_to_single_string(&history[0]), @r###"
+• Failed to read agent mailbox
+  └ Category: action required
+    Limit: 1
+"###);
+}
+
+#[tokio::test]
 async fn memory_completion_preserves_a_different_active_mutation() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let mutation = |id: &str, status, title: &str| {

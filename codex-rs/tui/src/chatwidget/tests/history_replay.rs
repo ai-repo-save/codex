@@ -182,6 +182,45 @@ async fn replayed_memory_mutation_renders_history() {
 }
 
 #[tokio::test]
+async fn replayed_agent_mailbox_action_renders_history() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    chat.replay_thread_item(
+        AppServerThreadItem::AgentMailboxAction(codex_app_server_protocol::AgentMailboxAction {
+            id: "mailbox-read-1".to_string(),
+            status: codex_app_server_protocol::AgentMailboxActionStatus::Succeeded,
+            action: codex_app_server_protocol::AgentMailboxActionKind::Read {
+                sender: Some("/root/research".to_string()),
+                category: Some(codex_app_server_protocol::AgentMailboxMessageCategory::Result),
+                limit: 2,
+                messages: vec![codex_app_server_protocol::AgentMailboxMessagePreview {
+                    sender: "/root/research".to_string(),
+                    category: codex_app_server_protocol::AgentMailboxMessageCategory::Result,
+                    content: codex_app_server_protocol::AgentMailboxMessagePreviewContent::Plaintext {
+                        preview: Some("The implementation is ready.".to_string()),
+                    },
+                }],
+            },
+        }),
+        "turn-1".to_string(),
+        ReplayKind::ThreadSnapshot,
+    );
+
+    let combined = drain_insert_history(&mut rx)
+        .into_iter()
+        .map(|lines| lines_to_single_string(&lines))
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!(combined, @r###"
+• Read 1 mailbox message
+  └ Sender: /root/research
+    Category: result
+    Limit: 2
+    /root/research · result: The implementation is ready.
+"###);
+}
+
+#[tokio::test]
 async fn replayed_in_progress_memory_mutation_accepts_live_completion() {
     let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
     let mutation = |status| {
