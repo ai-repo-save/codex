@@ -45,6 +45,8 @@ const TEST_MODEL: &str = "gpt-5.4";
 const INITIAL_TYPED_CONTEXT: &str = "initial typed context";
 const FIRST_REWIND_TYPED_CONTEXT: &str = "first rewind typed context";
 const SECOND_REWIND_TYPED_CONTEXT: &str = "second rewind typed context";
+const REWIND_INSTRUCTIONS_MARKER: &str = "<context_rewind_instructions>";
+const SUCCESSFUL_REWIND_NOTE: &str = "carry forward after successful rewind";
 
 struct TypedContextContributor;
 
@@ -91,6 +93,53 @@ fn expected_rewind_typed_context_groups() -> Vec<Vec<String>> {
         vec![ScopedMemoryContextFragment::new(FIRST_REWIND_TYPED_CONTEXT).render()],
         vec![ScopedMemoryContextFragment::new(SECOND_REWIND_TYPED_CONTEXT).render()],
     ]
+}
+
+fn input_message_contains_text(item: &Value, role: &str, needle: &str) -> bool {
+    item.get("role").and_then(Value::as_str) == Some(role)
+        && item
+            .get("content")
+            .and_then(Value::as_array)
+            .is_some_and(|content| {
+                content.iter().any(|content_item| {
+                    content_item
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .is_some_and(|text| text.contains(needle))
+                })
+            })
+}
+
+fn assert_rewind_task_control(request: &core_test_support::responses::ResponsesRequest) {
+    let input = request.input();
+    let instruction_indexes = input
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| {
+            input_message_contains_text(item, "developer", REWIND_INSTRUCTIONS_MARKER)
+                .then_some(index)
+        })
+        .collect::<Vec<_>>();
+    let note_indexes = input
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| {
+            input_message_contains_text(item, "user", SUCCESSFUL_REWIND_NOTE).then_some(index)
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(instruction_indexes.len(), 1);
+    assert_eq!(note_indexes.len(), 1);
+    assert_eq!(instruction_indexes[0] + 1, note_indexes[0]);
+    assert!(
+        !input
+            .iter()
+            .any(|item| input_message_contains_text(
+                item,
+                "developer",
+                SUCCESSFUL_REWIND_NOTE
+            ))
+    );
 }
 
 async fn submit_turn_with_mode(test: &TestCodex, prompt: &str, mode: ModeKind) -> Result<()> {
@@ -276,7 +325,7 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
                     REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME,
                     &json!({
                         "anchor_id": anchor_id,
-                        "note": "carry forward after successful rewind"
+                        "note": SUCCESSFUL_REWIND_NOTE
                     })
                     .to_string(),
                 ),
@@ -309,6 +358,7 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
     let requests = second_mock.requests();
     assert_eq!(requests.len(), 3);
     for request in &requests[1..] {
+        assert_rewind_task_control(request);
         assert_eq!(
             rewind_typed_context_groups(request.message_input_text_groups("user")),
             expected_rewind_typed_context_groups()
@@ -446,6 +496,7 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
             PermissionProfile::Disabled,
         )
         .await?;
+    assert_rewind_task_control(&resume_mock.single_request());
     assert_eq!(
         rewind_typed_context_groups(
             resume_mock

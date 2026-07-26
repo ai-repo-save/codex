@@ -176,7 +176,7 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
                 note: "carry this back".to_string(),
             },
         )),
-        RolloutItem::ResponseItem(contribution),
+        RolloutItem::ResponseItem(contribution.clone()),
         RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(ContextAnchorSavedEvent {
             anchor_id: REPLACEMENT_ANCHOR_ID.to_string(),
             label: Some("after rewind".to_string()),
@@ -192,11 +192,28 @@ async fn reconstruct_history_context_rewind_restores_anchor_and_carries_note() {
 
     assert_eq!(
         reconstructed.history.len(),
-        4,
-        "anchor history, carry-forward, and persisted contribution should survive"
+        5,
+        "anchor history, rewind instructions, carry-forward, and contribution should survive"
     );
     assert_eq!(reconstructed.history[0], anchor_user);
     assert_eq!(reconstructed.history[1], anchor_assistant);
+    let ResponseItem::Message {
+        role: instructions_role,
+        ..
+    } = &reconstructed.history[2]
+    else {
+        panic!("rewind instructions should be a message");
+    };
+    assert_eq!(instructions_role, "developer");
+    let ResponseItem::Message {
+        role: carry_forward_role,
+        ..
+    } = &reconstructed.history[3]
+    else {
+        panic!("rewind carry-forward should be a message");
+    };
+    assert_eq!(carry_forward_role, "user");
+    assert_eq!(reconstructed.history[4], contribution);
     assert!(history_contains_text(
         &reconstructed.history,
         "carry this back"

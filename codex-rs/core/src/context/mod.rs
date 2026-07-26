@@ -54,6 +54,7 @@ pub(crate) use codex_core_skills::SkillInstructions;
 pub(crate) use consult_parent_context::ConsultParentContext;
 pub(crate) use context_reminder::ContextReminder;
 pub(crate) use context_rewind_carry_forward::ContextRewindCarryForward;
+pub(crate) use context_rewind_carry_forward::ContextRewindInstructions;
 pub(crate) use contextual_user_message::is_contextual_user_fragment;
 pub(crate) use contextual_user_message::parse_visible_hook_prompt_message;
 pub(crate) use current_time_reminder::CurrentTimeReminder;

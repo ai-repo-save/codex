@@ -1,4 +1,4 @@
-use super::context_anchor::context_rewind_carry_forward_item;
+use super::context_anchor::context_rewind_carry_forward_items;
 use super::*;
 use crate::context::world_state::WorldStateSnapshot;
 use crate::context_manager::is_user_turn_boundary;
@@ -351,7 +351,7 @@ impl Session {
                         if let Some(anchor_history) = pending_rewind.anchor_history {
                             context_anchors.clear();
                             history.replace(anchor_history);
-                            let carry_forward = context_rewind_carry_forward_item(
+                            let carry_forward = context_rewind_carry_forward_items(
                                 pending_rewind.rewind.anchor_id,
                                 pending_rewind.rewind.replacement_anchor_id,
                                 pending_rewind.rewind.dropped_turns,
@@ -363,7 +363,7 @@ impl Session {
                                 pending_rewind.rewind.note,
                             );
                             history.record_items(
-                                std::iter::once(&carry_forward),
+                                carry_forward.iter(),
                                 turn_context.model_info.truncation_policy.into(),
                             );
                             history.record_items(
@@ -447,7 +447,7 @@ impl Session {
                     {
                         context_anchors.clear();
                         history.replace(anchor_history);
-                        let carry_forward = context_rewind_carry_forward_item(
+                        let carry_forward = context_rewind_carry_forward_items(
                             rewind.anchor_id.clone(),
                             rewind.replacement_anchor_id.clone(),
                             rewind.dropped_turns,
@@ -459,7 +459,7 @@ impl Session {
                             rewind.note.clone(),
                         );
                         history.record_items(
-                            std::iter::once(&carry_forward),
+                            carry_forward.iter(),
                             turn_context.model_info.truncation_policy.into(),
                         );
                     } else {

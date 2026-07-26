@@ -1,4 +1,5 @@
 use crate::context::ContextRewindCarryForward;
+use crate::context::ContextRewindInstructions;
 use crate::context::ContextualUserFragment;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
@@ -707,7 +708,7 @@ impl Session {
     }
 }
 
-pub(super) fn context_rewind_carry_forward_item(
+pub(super) fn context_rewind_carry_forward_items(
     anchor_id: impl Into<String>,
     replacement_anchor_id: Option<String>,
     dropped_turns: u32,
@@ -717,18 +718,21 @@ pub(super) fn context_rewind_carry_forward_item(
     reclaim_threshold_tokens: Option<u64>,
     reclaim_threshold_met: Option<bool>,
     note: impl Into<String>,
-) -> ResponseItem {
-    ContextualUserFragment::into(ContextRewindCarryForward::new(
-        anchor_id,
-        replacement_anchor_id,
-        dropped_turns,
-        response_items_reclaimed,
-        approx_tokens_reclaimed,
-        reclaim_threshold_percent,
-        reclaim_threshold_tokens,
-        reclaim_threshold_met,
-        note,
-    ))
+) -> [ResponseItem; 2] {
+    [
+        ContextualUserFragment::into(ContextRewindInstructions),
+        ContextualUserFragment::into(ContextRewindCarryForward::new(
+            anchor_id,
+            replacement_anchor_id,
+            dropped_turns,
+            response_items_reclaimed,
+            approx_tokens_reclaimed,
+            reclaim_threshold_percent,
+            reclaim_threshold_tokens,
+            reclaim_threshold_met,
+            note,
+        )),
+    ]
 }
 
 #[cfg(test)]
