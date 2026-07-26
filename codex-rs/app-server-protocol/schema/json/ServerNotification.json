@@ -138,6 +138,173 @@
       },
       "type": "object"
     },
+    "AgentMailboxActionKind": {
+      "description": "The mailbox operation represented by an action item.",
+      "oneOf": [
+        {
+          "properties": {
+            "category": {
+              "$ref": "#/definitions/AgentMailboxMessageCategory"
+            },
+            "preview": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "recipient": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "send"
+              ],
+              "title": "SendAgentMailboxActionKindType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "category",
+            "target",
+            "type"
+          ],
+          "title": "SendAgentMailboxActionKind",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "category": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AgentMailboxMessageCategory"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "limit": {
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "messages": {
+              "items": {
+                "$ref": "#/definitions/AgentMailboxMessagePreview"
+              },
+              "type": "array"
+            },
+            "sender": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "read"
+              ],
+              "title": "ReadAgentMailboxActionKindType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "limit",
+            "messages",
+            "type"
+          ],
+          "title": "ReadAgentMailboxActionKind",
+          "type": "object"
+        }
+      ]
+    },
+    "AgentMailboxActionStatus": {
+      "description": "Execution state for an agent mailbox action.",
+      "enum": [
+        "inProgress",
+        "succeeded",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "AgentMailboxMessageCategory": {
+      "description": "Category assigned to a mailbox message.",
+      "enum": [
+        "progress",
+        "result",
+        "actionRequired"
+      ],
+      "type": "string"
+    },
+    "AgentMailboxMessagePreview": {
+      "description": "A mailbox message summary exposed by a read action.",
+      "properties": {
+        "category": {
+          "$ref": "#/definitions/AgentMailboxMessageCategory"
+        },
+        "content": {
+          "$ref": "#/definitions/AgentMailboxMessagePreviewContent"
+        },
+        "sender": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "content",
+        "sender"
+      ],
+      "type": "object"
+    },
+    "AgentMailboxMessagePreviewContent": {
+      "description": "Safe content projection for a mailbox message.",
+      "oneOf": [
+        {
+          "properties": {
+            "preview": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "plaintext"
+              ],
+              "title": "PlaintextAgentMailboxMessagePreviewContentType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "PlaintextAgentMailboxMessagePreviewContent",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "encrypted"
+              ],
+              "title": "EncryptedAgentMailboxMessagePreviewContentType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "EncryptedAgentMailboxMessagePreviewContent",
+          "type": "object"
+        }
+      ]
+    },
     "AgentMailboxStatus": {
       "properties": {
         "actionRequired": {
@@ -4842,6 +5009,35 @@
             "type"
           ],
           "title": "SubAgentActivityThreadItem",
+          "type": "object"
+        },
+        {
+          "description": "A visible action performed through the durable agent mailbox.",
+          "properties": {
+            "action": {
+              "$ref": "#/definitions/AgentMailboxActionKind"
+            },
+            "id": {
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/definitions/AgentMailboxActionStatus"
+            },
+            "type": {
+              "enum": [
+                "agentMailboxAction"
+              ],
+              "title": "AgentMailboxActionThreadItemType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "id",
+            "status",
+            "type"
+          ],
+          "title": "AgentMailboxActionThreadItem",
           "type": "object"
         },
         {
