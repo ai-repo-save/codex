@@ -944,7 +944,9 @@ impl From<CoreTurnItem> for ThreadItem {
                 ExtensionItem::Sleep(item) => ThreadItem::Sleep(item),
                 ExtensionItem::WebSearch(item) => ThreadItem::WebSearch(item),
                 ExtensionItem::MemoryMutation(item) => ThreadItem::MemoryMutation(item.into()),
-                ExtensionItem::AgentMailboxAction(item) => ThreadItem::AgentMailboxAction(item.into()),
+                ExtensionItem::AgentMailboxAction(item) => {
+                    ThreadItem::AgentMailboxAction(item.into())
+                }
             },
             CoreTurnItem::ImageGeneration(image) => {
                 ThreadItem::ImageGeneration(ImageGenerationItem {

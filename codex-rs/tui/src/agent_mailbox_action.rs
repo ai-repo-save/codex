@@ -7,10 +7,10 @@ use crate::wrapping::RtOptions;
 use crate::wrapping::word_wrap_lines;
 use codex_app_server_protocol::AgentMailboxAction;
 use codex_app_server_protocol::AgentMailboxActionKind;
+use codex_app_server_protocol::AgentMailboxActionStatus;
 use codex_app_server_protocol::AgentMailboxMessageCategory;
 use codex_app_server_protocol::AgentMailboxMessagePreview;
 use codex_app_server_protocol::AgentMailboxMessagePreviewContent;
-use codex_app_server_protocol::AgentMailboxActionStatus;
 use codex_app_server_protocol::ThreadItem;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
@@ -109,18 +109,18 @@ fn agent_mailbox_action_details(action: &AgentMailboxAction) -> Vec<Line<'static
             category,
             preview,
         } => {
-            let mut details = vec![vec![
-                if recipient.is_some() {
-                    "Recipient: ".dim()
-                } else {
-                    "Target: ".dim()
-                },
-                recipient.as_deref().unwrap_or(target).to_string().into(),
-            ]
-            .into()];
-            details.push(
-                vec!["Category: ".dim(), category_name(category).into()].into(),
-            );
+            let mut details = vec![
+                vec![
+                    if recipient.is_some() {
+                        "Recipient: ".dim()
+                    } else {
+                        "Target: ".dim()
+                    },
+                    recipient.as_deref().unwrap_or(target).to_string().into(),
+                ]
+                .into(),
+            ];
+            details.push(vec!["Category: ".dim(), category_name(category).into()].into());
             if let Some(preview) = preview {
                 details.push(vec!["Preview: ".dim(), preview.to_string().into()].into());
             }
@@ -137,9 +137,7 @@ fn agent_mailbox_action_details(action: &AgentMailboxAction) -> Vec<Line<'static
                 details.push(vec!["Sender: ".dim(), sender.to_string().into()].into());
             }
             if let Some(category) = category {
-                details.push(
-                    vec!["Category: ".dim(), category_name(category).into()].into(),
-                );
+                details.push(vec!["Category: ".dim(), category_name(category).into()].into());
             }
             details.push(vec!["Limit: ".dim(), limit.to_string().into()].into());
             if matches!(action.status, AgentMailboxActionStatus::Succeeded) {
@@ -161,31 +159,28 @@ fn agent_mailbox_action_title(action: &AgentMailboxAction) -> String {
         (AgentMailboxActionKind::Send { .. }, AgentMailboxActionStatus::Failed) => {
             "Failed to send mailbox message".to_string()
         }
-        (
-            AgentMailboxActionKind::Read { .. },
-            AgentMailboxActionStatus::InProgress,
-        ) => "Reading agent mailbox".to_string(),
-        (
-            AgentMailboxActionKind::Read { messages, .. },
-            AgentMailboxActionStatus::Succeeded,
-        ) if messages.is_empty() => "No mailbox messages found".to_string(),
-        (
-            AgentMailboxActionKind::Read { messages, .. },
-            AgentMailboxActionStatus::Succeeded,
-        ) => format!(
-            "Read {} mailbox message{}",
-            messages.len(),
-            if messages.len() == 1 { "" } else { "s" }
-        ),
+        (AgentMailboxActionKind::Read { .. }, AgentMailboxActionStatus::InProgress) => {
+            "Reading agent mailbox".to_string()
+        }
+        (AgentMailboxActionKind::Read { messages, .. }, AgentMailboxActionStatus::Succeeded)
+            if messages.is_empty() =>
+        {
+            "No mailbox messages found".to_string()
+        }
+        (AgentMailboxActionKind::Read { messages, .. }, AgentMailboxActionStatus::Succeeded) => {
+            format!(
+                "Read {} mailbox message{}",
+                messages.len(),
+                if messages.len() == 1 { "" } else { "s" }
+            )
+        }
         (AgentMailboxActionKind::Read { .. }, AgentMailboxActionStatus::Failed) => {
             "Failed to read agent mailbox".to_string()
         }
     }
 }
 
-fn agent_mailbox_message_line(
-    message: &AgentMailboxMessagePreview,
-) -> Line<'static> {
+fn agent_mailbox_message_line(message: &AgentMailboxMessagePreview) -> Line<'static> {
     let preview = match &message.content {
         AgentMailboxMessagePreviewContent::Plaintext { preview } => {
             preview.as_deref().unwrap_or("<empty message>").to_string()
@@ -193,7 +188,12 @@ fn agent_mailbox_message_line(
         AgentMailboxMessagePreviewContent::Encrypted => "<encrypted message>".to_string(),
     };
     vec![
-        format!("{} · {}: ", message.sender, category_name(&message.category)).dim(),
+        format!(
+            "{} · {}: ",
+            message.sender,
+            category_name(&message.category)
+        )
+        .dim(),
         preview.into(),
     ]
     .into()

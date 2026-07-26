@@ -1364,9 +1364,9 @@ impl ChatWidget {
                 .downcast_mut::<crate::memory_mutation::MemoryMutationCell>()
             {
                 memory.mark_failed();
-            } else if let Some(action) = cell
-                .as_any_mut()
-                .downcast_mut::<crate::agent_mailbox_action::AgentMailboxActionCell>()
+            } else if let Some(action) =
+                cell.as_any_mut()
+                    .downcast_mut::<crate::agent_mailbox_action::AgentMailboxActionCell>()
             {
                 action.mark_failed();
             }

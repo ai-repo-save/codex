@@ -59,9 +59,7 @@ impl TurnItem {
                 ExtensionItem::Sleep(_)
                 | ExtensionItem::MemoryMutation(_)
                 | ExtensionItem::AgentMailboxAction(_),
-            ) => {
-                CompletedItemPersistence::AllHistoryModes
-            }
+            ) => CompletedItemPersistence::AllHistoryModes,
             Self::UserMessage(_)
             | Self::HookPrompt(_)
             | Self::AgentMessage(_)

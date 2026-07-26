@@ -73,7 +73,10 @@ impl AgentMailboxAction {
     }
 
     pub fn with_recipient(mut self, recipient: String) -> Self {
-        if let AgentMailboxActionKind::Send { recipient: value, .. } = &mut self.action {
+        if let AgentMailboxActionKind::Send {
+            recipient: value, ..
+        } = &mut self.action
+        {
             *value = Some(normalize_agent_path(&recipient));
         }
         self
@@ -136,11 +139,7 @@ pub struct AgentMailboxMessagePreview {
 }
 
 impl AgentMailboxMessagePreview {
-    pub fn plaintext(
-        sender: String,
-        category: AgentMailboxMessageCategory,
-        content: &str,
-    ) -> Self {
+    pub fn plaintext(sender: String, category: AgentMailboxMessageCategory, content: &str) -> Self {
         Self {
             sender: normalize_agent_path(&sender),
             category,
@@ -268,7 +267,9 @@ fn normalize_content(
                 preview: preview.and_then(|preview| first_non_empty_line_preview(&preview)),
             }
         }
-        AgentMailboxMessagePreviewContent::Encrypted => AgentMailboxMessagePreviewContent::Encrypted,
+        AgentMailboxMessagePreviewContent::Encrypted => {
+            AgentMailboxMessagePreviewContent::Encrypted
+        }
     }
 }
 

@@ -4,8 +4,8 @@ use serde_json::json;
 use super::ExtensionItem;
 use super::agent_mailbox_action::AGENT_MAILBOX_ACTION_PREVIEW_MAX_GRAPHEMES;
 use super::agent_mailbox_action::AgentMailboxAction;
-use super::agent_mailbox_action::AgentMailboxMessageCategory;
 use super::agent_mailbox_action::AgentMailboxActionStatus;
+use super::agent_mailbox_action::AgentMailboxMessageCategory;
 use super::agent_mailbox_action::AgentMailboxMessagePreview;
 use super::image_generation::ImageGenerationItem;
 use super::memory_mutation::MEMORY_MUTATION_PATH_MAX_GRAPHEMES;
@@ -77,7 +77,10 @@ fn agent_mailbox_action_preserves_stable_wire_shape() {
 #[test]
 fn restored_agent_mailbox_action_bounds_paths_and_previews() {
     let path = "p".repeat(super::agent_mailbox_action::AGENT_MAILBOX_AGENT_PATH_MAX_GRAPHEMES + 1);
-    let preview = format!("\n  {}\nignored", "v".repeat(AGENT_MAILBOX_ACTION_PREVIEW_MAX_GRAPHEMES + 1));
+    let preview = format!(
+        "\n  {}\nignored",
+        "v".repeat(AGENT_MAILBOX_ACTION_PREVIEW_MAX_GRAPHEMES + 1)
+    );
     let item = serde_json::from_value::<ExtensionItem>(json!({
         "kind": "agent_mailbox.action",
         "id": "mailbox-1",

@@ -18,9 +18,9 @@ use codex_extension_items::agent_mailbox_action::AgentMailboxMessageCategory;
 use codex_extension_items::agent_mailbox_action::AgentMailboxMessagePreview;
 use codex_protocol::ThreadId;
 use codex_state::AgentMailboxCategory;
+use codex_state::AgentMailboxMessage;
 use codex_state::AgentMailboxMessageInput;
 use codex_state::AgentMailboxPayload;
-use codex_state::AgentMailboxMessage;
 use codex_state::AgentMailboxReadRequest;
 use codex_state::MAX_AGENT_MAILBOX_READ_LIMIT;
 use codex_state::StateRuntime;
@@ -178,12 +178,7 @@ impl AgentMailboxTool {
             },
             created_at: Utc::now(),
         };
-        let outcome = match self
-            .state
-            .agent_mailbox()
-            .enqueue(input)
-            .await
-        {
+        let outcome = match self.state.agent_mailbox().enqueue(input).await {
             Ok(outcome) => outcome,
             Err(err) => {
                 invocation
@@ -336,9 +331,11 @@ fn agent_mailbox_message_preview(message: &AgentMailboxMessage) -> AgentMailboxM
         AgentMailboxCategory::ActionRequired => AgentMailboxMessageCategory::ActionRequired,
     };
     match &message.payload {
-        AgentMailboxPayload::Plaintext { content } => {
-            AgentMailboxMessagePreview::plaintext(message.sender_agent_path.clone(), category, content)
-        }
+        AgentMailboxPayload::Plaintext { content } => AgentMailboxMessagePreview::plaintext(
+            message.sender_agent_path.clone(),
+            category,
+            content,
+        ),
         AgentMailboxPayload::Encrypted { .. } => {
             AgentMailboxMessagePreview::encrypted(message.sender_agent_path.clone(), category)
         }

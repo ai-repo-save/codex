@@ -3,9 +3,9 @@ use std::sync::atomic::AtomicBool;
 
 use chrono::DateTime;
 use chrono::Utc;
-use codex_extension_api::AgentMailboxHostHandle;
 use codex_extension_api::AgentMailboxHost;
 use codex_extension_api::AgentMailboxHostError;
+use codex_extension_api::AgentMailboxHostHandle;
 use codex_extension_api::AgentMailboxTarget;
 use codex_extension_api::ExtensionTurnItem;
 use codex_extension_api::FunctionCallError;

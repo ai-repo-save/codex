@@ -6,9 +6,9 @@
 use super::*;
 use codex_utils_path_uri::LegacyAppPathString;
 
+mod agent_mailbox_action;
 mod collaboration;
 pub(super) mod feature_items;
-mod agent_mailbox_action;
 mod memory_mutation;
 
 impl ChatWidget {

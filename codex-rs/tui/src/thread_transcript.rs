@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use crate::agent_mailbox_action::agent_mailbox_action_lines;
 use crate::app_server_session::AppServerSession;
 use crate::git_action_directives::parse_assistant_markdown;
 use crate::history_cell::AgentMarkdownCell;
@@ -11,7 +12,6 @@ use crate::history_cell::ReasoningSummaryCell;
 use crate::history_cell::UserHistoryCell;
 use crate::history_cell::split_reasoning_summary_parts;
 use crate::inline_visualization::InlineVisualizationContext;
-use crate::agent_mailbox_action::agent_mailbox_action_lines;
 use crate::memory_mutation::memory_mutation_summary;
 use crate::multi_agents::collab_tool_summary;
 use crate::multi_agents::sub_agent_activity_summary;
@@ -252,9 +252,7 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
         ThreadItem::MemoryMutation(mutation) => {
             vec![memory_mutation_summary(mutation).dim().into()]
         }
-        ThreadItem::AgentMailboxAction(action) => {
-            agent_mailbox_action_lines(action)
-        }
+        ThreadItem::AgentMailboxAction(action) => agent_mailbox_action_lines(action),
         ThreadItem::WebSearch(item) => {
             vec![vec!["web search: ".dim(), item.query.clone().into()].into()]
         }

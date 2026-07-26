@@ -7,7 +7,6 @@ use app_test_support::create_mock_responses_server_repeating_assistant;
 use app_test_support::to_response;
 use app_test_support::write_models_cache;
 use chrono::Utc;
-use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::AgentMailboxAction;
 use codex_app_server_protocol::AgentMailboxActionKind;
 use codex_app_server_protocol::AgentMailboxActionStatus;
@@ -16,6 +15,7 @@ use codex_app_server_protocol::AgentMailboxMessagePreview;
 use codex_app_server_protocol::AgentMailboxMessagePreviewContent;
 use codex_app_server_protocol::ItemCompletedNotification;
 use codex_app_server_protocol::ItemStartedNotification;
+use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ThreadAgentMailboxGetResponse;
 use codex_app_server_protocol::ThreadAgentMailboxUpdatedNotification;
@@ -377,7 +377,8 @@ async fn wait_for_mailbox_action_started(
             .await?;
         let started: ItemStartedNotification =
             serde_json::from_value(notification.params.expect("item/started params"))?;
-        if matches!(&started.item, ThreadItem::AgentMailboxAction(action) if action.id == action_id) {
+        if matches!(&started.item, ThreadItem::AgentMailboxAction(action) if action.id == action_id)
+        {
             return Ok(started);
         }
     }
@@ -393,7 +394,8 @@ async fn wait_for_mailbox_action_completed(
             .await?;
         let completed: ItemCompletedNotification =
             serde_json::from_value(notification.params.expect("item/completed params"))?;
-        if matches!(&completed.item, ThreadItem::AgentMailboxAction(action) if action.id == action_id) {
+        if matches!(&completed.item, ThreadItem::AgentMailboxAction(action) if action.id == action_id)
+        {
             return Ok(completed);
         }
     }

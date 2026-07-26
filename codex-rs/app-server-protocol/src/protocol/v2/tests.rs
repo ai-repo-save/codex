@@ -2940,9 +2940,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         "review the result",
     )
     .with_recipient("/root/worker".to_string())
-    .with_status(
-        codex_extension_items::agent_mailbox_action::AgentMailboxActionStatus::Succeeded,
-    );
+    .with_status(codex_extension_items::agent_mailbox_action::AgentMailboxActionStatus::Succeeded);
     assert_eq!(
         ThreadItem::from(TurnItem::Extension(
             codex_extension_items::ExtensionItem::AgentMailboxAction(mailbox_send),
@@ -2962,9 +2960,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
     let mailbox_action = codex_extension_items::agent_mailbox_action::AgentMailboxAction::read(
         "mailbox-read-1".to_string(),
         Some("/root/worker".to_string()),
-        Some(
-            codex_extension_items::agent_mailbox_action::AgentMailboxMessageCategory::Result,
-        ),
+        Some(codex_extension_items::agent_mailbox_action::AgentMailboxMessageCategory::Result),
         3,
     )
     .with_messages(vec![
@@ -2978,9 +2974,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             codex_extension_items::agent_mailbox_action::AgentMailboxMessageCategory::Result,
         ),
     ])
-    .with_status(
-        codex_extension_items::agent_mailbox_action::AgentMailboxActionStatus::Succeeded,
-    );
+    .with_status(codex_extension_items::agent_mailbox_action::AgentMailboxActionStatus::Succeeded);
     assert_eq!(
         ThreadItem::from(TurnItem::Extension(
             codex_extension_items::ExtensionItem::AgentMailboxAction(mailbox_action),

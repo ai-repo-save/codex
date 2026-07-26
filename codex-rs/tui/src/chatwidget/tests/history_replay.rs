@@ -196,9 +196,10 @@ async fn replayed_agent_mailbox_action_renders_history() {
                 messages: vec![codex_app_server_protocol::AgentMailboxMessagePreview {
                     sender: "/root/research".to_string(),
                     category: codex_app_server_protocol::AgentMailboxMessageCategory::Result,
-                    content: codex_app_server_protocol::AgentMailboxMessagePreviewContent::Plaintext {
-                        preview: Some("The implementation is ready.".to_string()),
-                    },
+                    content:
+                        codex_app_server_protocol::AgentMailboxMessagePreviewContent::Plaintext {
+                            preview: Some("The implementation is ready.".to_string()),
+                        },
                 }],
             },
         }),

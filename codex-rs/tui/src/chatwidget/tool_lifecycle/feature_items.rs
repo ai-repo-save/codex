@@ -19,11 +19,15 @@ impl ChatWidget {
             {
                 self.on_agent_mailbox_action_started(item);
             }
-            item @ ThreadItem::AgentMailboxAction(codex_app_server_protocol::AgentMailboxAction {
-                status: codex_app_server_protocol::AgentMailboxActionStatus::InProgress,
-                ..
-            }) => self.on_agent_mailbox_action_started(item),
-            item @ ThreadItem::AgentMailboxAction(_) => self.on_agent_mailbox_action_completed(item),
+            item @ ThreadItem::AgentMailboxAction(
+                codex_app_server_protocol::AgentMailboxAction {
+                    status: codex_app_server_protocol::AgentMailboxActionStatus::InProgress,
+                    ..
+                },
+            ) => self.on_agent_mailbox_action_started(item),
+            item @ ThreadItem::AgentMailboxAction(_) => {
+                self.on_agent_mailbox_action_completed(item)
+            }
             item @ ThreadItem::MemoryMutation(_)
                 if matches!(lifecycle, FeatureItemLifecycle::Started) =>
             {

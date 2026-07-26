@@ -149,7 +149,9 @@ pub enum AgentMailboxMessagePreviewContent {
 impl From<CoreAgentMailboxMessagePreviewContent> for AgentMailboxMessagePreviewContent {
     fn from(value: CoreAgentMailboxMessagePreviewContent) -> Self {
         match value {
-            CoreAgentMailboxMessagePreviewContent::Plaintext { preview } => Self::Plaintext { preview },
+            CoreAgentMailboxMessagePreviewContent::Plaintext { preview } => {
+                Self::Plaintext { preview }
+            }
             CoreAgentMailboxMessagePreviewContent::Encrypted => Self::Encrypted,
         }
     }
