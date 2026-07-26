@@ -1,4 +1,5 @@
 use crate::audio_preparation::estimate_audio_token_count;
+use crate::context::ContextRewindCarryForward;
 use crate::context::ContextualUserFragment;
 use crate::context::world_state::WorldState;
 use crate::context::world_state::WorldStateSnapshot;
@@ -421,6 +422,17 @@ impl ContextManager {
                         self.reference_context_item = None;
                     }
                     cut_idx -= 1;
+                }
+                ResponseItem::Message { role, content, .. }
+                    if role == "user"
+                        && content.iter().any(|content_item| match content_item {
+                            ContentItem::InputText { text } => {
+                                ContextRewindCarryForward::matches_text(text)
+                            }
+                            _ => false,
+                        }) =>
+                {
+                    break;
                 }
                 ResponseItem::Message { role, content, .. }
                     if role == "user" && is_contextual_user_message_content(content) =>

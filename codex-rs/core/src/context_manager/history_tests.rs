@@ -1,4 +1,6 @@
 use super::*;
+use crate::context::ContextRewindCarryForward;
+use crate::context::ContextRewindInstructions;
 use crate::context::UserInstructions;
 use crate::context::world_state::WorldState;
 use crate::context::world_state::WorldStateSection;
@@ -1096,6 +1098,38 @@ fn drop_last_n_user_turns_trims_context_updates_above_rolled_back_turn() {
         serde_json::to_value(Some(reference_context_item))
             .expect("serialize expected reference context item")
     );
+}
+
+#[test]
+fn drop_last_n_user_turns_preserves_committed_rewind_task_state() {
+    let rewind_instructions = ContextualUserFragment::into(ContextRewindInstructions);
+    let carry_forward = ContextualUserFragment::into(ContextRewindCarryForward::new(
+        "consumed-anchor",
+        /*replacement_anchor_id*/ Some("replacement-anchor".to_string()),
+        /*dropped_turns*/ 1,
+        /*response_items_reclaimed*/ 2,
+        /*approx_tokens_reclaimed*/ 20,
+        /*reclaim_threshold_percent*/ 20,
+        /*reclaim_threshold_tokens*/ Some(100),
+        /*reclaim_threshold_met*/ Some(false),
+        "continue the current task",
+    ));
+    let retained_history = vec![
+        user_input_text_msg("turn 1 user"),
+        assistant_msg("turn 1 assistant"),
+        rewind_instructions,
+        carry_forward,
+    ];
+    let mut items = retained_history.clone();
+    items.extend([
+        user_input_text_msg("turn 2 user"),
+        assistant_msg("turn 2 assistant"),
+    ]);
+
+    let mut history = create_history_with_items(items);
+    history.drop_last_n_user_turns(/*num_turns*/ 1);
+
+    assert_eq!(history.raw_items(), retained_history);
 }
 
 #[test]
