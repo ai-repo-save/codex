@@ -1230,7 +1230,8 @@ async fn live_app_server_agent_mailbox_actions_render_history() {
 • Sending mailbox message
   └ Recipient: /root/research
     Category: progress
-    Preview: I found the integration point.
+    Preview: I found the integration
+    point.
 "###);
 
     for notification in [
