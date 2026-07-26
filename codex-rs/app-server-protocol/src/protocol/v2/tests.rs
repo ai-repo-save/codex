@@ -2933,6 +2933,83 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         })
     );
 
+    let mailbox_send = codex_extension_items::agent_mailbox_action::AgentMailboxAction::send(
+        "mailbox-send-1".to_string(),
+        "/root/worker".to_string(),
+        codex_extension_items::agent_mailbox_action::AgentMailboxMessageCategory::ActionRequired,
+        "review the result",
+    )
+    .with_recipient("/root/worker".to_string())
+    .with_status(
+        codex_extension_items::agent_mailbox_action::AgentMailboxActionStatus::Succeeded,
+    );
+    assert_eq!(
+        ThreadItem::from(TurnItem::Extension(
+            codex_extension_items::ExtensionItem::AgentMailboxAction(mailbox_send),
+        )),
+        ThreadItem::AgentMailboxAction(AgentMailboxAction {
+            id: "mailbox-send-1".to_string(),
+            status: AgentMailboxActionStatus::Succeeded,
+            action: AgentMailboxActionKind::Send {
+                target: "/root/worker".to_string(),
+                recipient: Some("/root/worker".to_string()),
+                category: AgentMailboxMessageCategory::ActionRequired,
+                preview: Some("review the result".to_string()),
+            },
+        })
+    );
+
+    let mailbox_action = codex_extension_items::agent_mailbox_action::AgentMailboxAction::read(
+        "mailbox-read-1".to_string(),
+        Some("/root/worker".to_string()),
+        Some(
+            codex_extension_items::agent_mailbox_action::AgentMailboxMessageCategory::Result,
+        ),
+        3,
+    )
+    .with_messages(vec![
+        codex_extension_items::agent_mailbox_action::AgentMailboxMessagePreview::plaintext(
+            "/root/worker".to_string(),
+            codex_extension_items::agent_mailbox_action::AgentMailboxMessageCategory::Result,
+            "finished the focused work",
+        ),
+        codex_extension_items::agent_mailbox_action::AgentMailboxMessagePreview::encrypted(
+            "/root/private".to_string(),
+            codex_extension_items::agent_mailbox_action::AgentMailboxMessageCategory::Result,
+        ),
+    ])
+    .with_status(
+        codex_extension_items::agent_mailbox_action::AgentMailboxActionStatus::Succeeded,
+    );
+    assert_eq!(
+        ThreadItem::from(TurnItem::Extension(
+            codex_extension_items::ExtensionItem::AgentMailboxAction(mailbox_action),
+        )),
+        ThreadItem::AgentMailboxAction(AgentMailboxAction {
+            id: "mailbox-read-1".to_string(),
+            status: AgentMailboxActionStatus::Succeeded,
+            action: AgentMailboxActionKind::Read {
+                sender: Some("/root/worker".to_string()),
+                category: Some(AgentMailboxMessageCategory::Result),
+                limit: 3,
+                messages: vec![
+                    AgentMailboxMessagePreview {
+                        sender: "/root/worker".to_string(),
+                        category: AgentMailboxMessageCategory::Result,
+                        content: AgentMailboxMessagePreviewContent::Plaintext {
+                            preview: Some("finished the focused work".to_string()),
+                        },
+                    },
+                    AgentMailboxMessagePreview {
+                        sender: "/root/private".to_string(),
+                        category: AgentMailboxMessageCategory::Result,
+                        content: AgentMailboxMessagePreviewContent::Encrypted,
+                    },
+                ],
+            },
+        })
+    );
+
     let image_view_item = TurnItem::ImageView(ImageViewItem {
         id: "view-image-1".to_string(),
         path: PathUri::from_abs_path(&test_path_buf("/tmp/view-image.png").abs()),

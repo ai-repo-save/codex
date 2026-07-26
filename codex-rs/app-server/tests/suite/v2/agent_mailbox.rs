@@ -8,9 +8,20 @@ use app_test_support::to_response;
 use app_test_support::write_models_cache;
 use chrono::Utc;
 use codex_app_server_protocol::JSONRPCResponse;
+use codex_app_server_protocol::AgentMailboxAction;
+use codex_app_server_protocol::AgentMailboxActionKind;
+use codex_app_server_protocol::AgentMailboxActionStatus;
+use codex_app_server_protocol::AgentMailboxMessageCategory;
+use codex_app_server_protocol::AgentMailboxMessagePreview;
+use codex_app_server_protocol::AgentMailboxMessagePreviewContent;
+use codex_app_server_protocol::ItemCompletedNotification;
+use codex_app_server_protocol::ItemStartedNotification;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ThreadAgentMailboxGetResponse;
 use codex_app_server_protocol::ThreadAgentMailboxUpdatedNotification;
+use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadReadParams;
+use codex_app_server_protocol::ThreadReadResponse;
 use codex_app_server_protocol::ThreadResumeParams;
 use codex_app_server_protocol::ThreadResumeResponse;
 use codex_app_server_protocol::ThreadStartParams;
@@ -221,7 +232,60 @@ async fn agent_mailbox_body_reaches_parent_only_after_explicit_read() -> Result<
     assert_eq!(mailbox_update.mailbox.revision, 1);
 
     start_turn(&mut app_server, &thread.id, PARENT_READ_PROMPT).await?;
+    let read_started = wait_for_mailbox_action_started(&mut app_server, READ_CALL_ID).await?;
+    assert_eq!(
+        read_started.item,
+        ThreadItem::AgentMailboxAction(AgentMailboxAction {
+            id: READ_CALL_ID.to_string(),
+            status: AgentMailboxActionStatus::InProgress,
+            action: AgentMailboxActionKind::Read {
+                sender: None,
+                category: None,
+                limit: 1,
+                messages: Vec::new(),
+            },
+        })
+    );
+    let read_completed = wait_for_mailbox_action_completed(&mut app_server, READ_CALL_ID).await?;
+    let expected_read_item = ThreadItem::AgentMailboxAction(AgentMailboxAction {
+        id: READ_CALL_ID.to_string(),
+        status: AgentMailboxActionStatus::Succeeded,
+        action: AgentMailboxActionKind::Read {
+            sender: None,
+            category: None,
+            limit: 1,
+            messages: vec![AgentMailboxMessagePreview {
+                sender: "/root/mailbox_worker".to_string(),
+                category: AgentMailboxMessageCategory::Result,
+                content: AgentMailboxMessagePreviewContent::Plaintext {
+                    preview: Some(MESSAGE_BODY.to_string()),
+                },
+            }],
+        },
+    });
+    assert_eq!(read_completed.item, expected_read_item.clone());
     wait_for_turn_completion(&mut app_server, &thread.id).await?;
+
+    let read_request_id = app_server
+        .send_thread_read_request(ThreadReadParams {
+            thread_id: thread.id.clone(),
+            include_turns: true,
+        })
+        .await?;
+    let read_response: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        app_server.read_stream_until_response_message(RequestId::Integer(read_request_id)),
+    )
+    .await??;
+    let history = to_response::<ThreadReadResponse>(read_response)?.thread;
+    assert!(
+        history
+            .turns
+            .iter()
+            .flat_map(|turn| &turn.items)
+            .any(|item| item == &expected_read_item),
+        "thread/read(includeTurns=true) should retain the completed mailbox read action"
+    );
 
     let requests = server
         .received_requests()
@@ -301,6 +365,38 @@ async fn wait_for_turn_completion(app_server: &mut TestAppServer, thread_id: &st
     })
     .await??;
     Ok(())
+}
+
+async fn wait_for_mailbox_action_started(
+    app_server: &mut TestAppServer,
+    action_id: &str,
+) -> Result<ItemStartedNotification> {
+    loop {
+        let notification = app_server
+            .read_stream_until_notification_message("item/started")
+            .await?;
+        let started: ItemStartedNotification =
+            serde_json::from_value(notification.params.expect("item/started params"))?;
+        if matches!(&started.item, ThreadItem::AgentMailboxAction(action) if action.id == action_id) {
+            return Ok(started);
+        }
+    }
+}
+
+async fn wait_for_mailbox_action_completed(
+    app_server: &mut TestAppServer,
+    action_id: &str,
+) -> Result<ItemCompletedNotification> {
+    loop {
+        let notification = app_server
+            .read_stream_until_notification_message("item/completed")
+            .await?;
+        let completed: ItemCompletedNotification =
+            serde_json::from_value(notification.params.expect("item/completed params"))?;
+        if matches!(&completed.item, ThreadItem::AgentMailboxAction(action) if action.id == action_id) {
+            return Ok(completed);
+        }
+    }
 }
 
 async fn wait_for_mailbox_update(

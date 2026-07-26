@@ -1,4 +1,5 @@
 use super::AdditionalPermissionProfile;
+use super::AgentMailboxAction;
 use super::ExecPolicyAmendment;
 use super::McpToolCallError;
 use super::McpToolCallResult;
@@ -393,6 +394,7 @@ pub enum ThreadItem {
         service_tier: Option<String>,
         context_inheritance: Option<SpawnContextInheritance>,
     },
+    AgentMailboxAction(AgentMailboxAction),
     MemoryMutation(MemoryMutation),
     WebSearch(WebSearchItem),
     #[serde(rename_all = "camelCase")]
@@ -483,6 +485,7 @@ impl ThreadItem {
             | ThreadItem::ContextCompaction { id, .. }
             | ThreadItem::ContextAnchorSaved { id, .. }
             | ThreadItem::ContextAnchorRewound { id, .. } => id,
+            ThreadItem::AgentMailboxAction(item) => &item.id,
             ThreadItem::MemoryMutation(item) => &item.id,
             ThreadItem::WebSearch(item) => &item.id,
             ThreadItem::Sleep(item) => &item.id,
@@ -941,6 +944,7 @@ impl From<CoreTurnItem> for ThreadItem {
                 ExtensionItem::Sleep(item) => ThreadItem::Sleep(item),
                 ExtensionItem::WebSearch(item) => ThreadItem::WebSearch(item),
                 ExtensionItem::MemoryMutation(item) => ThreadItem::MemoryMutation(item.into()),
+                ExtensionItem::AgentMailboxAction(item) => ThreadItem::AgentMailboxAction(item.into()),
             },
             CoreTurnItem::ImageGeneration(image) => {
                 ThreadItem::ImageGeneration(ImageGenerationItem {
