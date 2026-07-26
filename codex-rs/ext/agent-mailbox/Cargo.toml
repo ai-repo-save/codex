@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 chrono = { workspace = true }
 codex-extension-api = { workspace = true }
+codex-extension-items = { workspace = true }
 codex-protocol = { workspace = true }
 codex-state = { workspace = true }
 codex-tools = { workspace = true }

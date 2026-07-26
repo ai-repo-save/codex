@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use codex_extension_api::AgentMailboxHostHandle;
+use codex_extension_api::ExtensionTurnItem;
 use codex_extension_api::FunctionCallError;
 use codex_extension_api::JsonToolOutput;
 use codex_extension_api::ResponsesApiTool;
@@ -10,10 +11,16 @@ use codex_extension_api::ToolExecutor;
 use codex_extension_api::ToolName;
 use codex_extension_api::ToolOutput;
 use codex_extension_api::ToolSpec;
+use codex_extension_items::ExtensionItem;
+use codex_extension_items::agent_mailbox_action::AgentMailboxAction;
+use codex_extension_items::agent_mailbox_action::AgentMailboxActionStatus;
+use codex_extension_items::agent_mailbox_action::AgentMailboxMessageCategory;
+use codex_extension_items::agent_mailbox_action::AgentMailboxMessagePreview;
 use codex_protocol::ThreadId;
 use codex_state::AgentMailboxCategory;
 use codex_state::AgentMailboxMessageInput;
 use codex_state::AgentMailboxPayload;
+use codex_state::AgentMailboxMessage;
 use codex_state::AgentMailboxReadRequest;
 use codex_state::MAX_AGENT_MAILBOX_READ_LIMIT;
 use codex_state::StateRuntime;
@@ -131,11 +138,32 @@ impl AgentMailboxTool {
             ));
         }
         validate_payload_bytes(message.len()).map_err(FunctionCallError::RespondToModel)?;
-        let target = self
+        let action = AgentMailboxAction::send(
+            invocation.call_id.clone(),
+            args.target.trim().to_string(),
+            mailbox_category(args.category),
+            message,
+        );
+        invocation
+            .turn_item_emitter
+            .emit_started(agent_mailbox_action_turn_item(action.clone()))
+            .await;
+        let target = match self
             .host
             .resolve_target(self.runtime.thread_id, args.target.trim())
             .await
-            .map_err(|err| FunctionCallError::RespondToModel(err.to_string()))?;
+        {
+            Ok(target) => target,
+            Err(err) => {
+                invocation
+                    .turn_item_emitter
+                    .emit_completed(agent_mailbox_action_turn_item(
+                        action.with_status(AgentMailboxActionStatus::Failed),
+                    ))
+                    .await;
+                return Err(FunctionCallError::RespondToModel(err.to_string()));
+            }
+        };
         let message_id = Uuid::new_v4().to_string();
         let input = AgentMailboxMessageInput {
             id: message_id,
@@ -150,16 +178,27 @@ impl AgentMailboxTool {
             },
             created_at: Utc::now(),
         };
-        let outcome = self
+        let outcome = match self
             .state
             .agent_mailbox()
             .enqueue(input)
             .await
-            .map_err(|err| {
-                FunctionCallError::RespondToModel(format!(
+        {
+            Ok(outcome) => outcome,
+            Err(err) => {
+                invocation
+                    .turn_item_emitter
+                    .emit_completed(agent_mailbox_action_turn_item(
+                        action
+                            .with_recipient(target.agent_path.to_string())
+                            .with_status(AgentMailboxActionStatus::Failed),
+                    ))
+                    .await;
+                return Err(FunctionCallError::RespondToModel(format!(
                     "failed to enqueue agent mailbox message: {err}"
-                ))
-            })?;
+                )));
+            }
+        };
         self.notifier
             .status_updated(target.thread_id, outcome.snapshot.clone());
         if let Err(err) = self.host.notify_activity(target.thread_id).await {
@@ -168,6 +207,14 @@ impl AgentMailboxTool {
                 target.thread_id
             );
         }
+        invocation
+            .turn_item_emitter
+            .emit_completed(agent_mailbox_action_turn_item(
+                action
+                    .with_recipient(target.agent_path.to_string())
+                    .with_status(AgentMailboxActionStatus::Succeeded),
+            ))
+            .await;
         Ok(Box::new(JsonToolOutput::new(json!({
             "id": outcome.message.id,
             "recipient": outcome.message.recipient_agent_path,
@@ -181,9 +228,34 @@ impl AgentMailboxTool {
     ) -> Result<Box<dyn ToolOutput>, FunctionCallError> {
         let args: ReadArgs = parse_args(invocation)?;
         let limit = read_limit(args.limit)?;
+        let action = AgentMailboxAction::read(
+            invocation.call_id.clone(),
+            args.sender
+                .as_deref()
+                .map(str::trim)
+                .filter(|sender| !sender.is_empty())
+                .map(str::to_string),
+            args.category.map(mailbox_category),
+            limit,
+        );
+        invocation
+            .turn_item_emitter
+            .emit_started(agent_mailbox_action_turn_item(action.clone()))
+            .await;
         let (sender_thread_id, sender_agent_path) =
-            sender_filter(self.runtime.as_ref(), args.sender.as_deref())?;
-        let outcome = self
+            match sender_filter(self.runtime.as_ref(), args.sender.as_deref()) {
+                Ok(filters) => filters,
+                Err(err) => {
+                    invocation
+                        .turn_item_emitter
+                        .emit_completed(agent_mailbox_action_turn_item(
+                            action.with_status(AgentMailboxActionStatus::Failed),
+                        ))
+                        .await;
+                    return Err(err);
+                }
+            };
+        let outcome = match self
             .state
             .agent_mailbox()
             .consume_fitting_prefix(
@@ -204,19 +276,72 @@ impl AgentMailboxTool {
                 },
             )
             .await
-            .map_err(|err| {
-                FunctionCallError::RespondToModel(format!(
+        {
+            Ok(outcome) => outcome,
+            Err(err) => {
+                invocation
+                    .turn_item_emitter
+                    .emit_completed(agent_mailbox_action_turn_item(
+                        action.with_status(AgentMailboxActionStatus::Failed),
+                    ))
+                    .await;
+                return Err(FunctionCallError::RespondToModel(format!(
                     "failed to read agent mailbox messages: {err}"
-                ))
-            })?;
+                )));
+            }
+        };
         if !outcome.messages.is_empty() {
             self.notifier
                 .status_updated(self.runtime.thread_id, outcome.snapshot.clone());
         }
+        let messages = outcome
+            .messages
+            .iter()
+            .map(agent_mailbox_message_preview)
+            .collect();
+        invocation
+            .turn_item_emitter
+            .emit_completed(agent_mailbox_action_turn_item(
+                action
+                    .with_messages(messages)
+                    .with_status(AgentMailboxActionStatus::Succeeded),
+            ))
+            .await;
         Ok(Box::new(AgentMailboxReadOutput::new(
             outcome.messages,
             outcome.snapshot,
         )))
+    }
+}
+
+fn agent_mailbox_action_turn_item(item: AgentMailboxAction) -> ExtensionTurnItem {
+    ExtensionTurnItem {
+        item: ExtensionItem::AgentMailboxAction(item),
+        legacy_events: Vec::new(),
+    }
+}
+
+fn mailbox_category(category: AgentMailboxCategoryArg) -> AgentMailboxMessageCategory {
+    match category {
+        AgentMailboxCategoryArg::Progress => AgentMailboxMessageCategory::Progress,
+        AgentMailboxCategoryArg::Result => AgentMailboxMessageCategory::Result,
+        AgentMailboxCategoryArg::ActionRequired => AgentMailboxMessageCategory::ActionRequired,
+    }
+}
+
+fn agent_mailbox_message_preview(message: &AgentMailboxMessage) -> AgentMailboxMessagePreview {
+    let category = match message.category {
+        AgentMailboxCategory::Progress => AgentMailboxMessageCategory::Progress,
+        AgentMailboxCategory::Result => AgentMailboxMessageCategory::Result,
+        AgentMailboxCategory::ActionRequired => AgentMailboxMessageCategory::ActionRequired,
+    };
+    match &message.payload {
+        AgentMailboxPayload::Plaintext { content } => {
+            AgentMailboxMessagePreview::plaintext(message.sender_agent_path.clone(), category, content)
+        }
+        AgentMailboxPayload::Encrypted { .. } => {
+            AgentMailboxMessagePreview::encrypted(message.sender_agent_path.clone(), category)
+        }
     }
 }
 

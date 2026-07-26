@@ -2,6 +2,11 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 
 use super::ExtensionItem;
+use super::agent_mailbox_action::AGENT_MAILBOX_ACTION_PREVIEW_MAX_GRAPHEMES;
+use super::agent_mailbox_action::AgentMailboxAction;
+use super::agent_mailbox_action::AgentMailboxMessageCategory;
+use super::agent_mailbox_action::AgentMailboxActionStatus;
+use super::agent_mailbox_action::AgentMailboxMessagePreview;
 use super::image_generation::ImageGenerationItem;
 use super::memory_mutation::MEMORY_MUTATION_PATH_MAX_GRAPHEMES;
 use super::memory_mutation::MEMORY_MUTATION_PREVIEW_MAX_GRAPHEMES;
@@ -21,6 +26,85 @@ fn completed_image_generation_item() -> ExtensionItem {
         result: "cG5n".to_string(),
         saved_path: None,
     })
+}
+
+#[test]
+fn agent_mailbox_action_preserves_stable_wire_shape() {
+    let item = ExtensionItem::AgentMailboxAction(
+        AgentMailboxAction::read(
+            "mailbox-1".to_string(),
+            Some("/root/worker".to_string()),
+            Some(AgentMailboxMessageCategory::Result),
+            2,
+        )
+        .with_messages(vec![AgentMailboxMessagePreview::plaintext(
+            "/root/worker".to_string(),
+            AgentMailboxMessageCategory::Result,
+            "  completed\twork\nignored",
+        )])
+        .with_status(AgentMailboxActionStatus::Succeeded),
+    );
+    let value = serde_json::to_value(&item).expect("serialize extension item");
+
+    assert_eq!(
+        value,
+        json!({
+            "kind": "agent_mailbox.action",
+            "id": "mailbox-1",
+            "status": "succeeded",
+            "action": {
+                "type": "read",
+                "sender": "/root/worker",
+                "category": "result",
+                "limit": 2,
+                "messages": [{
+                    "sender": "/root/worker",
+                    "category": "result",
+                    "content": {
+                        "type": "plaintext",
+                        "preview": "completed work",
+                    },
+                }],
+            },
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<ExtensionItem>(value).expect("deserialize extension item"),
+        item
+    );
+}
+
+#[test]
+fn restored_agent_mailbox_action_bounds_paths_and_previews() {
+    let path = "p".repeat(super::agent_mailbox_action::AGENT_MAILBOX_AGENT_PATH_MAX_GRAPHEMES + 1);
+    let preview = format!("\n  {}\nignored", "v".repeat(AGENT_MAILBOX_ACTION_PREVIEW_MAX_GRAPHEMES + 1));
+    let item = serde_json::from_value::<ExtensionItem>(json!({
+        "kind": "agent_mailbox.action",
+        "id": "mailbox-1",
+        "status": "succeeded",
+        "action": {
+            "type": "send",
+            "target": path,
+            "recipient": path,
+            "category": "result",
+            "preview": preview,
+        },
+    }))
+    .expect("deserialize agent mailbox action");
+    let value = serde_json::to_value(item).expect("serialize restored mailbox action");
+
+    assert_eq!(
+        value["action"]["target"],
+        json!("p".repeat(super::agent_mailbox_action::AGENT_MAILBOX_AGENT_PATH_MAX_GRAPHEMES))
+    );
+    assert_eq!(
+        value["action"]["recipient"],
+        json!("p".repeat(super::agent_mailbox_action::AGENT_MAILBOX_AGENT_PATH_MAX_GRAPHEMES))
+    );
+    assert_eq!(
+        value["action"]["preview"],
+        json!("v".repeat(AGENT_MAILBOX_ACTION_PREVIEW_MAX_GRAPHEMES))
+    );
 }
 
 #[test]

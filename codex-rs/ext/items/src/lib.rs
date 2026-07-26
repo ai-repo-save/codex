@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
 
+pub mod agent_mailbox_action;
 pub mod image_generation;
 pub mod memory_mutation;
 pub mod sleep;
@@ -34,6 +35,9 @@ pub mod web_search;
 #[serde(tag = "kind")]
 #[ts(tag = "kind")]
 pub enum ExtensionItem {
+    #[serde(rename = "agent_mailbox.action")]
+    #[ts(rename = "agent_mailbox.action")]
+    AgentMailboxAction(agent_mailbox_action::AgentMailboxAction),
     #[serde(rename = "image_gen.generation")]
     #[ts(rename = "image_gen.generation")]
     ImageGeneration(image_generation::ImageGenerationItem),
@@ -53,6 +57,7 @@ impl ExtensionItem {
     /// core or rollout persistence.
     pub fn id(&self) -> &str {
         match self {
+            Self::AgentMailboxAction(item) => item.id(),
             Self::ImageGeneration(item) => &item.id,
             Self::Sleep(item) => &item.id,
             Self::WebSearch(item) => &item.id,

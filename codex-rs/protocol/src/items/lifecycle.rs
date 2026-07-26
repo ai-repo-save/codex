@@ -55,7 +55,11 @@ impl TurnItem {
     pub fn lifecycle_policy(&self) -> TurnItemLifecyclePolicy {
         let completed_item_persistence = match self {
             Self::Plan(_)
-            | Self::Extension(ExtensionItem::Sleep(_) | ExtensionItem::MemoryMutation(_)) => {
+            | Self::Extension(
+                ExtensionItem::Sleep(_)
+                | ExtensionItem::MemoryMutation(_)
+                | ExtensionItem::AgentMailboxAction(_),
+            ) => {
                 CompletedItemPersistence::AllHistoryModes
             }
             Self::UserMessage(_)
