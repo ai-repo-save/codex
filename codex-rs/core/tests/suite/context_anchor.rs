@@ -131,15 +131,11 @@ fn assert_rewind_task_control(request: &core_test_support::responses::ResponsesR
     assert_eq!(instruction_indexes.len(), 1);
     assert_eq!(note_indexes.len(), 1);
     assert_eq!(instruction_indexes[0] + 1, note_indexes[0]);
-    assert!(
-        !input
-            .iter()
-            .any(|item| input_message_contains_text(
-                item,
-                "developer",
-                SUCCESSFUL_REWIND_NOTE
-            ))
-    );
+    assert!(!input.iter().any(|item| input_message_contains_text(
+        item,
+        "developer",
+        SUCCESSFUL_REWIND_NOTE
+    )));
 }
 
 async fn submit_turn_with_mode(test: &TestCodex, prompt: &str, mode: ModeKind) -> Result<()> {
