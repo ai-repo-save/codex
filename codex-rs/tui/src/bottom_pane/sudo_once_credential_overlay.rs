@@ -92,7 +92,7 @@ impl std::fmt::Debug for SecretInput {
 }
 
 pub(crate) struct SudoOnceCredentialOverlay {
-    command: Arc<SudoOnceCommand>,
+    _command: Arc<SudoOnceCommand>,
     attempt: u32,
     responder: Option<SudoOnceCredentialResponder>,
     input: SecretInput,
@@ -105,7 +105,7 @@ impl SudoOnceCredentialOverlay {
         responder: SudoOnceCredentialResponder,
     ) -> Self {
         Self {
-            command,
+            _command: command,
             attempt,
             responder: Some(responder),
             input: SecretInput::new(),

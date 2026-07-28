@@ -27,18 +27,21 @@ async fn approved_broker() -> (
 ) {
     let (broker, mut prompts) = LocalSudoOnceBroker::new();
     let command = command();
-    let approval = broker.request_approval(Arc::clone(&command));
-    tokio::pin!(approval);
-    let prompt = tokio::select! {
-        prompt = prompts.recv() => prompt,
-        _ = &mut approval => panic!("approval resolved before the prompt"),
+    let grant = {
+        let approval_broker = broker.clone();
+        let approval = approval_broker.request_approval(Arc::clone(&command));
+        tokio::pin!(approval);
+        let prompt = tokio::select! {
+            prompt = prompts.recv() => prompt,
+            _ = &mut approval => panic!("approval resolved before the prompt"),
+        };
+        let Some(SudoOncePrompt::Approval(prompt)) = prompt else {
+            panic!("expected approval prompt");
+        };
+        let (_, responder) = prompt.into_parts();
+        assert!(responder.approve());
+        approval.await.expect("grant")
     };
-    let Some(SudoOncePrompt::Approval(prompt)) = prompt else {
-        panic!("expected approval prompt");
-    };
-    let (_, responder) = prompt.into_parts();
-    assert!(responder.approve());
-    let grant = approval.await.expect("grant");
     (broker, prompts, grant)
 }
 
