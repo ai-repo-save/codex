@@ -73,6 +73,8 @@ mod selected_environment;
 mod session_end;
 mod skills_list;
 mod sleep;
+#[cfg(target_os = "linux")]
+mod sudo_once;
 mod thread_archive;
 mod thread_delete;
 mod thread_fork;
