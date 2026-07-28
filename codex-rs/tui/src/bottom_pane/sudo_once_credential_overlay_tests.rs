@@ -41,13 +41,24 @@ fn credential_is_masked_and_never_serialized_with_the_command() {
     let rendered = render_overlay(&overlay);
     assert!(!rendered.contains(TEST_CREDENTIAL));
     assert!(rendered.contains("********"));
+    insta::assert_snapshot!(rendered);
+    overlay.handle_key_event(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
     overlay.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     let event = rx.try_recv().expect("credential response should be sent");
     let AppEvent::SubmitThreadOp { op, .. } = event else {
         panic!("expected a thread-scoped credential response");
     };
-    assert!(matches!(op, AppCommand::SudoOnceCredential { .. }));
+    let AppCommand::SudoOnceCredential { credential, .. } = &op else {
+        panic!("expected a sudo credential response");
+    };
+    assert_eq!(
+        credential
+            .take()
+            .expect("submitted credential should be present")
+            .expose_secret(),
+        "passwor"
+    );
     assert!(!format!("{op:?}").contains(TEST_CREDENTIAL));
     assert!(
         !serde_json::to_string(&op)

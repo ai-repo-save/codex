@@ -1,21 +1,22 @@
 use crate::app::app_server_requests::ResolvedAppServerRequest;
 use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::BottomPaneView;
-use crate::bottom_pane::chat_composer::ChatComposer;
-use crate::bottom_pane::chat_composer::ChatComposerConfig;
-use crate::bottom_pane::chat_composer::InputResult;
 use crate::render::renderable::Renderable;
 use codex_app_server_protocol::SudoOnceCredential;
 use codex_protocol::ThreadId;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
+use crossterm::event::KeyModifiers;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Widget;
+use unicode_width::UnicodeWidthStr;
+use zeroize::Zeroize;
+use zeroize::Zeroizing;
 
 pub(crate) struct SudoOnceCredentialRequest {
     pub thread_id: ThreadId,
@@ -26,7 +27,7 @@ pub(crate) struct SudoOnceCredentialRequest {
 pub(crate) struct SudoOnceCredentialOverlay {
     request: SudoOnceCredentialRequest,
     app_event_tx: AppEventSender,
-    composer: ChatComposer,
+    input: Zeroizing<String>,
     done: bool,
 }
 
@@ -34,30 +35,26 @@ impl SudoOnceCredentialOverlay {
     pub(crate) fn new(
         request: SudoOnceCredentialRequest,
         app_event_tx: AppEventSender,
-        has_input_focus: bool,
-        enhanced_keys_supported: bool,
-        disable_paste_burst: bool,
+        _has_input_focus: bool,
+        _enhanced_keys_supported: bool,
+        _disable_paste_burst: bool,
     ) -> Self {
-        let mut composer = ChatComposer::new_with_config(
-            has_input_focus,
-            app_event_tx.clone(),
-            enhanced_keys_supported,
-            "Sudo password".to_string(),
-            disable_paste_burst,
-            ChatComposerConfig::plain_text(),
-        );
-        composer.set_footer_hint_override(Some(Vec::new()));
         Self {
             request,
             app_event_tx,
-            composer,
+            input: Zeroizing::new(String::new()),
             done: false,
         }
     }
+
     fn clear(&mut self) {
-        self.composer
-            .set_text_content(String::new(), Vec::new(), Vec::new());
+        self.input.zeroize();
     }
+
+    fn take_credential(&mut self) -> SudoOnceCredential {
+        SudoOnceCredential::new(std::mem::take(&mut *self.input))
+    }
+
     fn submit(&mut self, credential: Option<SudoOnceCredential>) {
         if self.done {
             return;
@@ -81,13 +78,35 @@ impl BottomPaneView for SudoOnceCredentialOverlay {
         if key_event.kind == KeyEventKind::Release {
             return;
         }
-        if matches!(key_event.code, KeyCode::Esc) {
+        if matches!(key_event.code, KeyCode::Esc)
+            || matches!(
+                key_event,
+                KeyEvent {
+                    code: KeyCode::Char('c' | 'C'),
+                    modifiers: KeyModifiers::CONTROL,
+                    ..
+                }
+            )
+        {
             self.submit(None);
             return;
         }
-        let (result, _) = self.composer.handle_key_event(key_event);
-        if let InputResult::Submitted { text, .. } | InputResult::Queued { text, .. } = result {
-            self.submit(Some(SudoOnceCredential::new(text)));
+        match key_event.code {
+            KeyCode::Char(character)
+                if !key_event
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) =>
+            {
+                self.input.push(character);
+            }
+            KeyCode::Backspace => {
+                self.input.pop();
+            }
+            KeyCode::Enter => {
+                let credential = self.take_credential();
+                self.submit(Some(credential));
+            }
+            _ => {}
         }
     }
 
@@ -96,16 +115,10 @@ impl BottomPaneView for SudoOnceCredentialOverlay {
         crate::bottom_pane::CancellationEvent::Handled
     }
 
-    fn handle_paste(&mut self, pasted: String) -> bool {
-        self.composer.handle_paste(pasted)
-    }
-
-    fn flush_paste_burst_if_due(&mut self) -> bool {
-        self.composer.flush_paste_burst_if_due()
-    }
-
-    fn is_in_paste_burst(&self) -> bool {
-        self.composer.is_in_paste_burst()
+    fn handle_paste(&mut self, mut pasted: String) -> bool {
+        self.input.push_str(&pasted);
+        pasted.zeroize();
+        true
     }
 
     fn is_complete(&self) -> bool {
@@ -127,8 +140,8 @@ impl BottomPaneView for SudoOnceCredentialOverlay {
 }
 
 impl Renderable for SudoOnceCredentialOverlay {
-    fn desired_height(&self, width: u16) -> u16 {
-        self.composer.desired_height(width).saturating_add(4)
+    fn desired_height(&self, _width: u16) -> u16 {
+        4
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
@@ -154,16 +167,22 @@ impl Renderable for SudoOnceCredentialOverlay {
             area.width,
             area.height.saturating_sub(header_height),
         );
-        self.composer.render_with_mask(input_area, buf, Some('*'));
+        let masked = "*".repeat(self.input.chars().count());
+        Paragraph::new(Line::from(format!("Password: {masked}"))).render(input_area, buf);
     }
 
     fn cursor_pos(&self, area: Rect) -> Option<(u16, u16)> {
         let header_height = 3.min(area.height);
-        self.composer.cursor_pos(Rect::new(
+        let input_area = Rect::new(
             area.x,
             area.y.saturating_add(header_height),
             area.width,
             area.height.saturating_sub(header_height),
+        );
+        let cursor_x = "Password: ".width().saturating_add(self.input.chars().count()) as u16;
+        Some((
+            input_area.x.saturating_add(cursor_x.min(input_area.width)),
+            input_area.y,
         ))
     }
 }
