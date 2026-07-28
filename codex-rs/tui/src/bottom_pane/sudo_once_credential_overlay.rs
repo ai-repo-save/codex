@@ -160,9 +160,9 @@ impl BottomPaneView for SudoOnceCredentialOverlay {
         }
         match key_event.code {
             KeyCode::Char(character)
-                if !key_event
-                    .modifiers
-                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) =>
+                if !key_event.modifiers.intersects(
+                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
+                ) =>
             {
                 self.input.push_char(character);
             }
@@ -210,13 +210,7 @@ impl Renderable for SudoOnceCredentialOverlay {
         let header_height = 3.min(area.height);
         let header = Paragraph::new(vec![
             Line::from("Sudo authentication required".bold()),
-            Line::from(
-                format!(
-                    "Password attempt {}. Press Esc to cancel.",
-                    self.attempt
-                )
-                .dim(),
-            ),
+            Line::from(format!("Password attempt {}. Press Esc to cancel.", self.attempt).dim()),
             Line::from(""),
         ]);
         header.render(Rect::new(area.x, area.y, area.width, header_height), buf);
@@ -238,9 +232,7 @@ impl Renderable for SudoOnceCredentialOverlay {
             area.width,
             area.height.saturating_sub(header_height),
         );
-        let cursor_x = "Password: "
-            .width()
-            .saturating_add(self.input.char_count()) as u16;
+        let cursor_x = "Password: ".width().saturating_add(self.input.char_count()) as u16;
         Some((
             input_area
                 .x

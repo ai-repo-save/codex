@@ -25,10 +25,7 @@ pub(crate) struct SudoOnceApprovalOverlay {
 }
 
 impl SudoOnceApprovalOverlay {
-    pub(crate) fn new(
-        command: Arc<SudoOnceCommand>,
-        responder: SudoOnceApprovalResponder,
-    ) -> Self {
+    pub(crate) fn new(command: Arc<SudoOnceCommand>, responder: SudoOnceApprovalResponder) -> Self {
         Self {
             command,
             responder: Some(responder),
