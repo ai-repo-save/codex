@@ -106,7 +106,8 @@ impl Renderable for SudoOnceApprovalOverlay {
         let mut height = 6;
         height += Self::render_wrapped(ROOT_WARNING, content_width).len() as u16;
         height += Self::render_wrapped(&self.command_line(), content_width).len() as u16;
-        height += Self::render_wrapped(&self.command.cwd().to_string(), content_width).len() as u16;
+        let cwd = self.command.cwd().as_path().display().to_string();
+        height += Self::render_wrapped(&cwd, content_width).len() as u16;
         if let Some(reason) = self.command.reason() {
             height += Self::render_wrapped(reason, content_width).len() as u16;
         }
@@ -126,7 +127,8 @@ impl Renderable for SudoOnceApprovalOverlay {
         ];
         lines.extend(Self::render_wrapped(&self.command_line(), width));
         lines.push("Working directory:".bold().into());
-        lines.extend(Self::render_wrapped(&self.command.cwd().to_string(), width));
+        let cwd = self.command.cwd().as_path().display().to_string();
+        lines.extend(Self::render_wrapped(&cwd, width));
         if let Some(reason) = self.command.reason() {
             lines.push("Reason:".bold().into());
             lines.extend(Self::render_wrapped(reason, width));
