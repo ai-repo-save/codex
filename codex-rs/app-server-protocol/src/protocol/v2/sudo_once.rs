@@ -40,9 +40,8 @@ pub struct SudoOnceRequestCredentialParams {
 }
 
 #[derive(JsonSchema, TS)]
-#[schemars(with = "String")]
 #[ts(type = "string", export_to = "v2/")]
-pub struct SudoOnceCredential(CoreSudoOnceCredential);
+pub struct SudoOnceCredential(#[schemars(with = "String")] CoreSudoOnceCredential);
 
 impl SudoOnceCredential {
     pub fn new(credential: String) -> Self {

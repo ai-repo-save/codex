@@ -2772,6 +2772,7 @@ dependencies = [
  "which 8.0.0",
  "whoami 1.6.1",
  "wiremock",
+ "zeroize",
  "zstd",
 ]
 
@@ -3793,6 +3794,7 @@ dependencies = [
  "ts-rs",
  "uuid",
  "wildmatch",
+ "zeroize",
 ]
 
 [[package]]
@@ -4429,6 +4431,7 @@ dependencies = [
  "shared_library",
  "tokio",
  "winapi",
+ "zeroize",
 ]
 
 [[package]]
