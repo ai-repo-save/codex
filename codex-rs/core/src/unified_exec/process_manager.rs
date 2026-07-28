@@ -1492,9 +1492,13 @@ impl UnifiedExecProcessManager {
                 .processes
                 .iter()
                 .filter_map(|(process_id, entry)| {
-                    entry.sudo_once_turn_id.as_deref().is_some_and(|entry_turn_id| {
-                        turn_id.is_none_or(|turn_id| turn_id == entry_turn_id)
-                    }).then_some(*process_id)
+                    entry
+                        .sudo_once_turn_id
+                        .as_deref()
+                        .is_some_and(|entry_turn_id| {
+                            turn_id.is_none_or(|turn_id| turn_id == entry_turn_id)
+                        })
+                        .then_some(*process_id)
                 })
                 .collect::<Vec<_>>();
             process_ids

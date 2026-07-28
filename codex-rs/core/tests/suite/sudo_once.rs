@@ -50,7 +50,9 @@ fn exec_command_privilege(body: &Value) -> Option<&Value> {
         .get("privilege")
 }
 
-async fn collect_exec_command_privilege(broker: Option<LocalSudoOnceBroker>) -> Result<Option<Value>> {
+async fn collect_exec_command_privilege(
+    broker: Option<LocalSudoOnceBroker>,
+) -> Result<Option<Value>> {
     let server = start_mock_server().await;
     let response_mock = mount_sse_once(
         &server,
@@ -67,11 +69,8 @@ async fn collect_exec_command_privilege(broker: Option<LocalSudoOnceBroker>) -> 
     }
     let test = builder.build(&server).await?;
 
-    test.submit_turn_with_environments(
-        "show tools",
-        Some(vec![local(test.config.cwd.clone())]),
-    )
-    .await?;
+    test.submit_turn_with_environments("show tools", Some(vec![local(test.config.cwd.clone())]))
+        .await?;
 
     Ok(exec_command_privilege(&response_mock.single_request().body_json()).cloned())
 }
@@ -97,7 +96,8 @@ async fn sudo_once_schema_requires_a_local_broker() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn sudo_once_broker_prompts_despite_general_approval_never_and_abort_finishes_turn() -> Result<()> {
+async fn sudo_once_broker_prompts_despite_general_approval_never_and_abort_finishes_turn()
+-> Result<()> {
     let server = start_mock_server().await;
     let (broker, mut prompts) = LocalSudoOnceBroker::new();
     let builder = test_codex()
@@ -164,7 +164,10 @@ async fn sudo_once_broker_prompts_despite_general_approval_never_and_abort_finis
     assert_eq!(command.reason(), Some(JUSTIFICATION));
     assert!(responder.abort());
 
-    wait_for_event(&test.codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+    wait_for_event(&test.codex, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
     assert!(!test.workspace_path(MARKER).exists());
 
     Ok(())

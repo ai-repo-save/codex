@@ -97,7 +97,9 @@ pub type RequestResult = std::result::Result<JsonRpcResult, JSONRPCErrorError>;
 
 #[derive(Debug)]
 pub enum AppServerEvent {
-    Lagged { skipped: usize },
+    Lagged {
+        skipped: usize,
+    },
     ServerNotification(ServerNotification),
     ServerRequest(ServerRequest),
     /// Local-only sudo prompt delivered through the trusted TUI broker.
@@ -105,7 +107,9 @@ pub enum AppServerEvent {
     /// This has no JSON-RPC representation and is deliberately non-cloneable
     /// so the opaque response capability cannot leak to another consumer.
     SudoOncePrompt(SudoOncePrompt),
-    Disconnected { message: String },
+    Disconnected {
+        message: String,
+    },
 }
 
 impl From<InProcessServerEvent> for AppServerEvent {
@@ -491,10 +495,9 @@ impl InProcessAppServerClient {
         sudo_once_prompts: Option<SudoOncePromptReceiver>,
     ) -> IoResult<Self> {
         let channel_capacity = args.channel_capacity.max(1);
-        let mut handle = codex_app_server::in_process::start(
-            args.into_runtime_start_args(sudo_once_broker),
-        )
-        .await?;
+        let mut handle =
+            codex_app_server::in_process::start(args.into_runtime_start_args(sudo_once_broker))
+                .await?;
         let request_sender = handle.sender();
         let (command_tx, mut command_rx) = mpsc::channel::<ClientCommand>(channel_capacity);
         let (event_tx, event_rx) = mpsc::channel::<AppServerEvent>(channel_capacity);
@@ -1525,10 +1528,7 @@ mod tests {
                 ServerNotification::CommandExecutionOutputDelta(notification)
             ) if notification.delta == "stdout-1"
         ));
-        assert!(matches!(
-            &events[1],
-            AppServerEvent::Lagged { skipped: 1 }
-        ));
+        assert!(matches!(&events[1], AppServerEvent::Lagged { skipped: 1 }));
         assert!(matches!(
             &events[2],
             AppServerEvent::ServerNotification(ServerNotification::AgentMessageDelta(

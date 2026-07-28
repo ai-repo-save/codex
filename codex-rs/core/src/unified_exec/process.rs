@@ -13,8 +13,8 @@ use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
 
-use crate::exec::is_likely_sandbox_denied;
 use crate::elicitation::ElicitationRegistration;
+use crate::exec::is_likely_sandbox_denied;
 use codex_exec_server::ExecProcess;
 use codex_exec_server::ExecProcessEvent;
 use codex_exec_server::ProcessSignal as ExecServerProcessSignal;
@@ -25,12 +25,12 @@ use codex_protocol::exec_output::ExecToolCallOutput;
 use codex_protocol::exec_output::StreamOutput;
 use codex_protocol::protocol::TruncationPolicy;
 use codex_sandboxing::SandboxType;
+use codex_sudo_once::LocalSudoOnceBroker;
+use codex_sudo_once::SudoOnceGrant;
 use codex_utils_output_truncation::formatted_truncate_text;
 use codex_utils_pty::ExecCommandSession;
 use codex_utils_pty::ProcessSignal as PtyProcessSignal;
 use codex_utils_pty::SpawnedPty;
-use codex_sudo_once::LocalSudoOnceBroker;
-use codex_sudo_once::SudoOnceGrant;
 
 use super::UNIFIED_EXEC_OUTPUT_MAX_TOKENS;
 use super::UnifiedExecError;
@@ -679,14 +679,12 @@ impl UnifiedExecProcess {
         mut sudo_once: Option<SudoOnceSpawnContext>,
     ) -> JoinHandle<()> {
         tokio::spawn(async move {
-            let mut sudo_filter = sudo_once
-                .as_ref()
-                .map(|context| {
-                    SudoPromptFilter::new(
-                        context.prompt_sentinel.clone(),
-                        context.started_sentinel.clone(),
-                    )
-                });
+            let mut sudo_filter = sudo_once.as_ref().map(|context| {
+                SudoPromptFilter::new(
+                    context.prompt_sentinel.clone(),
+                    context.started_sentinel.clone(),
+                )
+            });
             let mut credential_attempt = 0;
             loop {
                 match receiver.recv().await {

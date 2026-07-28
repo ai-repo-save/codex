@@ -75,10 +75,10 @@ use codex_home::CodexHomeUserInstructionsProvider;
 use codex_login::AuthManager;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::SessionSource;
-use codex_sudo_once::LocalSudoOnceBroker;
 use codex_protocol::protocol::W3cTraceContext;
 use codex_rollout::StateDbHandle;
 use codex_state::log_db::LogDbLayer;
+use codex_sudo_once::LocalSudoOnceBroker;
 use tokio::sync::Mutex;
 use tokio::sync::Semaphore;
 use tokio::sync::broadcast;
@@ -176,9 +176,7 @@ impl ConnectionSessionState {
         Self::new_with_origin_and_sudo_once_broker(origin, None)
     }
 
-    pub(crate) fn new_with_sudo_once_broker(
-        sudo_once_broker: Option<LocalSudoOnceBroker>,
-    ) -> Self {
+    pub(crate) fn new_with_sudo_once_broker(sudo_once_broker: Option<LocalSudoOnceBroker>) -> Self {
         Self::new_with_origin_and_sudo_once_broker(ConnectionOrigin::InProcess, sudo_once_broker)
     }
 

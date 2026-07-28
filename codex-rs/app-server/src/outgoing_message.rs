@@ -235,7 +235,6 @@ impl OutgoingMessageSender {
         let mut request_contexts = self.request_contexts.lock().await;
         request_contexts.retain(|request_id, _| request_id.connection_id != connection_id);
         drop(request_contexts);
-
     }
 
     pub(crate) async fn request_trace_context(
@@ -443,7 +442,6 @@ impl OutgoingMessageSender {
                 warn!("could not notify callback for {request_id:?} due to: {err:?}");
             }
         }
-
     }
 
     async fn take_request_callback(
@@ -502,7 +500,6 @@ impl OutgoingMessageSender {
                 warn!("could not notify callback for {request_id:?} due to: {err:?}",);
             }
         }
-
     }
 
     pub(crate) async fn send_response<T>(&self, request_id: ConnectionRequestId, response: T)

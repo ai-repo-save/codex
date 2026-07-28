@@ -110,10 +110,7 @@ impl LocalSudoOnceBroker {
     }
 
     /// Requests authorization of one immutable command snapshot.
-    pub async fn request_approval(
-        &self,
-        command: Arc<SudoOnceCommand>,
-    ) -> Option<SudoOnceGrant> {
+    pub async fn request_approval(&self, command: Arc<SudoOnceCommand>) -> Option<SudoOnceGrant> {
         let (response, receiver) = oneshot::channel();
         let prompt = SudoOncePrompt::Approval(SudoOnceApprovalPrompt {
             command: Arc::clone(&command),
@@ -201,11 +198,13 @@ pub struct SudoOnceApprovalResponder {
 
 impl SudoOnceApprovalResponder {
     pub fn approve(mut self) -> bool {
-        self.response
-            .take()
-            .is_some_and(|response| response.send(Some(SudoOnceGrant {
-                command: Arc::clone(&self.command),
-            })).is_ok())
+        self.response.take().is_some_and(|response| {
+            response
+                .send(Some(SudoOnceGrant {
+                    command: Arc::clone(&self.command),
+                }))
+                .is_ok()
+        })
     }
 
     pub fn abort(mut self) -> bool {
@@ -215,7 +214,9 @@ impl SudoOnceApprovalResponder {
     }
 
     pub fn is_closed(&self) -> bool {
-        self.response.as_ref().is_none_or(oneshot::Sender::is_closed)
+        self.response
+            .as_ref()
+            .is_none_or(oneshot::Sender::is_closed)
     }
 }
 
@@ -271,7 +272,9 @@ impl SudoOnceCredentialResponder {
     }
 
     pub fn is_closed(&self) -> bool {
-        self.response.as_ref().is_none_or(oneshot::Sender::is_closed)
+        self.response
+            .as_ref()
+            .is_none_or(oneshot::Sender::is_closed)
     }
 }
 

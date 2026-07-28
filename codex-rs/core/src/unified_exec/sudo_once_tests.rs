@@ -6,7 +6,8 @@ const STARTED_SENTINEL: &str = "__STARTED__";
 
 #[test]
 fn finish_preserves_non_marker_output() {
-    let mut filter = SudoPromptFilter::new(PROMPT_SENTINEL.to_string(), STARTED_SENTINEL.to_string());
+    let mut filter =
+        SudoPromptFilter::new(PROMPT_SENTINEL.to_string(), STARTED_SENTINEL.to_string());
     filter.push(b"ordinary".to_vec());
 
     assert_eq!(filter.finish(), Some(b"ordinary".to_vec()));

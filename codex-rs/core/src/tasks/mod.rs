@@ -521,7 +521,9 @@ impl Session {
         if reason == TurnAbortReason::Interrupted {
             self.services
                 .unified_exec_manager
-                .terminate_sudo_once_processes(turn_context.as_ref().map(|turn| turn.sub_id.as_str()))
+                .terminate_sudo_once_processes(
+                    turn_context.as_ref().map(|turn| turn.sub_id.as_str()),
+                )
                 .await;
         }
 

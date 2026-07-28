@@ -129,7 +129,6 @@ impl TurnState {
         self.pending_dynamic_tools.clear();
     }
 
-
     pub(crate) fn insert_pending_request_permissions(
         &mut self,
         key: String,
