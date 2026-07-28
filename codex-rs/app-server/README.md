@@ -2368,13 +2368,21 @@ Set `capabilities.experimentalApi` to `true` in your single `initialize` request
       "version": "0.1.0"
     },
     "capabilities": {
-      "experimentalApi": true
+      "experimentalApi": true,
+      "sudoOnceCredentialPrompt": true
     }
   }
 }
 ```
 
 Then send the standard `initialized` notification and proceed normally.
+
+`sudoOnceCredentialPrompt` additionally permits the experimental
+`item/sudoOnce/requestApproval` and `item/sudoOnce/requestCredential` server
+requests. It is honored only for trusted local stdio, in-process, and Unix
+socket connections; TCP WebSocket and remote-control connections cannot opt
+into it. The credential response is nullable: send `{"credential": null}` to
+cancel the privileged command.
 
 Notes:
 

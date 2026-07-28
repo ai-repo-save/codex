@@ -187,6 +187,7 @@ pub enum TransportEvent {
 pub enum ConnectionOrigin {
     Stdio,
     InProcess,
+    UnixSocket,
     WebSocket,
     RemoteControl,
 }

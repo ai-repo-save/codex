@@ -52,6 +52,9 @@ use codex_app_server_protocol::RawResponseItemCompletedNotification;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ServerRequestPayload;
+use codex_app_server_protocol::SudoOnceRequestApprovalParams;
+use codex_app_server_protocol::SudoOnceRequestApprovalResponse;
+use codex_app_server_protocol::SudoOnceRequestCredentialParams;
 use codex_app_server_protocol::ThreadGoalClearedNotification;
 use codex_app_server_protocol::ThreadGoalUpdatedNotification;
 use codex_app_server_protocol::ThreadItem;
@@ -111,6 +114,9 @@ use codex_protocol::request_permissions::RequestPermissionProfile as CoreRequest
 use codex_protocol::request_permissions::RequestPermissionsResponse as CoreRequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputAnswer as CoreRequestUserInputAnswer;
 use codex_protocol::request_user_input::RequestUserInputResponse as CoreRequestUserInputResponse;
+use codex_protocol::sudo_once::SudoOnceApprovalDecision;
+use codex_protocol::sudo_once::SudoOnceApprovalResponse;
+use codex_protocol::sudo_once::SudoOnceCredentialResponse;
 use codex_sandboxing::policy_transforms::intersect_permission_profiles;
 use codex_shell_command::parse_command::shlex_join;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -699,6 +705,81 @@ pub(crate) async fn apply_bespoke_event_handling(
                     permission_guard,
                 )
                 .await;
+            });
+        }
+        EventMsg::SudoOnceApprovalRequest(request) => {
+            if !outgoing.supports_sudo_once_credential_prompt() {
+                if let Err(error) = conversation
+                    .submit(Op::SudoOnceApproval {
+                        id: request.call_id,
+                        turn_id: Some(request.turn_id),
+                        response: SudoOnceApprovalResponse {
+                            decision: SudoOnceApprovalDecision::Abort,
+                        },
+                    })
+                    .await
+                {
+                    error!("failed to reject sudo-once approval without trusted client: {error}");
+                }
+                return;
+            }
+
+            let permission_guard = thread_watch_manager
+                .note_permission_requested(&conversation_id.to_string())
+                .await;
+            let params = SudoOnceRequestApprovalParams {
+                thread_id: conversation_id.to_string(),
+                turn_id: request.turn_id.clone(),
+                item_id: request.call_id.clone(),
+                command: shlex_join(&request.command),
+                cwd: request.cwd.into(),
+                reason: request.reason,
+            };
+            let (pending_request_id, receiver) = outgoing
+                .send_sudo_once_approval_request(ServerRequestPayload::SudoOnceRequestApproval(
+                    params,
+                ))
+                .await;
+            tokio::spawn(async move {
+                on_sudo_once_approval_response(
+                    request.call_id,
+                    request.turn_id,
+                    pending_request_id,
+                    receiver,
+                    conversation,
+                    thread_state,
+                    permission_guard,
+                )
+                .await;
+            });
+        }
+        EventMsg::SudoOnceCredentialRequest(request) => {
+            if !outgoing.supports_sudo_once_credential_prompt() {
+                conversation
+                    .resolve_sudo_once_credential(
+                        &request.call_id,
+                        SudoOnceCredentialResponse { credential: None },
+                    )
+                    .await;
+                return;
+            }
+
+            let params = SudoOnceRequestCredentialParams {
+                thread_id: conversation_id.to_string(),
+                turn_id: request.turn_id,
+                item_id: request.call_id.clone(),
+                attempt: request.attempt,
+            };
+            let (_pending_request_id, receiver) = outgoing
+                .send_sudo_once_credential_request(params)
+                .await;
+            tokio::spawn(async move {
+                let response = receiver.await.unwrap_or_else(|_| SudoOnceCredentialResponse {
+                    credential: None,
+                });
+                conversation
+                    .resolve_sudo_once_credential(&request.call_id, response)
+                    .await;
             });
         }
         EventMsg::RequestUserInput(request) => {
@@ -2000,6 +2081,37 @@ async fn on_file_change_request_approval_response(
         .await
     {
         error!("failed to submit PatchApproval: {err}");
+    }
+}
+
+async fn on_sudo_once_approval_response(
+    call_id: String,
+    turn_id: String,
+    pending_request_id: RequestId,
+    receiver: oneshot::Receiver<ClientRequestResult>,
+    conversation: Arc<CodexThread>,
+    thread_state: Arc<Mutex<ThreadState>>,
+    permission_guard: ThreadWatchActiveGuard,
+) {
+    let response = receiver.await;
+    resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
+    drop(permission_guard);
+    let decision = match response {
+        Ok(Ok(value)) => serde_json::from_value::<SudoOnceRequestApprovalResponse>(value)
+            .map(|response| response.decision)
+            .unwrap_or(SudoOnceApprovalDecision::Abort),
+        Ok(Err(error)) if is_turn_transition_server_request_error(&error) => return,
+        Ok(Err(_)) | Err(_) => SudoOnceApprovalDecision::Abort,
+    };
+    if let Err(error) = conversation
+        .submit(Op::SudoOnceApproval {
+            id: call_id,
+            turn_id: Some(turn_id),
+            response: SudoOnceApprovalResponse { decision },
+        })
+        .await
+    {
+        error!("failed to submit sudo-once approval response: {error}");
     }
 }
 

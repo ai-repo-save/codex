@@ -488,6 +488,13 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
                                 );
                                 if !was_initialized && is_initialized {
                                     processor.send_initialize_notifications().await;
+                                    processor
+                                        .connection_initialized(
+                                            IN_PROCESS_CONNECTION_ID,
+                                            session.request_attestation(),
+                                            session.supports_sudo_once_credential_prompt(),
+                                        )
+                                        .await;
                                 }
                             }
                             Some(ProcessorCommand::Notification(notification)) => {
@@ -591,14 +598,24 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
                             }
                         }
                         Some(InProcessClientMessage::ServerRequestResponse { request_id, result }) => {
-                            outgoing_message_sender
-                                .notify_client_response(request_id, result)
-                                .await;
+                            if let Err((request_id, result)) = outgoing_message_sender
+                                .try_notify_sudo_once_credential_response(request_id, result)
+                                .await
+                            {
+                                outgoing_message_sender
+                                    .notify_client_response(request_id, result)
+                                    .await;
+                            }
                         }
                         Some(InProcessClientMessage::ServerRequestError { request_id, error }) => {
-                            outgoing_message_sender
-                                .notify_client_error(request_id, error)
-                                .await;
+                            if let Err((request_id, error)) = outgoing_message_sender
+                                .try_notify_sudo_once_credential_error(request_id, error)
+                                .await
+                            {
+                                outgoing_message_sender
+                                    .notify_client_error(request_id, error)
+                                    .await;
+                            }
                         }
                         Some(InProcessClientMessage::Shutdown { done_tx }) => {
                             shutdown_ack = Some(done_tx);

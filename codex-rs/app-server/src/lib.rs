@@ -1033,6 +1033,9 @@ pub async fn run_main_with_transport_options(
                                                     connection_state
                                                         .session
                                                         .request_attestation(),
+                                                    connection_state
+                                                        .session
+                                                        .supports_sudo_once_credential_prompt(),
                                                 )
                                                 .await;
                                             connection_state

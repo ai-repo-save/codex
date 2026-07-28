@@ -292,6 +292,7 @@ struct ThreadStateManagerInner {
 #[derive(Clone, Copy, Default)]
 pub(crate) struct ConnectionCapabilities {
     pub(crate) request_attestation: bool,
+    pub(crate) sudo_once_credential_prompt: bool,
 }
 
 #[derive(Clone, Default)]
@@ -338,6 +339,30 @@ impl ThreadStateManager {
                     .then_some(*connection_id)
             })
             .min_by_key(|connection_id| connection_id.0)
+    }
+
+    pub(crate) async fn sudo_once_capable_connection_ids_for_thread(
+        &self,
+        thread_id: ThreadId,
+    ) -> Vec<ConnectionId> {
+        let state = self.state.lock().await;
+        state
+            .threads
+            .get(&thread_id)
+            .map(|thread_entry| {
+                thread_entry
+                    .connection_ids
+                    .iter()
+                    .filter_map(|connection_id| {
+                        state
+                            .live_connections
+                            .get(connection_id)?
+                            .sudo_once_credential_prompt
+                            .then_some(*connection_id)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     pub(crate) async fn wait_for_thread_subscriber(&self, thread_id: ThreadId) {

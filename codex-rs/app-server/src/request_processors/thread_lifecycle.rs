@@ -326,9 +326,13 @@ pub(super) async fn ensure_listener_task_running(
                     let subscribed_connection_ids = thread_state_manager
                         .subscribed_connection_ids(conversation_id)
                         .await;
-                    let thread_outgoing = ThreadScopedOutgoingMessageSender::new(
+                    let sudo_once_connection_ids = thread_state_manager
+                        .sudo_once_capable_connection_ids_for_thread(conversation_id)
+                        .await;
+                    let thread_outgoing = ThreadScopedOutgoingMessageSender::new_with_sudo_once_connections(
                         outgoing_for_task.clone(),
                         subscribed_connection_ids,
+                        sudo_once_connection_ids,
                         conversation_id,
                     );
 
