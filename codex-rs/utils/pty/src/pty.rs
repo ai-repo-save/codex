@@ -223,13 +223,28 @@ async fn spawn_process_portable(
         async move {
             #[cfg(windows)]
             let mut windows_input = crate::WindowsTtyInputNormalizer::default();
+            let mut regular_open = true;
+            let mut sensitive_open = true;
             loop {
                 let bytes = tokio::select! {
-                    bytes = sensitive_writer_rx.recv() => bytes.map(WriterInput::Sensitive),
-                    bytes = writer_rx.recv() => bytes.map(WriterInput::Regular),
+                    bytes = sensitive_writer_rx.recv(), if sensitive_open => match bytes {
+                        Some(bytes) => Some(WriterInput::Sensitive(bytes)),
+                        None => {
+                            sensitive_open = false;
+                            None
+                        }
+                    },
+                    bytes = writer_rx.recv(), if regular_open => match bytes {
+                        Some(bytes) => Some(WriterInput::Regular(bytes)),
+                        None => {
+                            regular_open = false;
+                            None
+                        }
+                    },
+                    else => break,
                 };
                 let Some(bytes) = bytes else {
-                    break;
+                    continue;
                 };
                 #[cfg(windows)]
                 let bytes = match bytes {
@@ -398,13 +413,28 @@ async fn spawn_process_preserving_fds(
     let writer_handle: JoinHandle<()> = tokio::spawn({
         let writer = Arc::clone(&writer);
         async move {
+            let mut regular_open = true;
+            let mut sensitive_open = true;
             loop {
                 let bytes = tokio::select! {
-                    bytes = sensitive_writer_rx.recv() => bytes.map(WriterInput::Sensitive),
-                    bytes = writer_rx.recv() => bytes.map(WriterInput::Regular),
+                    bytes = sensitive_writer_rx.recv(), if sensitive_open => match bytes {
+                        Some(bytes) => Some(WriterInput::Sensitive(bytes)),
+                        None => {
+                            sensitive_open = false;
+                            None
+                        }
+                    },
+                    bytes = writer_rx.recv(), if regular_open => match bytes {
+                        Some(bytes) => Some(WriterInput::Regular(bytes)),
+                        None => {
+                            regular_open = false;
+                            None
+                        }
+                    },
+                    else => break,
                 };
                 let Some(bytes) = bytes else {
-                    break;
+                    continue;
                 };
                 let mut guard = writer.lock().await;
                 use std::io::Write;
