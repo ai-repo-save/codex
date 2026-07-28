@@ -1758,6 +1758,7 @@ impl CodexClient {
                             .collect(),
                     ),
                     mcp_server_openai_form_elicitation: false,
+                    sudo_once_credential_prompt: false,
                 }),
             },
         };
