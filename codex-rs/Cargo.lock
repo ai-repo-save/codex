@@ -2797,7 +2797,6 @@ dependencies = [
  "codex-model-provider-info",
  "codex-models-manager",
  "codex-protocol",
- "codex-sudo-once",
  "codex-utils-absolute-path",
 ]
 
@@ -4826,6 +4825,7 @@ dependencies = [
  "codex-model-provider-info",
  "codex-models-manager",
  "codex-protocol",
+ "codex-sudo-once",
  "codex-utils-absolute-path",
  "codex-utils-cargo-bin",
  "codex-utils-path-uri",
