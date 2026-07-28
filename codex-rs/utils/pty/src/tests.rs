@@ -7,6 +7,7 @@ use crate::ProcessDriver;
 use crate::SpawnedProcess;
 use crate::TerminalSize;
 use crate::combine_output_receivers;
+use crate::combine_output_receivers_lossless;
 use crate::spawn_from_driver;
 use crate::spawn_pipe_process;
 use crate::spawn_pipe_process_no_stdin;
@@ -96,6 +97,32 @@ fn combine_spawned_output(
         combine_output_receivers(stdout_rx, stderr_rx),
         exit_rx,
     )
+}
+
+#[tokio::test]
+async fn lossless_combination_preserves_output_under_backpressure() {
+    let (stdout_tx, stdout_rx) = tokio::sync::mpsc::channel(512);
+    let (stderr_tx, stderr_rx) = tokio::sync::mpsc::channel(512);
+    let mut expected = Vec::new();
+    for value in 0..512_u16 {
+        let chunk = if value == 300 {
+            b"__sudo_started_marker__".to_vec()
+        } else {
+            value.to_le_bytes().to_vec()
+        };
+        stdout_tx.send(chunk.clone()).await.unwrap();
+        expected.push(chunk);
+    }
+    drop(stdout_tx);
+    drop(stderr_tx);
+
+    let mut output_rx = combine_output_receivers_lossless(stdout_rx, stderr_rx);
+    let mut output = Vec::new();
+    while let Some(chunk) = output_rx.recv().await {
+        output.push(chunk);
+    }
+
+    assert_eq!(output, expected);
 }
 
 async fn collect_output_until_exit(

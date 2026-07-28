@@ -381,6 +381,48 @@ pub fn combine_output_receivers(
     combined_rx
 }
 
+/// Combine split stdout/stderr receivers without dropping output under backpressure.
+///
+/// This is intended for control protocols embedded in process output. Callers must
+/// consume the returned receiver directly before any lossy fanout.
+pub fn combine_output_receivers_lossless(
+    mut stdout_rx: mpsc::Receiver<Vec<u8>>,
+    mut stderr_rx: mpsc::Receiver<Vec<u8>>,
+) -> mpsc::Receiver<Vec<u8>> {
+    let (combined_tx, combined_rx) = mpsc::channel(256);
+    tokio::spawn(async move {
+        let mut stdout_open = true;
+        let mut stderr_open = true;
+
+        loop {
+            tokio::select! {
+                stdout = stdout_rx.recv(), if stdout_open => match stdout {
+                    Some(chunk) => {
+                        if combined_tx.send(chunk).await.is_err() {
+                            break;
+                        }
+                    }
+                    None => {
+                        stdout_open = false;
+                    }
+                },
+                stderr = stderr_rx.recv(), if stderr_open => match stderr {
+                    Some(chunk) => {
+                        if combined_tx.send(chunk).await.is_err() {
+                            break;
+                        }
+                    }
+                    None => {
+                        stderr_open = false;
+                    }
+                },
+                else => break,
+            }
+        }
+    });
+    combined_rx
+}
+
 /// Return value from PTY or pipe spawn helpers.
 #[derive(Debug)]
 pub struct SpawnedProcess {

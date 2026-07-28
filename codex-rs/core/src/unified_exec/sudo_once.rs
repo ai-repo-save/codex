@@ -4,6 +4,27 @@ pub(super) enum SudoPromptAction {
     Started,
 }
 
+#[derive(Default)]
+pub(super) enum SudoAuthenticationState {
+    #[default]
+    AwaitingAuthentication,
+    Started,
+}
+
+impl SudoAuthenticationState {
+    pub(super) fn permits_credential_request(&self) -> bool {
+        matches!(self, Self::AwaitingAuthentication)
+    }
+
+    pub(super) fn mark_started(&mut self) -> bool {
+        if matches!(self, Self::AwaitingAuthentication) {
+            *self = Self::Started;
+            return true;
+        }
+        false
+    }
+}
+
 pub(super) struct SudoPromptFilter {
     prompt_sentinel: Vec<u8>,
     started_sentinel: Vec<u8>,
@@ -67,12 +88,16 @@ impl SudoPromptFilter {
     }
 
     pub(super) fn finish(self) -> Option<Vec<u8>> {
-        if self.pending.is_empty()
-            || self.prompt_sentinel.starts_with(&self.pending)
-            || self.started_sentinel.starts_with(&self.pending)
-        {
-            return None;
-        }
-        Some(self.pending)
+        let withheld = [&self.prompt_sentinel, &self.started_sentinel]
+            .into_iter()
+            .filter_map(|sentinel| {
+                (1..sentinel.len())
+                    .rev()
+                    .find(|&length| self.pending.ends_with(&sentinel[..length]))
+            })
+            .max()
+            .unwrap_or_default();
+        let output_len = self.pending.len().saturating_sub(withheld);
+        (output_len > 0).then(|| self.pending[..output_len].to_vec())
     }
 }

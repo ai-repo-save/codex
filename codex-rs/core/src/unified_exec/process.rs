@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 use tokio::sync::Mutex;
 use tokio::sync::Notify;
 use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -36,6 +37,7 @@ use super::UNIFIED_EXEC_OUTPUT_MAX_TOKENS;
 use super::UnifiedExecError;
 use super::head_tail_buffer::HeadTailBuffer;
 use super::process_state::ProcessState;
+use super::sudo_once::SudoAuthenticationState;
 use super::sudo_once::SudoPromptAction;
 use super::sudo_once::SudoPromptFilter;
 
@@ -83,6 +85,28 @@ pub(super) struct SudoOnceSpawnContext {
     pub(super) prompt_sentinel: String,
     pub(super) started_sentinel: String,
     pub(super) elicitation: Option<ElicitationRegistration>,
+}
+
+enum LocalOutputReceiver {
+    Broadcast(broadcast::Receiver<Vec<u8>>),
+    Lossless(mpsc::Receiver<Vec<u8>>),
+}
+
+enum LocalOutputReceiveError {
+    Lagged,
+    Closed,
+}
+
+impl LocalOutputReceiver {
+    async fn recv(&mut self) -> Result<Vec<u8>, LocalOutputReceiveError> {
+        match self {
+            Self::Broadcast(receiver) => receiver.recv().await.map_err(|error| match error {
+                broadcast::error::RecvError::Lagged(_) => LocalOutputReceiveError::Lagged,
+                broadcast::error::RecvError::Closed => LocalOutputReceiveError::Closed,
+            }),
+            Self::Lossless(receiver) => receiver.recv().await.ok_or(LocalOutputReceiveError::Closed),
+        }
+    }
 }
 
 /// Unified wrapper over directly spawned PTY sessions and exec-server-backed
@@ -358,7 +382,7 @@ impl UnifiedExecProcess {
             Some(spawn_lifecycle),
         );
         managed.output_task = Some(Self::spawn_local_output_task(
-            output_rx,
+            LocalOutputReceiver::Broadcast(output_rx),
             Arc::clone(&managed.output_buffer),
             Arc::clone(&managed.output_notify),
             Arc::clone(&managed.output_closed),
@@ -416,7 +440,7 @@ impl UnifiedExecProcess {
             stderr_rx,
             mut exit_rx,
         } = spawned;
-        let output_rx = codex_utils_pty::combine_output_receivers(stdout_rx, stderr_rx);
+        let output_rx = codex_utils_pty::combine_output_receivers_lossless(stdout_rx, stderr_rx);
         let process_handle = Arc::new(process_handle);
         let mut managed = Self::new(
             ProcessHandle::Local(Arc::clone(&process_handle)),
@@ -425,7 +449,7 @@ impl UnifiedExecProcess {
         );
         managed.stdin_ready.store(false, Ordering::Release);
         managed.output_task = Some(Self::spawn_local_output_task(
-            output_rx,
+            LocalOutputReceiver::Lossless(output_rx),
             Arc::clone(&managed.output_buffer),
             Arc::clone(&managed.output_notify),
             Arc::clone(&managed.output_closed),
@@ -666,7 +690,7 @@ impl UnifiedExecProcess {
     }
 
     fn spawn_local_output_task(
-        mut receiver: tokio::sync::broadcast::Receiver<Vec<u8>>,
+        mut receiver: LocalOutputReceiver,
         buffer: OutputBuffer,
         output_notify: Arc<Notify>,
         output_closed: Arc<AtomicBool>,
@@ -685,6 +709,9 @@ impl UnifiedExecProcess {
                     context.started_sentinel.clone(),
                 )
             });
+            let mut sudo_authentication = sudo_once
+                .as_ref()
+                .map(|_| SudoAuthenticationState::default());
             let mut credential_attempt = 0;
             loop {
                 match receiver.recv().await {
@@ -707,8 +734,17 @@ impl UnifiedExecProcess {
                                     .await;
                                 }
                                 SudoPromptAction::Prompt => {
+                                    let Some(authentication) = sudo_authentication.as_ref() else {
+                                        failed = true;
+                                        break;
+                                    };
+                                    if !authentication.permits_credential_request() {
+                                        failed = true;
+                                        break;
+                                    }
                                     let Some(context) = sudo_once.as_ref() else {
-                                        continue;
+                                        failed = true;
+                                        break;
                                     };
                                     credential_attempt += 1;
                                     let response = tokio::select! {
@@ -743,10 +779,20 @@ impl UnifiedExecProcess {
                                     }
                                 }
                                 SudoPromptAction::Started => {
-                                    stdin_ready.store(true, Ordering::Release);
-                                    if let Some(context) = sudo_once.as_mut() {
-                                        context.elicitation.take();
+                                    let Some(authentication) = sudo_authentication.as_mut() else {
+                                        failed = true;
+                                        break;
+                                    };
+                                    if !authentication.mark_started() {
+                                        failed = true;
+                                        break;
                                     }
+                                    let Some(mut context) = sudo_once.take() else {
+                                        failed = true;
+                                        break;
+                                    };
+                                    stdin_ready.store(true, Ordering::Release);
+                                    context.elicitation.take();
                                 }
                             }
                         }
@@ -759,8 +805,18 @@ impl UnifiedExecProcess {
                             break;
                         }
                     }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    Err(LocalOutputReceiveError::Lagged) => {
+                        if sudo_filter.is_none() {
+                            continue;
+                        }
+                        let state = state_tx.borrow().clone();
+                        let _ = state_tx.send_replace(
+                            state.failed("sudo_once control output was lost".to_string()),
+                        );
+                        process_handle.request_terminate();
+                        break;
+                    }
+                    Err(LocalOutputReceiveError::Closed) => {
                         if let Some(chunk) = sudo_filter.and_then(SudoPromptFilter::finish) {
                             Self::publish_local_output(chunk, &buffer, &output_notify, &output_tx)
                                 .await;
