@@ -468,15 +468,16 @@ impl CoreToolRuntime for ExecCommandHandler {
             return None;
         };
 
-        parse_arguments::<ExecCommandArgs>(arguments)
-            .ok()
-            .map(|args| PreToolUsePayload {
+        parse_arguments::<ExecCommandArgs>(arguments).ok().map(|args| {
+            let mut tool_input = serde_json::json!({ "command": args.cmd });
+            if let Some(privilege) = args.privilege {
+                tool_input["privilege"] = serde_json::json!(privilege);
+            }
+            PreToolUsePayload {
                 tool_name: HookToolName::bash(),
-                tool_input: serde_json::json!({
-                    "command": args.cmd,
-                    "privilege": args.privilege,
-                }),
-            })
+                tool_input,
+            }
+        })
     }
 
     fn with_updated_hook_input(
