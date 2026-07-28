@@ -69,11 +69,7 @@ async fn sudo_once_approval_uses_the_trusted_experimental_rpc_capability() -> Re
     assert!(matches!(initialized, JSONRPCMessage::Response(_)));
 
     let (thread, turn) = start_turn(&mut app_server).await?;
-    let request = timeout(
-        READ_TIMEOUT,
-        app_server.read_stream_until_request_message(),
-    )
-    .await??;
+    let request = timeout(READ_TIMEOUT, app_server.read_stream_until_request_message()).await??;
     let ServerRequest::SudoOnceRequestApproval { request_id, params } = request else {
         panic!("expected sudo-once approval request, got: {request:?}");
     };
@@ -97,11 +93,8 @@ async fn sudo_once_approval_uses_the_trusted_experimental_rpc_capability() -> Re
         app_server.read_stream_until_notification_message("turn/completed"),
     )
     .await??;
-    let completed: TurnCompletedNotification = serde_json::from_value(
-        completed
-            .params
-            .expect("turn/completed must have params"),
-    )?;
+    let completed: TurnCompletedNotification =
+        serde_json::from_value(completed.params.expect("turn/completed must have params"))?;
     assert_eq!(completed.thread_id, thread);
     assert_eq!(completed.turn.id, turn);
     assert_eq!(completed.turn.status, TurnStatus::Completed);
