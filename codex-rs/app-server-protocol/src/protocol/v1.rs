@@ -53,6 +53,9 @@ pub struct InitializeCapabilities {
     /// Allow downstream MCP servers to request OpenAI extended form elicitations.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mcp_server_openai_form_elicitation: bool,
+    /// Accept local masked credential prompts for single-use sudo requests.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sudo_once_credential_prompt: bool,
     /// Exact notification method names that should be suppressed for this
     /// connection (for example `thread/started`).
     #[ts(optional = nullable)]

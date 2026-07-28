@@ -1289,7 +1289,7 @@ macro_rules! server_request_definitions {
         }
 
         /// Typed response from the client to the server.
-        #[derive(Serialize, Deserialize, Debug, Clone)]
+        #[derive(Serialize, Deserialize, Debug)]
         #[serde(tag = "method", rename_all = "camelCase")]
         pub enum ServerResponse {
             $(
@@ -1498,6 +1498,20 @@ server_request_definitions! {
     CommandExecutionRequestApproval => "item/commandExecution/requestApproval" {
         params: v2::CommandExecutionRequestApprovalParams,
         response: v2::CommandExecutionRequestApprovalResponse,
+    },
+
+    #[experimental("item/sudoOnce/requestApproval")]
+    /// Request approval for one command to run with sudo.
+    SudoOnceRequestApproval => "item/sudoOnce/requestApproval" {
+        params: v2::SudoOnceRequestApprovalParams,
+        response: v2::SudoOnceRequestApprovalResponse,
+    },
+
+    #[experimental("item/sudoOnce/requestCredential")]
+    /// Request a sudo credential for one authentication attempt.
+    SudoOnceRequestCredential => "item/sudoOnce/requestCredential" {
+        params: v2::SudoOnceRequestCredentialParams,
+        response: v2::SudoOnceRequestCredentialResponse,
     },
 
     /// Sent when approval is requested for a specific file change.
@@ -2282,6 +2296,7 @@ mod tests {
                     experimental_api: true,
                     request_attestation: true,
                     mcp_server_openai_form_elicitation: true,
+                    sudo_once_credential_prompt: true,
                     opt_out_notification_methods: Some(vec![
                         "thread/started".to_string(),
                         "item/agentMessage/delta".to_string(),
@@ -2304,6 +2319,7 @@ mod tests {
                         "experimentalApi": true,
                         "requestAttestation": true,
                         "mcpServerOpenaiFormElicitation": true,
+                        "sudoOnceCredentialPrompt": true,
                         "optOutNotificationMethods": [
                             "thread/started",
                             "item/agentMessage/delta"
@@ -2331,6 +2347,7 @@ mod tests {
                     "experimentalApi": true,
                     "requestAttestation": true,
                     "mcpServerOpenaiFormElicitation": true,
+                    "sudoOnceCredentialPrompt": true,
                     "optOutNotificationMethods": [
                         "thread/started",
                         "item/agentMessage/delta"
@@ -2353,6 +2370,7 @@ mod tests {
                         experimental_api: true,
                         request_attestation: true,
                         mcp_server_openai_form_elicitation: true,
+                        sudo_once_credential_prompt: true,
                         opt_out_notification_methods: Some(vec![
                             "thread/started".to_string(),
                             "item/agentMessage/delta".to_string(),

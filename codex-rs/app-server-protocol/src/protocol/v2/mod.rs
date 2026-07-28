@@ -1,4 +1,5 @@
 mod shared;
+mod sudo_once;
 
 mod account;
 mod agent_mailbox_action;
@@ -54,6 +55,7 @@ pub use realtime::*;
 pub use remote_control::*;
 pub use review::*;
 pub use shared::*;
+pub use sudo_once::*;
 pub use thread::*;
 pub use thread_data::*;
 pub use turn::*;
