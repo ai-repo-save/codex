@@ -150,12 +150,12 @@ async fn sudo_once_requests_dedicated_approval_when_general_approval_is_never() 
     let approval = wait_for_event(&test.codex, |event| {
         matches!(
             event,
-            EventMsg::SudoOnceApprovalRequest(_) | EventMsg::TurnComplete(_)
+            EventMsg::SudoOnceApprovalRequest(_) | EventMsg::TurnComplete(_) | EventMsg::Error(_)
         )
     })
     .await;
     let EventMsg::SudoOnceApprovalRequest(approval) = approval else {
-        panic!("sudo_once must request dedicated approval despite approval_policy=never");
+        panic!("sudo_once must request dedicated approval despite approval_policy=never: {approval:?}");
     };
     assert_eq!(approval.call_id, call_id);
     assert_eq!(approval.command, vec!["/bin/sh", "-c", command]);
