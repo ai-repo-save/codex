@@ -279,10 +279,7 @@ impl ChatWidget {
         );
     }
 
-    pub(super) fn on_sudo_once_credential_request(
-        &mut self,
-        ev: SudoOnceRequestCredentialParams,
-    ) {
+    pub(super) fn on_sudo_once_credential_request(&mut self, ev: SudoOnceRequestCredentialParams) {
         self.defer_or_handle(
             ev,
             InterruptManager::push_sudo_once_credential,
@@ -370,10 +367,7 @@ impl ChatWidget {
         self.request_redraw();
     }
 
-    pub(crate) fn handle_sudo_once_credential_now(
-        &mut self,
-        ev: SudoOnceRequestCredentialParams,
-    ) {
+    pub(crate) fn handle_sudo_once_credential_now(&mut self, ev: SudoOnceRequestCredentialParams) {
         self.flush_answer_stream_with_separator();
         let thread_id = ThreadId::from_string(&ev.thread_id)
             .unwrap_or_else(|_| self.thread_id.unwrap_or_default());

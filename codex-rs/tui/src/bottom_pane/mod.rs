@@ -81,9 +81,9 @@ pub(crate) use approval_overlay::format_requested_permissions_rule;
 pub(crate) use mcp_server_elicitation::McpServerElicitationFormRequest;
 pub(crate) use mcp_server_elicitation::McpServerElicitationOverlay;
 pub(crate) use request_user_input::RequestUserInputOverlay;
+pub(crate) use status_line_style::status_line_from_segments;
 pub(crate) use sudo_once_credential_overlay::SudoOnceCredentialOverlay;
 pub(crate) use sudo_once_credential_overlay::SudoOnceCredentialRequest;
-pub(crate) use status_line_style::status_line_from_segments;
 mod bottom_pane_view;
 mod effort_ignition;
 

@@ -770,13 +770,12 @@ pub(crate) async fn apply_bespoke_event_handling(
                 item_id: request.call_id.clone(),
                 attempt: request.attempt,
             };
-            let (_pending_request_id, receiver) = outgoing
-                .send_sudo_once_credential_request(params)
-                .await;
+            let (_pending_request_id, receiver) =
+                outgoing.send_sudo_once_credential_request(params).await;
             tokio::spawn(async move {
-                let response = receiver.await.unwrap_or_else(|_| SudoOnceCredentialResponse {
-                    credential: None,
-                });
+                let response = receiver
+                    .await
+                    .unwrap_or_else(|_| SudoOnceCredentialResponse { credential: None });
                 conversation
                     .resolve_sudo_once_credential(&request.call_id, response)
                     .await;

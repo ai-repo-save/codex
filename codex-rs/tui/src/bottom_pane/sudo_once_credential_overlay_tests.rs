@@ -48,9 +48,11 @@ fn credential_is_masked_and_never_serialized_with_the_command() {
     };
     assert!(matches!(op, AppCommand::SudoOnceCredential { .. }));
     assert!(!format!("{op:?}").contains(TEST_CREDENTIAL));
-    assert!(!serde_json::to_string(&op)
-        .expect("credential command should serialize safely")
-        .contains(TEST_CREDENTIAL));
+    assert!(
+        !serde_json::to_string(&op)
+            .expect("credential command should serialize safely")
+            .contains(TEST_CREDENTIAL)
+    );
 }
 
 #[test]

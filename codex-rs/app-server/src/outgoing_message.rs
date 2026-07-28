@@ -141,12 +141,7 @@ impl ThreadScopedOutgoingMessageSender {
         connection_ids: Vec<ConnectionId>,
         thread_id: ThreadId,
     ) -> Self {
-        Self::new_with_sudo_once_connections(
-            outgoing,
-            connection_ids,
-            Vec::new(),
-            thread_id,
-        )
+        Self::new_with_sudo_once_connections(outgoing, connection_ids, Vec::new(), thread_id)
     }
 
     pub(crate) fn new_with_sudo_once_connections(
@@ -304,7 +299,10 @@ impl OutgoingMessageSender {
         drop(request_contexts);
 
         let entries = {
-            let mut callbacks = self.sudo_once_credential_request_id_to_callback.lock().await;
+            let mut callbacks = self
+                .sudo_once_credential_request_id_to_callback
+                .lock()
+                .await;
             let request_ids = callbacks
                 .iter()
                 .filter_map(|(request_id, entry)| {
@@ -534,7 +532,9 @@ impl OutgoingMessageSender {
 
         let response = serde_json::from_value::<SudoOnceRequestCredentialResponse>(result)
             .map(|response| CoreSudoOnceCredentialResponse {
-                credential: response.credential.map(|credential| credential.into_secret()),
+                credential: response
+                    .credential
+                    .map(|credential| credential.into_secret()),
             })
             .map_err(|_| invalid_request("invalid sudo-once credential response"));
         let _ = entry.callback.send(response);
@@ -659,7 +659,10 @@ impl OutgoingMessageSender {
         }
 
         let entries = {
-            let mut callbacks = self.sudo_once_credential_request_id_to_callback.lock().await;
+            let mut callbacks = self
+                .sudo_once_credential_request_id_to_callback
+                .lock()
+                .await;
             callbacks
                 .drain()
                 .map(|(_, entry)| entry)
@@ -730,7 +733,10 @@ impl OutgoingMessageSender {
         }
 
         let entries = {
-            let mut callbacks = self.sudo_once_credential_request_id_to_callback.lock().await;
+            let mut callbacks = self
+                .sudo_once_credential_request_id_to_callback
+                .lock()
+                .await;
             let request_ids = callbacks
                 .iter()
                 .filter_map(|(request_id, entry)| {
@@ -1108,13 +1114,15 @@ mod tests {
             }
         ));
 
-        assert!(outgoing
-            .try_notify_sudo_once_credential_response(
-                request_id,
-                json!({ "credential": "test-password" }),
-            )
-            .await
-            .is_ok());
+        assert!(
+            outgoing
+                .try_notify_sudo_once_credential_response(
+                    request_id,
+                    json!({ "credential": "test-password" }),
+                )
+                .await
+                .is_ok()
+        );
         let response = credential_receiver
             .await
             .expect("credential callback should be resolved")

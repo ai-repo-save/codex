@@ -138,13 +138,16 @@ impl Renderable for SudoOnceCredentialOverlay {
         let header_height = 3.min(area.height);
         let header = Paragraph::new(vec![
             Line::from("Sudo authentication required".bold()),
-            Line::from(format!("Password attempt {}. Press Esc to cancel.", self.request.attempt + 1).dim()),
+            Line::from(
+                format!(
+                    "Password attempt {}. Press Esc to cancel.",
+                    self.request.attempt + 1
+                )
+                .dim(),
+            ),
             Line::from(""),
         ]);
-        header.render(
-            Rect::new(area.x, area.y, area.width, header_height),
-            buf,
-        );
+        header.render(Rect::new(area.x, area.y, area.width, header_height), buf);
         let input_area = Rect::new(
             area.x,
             area.y.saturating_add(header_height),

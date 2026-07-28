@@ -128,11 +128,6 @@ use codex_protocol::protocol::ItemStartedEvent;
 use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::RawResponseItemEvent;
 use codex_protocol::protocol::RolloutItem;
-use codex_protocol::sudo_once::SudoOnceApprovalDecision;
-use codex_protocol::sudo_once::SudoOnceApprovalRequestEvent;
-use codex_protocol::sudo_once::SudoOnceApprovalResponse;
-use codex_protocol::sudo_once::SudoOnceCredentialRequestEvent;
-use codex_protocol::sudo_once::SudoOnceCredentialResponse;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::protocol::ThreadHistoryMode;
@@ -152,6 +147,11 @@ use codex_protocol::request_permissions::RequestPermissionsEvent;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputArgs;
 use codex_protocol::request_user_input::RequestUserInputResponse;
+use codex_protocol::sudo_once::SudoOnceApprovalDecision;
+use codex_protocol::sudo_once::SudoOnceApprovalRequestEvent;
+use codex_protocol::sudo_once::SudoOnceApprovalResponse;
+use codex_protocol::sudo_once::SudoOnceCredentialRequestEvent;
+use codex_protocol::sudo_once::SudoOnceCredentialResponse;
 use codex_rmcp_client::ElicitationResponse;
 use codex_rollout::state_db;
 use codex_rollout_trace::AgentResultTracePayload;
@@ -2603,7 +2603,9 @@ impl Session {
         .await;
         rx_response
             .await
-            .map_or(SudoOnceApprovalDecision::Abort, |response| response.decision)
+            .map_or(SudoOnceApprovalDecision::Abort, |response| {
+                response.decision
+            })
     }
 
     #[expect(

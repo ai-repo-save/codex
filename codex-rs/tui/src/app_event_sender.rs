@@ -12,10 +12,10 @@ use codex_app_server_protocol::McpServerElicitationAction;
 use codex_app_server_protocol::RequestId as AppServerRequestId;
 use codex_app_server_protocol::ReviewTarget;
 use codex_app_server_protocol::SudoOnceCredential;
-use codex_protocol::sudo_once::SudoOnceApprovalDecision;
 use codex_app_server_protocol::ToolRequestUserInputResponse;
 use codex_protocol::ThreadId;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
+use codex_protocol::sudo_once::SudoOnceApprovalDecision;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::app_event::AppEvent;
@@ -38,10 +38,11 @@ impl AppEventSender {
         // Avoid double-logging Ops; those are logged at the point of submission.
         if !matches!(
             event,
-            AppEvent::CodexOp(_) | AppEvent::SubmitThreadOp {
-                op: AppCommand::SudoOnceCredential { .. },
-                ..
-            }
+            AppEvent::CodexOp(_)
+                | AppEvent::SubmitThreadOp {
+                    op: AppCommand::SudoOnceCredential { .. },
+                    ..
+                }
         ) {
             session_log::log_inbound_app_event(&event);
         }

@@ -7,9 +7,9 @@ use crate::approval_events::ApplyPatchApprovalRequestEvent;
 use crate::approval_events::ExecApprovalRequestEvent;
 use codex_app_server_protocol::McpServerElicitationRequestParams;
 use codex_app_server_protocol::RequestId as AppServerRequestId;
-use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::SudoOnceRequestApprovalParams;
 use codex_app_server_protocol::SudoOnceRequestCredentialParams;
+use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::ToolRequestUserInputParams;
 use codex_protocol::request_permissions::RequestPermissionsEvent;
 
@@ -80,7 +80,8 @@ impl InterruptManager {
     }
 
     pub(crate) fn push_sudo_once_credential(&mut self, ev: SudoOnceRequestCredentialParams) {
-        self.queue.push_back(QueuedInterrupt::SudoOnceCredential(ev));
+        self.queue
+            .push_back(QueuedInterrupt::SudoOnceCredential(ev));
     }
 
     pub(crate) fn push_item_started(&mut self, item: ThreadItem) {

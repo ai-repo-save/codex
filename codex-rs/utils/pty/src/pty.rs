@@ -194,8 +194,7 @@ async fn spawn_process_portable(
     let killer = child.clone_killer();
 
     let (writer_tx, mut writer_rx) = mpsc::channel::<Vec<u8>>(128);
-    let (sensitive_writer_tx, mut sensitive_writer_rx) =
-        mpsc::channel::<Zeroizing<Vec<u8>>>(1);
+    let (sensitive_writer_tx, mut sensitive_writer_rx) = mpsc::channel::<Zeroizing<Vec<u8>>>(1);
     let (stdout_tx, stdout_rx) = mpsc::channel::<Vec<u8>>(128);
     let (_stderr_tx, stderr_rx) = mpsc::channel::<Vec<u8>>(1);
     let mut reader = pair.master.try_clone_reader()?;
@@ -373,8 +372,7 @@ async fn spawn_process_preserving_fds(
     let process_group_id = child.id();
 
     let (writer_tx, mut writer_rx) = mpsc::channel::<Vec<u8>>(128);
-    let (sensitive_writer_tx, mut sensitive_writer_rx) =
-        mpsc::channel::<Zeroizing<Vec<u8>>>(1);
+    let (sensitive_writer_tx, mut sensitive_writer_rx) = mpsc::channel::<Zeroizing<Vec<u8>>>(1);
     let (stdout_tx, stdout_rx) = mpsc::channel::<Vec<u8>>(128);
     let (_stderr_tx, stderr_rx) = mpsc::channel::<Vec<u8>>(1);
     let mut reader = master.try_clone()?;

@@ -675,11 +675,10 @@ impl UnifiedExecProcess {
             loop {
                 match receiver.recv().await {
                     Ok(chunk) => {
-                        let actions = sudo_filter
-                            .as_mut()
-                            .map_or_else(|| vec![SudoPromptAction::Output(chunk)], |filter| {
-                                filter.push(chunk)
-                            });
+                        let actions = sudo_filter.as_mut().map_or_else(
+                            || vec![SudoPromptAction::Output(chunk)],
+                            |filter| filter.push(chunk),
+                        );
                         let mut failed = false;
                         for action in actions {
                             match action {
@@ -745,13 +744,8 @@ impl UnifiedExecProcess {
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                         if let Some(chunk) = sudo_filter.and_then(SudoPromptFilter::finish) {
-                            Self::publish_local_output(
-                                chunk,
-                                &buffer,
-                                &output_notify,
-                                &output_tx,
-                            )
-                            .await;
+                            Self::publish_local_output(chunk, &buffer, &output_notify, &output_tx)
+                                .await;
                         }
                         output_closed.store(true, Ordering::Release);
                         output_closed_notify.notify_waiters();

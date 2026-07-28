@@ -819,9 +819,16 @@ fn build_header(request: &ApprovalRequest) -> Box<dyn Renderable> {
         }
         ApprovalRequest::SudoOnce(request) => {
             let mut lines = vec![
-                Line::from("This command will run as root and outside the Codex sandbox.".red().bold()),
+                Line::from(
+                    "This command will run as root and outside the Codex sandbox."
+                        .red()
+                        .bold(),
+                ),
                 Line::from(""),
-                Line::from(vec!["Working directory: ".into(), request.cwd.clone().cyan()]),
+                Line::from(vec![
+                    "Working directory: ".into(),
+                    request.cwd.clone().cyan(),
+                ]),
             ];
             if let Some(reason) = &request.reason {
                 lines.extend([

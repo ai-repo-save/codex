@@ -7,7 +7,6 @@ use codex_app_server_protocol::McpServerElicitationAction;
 use codex_app_server_protocol::RequestId as AppServerRequestId;
 use codex_app_server_protocol::ReviewTarget;
 use codex_app_server_protocol::SudoOnceCredential;
-use codex_protocol::sudo_once::SudoOnceApprovalDecision;
 use codex_app_server_protocol::ToolRequestUserInputResponse;
 use codex_app_server_protocol::UserInput;
 use codex_config::types::ApprovalsReviewer;
@@ -20,6 +19,7 @@ use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
+use codex_protocol::sudo_once::SudoOnceApprovalDecision;
 use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;
@@ -268,10 +268,7 @@ impl AppCommand {
         Self::SudoOnceApproval { id, decision }
     }
 
-    pub(crate) fn sudo_once_credential(
-        id: String,
-        credential: Option<SudoOnceCredential>,
-    ) -> Self {
+    pub(crate) fn sudo_once_credential(id: String, credential: Option<SudoOnceCredential>) -> Self {
         Self::SudoOnceCredential {
             id,
             credential: SensitiveSudoOnceCredential::new(credential),

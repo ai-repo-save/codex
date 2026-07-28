@@ -152,7 +152,7 @@ async fn thread_status_changed_can_be_opted_out() -> Result<()> {
                 version: "0.1.0".to_string(),
             },
             Some(InitializeCapabilities {
-                    sudo_once_credential_prompt: false,
+                sudo_once_credential_prompt: false,
                 experimental_api: true,
                 request_attestation: false,
                 opt_out_notification_methods: Some(vec!["thread/status/changed".to_string()]),
