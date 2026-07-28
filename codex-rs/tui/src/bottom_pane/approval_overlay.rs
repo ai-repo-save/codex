@@ -1186,6 +1186,7 @@ fn elicitation_options(keymap: &ApprovalKeymap) -> Vec<ApprovalOption> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app_command::AppCommand;
     use crate::app_event::AppEvent;
     use codex_app_server_protocol::AdditionalFileSystemPermissions;
     use codex_app_server_protocol::AdditionalNetworkPermissions;
