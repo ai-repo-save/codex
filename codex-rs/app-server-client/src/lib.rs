@@ -992,6 +992,7 @@ mod tests {
     use codex_app_server_protocol::ToolRequestUserInputQuestion;
     use codex_core::config::ConfigBuilder;
     use codex_core::init_state_db;
+    use codex_sudo_once::SudoOnceCommand;
     use codex_uds::UnixListener;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use futures::SinkExt;
@@ -999,6 +1000,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use std::ops::Deref;
     use std::path::Path;
+    use std::sync::Arc;
     use tempfile::TempDir;
     use tokio::net::TcpListener;
     use tokio::time::Duration;
@@ -1346,6 +1348,75 @@ mod tests {
             assert_eq!(parsed.thread.source, expected_source);
             client.shutdown().await.expect("shutdown should complete");
         }
+    }
+
+    #[tokio::test]
+    async fn local_tui_broker_forwards_a_single_use_approval_capability() {
+        const COMMAND: [&str; 2] = ["id", "-u"];
+        const CWD: &str = "/tmp";
+
+        let codex_home = TempDir::new().expect("temp dir");
+        let config = Arc::new(build_test_config_for_codex_home(codex_home.path()).await);
+        let state_db = init_state_db(config.as_ref())
+            .await
+            .expect("state db should initialize for in-process test");
+        let (broker, prompts) = LocalSudoOnceBroker::new();
+        let mut client = InProcessAppServerClient::start_with_sudo_once_broker(
+            InProcessClientStartArgs {
+                arg0_paths: Arg0DispatchPaths::default(),
+                config,
+                cli_overrides: Vec::new(),
+                loader_overrides: LoaderOverrides::default(),
+                strict_config: false,
+                cloud_config_bundle: CloudConfigBundleLoader::default(),
+                feedback: CodexFeedback::new(),
+                log_db: None,
+                state_db: Some(state_db),
+                environment_manager: Arc::new(EnvironmentManager::default_for_tests()),
+                config_warnings: Vec::new(),
+                session_source: SessionSource::Cli,
+                enable_codex_api_key_env: false,
+                client_name: "codex-app-server-client-test".to_string(),
+                client_version: "0.0.0-test".to_string(),
+                experimental_api: true,
+                mcp_server_openai_form_elicitation: false,
+                opt_out_notification_methods: Vec::new(),
+                channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
+            },
+            Some(broker.clone()),
+            Some(prompts),
+        )
+        .await
+        .expect("local TUI client should start");
+        let command = Arc::new(SudoOnceCommand::new(
+            codex_protocol::ThreadId::new(),
+            Arc::from(COMMAND.map(str::to_string)),
+            AbsolutePathBuf::try_from(CWD).expect("absolute cwd"),
+            None,
+        ));
+        let approval = {
+            let broker = broker.clone();
+            let command = Arc::clone(&command);
+            tokio::spawn(async move { broker.request_approval(command).await })
+        };
+
+        let event = timeout(Duration::from_secs(2), client.next_event())
+            .await
+            .expect("typed prompt should be forwarded before timeout")
+            .expect("local TUI event stream should remain open");
+        let AppServerEvent::SudoOncePrompt(SudoOncePrompt::Approval(prompt)) = event else {
+            panic!("expected local typed sudo approval prompt");
+        };
+        let (prompt_command, responder) = prompt.into_parts();
+        assert!(Arc::ptr_eq(&command, &prompt_command));
+        assert!(responder.approve());
+
+        let grant = approval
+            .await
+            .expect("approval task should join")
+            .expect("approved prompt should return a grant");
+        assert!(Arc::ptr_eq(&command, grant.command()));
+        client.shutdown().await.expect("shutdown should complete");
     }
 
     #[tokio::test]
