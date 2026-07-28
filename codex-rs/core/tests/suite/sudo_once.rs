@@ -100,7 +100,7 @@ async fn sudo_once_broker_prompts_despite_general_approval_never_and_abort_finis
 -> Result<()> {
     let server = start_mock_server().await;
     let (broker, mut prompts) = LocalSudoOnceBroker::new();
-    let builder = test_codex()
+    let mut builder = test_codex()
         .with_sudo_once_broker(broker)
         .with_config(configure_sudo_once);
     let test = builder.build(&server).await?;
