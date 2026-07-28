@@ -9,17 +9,19 @@ from typing import Sequence
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _sync import DEFAULT_BRANCH
     from _sync import DEFAULT_HOST
     from _sync import DEFAULT_REMOTE_PATH
     from _sync import RemoteWorkflow
-    from _sync import run_remote_workflow
+    from _sync import run
+    from _sync import shell_quote
+    from _sync import ssh_command
 else:
-    from ._sync import DEFAULT_BRANCH
     from ._sync import DEFAULT_HOST
     from ._sync import DEFAULT_REMOTE_PATH
     from ._sync import RemoteWorkflow
-    from ._sync import run_remote_workflow
+    from ._sync import run
+    from ._sync import shell_quote
+    from ._sync import ssh_command
 
 
 class CleanupScope(str, Enum):
@@ -31,18 +33,14 @@ def argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Remove rebuildable Cargo artifacts from the remote Codex checkout.",
         epilog=(
-            "The command previews disk usage by default. Pass --execute to delete "
-            "the selected cache scope.\n\n"
+            "This maintenance command does not synchronize Git, so it remains usable "
+            "when the remote disk is full. It previews disk usage by default; pass "
+            "--execute to delete the selected cache scope.\n\n"
             "Examples:\n"
             "  scripts/remote/cleanup_build_cache.py --scope incremental\n"
             "  scripts/remote/cleanup_build_cache.py --scope cargo-target --execute"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument(
-        "--branch",
-        default=DEFAULT_BRANCH,
-        help=f"local and remote Git branch to synchronize (default: {DEFAULT_BRANCH})",
     )
     parser.add_argument(
         "--scope",
@@ -58,7 +56,11 @@ def argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def cleanup_command(scope: CleanupScope, execute: bool) -> tuple[str, ...]:
+def cleanup_command(
+    remote_path: str,
+    scope: CleanupScope,
+    execute: bool,
+) -> str:
     relative_path = {
         CleanupScope.INCREMENTAL: "codex-rs/target/debug/incremental",
         CleanupScope.CARGO_TARGET: "codex-rs/target",
@@ -69,7 +71,7 @@ def cleanup_command(scope: CleanupScope, execute: bool) -> tuple[str, ...]:
         else 'printf "%s\\n" "preview only; pass --execute to remove $path"'
     )
     script = (
-        "set -euo pipefail; "
+        f"set -euo pipefail; cd {shell_quote(remote_path)}; "
         f"path={relative_path!r}; "
         "df -h .; "
         'if [ -e "$path" ]; then du -sh -- "$path"; '
@@ -77,20 +79,25 @@ def cleanup_command(scope: CleanupScope, execute: bool) -> tuple[str, ...]:
         'else printf "%s\\n" "$path is already absent"; fi; '
         "df -h ."
     )
-    return ("bash", "-lc", script)
+    return script
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = argument_parser().parse_args(argv)
     scope = CleanupScope(args.scope)
-    return run_remote_workflow(
-        RemoteWorkflow(
-            host=DEFAULT_HOST,
-            branch=args.branch,
-            remote_path=DEFAULT_REMOTE_PATH,
-            command=cleanup_command(scope, args.execute),
+    config = RemoteWorkflow(
+        host=DEFAULT_HOST,
+        branch="",
+        remote_path=DEFAULT_REMOTE_PATH,
+        command=(),
+    )
+    run(
+        ssh_command(
+            config,
+            cleanup_command(config.remote_path, scope, args.execute),
         )
     )
+    return 0
 
 
 if __name__ == "__main__":
