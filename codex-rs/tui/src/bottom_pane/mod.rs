@@ -2400,7 +2400,10 @@ mod tests {
         pane.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
         assert_eq!(
-            credential.await.expect("credential response").expose_secret(),
+            credential
+                .await
+                .expect("credential response")
+                .expose_secret(),
             "credential pasted by terminal"
         );
     }

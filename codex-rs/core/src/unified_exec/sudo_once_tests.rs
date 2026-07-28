@@ -1,5 +1,5 @@
-use super::sudo_once::SudoPromptFilter;
 use super::sudo_once::SudoAuthenticationState;
+use super::sudo_once::SudoPromptFilter;
 use pretty_assertions::assert_eq;
 
 const PROMPT_SENTINEL: &str = "__PROMPT__";
@@ -38,7 +38,8 @@ fn finish_withholds_marker_prefix_after_ordinary_output() {
         .into_iter()
         .filter_map(|action| match action {
             super::sudo_once::SudoPromptAction::Output(chunk) => Some(chunk),
-            super::sudo_once::SudoPromptAction::Prompt | super::sudo_once::SudoPromptAction::Started => None,
+            super::sudo_once::SudoPromptAction::Prompt
+            | super::sudo_once::SudoPromptAction::Started => None,
         })
         .flatten()
         .collect::<Vec<_>>();

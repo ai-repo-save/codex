@@ -98,9 +98,9 @@ impl Drop for Tui {
 mod tests {
     use std::io::Write as _;
 
+    use super::TuiEvent;
     use super::clear_for_viewport_change;
     use super::should_emit_notification;
-    use super::TuiEvent;
     use crate::custom_terminal::Terminal as CustomTerminal;
     use crate::test_backend::VT100Backend;
     use codex_config::types::NotificationCondition;

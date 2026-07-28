@@ -104,7 +104,9 @@ impl LocalOutputReceiver {
                 broadcast::error::RecvError::Lagged(_) => LocalOutputReceiveError::Lagged,
                 broadcast::error::RecvError::Closed => LocalOutputReceiveError::Closed,
             }),
-            Self::Lossless(receiver) => receiver.recv().await.ok_or(LocalOutputReceiveError::Closed),
+            Self::Lossless(receiver) => {
+                receiver.recv().await.ok_or(LocalOutputReceiveError::Closed)
+            }
         }
     }
 }
