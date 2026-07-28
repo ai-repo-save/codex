@@ -4075,6 +4075,7 @@ version = "0.145.0"
 dependencies = [
  "codex-protocol",
  "codex-utils-absolute-path",
+ "pretty_assertions",
  "tokio",
  "zeroize",
 ]
