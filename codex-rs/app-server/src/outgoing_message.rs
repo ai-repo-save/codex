@@ -234,7 +234,6 @@ impl OutgoingMessageSender {
     pub(crate) async fn connection_closed(&self, connection_id: ConnectionId) {
         let mut request_contexts = self.request_contexts.lock().await;
         request_contexts.retain(|request_id, _| request_id.connection_id != connection_id);
-        drop(request_contexts);
     }
 
     pub(crate) async fn request_trace_context(

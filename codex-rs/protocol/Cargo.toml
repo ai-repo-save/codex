@@ -47,7 +47,6 @@ ts-rs = { workspace = true, features = [
 ] }
 uuid = { workspace = true, features = ["serde", "v7", "v4"] }
 wildmatch = { workspace = true }
-zeroize = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = { workspace = true }

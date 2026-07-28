@@ -1289,7 +1289,7 @@ macro_rules! server_request_definitions {
         }
 
         /// Typed response from the client to the server.
-        #[derive(Serialize, Deserialize, Debug)]
+        #[derive(Serialize, Deserialize, Debug, Clone)]
         #[serde(tag = "method", rename_all = "camelCase")]
         pub enum ServerResponse {
             $(

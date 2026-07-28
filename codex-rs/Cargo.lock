@@ -3797,7 +3797,6 @@ dependencies = [
  "ts-rs",
  "uuid",
  "wildmatch",
- "zeroize",
 ]
 
 [[package]]

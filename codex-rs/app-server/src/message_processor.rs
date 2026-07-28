@@ -49,7 +49,6 @@ use crate::skills_watcher::SkillsWatcher;
 use crate::thread_state::ConnectionCapabilities;
 use crate::thread_state::ThreadStateManager;
 use crate::transport::AppServerTransport;
-use crate::transport::ConnectionOrigin;
 use crate::transport::RemoteControlHandle;
 use codex_analytics::AnalyticsEventsClient;
 use codex_analytics::AppServerRpcTransport;
@@ -134,7 +133,6 @@ pub(crate) struct MessageProcessor {
 
 pub(crate) struct ConnectionSessionState {
     pub(crate) rpc_gate: Arc<ConnectionRpcGate>,
-    origin: ConnectionOrigin,
     initialized: OnceLock<InitializedConnectionSessionState>,
     sudo_once_broker: Option<LocalSudoOnceBroker>,
 }
@@ -144,7 +142,6 @@ impl std::fmt::Debug for ConnectionSessionState {
         formatter
             .debug_struct("ConnectionSessionState")
             .field("rpc_gate", &self.rpc_gate)
-            .field("origin", &self.origin)
             .field("initialized", &self.initialized)
             .field("has_sudo_once_broker", &self.sudo_once_broker.is_some())
             .finish()
@@ -169,24 +166,12 @@ impl Default for ConnectionSessionState {
 
 impl ConnectionSessionState {
     pub(crate) fn new() -> Self {
-        Self::new_with_origin(ConnectionOrigin::InProcess)
-    }
-
-    pub(crate) fn new_with_origin(origin: ConnectionOrigin) -> Self {
-        Self::new_with_origin_and_sudo_once_broker(origin, None)
+        Self::new_with_sudo_once_broker(None)
     }
 
     pub(crate) fn new_with_sudo_once_broker(sudo_once_broker: Option<LocalSudoOnceBroker>) -> Self {
-        Self::new_with_origin_and_sudo_once_broker(ConnectionOrigin::InProcess, sudo_once_broker)
-    }
-
-    fn new_with_origin_and_sudo_once_broker(
-        origin: ConnectionOrigin,
-        sudo_once_broker: Option<LocalSudoOnceBroker>,
-    ) -> Self {
         Self {
             rpc_gate: Arc::new(ConnectionRpcGate::new()),
-            origin,
             initialized: OnceLock::new(),
             sudo_once_broker,
         }
