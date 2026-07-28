@@ -5,11 +5,12 @@ use crossterm::event::KeyModifiers;
 use tokio::sync::mpsc::unbounded_channel;
 
 const TEST_CREDENTIAL: &str = "password";
+const TEST_ITEM_ID: &str = "sudo-item";
 
 fn request() -> SudoOnceCredentialRequest {
     SudoOnceCredentialRequest {
         thread_id: ThreadId::new(),
-        item_id: "sudo-item".to_string(),
+        item_id: TEST_ITEM_ID.to_string(),
         attempt: 0,
     }
 }
@@ -72,9 +73,8 @@ fn esc_submits_a_null_credential() {
     let AppEvent::SubmitThreadOp { op, .. } = event else {
         panic!("expected a thread-scoped credential response");
     };
-    assert!(matches!(op, AppCommand::SudoOnceCredential { .. }));
     assert_eq!(
-        serde_json::to_string(&op).expect("cancel command should serialize safely"),
-        r#"{\"SudoOnceCredential\":{\"id\":\"sudo-item\",\"credential\":null}}"#
+        op,
+        AppCommand::sudo_once_credential(TEST_ITEM_ID.to_string(), None)
     );
 }
