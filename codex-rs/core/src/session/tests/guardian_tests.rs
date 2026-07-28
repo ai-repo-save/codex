@@ -765,6 +765,7 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         external_time_provider: None,
         inherited_multi_agent_version: None,
         prompt_cache_key_override: None,
+        sudo_once_broker: None,
     })
     .await
     .expect("spawn guardian subagent");

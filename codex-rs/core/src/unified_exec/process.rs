@@ -14,8 +14,7 @@ use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
 
 use crate::exec::is_likely_sandbox_denied;
-use crate::session::session::Session;
-use crate::session::turn_context::TurnContext;
+use crate::elicitation::ElicitationRegistration;
 use codex_exec_server::ExecProcess;
 use codex_exec_server::ExecProcessEvent;
 use codex_exec_server::ProcessSignal as ExecServerProcessSignal;
@@ -30,6 +29,8 @@ use codex_utils_output_truncation::formatted_truncate_text;
 use codex_utils_pty::ExecCommandSession;
 use codex_utils_pty::ProcessSignal as PtyProcessSignal;
 use codex_utils_pty::SpawnedPty;
+use codex_sudo_once::LocalSudoOnceBroker;
+use codex_sudo_once::SudoOnceGrant;
 
 use super::UNIFIED_EXEC_OUTPUT_MAX_TOKENS;
 use super::UnifiedExecError;
@@ -77,10 +78,11 @@ enum ProcessHandle {
 }
 
 pub(super) struct SudoOnceSpawnContext {
-    pub(super) session: Arc<Session>,
-    pub(super) turn: Arc<TurnContext>,
-    pub(super) call_id: String,
-    pub(super) sentinel: String,
+    pub(super) broker: LocalSudoOnceBroker,
+    pub(super) grant: SudoOnceGrant,
+    pub(super) prompt_sentinel: String,
+    pub(super) started_sentinel: String,
+    pub(super) elicitation: Option<ElicitationRegistration>,
 }
 
 /// Unified wrapper over directly spawned PTY sessions and exec-server-backed
@@ -95,6 +97,7 @@ pub(crate) struct UnifiedExecProcess {
     cancellation_token: CancellationToken,
     output_drained: Arc<Notify>,
     interaction_lock: Arc<Mutex<()>>,
+    stdin_ready: Arc<AtomicBool>,
     state_tx: watch::Sender<ProcessState>,
     state_rx: watch::Receiver<ProcessState>,
     output_task: Option<JoinHandle<()>>,
@@ -137,6 +140,7 @@ impl UnifiedExecProcess {
             cancellation_token,
             output_drained,
             interaction_lock: Arc::new(Mutex::new(())),
+            stdin_ready: Arc::new(AtomicBool::new(true)),
             state_tx,
             state_rx,
             output_task: None,
@@ -146,6 +150,9 @@ impl UnifiedExecProcess {
     }
 
     pub(super) async fn write(&self, data: &[u8]) -> Result<(), UnifiedExecError> {
+        if !self.stdin_ready.load(Ordering::Acquire) {
+            return Err(UnifiedExecError::StdinClosed);
+        }
         match &self.process_handle {
             ProcessHandle::Local(process_handle) => process_handle
                 .writer_sender()
@@ -359,6 +366,7 @@ impl UnifiedExecProcess {
             managed.output_tx.clone(),
             managed.cancellation_token.clone(),
             managed.state_tx.clone(),
+            Arc::clone(&managed.stdin_ready),
             process_handle,
             /*sudo_once*/ None,
         ));
@@ -415,6 +423,7 @@ impl UnifiedExecProcess {
             SandboxType::None,
             Some(spawn_lifecycle),
         );
+        managed.stdin_ready.store(false, Ordering::Release);
         managed.output_task = Some(Self::spawn_local_output_task(
             output_rx,
             Arc::clone(&managed.output_buffer),
@@ -424,6 +433,7 @@ impl UnifiedExecProcess {
             managed.output_tx.clone(),
             managed.cancellation_token.clone(),
             managed.state_tx.clone(),
+            Arc::clone(&managed.stdin_ready),
             process_handle,
             Some(sudo_once),
         ));
@@ -664,13 +674,19 @@ impl UnifiedExecProcess {
         output_tx: broadcast::Sender<Vec<u8>>,
         cancellation_token: CancellationToken,
         state_tx: watch::Sender<ProcessState>,
+        stdin_ready: Arc<AtomicBool>,
         process_handle: Arc<ExecCommandSession>,
-        sudo_once: Option<SudoOnceSpawnContext>,
+        mut sudo_once: Option<SudoOnceSpawnContext>,
     ) -> JoinHandle<()> {
         tokio::spawn(async move {
             let mut sudo_filter = sudo_once
                 .as_ref()
-                .map(|context| SudoPromptFilter::new(context.sentinel.clone()));
+                .map(|context| {
+                    SudoPromptFilter::new(
+                        context.prompt_sentinel.clone(),
+                        context.started_sentinel.clone(),
+                    )
+                });
             let mut credential_attempt = 0;
             loop {
                 match receiver.recv().await {
@@ -698,16 +714,13 @@ impl UnifiedExecProcess {
                                     };
                                     credential_attempt += 1;
                                     let response = tokio::select! {
-                                        response = context.session.request_sudo_once_credential(
-                                            context.turn.as_ref(),
-                                            context.call_id.clone(),
+                                        response = context.broker.request_credential(
+                                            &context.grant,
                                             credential_attempt,
                                         ) => response,
                                         _ = cancellation_token.cancelled() => None,
                                     };
-                                    let Some(credential) =
-                                        response.and_then(|response| response.credential)
-                                    else {
+                                    let Some(credential) = response else {
                                         failed = true;
                                         break;
                                     };
@@ -729,6 +742,12 @@ impl UnifiedExecProcess {
                                     if writer.send(input).await.is_err() {
                                         failed = true;
                                         break;
+                                    }
+                                }
+                                SudoPromptAction::Started => {
+                                    stdin_ready.store(true, Ordering::Release);
+                                    if let Some(context) = sudo_once.as_mut() {
+                                        context.elicitation.take();
                                     }
                                 }
                             }

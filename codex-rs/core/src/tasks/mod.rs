@@ -518,6 +518,13 @@ impl Session {
             }
         }
 
+        if reason == TurnAbortReason::Interrupted {
+            self.services
+                .unified_exec_manager
+                .terminate_sudo_once_processes(turn_context.as_ref().map(|turn| turn.sub_id.as_str()))
+                .await;
+        }
+
         if let Some(turn_context) = turn_context.as_deref() {
             self.emit_turn_abort_lifecycle(reason.clone(), turn_context.extension_data.as_ref())
                 .await;

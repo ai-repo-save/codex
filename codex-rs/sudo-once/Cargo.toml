@@ -1,0 +1,14 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-sudo-once"
+version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-protocol = { workspace = true }
+codex-utils-absolute-path = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+zeroize = { workspace = true }

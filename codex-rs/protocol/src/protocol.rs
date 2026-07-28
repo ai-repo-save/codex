@@ -55,9 +55,6 @@ use crate::plan_tool::UpdatePlanArgs;
 use crate::request_permissions::RequestPermissionsEvent;
 use crate::request_permissions::RequestPermissionsResponse;
 use crate::request_user_input::RequestUserInputResponse;
-use crate::sudo_once::SudoOnceApprovalRequestEvent;
-use crate::sudo_once::SudoOnceApprovalResponse;
-use crate::sudo_once::SudoOnceCredentialRequestEvent;
 use crate::user_input::UserInput;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
@@ -595,16 +592,6 @@ pub enum Op {
         decision: ReviewDecision,
     },
 
-    /// Resolve a single-use sudo approval request.
-    SudoOnceApproval {
-        /// The command execution item being approved.
-        id: String,
-        /// Turn id associated with the approval event, when available.
-        turn_id: Option<String>,
-        /// The user's decision for this command only.
-        response: SudoOnceApprovalResponse,
-    },
-
     /// Approve a code patch
     PatchApproval {
         /// The id of the submission we are approving
@@ -888,7 +875,6 @@ impl Op {
             Self::ThreadSettings { .. } => "thread_settings",
             Self::InterAgentCommunication { .. } => "inter_agent_communication",
             Self::ExecApproval { .. } => "exec_approval",
-            Self::SudoOnceApproval { .. } => "sudo_once_approval",
             Self::PatchApproval { .. } => "patch_approval",
             Self::ResolveElicitation { .. } => "resolve_elicitation",
             Self::UserInputAnswer { .. } => "user_input_answer",
@@ -1424,10 +1410,6 @@ pub enum EventMsg {
     ViewImageToolCall(ViewImageToolCallEvent),
 
     ExecApprovalRequest(ExecApprovalRequestEvent),
-
-    SudoOnceApprovalRequest(SudoOnceApprovalRequestEvent),
-
-    SudoOnceCredentialRequest(SudoOnceCredentialRequestEvent),
 
     RequestPermissions(RequestPermissionsEvent),
 

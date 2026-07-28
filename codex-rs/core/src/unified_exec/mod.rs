@@ -51,6 +51,9 @@ mod process;
 mod process_manager;
 mod process_state;
 mod sudo_once;
+#[cfg(test)]
+#[path = "sudo_once_tests.rs"]
+mod sudo_once_tests;
 
 pub(crate) fn set_deterministic_process_ids_for_tests(enabled: bool) {
     process_manager::set_deterministic_process_ids_for_tests(enabled);
@@ -164,6 +167,7 @@ struct ProcessEntry {
     hook_command: String,
     tty: bool,
     network_approval: Option<DeferredNetworkApproval>,
+    sudo_once_turn_id: Option<String>,
     session: Weak<Session>,
     last_used: tokio::time::Instant,
 }

@@ -1619,8 +1619,6 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<(String, Option<
         | EventMsg::ImageGenerationEnd(_)
         | EventMsg::ViewImageToolCall(_)
         | EventMsg::ExecApprovalRequest(_)
-        | EventMsg::SudoOnceApprovalRequest(_)
-        | EventMsg::SudoOnceCredentialRequest(_)
         | EventMsg::RequestPermissions(_)
         | EventMsg::RequestUserInput(_)
         | EventMsg::DynamicToolCallRequest(_)

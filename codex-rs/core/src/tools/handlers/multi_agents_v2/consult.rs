@@ -204,6 +204,7 @@ pub(super) async fn consult_parent(
             external_time_provider: Some(Arc::clone(&parent_session.services.time_provider)),
             inherited_multi_agent_version: snapshot.multi_agent_version,
             prompt_cache_key_override: Some(snapshot.prompt_cache_key),
+            sudo_once_broker: None,
         }),
         cancellation_token,
         deadline,

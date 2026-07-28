@@ -13,8 +13,6 @@ use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_protocol::request_permissions::RequestPermissionProfile;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputResponse;
-use codex_protocol::sudo_once::SudoOnceApprovalResponse;
-use codex_protocol::sudo_once::SudoOnceCredentialResponse;
 use codex_rmcp_client::ElicitationResponse;
 use codex_sandboxing::policy_transforms::merge_permission_profiles;
 use rmcp::model::RequestId;
@@ -88,8 +86,6 @@ pub(crate) struct RunningTask {
 #[derive(Default)]
 pub(crate) struct TurnState {
     pending_approvals: HashMap<String, oneshot::Sender<ReviewDecision>>,
-    pending_sudo_once_approvals: HashMap<String, oneshot::Sender<SudoOnceApprovalResponse>>,
-    pending_sudo_once_credentials: HashMap<String, oneshot::Sender<SudoOnceCredentialResponse>>,
     pending_request_permissions: HashMap<String, PendingRequestPermissions>,
     pending_user_input: HashMap<String, oneshot::Sender<RequestUserInputResponse>>,
     pending_elicitations: HashMap<(String, RequestId), oneshot::Sender<ElicitationResponse>>,
@@ -127,43 +123,12 @@ impl TurnState {
 
     pub(crate) fn clear_pending_waiters(&mut self) {
         self.pending_approvals.clear();
-        self.pending_sudo_once_approvals.clear();
-        self.pending_sudo_once_credentials.clear();
         self.pending_request_permissions.clear();
         self.pending_user_input.clear();
         self.pending_elicitations.clear();
         self.pending_dynamic_tools.clear();
     }
 
-    pub(crate) fn insert_pending_sudo_once_approval(
-        &mut self,
-        key: String,
-        tx: oneshot::Sender<SudoOnceApprovalResponse>,
-    ) -> Option<oneshot::Sender<SudoOnceApprovalResponse>> {
-        self.pending_sudo_once_approvals.insert(key, tx)
-    }
-
-    pub(crate) fn remove_pending_sudo_once_approval(
-        &mut self,
-        key: &str,
-    ) -> Option<oneshot::Sender<SudoOnceApprovalResponse>> {
-        self.pending_sudo_once_approvals.remove(key)
-    }
-
-    pub(crate) fn insert_pending_sudo_once_credential(
-        &mut self,
-        key: String,
-        tx: oneshot::Sender<SudoOnceCredentialResponse>,
-    ) -> Option<oneshot::Sender<SudoOnceCredentialResponse>> {
-        self.pending_sudo_once_credentials.insert(key, tx)
-    }
-
-    pub(crate) fn remove_pending_sudo_once_credential(
-        &mut self,
-        key: &str,
-    ) -> Option<oneshot::Sender<SudoOnceCredentialResponse>> {
-        self.pending_sudo_once_credentials.remove(key)
-    }
 
     pub(crate) fn insert_pending_request_permissions(
         &mut self,

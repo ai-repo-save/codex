@@ -619,11 +619,7 @@ fn unified_exec_should_include_shell_parameter(
 fn sudo_once_enabled(turn_context: &TurnContext) -> bool {
     cfg!(target_os = "linux")
         && turn_context.config.features.enabled(Feature::SudoOnce)
-        && matches!(
-            &turn_context.session_source,
-            codex_protocol::protocol::SessionSource::Cli
-                | codex_protocol::protocol::SessionSource::VSCode
-        )
+        && turn_context.sudo_once_available
 }
 
 #[instrument(level = "trace", skip_all)]

@@ -36,6 +36,7 @@ members = [
     "context-fragments",
     "shell-command",
     "shell-escalation",
+    "sudo-once",
     "skills",
     "core",
     "core-api",
@@ -229,6 +230,7 @@ codex-rollout-trace = { path = "rollout-trace" }
 codex-sandboxing = { path = "sandboxing" }
 codex-secrets = { path = "secrets" }
 codex-shell-command = { path = "shell-command" }
+codex-sudo-once = { path = "sudo-once" }
 codex-shell-escalation = { path = "shell-escalation" }
 codex-skills-extension = { path = "ext/skills" }
 codex-skills = { path = "skills" }
