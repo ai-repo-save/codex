@@ -2209,26 +2209,6 @@ impl App {
                         self.keymap.pager.clone(),
                     ));
                 }
-                ApprovalRequest::SudoOnce(request) => {
-                    let _ = tui.enter_alt_screen();
-                    let mut lines = vec![
-                        "This command runs as root without the Codex sandbox."
-                            .red()
-                            .bold()
-                            .into(),
-                        Line::from(""),
-                        Line::from(vec!["Command: ".into(), request.command.into()]),
-                        Line::from(vec!["Working directory: ".into(), request.cwd.into()]),
-                    ];
-                    if let Some(reason) = request.reason {
-                        lines.push(Line::from(vec!["Reason: ".into(), reason.italic()]));
-                    }
-                    self.overlay = Some(Overlay::new_static_with_lines(
-                        lines,
-                        "S U D O".to_string(),
-                        self.keymap.pager.clone(),
-                    ));
-                }
                 ApprovalRequest::Permissions(request) => {
                     let _ = tui.enter_alt_screen();
                     let mut lines = Vec::new();

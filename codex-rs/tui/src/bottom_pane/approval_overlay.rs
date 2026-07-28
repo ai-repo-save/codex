@@ -54,7 +54,6 @@ use codex_features::Features;
 use codex_protocol::ThreadId;
 use codex_protocol::request_permissions::PermissionGrantScope;
 use codex_protocol::request_permissions::RequestPermissionProfile;
-use codex_protocol::sudo_once::SudoOnceApprovalDecision;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::LegacyAppPathString;
 use crossterm::event::KeyCode;
@@ -76,7 +75,6 @@ pub(crate) enum ApprovalRequest {
     Permissions(PermissionsApprovalRequest),
     ApplyPatch(ApplyPatchApprovalRequest),
     McpElicitation(McpElicitationApprovalRequest),
-    SudoOnce(SudoOnceApprovalRequest),
 }
 
 #[derive(Clone, Debug)]
@@ -121,15 +119,6 @@ pub(crate) struct McpElicitationApprovalRequest {
     pub message: String,
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct SudoOnceApprovalRequest {
-    pub thread_id: ThreadId,
-    pub id: String,
-    pub command: String,
-    pub cwd: String,
-    pub reason: Option<String>,
-}
-
 impl ApprovalRequest {
     fn thread_id(&self) -> ThreadId {
         match self {
@@ -137,7 +126,6 @@ impl ApprovalRequest {
             ApprovalRequest::Permissions(request) => request.thread_id,
             ApprovalRequest::ApplyPatch(request) => request.thread_id,
             ApprovalRequest::McpElicitation(request) => request.thread_id,
-            ApprovalRequest::SudoOnce(request) => request.thread_id,
         }
     }
 
@@ -147,7 +135,6 @@ impl ApprovalRequest {
             ApprovalRequest::Permissions(request) => request.thread_label.as_deref(),
             ApprovalRequest::ApplyPatch(request) => request.thread_label.as_deref(),
             ApprovalRequest::McpElicitation(request) => request.thread_label.as_deref(),
-            ApprovalRequest::SudoOnce(_) => None,
         }
     }
 
@@ -292,10 +279,6 @@ impl ApprovalOverlay {
                 elicitation_options(approval_keymap),
                 format!("{} needs your approval.", request.server_name),
             ),
-            ApprovalRequest::SudoOnce(_) => (
-                sudo_once_options(approval_keymap),
-                "Run this command as root?".to_string(),
-            ),
         };
 
         let header = Box::new(ColumnRenderable::with([
@@ -359,9 +342,6 @@ impl ApprovalOverlay {
                         *decision,
                     );
                 }
-                (ApprovalRequest::SudoOnce(request), ApprovalDecision::SudoOnce(decision)) => {
-                    self.handle_sudo_once_decision(&request.id, *decision);
-                }
                 _ => {}
             }
         }
@@ -384,8 +364,7 @@ impl ApprovalOverlay {
                 ApprovalRequest::Exec(request) => request.network_approval_context.as_ref(),
                 ApprovalRequest::Permissions(_)
                 | ApprovalRequest::ApplyPatch(_)
-                | ApprovalRequest::McpElicitation(_)
-                | ApprovalRequest::SudoOnce(_) => None,
+                | ApprovalRequest::McpElicitation(_) => None,
             };
             let subject = if let Some(network_approval_context) = network_approval_context {
                 history_cell::ApprovalDecisionSubject::NetworkAccess {
@@ -495,18 +474,6 @@ impl ApprovalOverlay {
         );
     }
 
-    fn handle_sudo_once_decision(&self, id: &str, decision: SudoOnceApprovalDecision) {
-        let Some(thread_id) = self
-            .current_request
-            .as_ref()
-            .map(ApprovalRequest::thread_id)
-        else {
-            return;
-        };
-        self.app_event_tx
-            .sudo_once_approval(thread_id, id.to_string(), decision);
-    }
-
     fn advance_queue(&mut self) {
         if let Some(next) = self.queue.pop() {
             self.set_current(next);
@@ -546,9 +513,6 @@ impl ApprovalOverlay {
                         &request.request_id,
                         McpServerElicitationAction::Cancel,
                     );
-                }
-                ApprovalRequest::SudoOnce(request) => {
-                    self.handle_sudo_once_decision(&request.id, SudoOnceApprovalDecision::Abort);
                 }
             }
         }
@@ -813,31 +777,6 @@ fn build_header(request: &ApprovalRequest) -> Box<dyn Renderable> {
             let header = Paragraph::new(lines).wrap(Wrap { trim: false });
             Box::new(header)
         }
-        ApprovalRequest::SudoOnce(request) => {
-            let mut lines = vec![
-                Line::from(
-                    "This command will run as root and outside the Codex sandbox."
-                        .red()
-                        .bold(),
-                ),
-                Line::from(""),
-                Line::from(vec![
-                    "Working directory: ".into(),
-                    request.cwd.clone().cyan(),
-                ]),
-            ];
-            if let Some(reason) = &request.reason {
-                lines.extend([
-                    Line::from(""),
-                    Line::from(vec!["Reason: ".into(), reason.clone().italic()]),
-                ]);
-            }
-            lines.extend([
-                Line::from(""),
-                Line::from(vec!["$ ".into(), request.command.clone().into()]),
-            ]);
-            Box::new(Paragraph::new(lines).wrap(Wrap { trim: false }))
-        }
     }
 }
 
@@ -847,7 +786,6 @@ enum ApprovalDecision {
     FileChange(FileChangeApprovalDecision),
     Permissions(PermissionsDecision),
     McpElicitation(McpServerElicitationAction),
-    SudoOnce(SudoOnceApprovalDecision),
 }
 
 #[derive(Clone, Copy)]
@@ -972,21 +910,6 @@ fn exec_options(
             }),
         })
         .collect()
-}
-
-fn sudo_once_options(keymap: &ApprovalKeymap) -> Vec<ApprovalOption> {
-    vec![
-        ApprovalOption {
-            label: "Yes, run this command as root once".to_string(),
-            decision: ApprovalDecision::SudoOnce(SudoOnceApprovalDecision::Accept),
-            shortcuts: keymap.approve.clone(),
-        },
-        ApprovalOption {
-            label: "Abort".to_string(),
-            decision: ApprovalDecision::SudoOnce(SudoOnceApprovalDecision::Abort),
-            shortcuts: keymap.decline.clone(),
-        },
-    ]
 }
 
 pub(crate) fn format_additional_permissions_rule(
@@ -1334,34 +1257,6 @@ mod tests {
             request_id: RequestId::String("request-1".to_string()),
             message: "Need more information".to_string(),
         })
-    }
-
-    fn make_sudo_once_request() -> ApprovalRequest {
-        ApprovalRequest::SudoOnce(SudoOnceApprovalRequest {
-            thread_id: ThreadId::new(),
-            id: "sudo-item".to_string(),
-            command: "apt update".to_string(),
-            cwd: "/workspace".to_string(),
-            reason: Some("install required dependencies".to_string()),
-        })
-    }
-
-    #[test]
-    fn sudo_once_root_warning_snapshot() {
-        let request = make_sudo_once_request();
-        let header = build_header(&request);
-        assert_snapshot!(
-            render_renderable_lines(header.as_ref(), /*width*/ 120),
-            @r###"
-This command will run as root and outside the Codex sandbox.
-
-Working directory: /workspace
-
-Reason: install required dependencies
-
-$ apt update
-"###
-        );
     }
 
     #[test]

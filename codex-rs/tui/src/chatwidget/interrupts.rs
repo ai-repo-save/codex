@@ -10,8 +10,7 @@ use codex_app_server_protocol::RequestId as AppServerRequestId;
 use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::ToolRequestUserInputParams;
 use codex_protocol::request_permissions::RequestPermissionsEvent;
-use codex_protocol::sudo_once::SudoOnceApprovalRequestEvent;
-use codex_protocol::sudo_once::SudoOnceCredentialRequestEvent;
+use codex_sudo_once::SudoOncePrompt;
 
 use super::ChatWidget;
 
@@ -25,8 +24,7 @@ pub(crate) enum QueuedInterrupt {
     },
     RequestPermissions(RequestPermissionsEvent),
     RequestUserInput(ToolRequestUserInputParams),
-    SudoOnceApproval(SudoOnceApprovalRequestEvent),
-    SudoOnceCredential(SudoOnceCredentialRequestEvent),
+    SudoOnce(SudoOncePrompt),
     ItemStarted(ThreadItem),
     ItemCompleted(ThreadItem),
 }
@@ -75,13 +73,8 @@ impl InterruptManager {
         self.queue.push_back(QueuedInterrupt::RequestUserInput(ev));
     }
 
-    pub(crate) fn push_sudo_once_approval(&mut self, ev: SudoOnceApprovalRequestEvent) {
-        self.queue.push_back(QueuedInterrupt::SudoOnceApproval(ev));
-    }
-
-    pub(crate) fn push_sudo_once_credential(&mut self, ev: SudoOnceCredentialRequestEvent) {
-        self.queue
-            .push_back(QueuedInterrupt::SudoOnceCredential(ev));
+    pub(crate) fn push_sudo_once(&mut self, prompt: SudoOncePrompt) {
+        self.queue.push_back(QueuedInterrupt::SudoOnce(prompt));
     }
 
     pub(crate) fn push_item_started(&mut self, item: ThreadItem) {
@@ -109,10 +102,7 @@ impl InterruptManager {
                 }
                 QueuedInterrupt::RequestPermissions(ev) => chat.handle_request_permissions_now(ev),
                 QueuedInterrupt::RequestUserInput(ev) => chat.handle_request_user_input_now(ev),
-                QueuedInterrupt::SudoOnceApproval(ev) => chat.handle_sudo_once_approval_now(ev),
-                QueuedInterrupt::SudoOnceCredential(ev) => {
-                    chat.handle_sudo_once_credential_now(ev);
-                }
+                QueuedInterrupt::SudoOnce(prompt) => chat.handle_sudo_once_prompt_now(prompt),
                 QueuedInterrupt::ItemStarted(item) => chat.handle_queued_item_started_now(item),
                 QueuedInterrupt::ItemCompleted(item) => {
                     chat.handle_queued_item_completed_now(item);
@@ -147,7 +137,7 @@ impl QueuedInterrupt {
                 matches!(request, ResolvedAppServerRequest::UserInput { call_id }
                     if ev.item_id == call_id.as_str())
             }
-            QueuedInterrupt::SudoOnceApproval(_) | QueuedInterrupt::SudoOnceCredential(_) => false,
+            QueuedInterrupt::SudoOnce(_) => false,
             QueuedInterrupt::ItemStarted(_) | QueuedInterrupt::ItemCompleted(_) => false,
         }
     }

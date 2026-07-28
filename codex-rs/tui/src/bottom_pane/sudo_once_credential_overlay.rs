@@ -1,9 +1,10 @@
-use crate::app::app_server_requests::ResolvedAppServerRequest;
-use crate::app_event_sender::AppEventSender;
+use std::sync::Arc;
+
 use crate::bottom_pane::BottomPaneView;
 use crate::render::renderable::Renderable;
-use codex_protocol::ThreadId;
-use codex_protocol::sudo_once::SudoOnceCredential;
+use codex_sudo_once::SudoOnceCommand;
+use codex_sudo_once::SudoOnceCredential;
+use codex_sudo_once::SudoOnceCredentialResponder;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
@@ -65,14 +66,11 @@ impl SecretInput {
     }
 
     fn take(&mut self) -> SudoOnceCredential {
-        let bytes = std::mem::replace(
-            &mut self.bytes,
-            Zeroizing::new([0; MAX_CREDENTIAL_BYTES]),
-        );
-        let len = std::mem::take(&mut self.len);
-        self.char_count = 0;
-        let credential = String::from_utf8(bytes[..len].to_vec())
+        let mut credential = String::with_capacity(self.len);
+        let value = std::str::from_utf8(&self.bytes[..self.len])
             .expect("credential input always contains valid UTF-8");
+        credential.push_str(value);
+        self.clear();
         SudoOnceCredential::new(credential)
     }
 
@@ -93,32 +91,24 @@ impl std::fmt::Debug for SecretInput {
     }
 }
 
-pub(crate) struct SudoOnceCredentialRequest {
-    pub thread_id: ThreadId,
-    pub item_id: String,
-    pub attempt: u32,
-}
-
 pub(crate) struct SudoOnceCredentialOverlay {
-    request: SudoOnceCredentialRequest,
-    app_event_tx: AppEventSender,
+    command: Arc<SudoOnceCommand>,
+    attempt: u32,
+    responder: Option<SudoOnceCredentialResponder>,
     input: SecretInput,
-    done: bool,
 }
 
 impl SudoOnceCredentialOverlay {
     pub(crate) fn new(
-        request: SudoOnceCredentialRequest,
-        app_event_tx: AppEventSender,
-        _has_input_focus: bool,
-        _enhanced_keys_supported: bool,
-        _disable_paste_burst: bool,
+        command: Arc<SudoOnceCommand>,
+        attempt: u32,
+        responder: SudoOnceCredentialResponder,
     ) -> Self {
         Self {
-            request,
-            app_event_tx,
+            command,
+            attempt,
+            responder: Some(responder),
             input: SecretInput::new(),
-            done: false,
         }
     }
 
@@ -131,16 +121,18 @@ impl SudoOnceCredentialOverlay {
     }
 
     fn submit(&mut self, credential: Option<SudoOnceCredential>) {
-        if self.done {
-            return;
-        }
         self.clear();
-        self.app_event_tx.sudo_once_credential(
-            self.request.thread_id,
-            self.request.item_id.clone(),
-            credential,
-        );
-        self.done = true;
+        let Some(responder) = self.responder.take() else {
+            return;
+        };
+        match credential {
+            Some(credential) => {
+                responder.submit(credential);
+            }
+            None => {
+                responder.cancel();
+            }
+        }
     }
 }
 
@@ -197,12 +189,9 @@ impl BottomPaneView for SudoOnceCredentialOverlay {
     }
 
     fn is_complete(&self) -> bool {
-        self.done
-    }
-
-    fn dismiss_app_server_request(&mut self, request: &ResolvedAppServerRequest) -> bool {
-        let _ = request;
-        false
+        self.responder
+            .as_ref()
+            .is_none_or(SudoOnceCredentialResponder::is_closed)
     }
     fn terminal_title_requires_action(&self) -> bool {
         true
@@ -224,7 +213,7 @@ impl Renderable for SudoOnceCredentialOverlay {
             Line::from(
                 format!(
                     "Password attempt {}. Press Esc to cancel.",
-                    self.request.attempt + 1
+                    self.attempt
                 )
                 .dim(),
             ),
@@ -253,9 +242,20 @@ impl Renderable for SudoOnceCredentialOverlay {
             .width()
             .saturating_add(self.input.char_count()) as u16;
         Some((
-            input_area.x.saturating_add(cursor_x.min(input_area.width)),
+            input_area
+                .x
+                .saturating_add(cursor_x.min(input_area.width.saturating_sub(1))),
             input_area.y,
         ))
+    }
+}
+
+impl Drop for SudoOnceCredentialOverlay {
+    fn drop(&mut self) {
+        self.input.clear();
+        if let Some(responder) = self.responder.take() {
+            responder.cancel();
+        }
     }
 }
 

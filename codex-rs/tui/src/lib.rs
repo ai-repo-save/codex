@@ -261,7 +261,7 @@ async fn start_embedded_app_server(
         log_db,
         state_db,
         environment_manager,
-        InProcessAppServerClient::start,
+        InProcessAppServerClient::start_local_tui,
     )
     .await
 }

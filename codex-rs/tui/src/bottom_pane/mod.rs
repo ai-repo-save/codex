@@ -15,6 +15,7 @@
 //! hint. The pane schedules redraws so those hints can expire even when the UI is otherwise idle.
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::app::app_server_requests::ResolvedAppServerRequest;
 use crate::app_event::AppEvent;
@@ -62,6 +63,7 @@ mod request_user_input;
 mod status_line_setup;
 mod status_line_style;
 mod status_surface_preview;
+mod sudo_once_approval_overlay;
 mod sudo_once_credential_overlay;
 mod title_setup;
 pub(crate) use action_required_title::ACTION_REQUIRED_PREVIEW_PREFIX;
@@ -76,14 +78,13 @@ pub(crate) use approval_overlay::ApprovalRequest;
 pub(crate) use approval_overlay::ExecApprovalRequest;
 pub(crate) use approval_overlay::McpElicitationApprovalRequest;
 pub(crate) use approval_overlay::PermissionsApprovalRequest;
-pub(crate) use approval_overlay::SudoOnceApprovalRequest;
 pub(crate) use approval_overlay::format_requested_permissions_rule;
 pub(crate) use mcp_server_elicitation::McpServerElicitationFormRequest;
 pub(crate) use mcp_server_elicitation::McpServerElicitationOverlay;
 pub(crate) use request_user_input::RequestUserInputOverlay;
 pub(crate) use status_line_style::status_line_from_segments;
+pub(crate) use sudo_once_approval_overlay::SudoOnceApprovalOverlay;
 pub(crate) use sudo_once_credential_overlay::SudoOnceCredentialOverlay;
-pub(crate) use sudo_once_credential_overlay::SudoOnceCredentialRequest;
 mod bottom_pane_view;
 mod effort_ignition;
 
@@ -1471,14 +1472,24 @@ impl BottomPane {
         self.push_view(Box::new(modal));
     }
 
-    pub(crate) fn push_sudo_once_credential_request(&mut self, request: SudoOnceCredentialRequest) {
+    pub(crate) fn push_sudo_once_approval_request(
+        &mut self,
+        command: Arc<codex_sudo_once::SudoOnceCommand>,
+        responder: codex_sudo_once::SudoOnceApprovalResponder,
+    ) {
+        self.pause_status_timer_for_modal();
+        self.push_view(Box::new(SudoOnceApprovalOverlay::new(command, responder)));
+    }
+
+    pub(crate) fn push_sudo_once_credential_request(
+        &mut self,
+        command: Arc<codex_sudo_once::SudoOnceCommand>,
+        attempt: u32,
+        responder: codex_sudo_once::SudoOnceCredentialResponder,
+    ) {
         self.pause_status_timer_for_modal();
         self.push_view(Box::new(SudoOnceCredentialOverlay::new(
-            request,
-            self.app_event_tx.clone(),
-            self.has_input_focus,
-            self.enhanced_keys_supported,
-            self.disable_paste_burst,
+            command, attempt, responder,
         )));
     }
 
