@@ -79,7 +79,7 @@ impl BottomPaneView for SudoOnceApprovalOverlay {
             self.abort();
             return;
         }
-        if matches!(key_event.code, KeyCode::Enter | KeyCode::Char('y' | 'Y')) {
+        if matches!(key_event.code, KeyCode::Char('y' | 'Y')) {
             self.approve();
         }
     }
@@ -102,23 +102,19 @@ impl BottomPaneView for SudoOnceApprovalOverlay {
 
 impl Renderable for SudoOnceApprovalOverlay {
     fn desired_height(&self, width: u16) -> u16 {
-        let content_width = width.saturating_sub(2).max(1);
-        let mut height = 6;
-        height += Self::render_wrapped(ROOT_WARNING, content_width).len() as u16;
-        height += Self::render_wrapped(&self.command_line(), content_width).len() as u16;
-        let cwd = self.command.cwd().as_path().display().to_string();
-        height += Self::render_wrapped(&cwd, content_width).len() as u16;
-        if let Some(reason) = self.command.reason() {
-            height += Self::render_wrapped(reason, content_width).len() as u16;
-        }
-        height
+        self.lines(width.saturating_sub(2).max(1)).len() as u16
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.height == 0 || area.width == 0 {
             return;
         }
-        let width = area.width.saturating_sub(2).max(1);
+        Paragraph::new(self.lines(area.width.saturating_sub(2).max(1))).render(area, buf);
+    }
+}
+
+impl SudoOnceApprovalOverlay {
+    fn lines(&self, width: u16) -> Vec<Line<'static>> {
         let mut lines = vec![
             "Sudo authorization required".bold().into(),
             ROOT_WARNING.red().bold().into(),
@@ -134,8 +130,8 @@ impl Renderable for SudoOnceApprovalOverlay {
             lines.extend(Self::render_wrapped(reason, width));
         }
         lines.push("".into());
-        lines.push("Enter/y: authorize once · Esc/Ctrl-C: abort".dim().into());
-        Paragraph::new(lines).render(area, buf);
+        lines.push("y: authorize once · Esc/Ctrl-C: abort".dim().into());
+        lines
     }
 }
 

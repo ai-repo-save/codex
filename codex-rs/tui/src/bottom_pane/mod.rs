@@ -214,6 +214,12 @@ struct DelayedApprovalRequest {
     features: Features,
 }
 
+struct DelayedSudoOnceApprovalRequest {
+    command: Arc<codex_sudo_once::SudoOnceCommand>,
+    responder: codex_sudo_once::SudoOnceApprovalResponder,
+    show_after: Instant,
+}
+
 /// Pane displayed in the lower half of the chat UI.
 ///
 /// This is the owning container for the prompt input (`ChatComposer`) and the view stack
@@ -227,6 +233,7 @@ pub(crate) struct BottomPane {
     /// Stack of views displayed instead of the composer (e.g. popups/modals).
     view_stack: Vec<Box<dyn BottomPaneView>>,
     delayed_approval_requests: VecDeque<DelayedApprovalRequest>,
+    delayed_sudo_once_approval_requests: VecDeque<DelayedSudoOnceApprovalRequest>,
     last_composer_activity_at: Option<Instant>,
 
     app_event_tx: AppEventSender,
@@ -294,6 +301,7 @@ impl BottomPane {
             composer,
             view_stack: Vec::new(),
             delayed_approval_requests: VecDeque::new(),
+            delayed_sudo_once_approval_requests: VecDeque::new(),
             last_composer_activity_at: None,
             app_event_tx,
             frame_requester,
@@ -581,6 +589,11 @@ impl BottomPane {
         {
             self.request_redraw_in(delay);
         }
+        if !self.delayed_sudo_once_approval_requests.is_empty()
+            && let Some(delay) = self.sudo_once_approval_prompt_delay_remaining(now)
+        {
+            self.request_redraw_in(delay);
+        }
     }
 
     fn maybe_show_delayed_approval_requests_at(&mut self, now: Instant) {
@@ -610,6 +623,42 @@ impl BottomPane {
         }
         self.pause_status_timer_for_modal();
         self.push_view(Box::new(modal));
+    }
+
+    fn maybe_show_delayed_sudo_once_approval_requests_at(&mut self, now: Instant) {
+        if self.delayed_sudo_once_approval_requests.is_empty() || !self.view_stack.is_empty() {
+            return;
+        }
+        if let Some(delay) = self.sudo_once_approval_prompt_delay_remaining(now) {
+            self.request_redraw_in(delay);
+            return;
+        }
+
+        while let Some(request) = self.delayed_sudo_once_approval_requests.pop_front() {
+            if request.responder.is_closed() {
+                continue;
+            }
+            self.pause_status_timer_for_modal();
+            self.push_view(Box::new(SudoOnceApprovalOverlay::new(
+                request.command,
+                request.responder,
+            )));
+            return;
+        }
+    }
+
+    fn sudo_once_approval_prompt_delay_remaining(&self, now: Instant) -> Option<Duration> {
+        let show_after = self
+            .delayed_sudo_once_approval_requests
+            .front()
+            .map(|request| request.show_after)?;
+        let show_after = self
+            .last_composer_activity_at
+            .and_then(|activity_at| activity_at.checked_add(APPROVAL_PROMPT_TYPING_IDLE_DELAY))
+            .map_or(show_after, |activity_after| show_after.max(activity_after));
+        show_after
+            .checked_duration_since(now)
+            .filter(|delay| !delay.is_zero())
     }
 
     /// Forward a key event to the active view or the composer.
@@ -767,6 +816,7 @@ impl BottomPane {
     fn pre_draw_tick_at(&mut self, now: Instant) {
         self.composer.sync_popups();
         self.maybe_show_delayed_approval_requests_at(now);
+        self.maybe_show_delayed_sudo_once_approval_requests_at(now);
         self.tick_active_view(now);
         self.schedule_active_view_frame();
     }
@@ -1477,8 +1527,14 @@ impl BottomPane {
         command: Arc<codex_sudo_once::SudoOnceCommand>,
         responder: codex_sudo_once::SudoOnceApprovalResponder,
     ) {
-        self.pause_status_timer_for_modal();
-        self.push_view(Box::new(SudoOnceApprovalOverlay::new(command, responder)));
+        let now = Instant::now();
+        self.delayed_sudo_once_approval_requests
+            .push_back(DelayedSudoOnceApprovalRequest {
+                command,
+                responder,
+                show_after: now + APPROVAL_PROMPT_TYPING_IDLE_DELAY,
+            });
+        self.maybe_show_delayed_sudo_once_approval_requests_at(now);
     }
 
     pub(crate) fn push_sudo_once_credential_request(
@@ -1895,6 +1951,11 @@ mod tests {
     use crate::test_support::PathBufExt;
     use crate::test_support::test_path_buf;
     use codex_app_server_protocol::CommandExecutionApprovalDecision;
+    use codex_protocol::ThreadId;
+    use codex_sudo_once::LocalSudoOnceBroker;
+    use codex_sudo_once::SudoOnceCommand;
+    use codex_sudo_once::SudoOncePrompt;
+    use codex_utils_absolute_path::AbsolutePathBuf;
     use crossterm::event::KeyCode;
     use crossterm::event::KeyEvent;
     use crossterm::event::KeyEventKind;
@@ -1961,6 +2022,15 @@ mod tests {
             network_approval_context: None,
             additional_permissions: None,
         })
+    }
+
+    fn sudo_once_command() -> Arc<SudoOnceCommand> {
+        Arc::new(SudoOnceCommand::new(
+            ThreadId::new(),
+            Arc::from(["id".to_string(), "-u".to_string()]),
+            AbsolutePathBuf::try_from("/workspace").expect("absolute cwd"),
+            None,
+        ))
     }
 
     #[derive(Default)]
@@ -2221,6 +2291,117 @@ mod tests {
         assert_eq!(
             approval_decision,
             Some(CommandExecutionApprovalDecision::Accept)
+        );
+    }
+
+    #[tokio::test]
+    async fn sudo_once_approval_waits_for_idle_before_accepting_explicit_confirmation() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut pane = test_pane_with_disable_paste_burst(tx, /*disable_paste_burst*/ true);
+        let now = Instant::now();
+        pane.last_composer_activity_at = Some(now);
+
+        let (broker, mut prompts) = LocalSudoOnceBroker::new();
+        let approval = broker.request_approval(sudo_once_command());
+        tokio::pin!(approval);
+        let prompt = tokio::select! {
+            prompt = prompts.recv() => prompt.expect("approval prompt"),
+            _ = &mut approval => panic!("approval resolved before the prompt"),
+        };
+        let SudoOncePrompt::Approval(prompt) = prompt else {
+            panic!("expected sudo approval prompt");
+        };
+        let (command, responder) = prompt.into_parts();
+        pane.push_sudo_once_approval_request(command, responder);
+
+        pane.handle_key_event(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+        tokio::select! {
+            _ = &mut approval => panic!("recent input must not authorize sudo"),
+            _ = tokio::task::yield_now() => {}
+        }
+        assert_eq!(pane.composer_text(), "y");
+        assert_eq!(pane.delayed_sudo_once_approval_requests.len(), 1);
+
+        let last_activity_at = pane
+            .last_composer_activity_at
+            .expect("typing activity should reset the idle delay");
+        pane.pre_draw_tick_at(last_activity_at + APPROVAL_PROMPT_TYPING_IDLE_DELAY);
+        assert_eq!(pane.view_stack.len(), 1);
+        pane.handle_key_event(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+        assert!(approval.await.is_some());
+    }
+
+    #[tokio::test]
+    async fn sudo_once_approval_requires_fresh_arming_without_prior_composer_activity() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut pane = test_pane(tx);
+
+        let (broker, mut prompts) = LocalSudoOnceBroker::new();
+        let approval = broker.request_approval(sudo_once_command());
+        tokio::pin!(approval);
+        let prompt = tokio::select! {
+            prompt = prompts.recv() => prompt.expect("approval prompt"),
+            _ = &mut approval => panic!("approval resolved before the prompt"),
+        };
+        let SudoOncePrompt::Approval(prompt) = prompt else {
+            panic!("expected sudo approval prompt");
+        };
+        let (command, responder) = prompt.into_parts();
+        pane.push_sudo_once_approval_request(command, responder);
+
+        assert!(pane.view_stack.is_empty());
+        let show_after = pane
+            .delayed_sudo_once_approval_requests
+            .front()
+            .expect("queued sudo approval")
+            .show_after;
+        pane.pre_draw_tick_at(show_after - Duration::from_millis(/*millis*/ 1));
+        assert!(pane.view_stack.is_empty());
+        pane.pre_draw_tick_at(show_after);
+        assert_eq!(pane.view_stack.len(), 1);
+        pane.handle_key_event(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+        assert!(approval.await.is_some());
+    }
+
+    #[tokio::test]
+    async fn sudo_once_credential_paste_reaches_the_secret_input_through_bottom_pane_routing() {
+        let (broker, mut prompts) = LocalSudoOnceBroker::new();
+        let approval = broker.request_approval(sudo_once_command());
+        tokio::pin!(approval);
+        let prompt = tokio::select! {
+            prompt = prompts.recv() => prompt.expect("approval prompt"),
+            _ = &mut approval => panic!("approval resolved before the prompt"),
+        };
+        let SudoOncePrompt::Approval(prompt) = prompt else {
+            panic!("expected sudo approval prompt");
+        };
+        let (_, responder) = prompt.into_parts();
+        assert!(responder.approve());
+        let grant = approval.await.expect("sudo grant");
+
+        let credential = broker.request_credential(&grant, /*attempt*/ 1);
+        tokio::pin!(credential);
+        let prompt = tokio::select! {
+            prompt = prompts.recv() => prompt.expect("credential prompt"),
+            _ = &mut credential => panic!("credential resolved before the prompt"),
+        };
+        let SudoOncePrompt::Credential(prompt) = prompt else {
+            panic!("expected sudo credential prompt");
+        };
+        let (command, attempt, responder) = prompt.into_parts();
+
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut pane = test_pane(tx);
+        pane.push_sudo_once_credential_request(command, attempt, responder);
+        pane.handle_paste("credential pasted by terminal".to_string());
+        pane.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert_eq!(
+            credential.await.expect("credential response").expose_secret(),
+            "credential pasted by terminal"
         );
     }
 
