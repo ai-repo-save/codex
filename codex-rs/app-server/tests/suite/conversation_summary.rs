@@ -178,7 +178,6 @@ async fn get_conversation_summary_by_thread_id_reads_pathless_store_thread() -> 
                 version: "0.1.0".to_string(),
             },
             capabilities: Some(InitializeCapabilities {
-                sudo_once_credential_prompt: false,
                 experimental_api: true,
                 ..Default::default()
             }),

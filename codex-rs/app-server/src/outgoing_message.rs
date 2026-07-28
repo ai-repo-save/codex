@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
 use std::sync::atomic::Ordering;
@@ -16,13 +15,10 @@ use codex_app_server_protocol::ServerNotificationEnvelope;
 use codex_app_server_protocol::ServerRequest;
 use codex_app_server_protocol::ServerRequestPayload;
 use codex_app_server_protocol::ServerResponse;
-use codex_app_server_protocol::SudoOnceRequestCredentialParams;
-use codex_app_server_protocol::SudoOnceRequestCredentialResponse;
 use codex_otel::span_w3c_trace_context;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::W3cTraceContext;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
-use codex_protocol::sudo_once::SudoOnceCredentialResponse as CoreSudoOnceCredentialResponse;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -31,7 +27,6 @@ use tracing::Span;
 use tracing::warn;
 
 use crate::error_code::internal_error;
-use crate::error_code::invalid_request;
 use crate::server_request_error::TURN_TRANSITION_PENDING_REQUEST_ERROR_REASON;
 pub(crate) use codex_app_server_transport::ConnectionId;
 pub(crate) use codex_app_server_transport::OutgoingError;
@@ -43,8 +38,6 @@ pub(crate) use codex_app_server_transport::QueuedOutgoingMessage;
 use codex_protocol::account::PlanType;
 
 pub(crate) type ClientRequestResult = std::result::Result<Result, JSONRPCErrorError>;
-pub(crate) type SudoOnceCredentialRequestResult =
-    std::result::Result<CoreSudoOnceCredentialResponse, JSONRPCErrorError>;
 
 /// Stable identifier for a client request scoped to a transport connection.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -105,9 +98,6 @@ pub(crate) struct OutgoingMessageSender {
     next_server_request_id: AtomicI64,
     sender: mpsc::Sender<OutgoingEnvelope>,
     request_id_to_callback: Mutex<HashMap<RequestId, PendingCallbackEntry>>,
-    sudo_once_credential_request_id_to_callback:
-        Mutex<HashMap<RequestId, PendingSudoOnceCredentialCallbackEntry>>,
-    sudo_once_credential_request_ids: Mutex<HashSet<RequestId>>,
     /// Incoming requests that are still waiting on a final response or error.
     /// We keep them here because this is where responses, errors, and
     /// disconnect cleanup all get handled.
@@ -119,7 +109,6 @@ pub(crate) struct OutgoingMessageSender {
 pub(crate) struct ThreadScopedOutgoingMessageSender {
     outgoing: Arc<OutgoingMessageSender>,
     connection_ids: Arc<Vec<ConnectionId>>,
-    sudo_once_connection_ids: Arc<Vec<ConnectionId>>,
     thread_id: ThreadId,
 }
 
@@ -129,31 +118,15 @@ struct PendingCallbackEntry {
     request: ServerRequest,
 }
 
-struct PendingSudoOnceCredentialCallbackEntry {
-    callback: oneshot::Sender<SudoOnceCredentialRequestResult>,
-    connection_ids: Arc<Vec<ConnectionId>>,
-    thread_id: ThreadId,
-}
-
 impl ThreadScopedOutgoingMessageSender {
     pub(crate) fn new(
         outgoing: Arc<OutgoingMessageSender>,
         connection_ids: Vec<ConnectionId>,
         thread_id: ThreadId,
     ) -> Self {
-        Self::new_with_sudo_once_connections(outgoing, connection_ids, Vec::new(), thread_id)
-    }
-
-    pub(crate) fn new_with_sudo_once_connections(
-        outgoing: Arc<OutgoingMessageSender>,
-        connection_ids: Vec<ConnectionId>,
-        sudo_once_connection_ids: Vec<ConnectionId>,
-        thread_id: ThreadId,
-    ) -> Self {
         Self {
             outgoing,
             connection_ids: Arc::new(connection_ids),
-            sudo_once_connection_ids: Arc::new(sudo_once_connection_ids),
             thread_id,
         }
     }
@@ -169,39 +142,6 @@ impl ThreadScopedOutgoingMessageSender {
                 Some(self.thread_id),
             )
             .await
-    }
-
-    pub(crate) async fn send_sudo_once_credential_request(
-        &self,
-        params: SudoOnceRequestCredentialParams,
-    ) -> (
-        RequestId,
-        oneshot::Receiver<SudoOnceCredentialRequestResult>,
-    ) {
-        self.outgoing
-            .send_sudo_once_credential_request_to_connections(
-                self.sudo_once_connection_ids.clone(),
-                self.thread_id,
-                params,
-            )
-            .await
-    }
-
-    pub(crate) async fn send_sudo_once_approval_request(
-        &self,
-        payload: ServerRequestPayload,
-    ) -> (RequestId, oneshot::Receiver<ClientRequestResult>) {
-        self.outgoing
-            .send_request_to_connections(
-                Some(self.sudo_once_connection_ids.as_slice()),
-                payload,
-                Some(self.thread_id),
-            )
-            .await
-    }
-
-    pub(crate) fn supports_sudo_once_credential_prompt(&self) -> bool {
-        !self.sudo_once_connection_ids.is_empty()
     }
 
     pub(crate) fn track_effective_permissions_approval_response(
@@ -276,8 +216,6 @@ impl OutgoingMessageSender {
             next_server_request_id: AtomicI64::new(0),
             sender,
             request_id_to_callback: Mutex::new(HashMap::new()),
-            sudo_once_credential_request_id_to_callback: Mutex::new(HashMap::new()),
-            sudo_once_credential_request_ids: Mutex::new(HashSet::new()),
             request_contexts: Mutex::new(HashMap::new()),
             analytics_events_client,
         }
@@ -298,30 +236,6 @@ impl OutgoingMessageSender {
         request_contexts.retain(|request_id, _| request_id.connection_id != connection_id);
         drop(request_contexts);
 
-        let entries = {
-            let mut callbacks = self
-                .sudo_once_credential_request_id_to_callback
-                .lock()
-                .await;
-            let request_ids = callbacks
-                .iter()
-                .filter_map(|(request_id, entry)| {
-                    entry
-                        .connection_ids
-                        .contains(&connection_id)
-                        .then_some(request_id.clone())
-                })
-                .collect::<Vec<_>>();
-            request_ids
-                .into_iter()
-                .filter_map(|request_id| callbacks.remove(&request_id))
-                .collect::<Vec<_>>()
-        };
-        for entry in entries {
-            let _ = entry.callback.send(Err(internal_error(
-                "sudo-once credential client disconnected",
-            )));
-        }
     }
 
     pub(crate) async fn request_trace_context(
@@ -438,134 +352,6 @@ impl OutgoingMessageSender {
         (outgoing_message_id, rx_approve)
     }
 
-    async fn send_sudo_once_credential_request_to_connections(
-        &self,
-        connection_ids: Arc<Vec<ConnectionId>>,
-        thread_id: ThreadId,
-        params: SudoOnceRequestCredentialParams,
-    ) -> (
-        RequestId,
-        oneshot::Receiver<SudoOnceCredentialRequestResult>,
-    ) {
-        let id = self.next_request_id();
-        let request = ServerRequest::SudoOnceRequestCredential {
-            request_id: id.clone(),
-            params,
-        };
-        let (callback, receiver) = oneshot::channel();
-        self.sudo_once_credential_request_id_to_callback
-            .lock()
-            .await
-            .insert(
-                id.clone(),
-                PendingSudoOnceCredentialCallbackEntry {
-                    callback,
-                    connection_ids: connection_ids.clone(),
-                    thread_id,
-                },
-            );
-        self.sudo_once_credential_request_ids
-            .lock()
-            .await
-            .insert(id.clone());
-
-        let mut send_error = None;
-        for connection_id in connection_ids.iter() {
-            if let Err(error) = self
-                .sender
-                .send(OutgoingEnvelope::ToConnection {
-                    connection_id: *connection_id,
-                    message: OutgoingMessage::Request(request.clone()),
-                    write_complete_tx: None,
-                })
-                .await
-            {
-                send_error = Some(error);
-                break;
-            }
-            self.analytics_events_client
-                .track_server_request(connection_id.0, request.clone());
-        }
-
-        if let Some(error) = send_error {
-            warn!("failed to send sudo-once credential request: {error:?}");
-            if let Some(entry) = self
-                .sudo_once_credential_request_id_to_callback
-                .lock()
-                .await
-                .remove(&id)
-            {
-                let _ = entry.callback.send(Err(internal_error(
-                    "failed to send sudo-once credential request",
-                )));
-            }
-            self.sudo_once_credential_request_ids
-                .lock()
-                .await
-                .remove(&id);
-        }
-
-        (id, receiver)
-    }
-
-    pub(crate) async fn try_notify_sudo_once_credential_response(
-        &self,
-        id: RequestId,
-        result: Result,
-    ) -> std::result::Result<(), (RequestId, Result)> {
-        let entry = self
-            .sudo_once_credential_request_id_to_callback
-            .lock()
-            .await
-            .remove(&id);
-        let is_sensitive = self
-            .sudo_once_credential_request_ids
-            .lock()
-            .await
-            .remove(&id);
-        let Some(entry) = entry else {
-            if is_sensitive {
-                return Ok(());
-            }
-            return Err((id, result));
-        };
-
-        let response = serde_json::from_value::<SudoOnceRequestCredentialResponse>(result)
-            .map(|response| CoreSudoOnceCredentialResponse {
-                credential: response
-                    .credential
-                    .map(|credential| credential.into_secret()),
-            })
-            .map_err(|_| invalid_request("invalid sudo-once credential response"));
-        let _ = entry.callback.send(response);
-        Ok(())
-    }
-
-    pub(crate) async fn try_notify_sudo_once_credential_error(
-        &self,
-        id: RequestId,
-        error: JSONRPCErrorError,
-    ) -> std::result::Result<(), (RequestId, JSONRPCErrorError)> {
-        let entry = self
-            .sudo_once_credential_request_id_to_callback
-            .lock()
-            .await
-            .remove(&id);
-        let is_sensitive = self
-            .sudo_once_credential_request_ids
-            .lock()
-            .await
-            .remove(&id);
-        let Some(entry) = entry else {
-            if is_sensitive {
-                return Ok(());
-            }
-            return Err((id, error));
-        };
-        let _ = entry.callback.send(Err(error));
-        Ok(())
-    }
-
     pub(crate) async fn replay_requests_to_connection_for_thread(
         &self,
         connection_id: ConnectionId,
@@ -658,21 +444,6 @@ impl OutgoingMessageSender {
             }
         }
 
-        let entries = {
-            let mut callbacks = self
-                .sudo_once_credential_request_id_to_callback
-                .lock()
-                .await;
-            callbacks
-                .drain()
-                .map(|(_, entry)| entry)
-                .collect::<Vec<_>>()
-        };
-        for entry in entries {
-            if let Some(error) = error.as_ref() {
-                let _ = entry.callback.send(Err(error.clone()));
-            }
-        }
     }
 
     async fn take_request_callback(
@@ -732,27 +503,6 @@ impl OutgoingMessageSender {
             }
         }
 
-        let entries = {
-            let mut callbacks = self
-                .sudo_once_credential_request_id_to_callback
-                .lock()
-                .await;
-            let request_ids = callbacks
-                .iter()
-                .filter_map(|(request_id, entry)| {
-                    (entry.thread_id == thread_id).then_some(request_id.clone())
-                })
-                .collect::<Vec<_>>();
-            request_ids
-                .into_iter()
-                .filter_map(|request_id| callbacks.remove(&request_id))
-                .collect::<Vec<_>>()
-        };
-        for entry in entries {
-            if let Some(error) = error.as_ref() {
-                let _ = entry.callback.send(Err(error.clone()));
-            }
-        }
     }
 
     pub(crate) async fn send_response<T>(&self, request_id: ConnectionRequestId, response: T)
@@ -1012,7 +762,6 @@ mod tests {
     use codex_app_server_protocol::RateLimitSnapshot;
     use codex_app_server_protocol::RateLimitWindow;
     use codex_app_server_protocol::ServerResponse;
-    use codex_app_server_protocol::SudoOnceRequestCredentialParams;
     use codex_app_server_protocol::ToolRequestUserInputParams;
     use codex_app_server_protocol::TurnModerationMetadataNotification;
     use codex_protocol::ThreadId;
@@ -1076,60 +825,6 @@ mod tests {
                 .expect("ensure the notification serializes correctly"),
             "ensure the notification serializes correctly"
         );
-    }
-
-    #[tokio::test]
-    async fn sudo_once_credential_response_uses_the_sensitive_callback() {
-        let (sender, mut receiver) = mpsc::channel::<OutgoingEnvelope>(1);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            sender,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
-        let thread_id = ThreadId::new();
-        let thread_outgoing = ThreadScopedOutgoingMessageSender::new_with_sudo_once_connections(
-            Arc::clone(&outgoing),
-            vec![ConnectionId(1)],
-            vec![ConnectionId(1)],
-            thread_id,
-        );
-        let (request_id, credential_receiver) = thread_outgoing
-            .send_sudo_once_credential_request(SudoOnceRequestCredentialParams {
-                thread_id: thread_id.to_string(),
-                turn_id: "turn-1".to_string(),
-                item_id: "call-1".to_string(),
-                attempt: 1,
-            })
-            .await;
-
-        let envelope = receiver
-            .recv()
-            .await
-            .expect("credential request should be sent to the trusted connection");
-        assert!(matches!(
-            envelope,
-            OutgoingEnvelope::ToConnection {
-                connection_id: ConnectionId(1),
-                message: OutgoingMessage::Request(ServerRequest::SudoOnceRequestCredential { .. }),
-                ..
-            }
-        ));
-
-        assert!(
-            outgoing
-                .try_notify_sudo_once_credential_response(
-                    request_id,
-                    json!({ "credential": "test-password" }),
-                )
-                .await
-                .is_ok()
-        );
-        let response = credential_receiver
-            .await
-            .expect("credential callback should be resolved")
-            .expect("credential response should decode");
-        let credential = response.credential.expect("credential should be present");
-        assert_eq!(credential.expose_secret(), "test-password");
-        assert!(!format!("{credential:?}").contains("test-password"));
     }
 
     #[test]

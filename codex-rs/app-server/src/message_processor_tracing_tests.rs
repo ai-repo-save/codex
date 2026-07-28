@@ -143,7 +143,6 @@ impl TracingHarness {
                             version: "0.1.0".to_string(),
                         },
                         capabilities: Some(InitializeCapabilities {
-                            sudo_once_credential_prompt: false,
                             experimental_api: true,
                             ..Default::default()
                         }),

@@ -734,7 +734,6 @@ async fn thread_turns_list_reads_store_history_without_rollout_path() -> Result<
                 version: "0.1.0".to_string(),
             },
             capabilities: Some(InitializeCapabilities {
-                sudo_once_credential_prompt: false,
                 experimental_api: true,
                 ..Default::default()
             }),
@@ -801,7 +800,6 @@ async fn thread_read_loaded_include_turns_reads_store_history_without_rollout_pa
                 version: "0.1.0".to_string(),
             },
             capabilities: Some(InitializeCapabilities {
-                sudo_once_credential_prompt: false,
                 experimental_api: true,
                 ..Default::default()
             }),
@@ -906,7 +904,6 @@ async fn thread_list_includes_store_thread_without_rollout_path() -> Result<()> 
                 version: "0.1.0".to_string(),
             },
             capabilities: Some(InitializeCapabilities {
-                sudo_once_credential_prompt: false,
                 experimental_api: true,
                 ..Default::default()
             }),

@@ -347,7 +347,6 @@ async fn initialize_websocket_client(
                 version: "0.1.0".to_string(),
             },
             capabilities: Some(InitializeCapabilities {
-                sudo_once_credential_prompt: false,
                 experimental_api: true,
                 mcp_server_openai_form_elicitation: supports_openai_form_elicitation,
                 ..Default::default()
@@ -436,7 +435,6 @@ impl ElicitationRoundTripFixture {
                     version: "0.1.0".to_string(),
                 },
                 Some(InitializeCapabilities {
-                    sudo_once_credential_prompt: false,
                     experimental_api: true,
                     mcp_server_openai_form_elicitation: true,
                     ..Default::default()

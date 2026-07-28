@@ -12,8 +12,6 @@ use codex_app_server_protocol::McpServerElicitationRequestResponse;
 use codex_app_server_protocol::PermissionsRequestApprovalResponse;
 use codex_app_server_protocol::RequestId as AppServerRequestId;
 use codex_app_server_protocol::ServerRequest;
-use codex_app_server_protocol::SudoOnceRequestApprovalResponse;
-use codex_app_server_protocol::SudoOnceRequestCredentialResponse;
 use codex_protocol::request_permissions::RequestPermissionProfile as CoreRequestPermissionProfile;
 
 impl App {
@@ -64,12 +62,6 @@ pub(crate) enum ResolvedAppServerRequest {
     ExecApproval {
         id: String,
     },
-    SudoOnceApproval {
-        id: String,
-    },
-    SudoOnceCredential {
-        id: String,
-    },
     FileChangeApproval {
         id: String,
     },
@@ -88,8 +80,6 @@ pub(crate) enum ResolvedAppServerRequest {
 #[derive(Debug, Default)]
 pub(super) struct PendingAppServerRequests {
     exec_approvals: HashMap<String, AppServerRequestId>,
-    sudo_once_approvals: HashMap<String, AppServerRequestId>,
-    sudo_once_credentials: HashMap<String, AppServerRequestId>,
     file_change_approvals: HashMap<String, AppServerRequestId>,
     permissions_approvals: HashMap<String, AppServerRequestId>,
     user_inputs: HashMap<String, VecDeque<PendingUserInputRequest>>,
@@ -99,8 +89,6 @@ pub(super) struct PendingAppServerRequests {
 impl PendingAppServerRequests {
     pub(super) fn clear(&mut self) {
         self.exec_approvals.clear();
-        self.sudo_once_approvals.clear();
-        self.sudo_once_credentials.clear();
         self.file_change_approvals.clear();
         self.permissions_approvals.clear();
         self.user_inputs.clear();
@@ -118,16 +106,6 @@ impl PendingAppServerRequests {
                     .clone()
                     .unwrap_or_else(|| params.item_id.clone());
                 self.exec_approvals.insert(approval_id, request_id.clone());
-                None
-            }
-            ServerRequest::SudoOnceRequestApproval { request_id, params } => {
-                self.sudo_once_approvals
-                    .insert(params.item_id.clone(), request_id.clone());
-                None
-            }
-            ServerRequest::SudoOnceRequestCredential { request_id, params } => {
-                self.sudo_once_credentials
-                    .insert(params.item_id.clone(), request_id.clone());
                 None
             }
             ServerRequest::FileChangeRequestApproval { request_id, params } => {
@@ -234,36 +212,6 @@ impl PendingAppServerRequests {
                     })
                 })
                 .transpose()?,
-            AppCommand::SudoOnceApproval { id, decision } => self
-                .sudo_once_approvals
-                .remove(id)
-                .map(|request_id| {
-                    Ok::<AppServerRequestResolution, String>(AppServerRequestResolution {
-                        request_id,
-                        result: serde_json::to_value(SudoOnceRequestApprovalResponse {
-                            decision: *decision,
-                        })
-                        .map_err(|err| {
-                            format!("failed to serialize sudo-once approval response: {err}")
-                        })?,
-                    })
-                })
-                .transpose()?,
-            AppCommand::SudoOnceCredential { id, credential } => self
-                .sudo_once_credentials
-                .remove(id)
-                .map(|request_id| {
-                    Ok::<AppServerRequestResolution, String>(AppServerRequestResolution {
-                        request_id,
-                        result: serde_json::to_value(SudoOnceRequestCredentialResponse {
-                            credential: credential.take(),
-                        })
-                        .map_err(|err| {
-                            format!("failed to serialize sudo-once credential response: {err}")
-                        })?,
-                    })
-                })
-                .transpose()?,
             AppCommand::PatchApproval { id, decision } => self
                 .file_change_approvals
                 .remove(id)
@@ -354,24 +302,6 @@ impl PendingAppServerRequests {
         }
 
         if let Some(id) = self
-            .sudo_once_approvals
-            .iter()
-            .find_map(|(id, value)| (value == request_id).then(|| id.clone()))
-        {
-            self.sudo_once_approvals.remove(&id);
-            return Some(ResolvedAppServerRequest::SudoOnceApproval { id });
-        }
-
-        if let Some(id) = self
-            .sudo_once_credentials
-            .iter()
-            .find_map(|(id, value)| (value == request_id).then(|| id.clone()))
-        {
-            self.sudo_once_credentials.remove(&id);
-            return Some(ResolvedAppServerRequest::SudoOnceCredential { id });
-        }
-
-        if let Some(id) = self
             .file_change_approvals
             .iter()
             .find_map(|(id, value)| (value == request_id).then(|| id.clone()))
@@ -414,14 +344,6 @@ impl PendingAppServerRequests {
         match request {
             ServerRequest::CommandExecutionRequestApproval { request_id, .. } => self
                 .exec_approvals
-                .values()
-                .any(|pending_request_id| pending_request_id == request_id),
-            ServerRequest::SudoOnceRequestApproval { request_id, .. } => self
-                .sudo_once_approvals
-                .values()
-                .any(|pending_request_id| pending_request_id == request_id),
-            ServerRequest::SudoOnceRequestCredential { request_id, .. } => self
-                .sudo_once_credentials
                 .values()
                 .any(|pending_request_id| pending_request_id == request_id),
             ServerRequest::FileChangeRequestApproval { request_id, .. } => self

@@ -1,6 +1,4 @@
 use super::*;
-use crate::app_command::AppCommand;
-use crate::app_event::AppEvent;
 use crossterm::event::KeyModifiers;
 use tokio::sync::mpsc::unbounded_channel;
 
@@ -23,8 +21,8 @@ fn render_overlay(overlay: &SudoOnceCredentialOverlay) -> String {
 }
 
 #[test]
-fn credential_is_masked_and_never_serialized_with_the_command() {
-    let (tx_raw, mut rx) = unbounded_channel();
+fn credential_is_masked() {
+    let (tx_raw, _rx) = unbounded_channel();
     let tx = AppEventSender::new(tx_raw);
     let mut overlay = SudoOnceCredentialOverlay::new(
         request(),
@@ -42,50 +40,4 @@ fn credential_is_masked_and_never_serialized_with_the_command() {
     assert!(!rendered.contains(TEST_CREDENTIAL));
     assert!(rendered.contains("********"));
     insta::assert_snapshot!(rendered);
-    overlay.handle_key_event(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
-    overlay.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-
-    let event = rx.try_recv().expect("credential response should be sent");
-    let AppEvent::SubmitThreadOp { op, .. } = event else {
-        panic!("expected a thread-scoped credential response");
-    };
-    let AppCommand::SudoOnceCredential { credential, .. } = &op else {
-        panic!("expected a sudo credential response");
-    };
-    assert_eq!(
-        credential
-            .take()
-            .expect("submitted credential should be present")
-            .expose_secret(),
-        "passwor"
-    );
-    assert!(!format!("{op:?}").contains(TEST_CREDENTIAL));
-    assert!(
-        !serde_json::to_string(&op)
-            .expect("credential command should serialize safely")
-            .contains(TEST_CREDENTIAL)
-    );
-}
-
-#[test]
-fn esc_submits_a_null_credential() {
-    let (tx_raw, mut rx) = unbounded_channel();
-    let tx = AppEventSender::new(tx_raw);
-    let mut overlay = SudoOnceCredentialOverlay::new(
-        request(),
-        tx,
-        /*has_input_focus*/ true,
-        /*enhanced_keys_supported*/ false,
-        /*disable_paste_burst*/ true,
-    );
-    overlay.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-
-    let event = rx.try_recv().expect("cancel response should be sent");
-    let AppEvent::SubmitThreadOp { op, .. } = event else {
-        panic!("expected a thread-scoped credential response");
-    };
-    assert_eq!(
-        op,
-        AppCommand::sudo_once_credential(TEST_ITEM_ID.to_string(), None)
-    );
 }

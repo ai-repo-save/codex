@@ -214,9 +214,6 @@ pub(crate) fn log_outbound_op(op: &AppCommand) {
     if !LOGGER.is_enabled() {
         return;
     }
-    if matches!(op, AppCommand::SudoOnceCredential { .. }) {
-        return;
-    }
     write_record("from_tui", "op", op);
 }
 

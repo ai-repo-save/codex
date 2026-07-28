@@ -44,12 +44,6 @@ impl ChatWidget {
             ServerRequest::ToolRequestUserInput { params, .. } => {
                 self.on_request_user_input(params);
             }
-            ServerRequest::SudoOnceRequestApproval { params, .. } => {
-                self.on_sudo_once_approval_request(params);
-            }
-            ServerRequest::SudoOnceRequestCredential { params, .. } => {
-                self.on_sudo_once_credential_request(params);
-            }
             ServerRequest::DynamicToolCall { .. }
             | ServerRequest::AttestationGenerate { .. }
             | ServerRequest::CurrentTimeRead { .. }

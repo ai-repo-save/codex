@@ -175,10 +175,6 @@ impl ApprovalRequest {
                 request.server_name == *resolved_server_name
                     && request.request_id == *resolved_request_id
             }
-            (
-                ApprovalRequest::SudoOnce(request),
-                ResolvedAppServerRequest::SudoOnceApproval { id: resolved_id },
-            ) => request.id == *resolved_id,
             _ => false,
         }
     }
@@ -1366,46 +1362,6 @@ Reason: install required dependencies
 $ apt update
 "###
         );
-    }
-
-    #[test]
-    fn sudo_once_accept_and_cancel_emit_only_sudo_decisions() {
-        let (tx_raw, mut rx) = unbounded_channel::<AppEvent>();
-        let tx = AppEventSender::new(tx_raw);
-        let mut view = make_overlay(make_sudo_once_request(), tx, Features::with_defaults());
-
-        view.handle_key_event(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
-
-        assert!(matches!(
-            rx.try_recv(),
-            Ok(AppEvent::SubmitThreadOp {
-                op: AppCommand::SudoOnceApproval {
-                    decision: SudoOnceApprovalDecision::Accept,
-                    ..
-                },
-                ..
-            })
-        ));
-        assert!(view.is_complete());
-    }
-
-    #[test]
-    fn sudo_once_ctrl_c_aborts() {
-        let (tx_raw, mut rx) = unbounded_channel::<AppEvent>();
-        let tx = AppEventSender::new(tx_raw);
-        let mut view = make_overlay(make_sudo_once_request(), tx, Features::with_defaults());
-
-        assert_eq!(view.on_ctrl_c(), CancellationEvent::Handled);
-        assert!(matches!(
-            rx.try_recv(),
-            Ok(AppEvent::SubmitThreadOp {
-                op: AppCommand::SudoOnceApproval {
-                    decision: SudoOnceApprovalDecision::Abort,
-                    ..
-                },
-                ..
-            })
-        ));
     }
 
     #[test]

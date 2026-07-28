@@ -21,7 +21,6 @@ mcpServerOpenaiFormElicitation?: boolean,
 /**
  * Accept local masked credential prompts for single-use sudo requests.
  */
-sudoOnceCredentialPrompt?: boolean,
 /**
  * Exact notification method names that should be suppressed for this
  * connection (for example `thread/started`).

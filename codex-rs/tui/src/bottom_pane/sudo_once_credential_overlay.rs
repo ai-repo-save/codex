@@ -2,8 +2,8 @@ use crate::app::app_server_requests::ResolvedAppServerRequest;
 use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::BottomPaneView;
 use crate::render::renderable::Renderable;
-use codex_app_server_protocol::SudoOnceCredential;
 use codex_protocol::ThreadId;
+use codex_protocol::sudo_once::SudoOnceCredential;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
@@ -201,12 +201,7 @@ impl BottomPaneView for SudoOnceCredentialOverlay {
     }
 
     fn dismiss_app_server_request(&mut self, request: &ResolvedAppServerRequest) -> bool {
-        if matches!(request, ResolvedAppServerRequest::SudoOnceCredential { id } if id == &self.request.item_id)
-        {
-            self.clear();
-            self.done = true;
-            return true;
-        }
+        let _ = request;
         false
     }
     fn terminal_title_requires_action(&self) -> bool {

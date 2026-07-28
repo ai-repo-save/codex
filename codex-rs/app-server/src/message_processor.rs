@@ -146,7 +146,6 @@ pub(crate) struct InitializedConnectionSessionState {
     pub(crate) client_version: String,
     pub(crate) request_attestation: bool,
     pub(crate) supports_openai_form_elicitation: bool,
-    pub(crate) supports_sudo_once_credential_prompt: bool,
 }
 
 impl Default for ConnectionSessionState {
@@ -209,18 +208,6 @@ impl ConnectionSessionState {
             .is_some_and(|session| session.supports_openai_form_elicitation)
     }
 
-    pub(crate) fn supports_sudo_once_credential_prompt(&self) -> bool {
-        self.initialized
-            .get()
-            .is_some_and(|session| session.supports_sudo_once_credential_prompt)
-    }
-
-    pub(crate) fn is_trusted_local_sudo_once_client(&self) -> bool {
-        matches!(
-            self.origin,
-            ConnectionOrigin::InProcess | ConnectionOrigin::Stdio | ConnectionOrigin::UnixSocket
-        )
-    }
     pub(crate) fn initialize(&self, session: InitializedConnectionSessionState) -> Result<(), ()> {
         self.initialized.set(session).map_err(|_| ())
     }
@@ -696,14 +683,12 @@ impl MessageProcessor {
         &self,
         connection_id: ConnectionId,
         request_attestation: bool,
-        sudo_once_credential_prompt: bool,
     ) {
         self.thread_processor
             .connection_initialized(
                 connection_id,
                 ConnectionCapabilities {
                     request_attestation,
-                    sudo_once_credential_prompt,
                 },
             )
             .await;
@@ -779,28 +764,13 @@ impl MessageProcessor {
     /// Handle a standalone JSON-RPC response originating from the peer.
     pub(crate) async fn process_response(&self, response: JSONRPCResponse) {
         let JSONRPCResponse { id, result, .. } = response;
-        let (id, result) = match self
-            .outgoing
-            .try_notify_sudo_once_credential_response(id, result)
-            .await
-        {
-            Ok(()) => return,
-            Err(response) => response,
-        };
         tracing::info!(request_id = ?id, "<- response");
         self.outgoing.notify_client_response(id, result).await
     }
 
     /// Handle an error object received from the peer.
     pub(crate) async fn process_error(&self, err: JSONRPCError) {
-        let (id, error) = match self
-            .outgoing
-            .try_notify_sudo_once_credential_error(err.id, err.error)
-            .await
-        {
-            Ok(()) => return,
-            Err(error) => error,
-        };
+        let (id, error) = (err.id, err.error);
         tracing::error!(request_id = ?id, "<- error");
         self.outgoing.notify_client_error(id, error).await;
     }
@@ -834,8 +804,6 @@ impl MessageProcessor {
                         connection_id,
                         ConnectionCapabilities {
                             request_attestation: session.request_attestation(),
-                            sudo_once_credential_prompt: session
-                                .supports_sudo_once_credential_prompt(),
                         },
                     )
                     .await;

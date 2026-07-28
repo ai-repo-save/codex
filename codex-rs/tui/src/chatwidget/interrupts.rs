@@ -7,11 +7,11 @@ use crate::approval_events::ApplyPatchApprovalRequestEvent;
 use crate::approval_events::ExecApprovalRequestEvent;
 use codex_app_server_protocol::McpServerElicitationRequestParams;
 use codex_app_server_protocol::RequestId as AppServerRequestId;
-use codex_app_server_protocol::SudoOnceRequestApprovalParams;
-use codex_app_server_protocol::SudoOnceRequestCredentialParams;
 use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::ToolRequestUserInputParams;
 use codex_protocol::request_permissions::RequestPermissionsEvent;
+use codex_protocol::sudo_once::SudoOnceApprovalRequestEvent;
+use codex_protocol::sudo_once::SudoOnceCredentialRequestEvent;
 
 use super::ChatWidget;
 
@@ -25,8 +25,8 @@ pub(crate) enum QueuedInterrupt {
     },
     RequestPermissions(RequestPermissionsEvent),
     RequestUserInput(ToolRequestUserInputParams),
-    SudoOnceApproval(SudoOnceRequestApprovalParams),
-    SudoOnceCredential(SudoOnceRequestCredentialParams),
+    SudoOnceApproval(SudoOnceApprovalRequestEvent),
+    SudoOnceCredential(SudoOnceCredentialRequestEvent),
     ItemStarted(ThreadItem),
     ItemCompleted(ThreadItem),
 }
@@ -75,11 +75,11 @@ impl InterruptManager {
         self.queue.push_back(QueuedInterrupt::RequestUserInput(ev));
     }
 
-    pub(crate) fn push_sudo_once_approval(&mut self, ev: SudoOnceRequestApprovalParams) {
+    pub(crate) fn push_sudo_once_approval(&mut self, ev: SudoOnceApprovalRequestEvent) {
         self.queue.push_back(QueuedInterrupt::SudoOnceApproval(ev));
     }
 
-    pub(crate) fn push_sudo_once_credential(&mut self, ev: SudoOnceRequestCredentialParams) {
+    pub(crate) fn push_sudo_once_credential(&mut self, ev: SudoOnceCredentialRequestEvent) {
         self.queue
             .push_back(QueuedInterrupt::SudoOnceCredential(ev));
     }
@@ -147,14 +147,7 @@ impl QueuedInterrupt {
                 matches!(request, ResolvedAppServerRequest::UserInput { call_id }
                     if ev.item_id == call_id.as_str())
             }
-            QueuedInterrupt::SudoOnceApproval(ev) => {
-                matches!(request, ResolvedAppServerRequest::SudoOnceApproval { id }
-                    if ev.item_id == id.as_str())
-            }
-            QueuedInterrupt::SudoOnceCredential(ev) => {
-                matches!(request, ResolvedAppServerRequest::SudoOnceCredential { id }
-                    if ev.item_id == id.as_str())
-            }
+            QueuedInterrupt::SudoOnceApproval(_) | QueuedInterrupt::SudoOnceCredential(_) => false,
             QueuedInterrupt::ItemStarted(_) | QueuedInterrupt::ItemCompleted(_) => false,
         }
     }

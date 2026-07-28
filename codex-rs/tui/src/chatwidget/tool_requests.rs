@@ -4,6 +4,8 @@
 //! that block on user decisions.
 
 use super::*;
+use codex_protocol::sudo_once::SudoOnceApprovalRequestEvent;
+use codex_protocol::sudo_once::SudoOnceCredentialRequestEvent;
 
 impl ChatWidget {
     pub(super) fn on_exec_approval_request(&mut self, _id: String, ev: ExecApprovalRequestEvent) {
@@ -271,7 +273,10 @@ impl ChatWidget {
         );
     }
 
-    pub(super) fn on_sudo_once_approval_request(&mut self, ev: SudoOnceRequestApprovalParams) {
+    pub(crate) fn on_sudo_once_approval_request(
+        &mut self,
+        ev: SudoOnceApprovalRequestEvent,
+    ) {
         self.defer_or_handle(
             ev,
             InterruptManager::push_sudo_once_approval,
@@ -279,7 +284,10 @@ impl ChatWidget {
         );
     }
 
-    pub(super) fn on_sudo_once_credential_request(&mut self, ev: SudoOnceRequestCredentialParams) {
+    pub(crate) fn on_sudo_once_credential_request(
+        &mut self,
+        ev: SudoOnceCredentialRequestEvent,
+    ) {
         self.defer_or_handle(
             ev,
             InterruptManager::push_sudo_once_credential,
@@ -347,14 +355,13 @@ impl ChatWidget {
         });
     }
 
-    pub(crate) fn handle_sudo_once_approval_now(&mut self, ev: SudoOnceRequestApprovalParams) {
+    pub(crate) fn handle_sudo_once_approval_now(&mut self, ev: SudoOnceApprovalRequestEvent) {
         self.flush_answer_stream_with_separator();
-        let thread_id = ThreadId::from_string(&ev.thread_id)
-            .unwrap_or_else(|_| self.thread_id.unwrap_or_default());
         let request = ApprovalRequest::SudoOnce(crate::bottom_pane::SudoOnceApprovalRequest {
-            thread_id,
-            id: ev.item_id,
-            command: ev.command,
+            thread_id: self.thread_id.unwrap_or_default(),
+            id: ev.call_id,
+            command: shlex::try_join(ev.command.iter().map(String::as_str))
+                .unwrap_or_else(|_| ev.command.join(" ")),
             cwd: ev.cwd.to_string(),
             reason: ev.reason,
         });
@@ -367,14 +374,12 @@ impl ChatWidget {
         self.request_redraw();
     }
 
-    pub(crate) fn handle_sudo_once_credential_now(&mut self, ev: SudoOnceRequestCredentialParams) {
+    pub(crate) fn handle_sudo_once_credential_now(&mut self, ev: SudoOnceCredentialRequestEvent) {
         self.flush_answer_stream_with_separator();
-        let thread_id = ThreadId::from_string(&ev.thread_id)
-            .unwrap_or_else(|_| self.thread_id.unwrap_or_default());
         self.bottom_pane.push_sudo_once_credential_request(
             crate::bottom_pane::SudoOnceCredentialRequest {
-                thread_id,
-                item_id: ev.item_id,
+                thread_id: self.thread_id.unwrap_or_default(),
+                item_id: ev.call_id,
                 attempt: ev.attempt,
             },
         );

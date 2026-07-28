@@ -228,7 +228,6 @@ async fn initialize_opt_out_notification_methods_filters_notifications() -> Resu
                 version: "0.1.0".to_string(),
             },
             Some(InitializeCapabilities {
-                sudo_once_credential_prompt: false,
                 experimental_api: true,
                 request_attestation: false,
                 opt_out_notification_methods: Some(vec!["thread/started".to_string()]),

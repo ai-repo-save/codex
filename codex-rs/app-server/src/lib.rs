@@ -1030,12 +1030,7 @@ pub async fn run_main_with_transport_options(
                                             processor
                                                 .connection_initialized(
                                                     connection_id,
-                                                    connection_state
-                                                        .session
-                                                        .request_attestation(),
-                                                    connection_state
-                                                        .session
-                                                        .supports_sudo_once_credential_prompt(),
+                                                    connection_state.session.request_attestation(),
                                                 )
                                                 .await;
                                             connection_state

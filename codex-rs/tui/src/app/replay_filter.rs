@@ -16,7 +16,6 @@ pub(super) fn snapshot_has_pending_interactive_request(snapshot: &ThreadEventSna
                     | ServerRequest::McpServerElicitationRequest { .. }
                     | ServerRequest::PermissionsRequestApproval { .. }
                     | ServerRequest::ToolRequestUserInput { .. }
-                    | ServerRequest::SudoOnceRequestApproval { .. }
             )
         )
     })
