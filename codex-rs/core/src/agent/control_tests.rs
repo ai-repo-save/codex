@@ -182,6 +182,7 @@ impl AgentControlHarness {
                 environments: Vec::new(),
                 thread_extension_init: ExtensionDataInit::default(),
                 supports_openai_form_elicitation: false,
+                sudo_once_broker: None,
             })
             .await
             .expect("start paginated thread");
@@ -1830,6 +1831,7 @@ async fn spawn_agent_fork_last_n_turns_drops_parent_startup_prefix_when_under_li
             environments: Vec::new(),
             thread_extension_init,
             supports_openai_form_elicitation: false,
+            sudo_once_broker: None,
         })
         .await
         .expect("start parent thread");
@@ -2601,6 +2603,7 @@ async fn spawn_thread_subagents_persist_parent_originator_across_new_and_truncat
             environments: Vec::new(),
             thread_extension_init: ExtensionDataInit::default(),
             supports_openai_form_elicitation: false,
+            sudo_once_broker: None,
         })
         .await
         .expect("parent thread should start");

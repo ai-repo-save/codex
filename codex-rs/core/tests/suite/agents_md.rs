@@ -497,6 +497,7 @@ async fn loads_user_instructions_without_a_primary_environment() -> Result<()> {
             environments: Vec::new(),
             thread_extension_init: Default::default(),
             supports_openai_form_elicitation: false,
+            sudo_once_broker: None,
         })
         .await?;
     assert_eq!(provider.load_count(), 2);
@@ -715,6 +716,7 @@ async fn multi_environment_thread_loads_every_project_and_keeps_creation_snapsho
             ],
             thread_extension_init: Default::default(),
             supports_openai_form_elicitation: false,
+            sudo_once_broker: None,
         })
         .await?;
     assert_eq!(provider.load_count(), 2);

@@ -852,6 +852,7 @@ async fn subagent_stop_replaces_stop_and_skips_internal_subagents() -> Result<()
             environments: Vec::new(),
             thread_extension_init: Default::default(),
             supports_openai_form_elicitation: false,
+            sudo_once_broker: None,
         })
         .await?;
 
