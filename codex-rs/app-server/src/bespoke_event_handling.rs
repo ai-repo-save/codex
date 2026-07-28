@@ -773,9 +773,10 @@ pub(crate) async fn apply_bespoke_event_handling(
             let (_pending_request_id, receiver) =
                 outgoing.send_sudo_once_credential_request(params).await;
             tokio::spawn(async move {
-                let response = receiver
-                    .await
-                    .unwrap_or_else(|_| SudoOnceCredentialResponse { credential: None });
+                let response = match receiver.await {
+                    Ok(Ok(response)) => response,
+                    Ok(Err(_)) | Err(_) => SudoOnceCredentialResponse { credential: None },
+                };
                 conversation
                     .resolve_sudo_once_credential(&request.call_id, response)
                     .await;
