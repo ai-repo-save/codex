@@ -12,3 +12,6 @@ codex-protocol = { workspace = true }
 codex-utils-absolute-path = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 zeroize = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
