@@ -1219,6 +1219,7 @@ impl UnifiedExecProcessManager {
             prompt_sentinel.clone(),
             "--".to_string(),
             "/bin/sh".to_string(),
+            "-p".to_string(),
             "-c".to_string(),
             SUDO_ONCE_EXEC_WRAPPER.to_string(),
             "sh".to_string(),
