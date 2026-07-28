@@ -27,6 +27,10 @@ pub(super) fn server_request_thread_id(request: &ServerRequest) -> Option<Thread
         ServerRequest::CurrentTimeRead { params, .. } => {
             ThreadId::from_string(&params.thread_id).ok()
         }
+        ServerRequest::SudoOnceRequestApproval { params, .. }
+        | ServerRequest::SudoOnceRequestCredential { params, .. } => {
+            ThreadId::from_string(&params.thread_id).ok()
+        }
         ServerRequest::ChatgptAuthTokensRefresh { .. }
         | ServerRequest::AttestationGenerate { .. }
         | ServerRequest::ApplyPatchApproval { .. }

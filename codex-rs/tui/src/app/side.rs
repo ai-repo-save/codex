@@ -88,9 +88,13 @@ impl SideParentStatus {
 
     pub(super) fn for_request(request: &ServerRequest) -> Option<Self> {
         match request {
-            ServerRequest::ToolRequestUserInput { .. } => Some(SideParentStatus::NeedsInput),
+            ServerRequest::ToolRequestUserInput { .. }
+            | ServerRequest::SudoOnceRequestCredential { .. } => {
+                Some(SideParentStatus::NeedsInput)
+            }
             ServerRequest::CommandExecutionRequestApproval { .. }
             | ServerRequest::FileChangeRequestApproval { .. }
+            | ServerRequest::SudoOnceRequestApproval { .. }
             | ServerRequest::McpServerElicitationRequest { .. }
             | ServerRequest::PermissionsRequestApproval { .. }
             | ServerRequest::ApplyPatchApproval { .. }

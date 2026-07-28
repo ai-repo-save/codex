@@ -1693,6 +1693,30 @@ async fn handle_server_request(
             )
             .await
         }
+        ServerRequest::SudoOnceRequestApproval { request_id, params } => {
+            reject_server_request(
+                client,
+                request_id,
+                &method,
+                format!(
+                    "sudo-once approval is not supported in exec mode for thread `{}`",
+                    params.thread_id
+                ),
+            )
+            .await
+        }
+        ServerRequest::SudoOnceRequestCredential { request_id, params } => {
+            reject_server_request(
+                client,
+                request_id,
+                &method,
+                format!(
+                    "sudo-once credential prompts are not supported in exec mode for thread `{}`",
+                    params.thread_id
+                ),
+            )
+            .await
+        }
         ServerRequest::FileChangeRequestApproval { request_id, params } => {
             reject_server_request(
                 client,
