@@ -90,7 +90,10 @@ async fn sudo_once_requests_dedicated_approval_when_general_approval_is_never() 
         .await?;
 
     let approval = wait_for_event(&test.codex, |event| {
-        matches!(event, EventMsg::SudoOnceApprovalRequest(_) | EventMsg::TurnComplete(_))
+        matches!(
+            event,
+            EventMsg::SudoOnceApprovalRequest(_) | EventMsg::TurnComplete(_)
+        )
     })
     .await;
     let EventMsg::SudoOnceApprovalRequest(approval) = approval else {
