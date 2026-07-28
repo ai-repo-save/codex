@@ -68,6 +68,7 @@ use codex_protocol::protocol::ExecCommandSource;
 use codex_protocol::sudo_once::ExecPrivilege;
 use codex_protocol::sudo_once::SudoOnceApprovalDecision;
 use codex_sandboxing::SandboxCommand;
+use codex_sandboxing::SandboxType;
 use codex_tools::ToolName;
 use codex_utils_output_truncation::approx_tokens_from_byte_count;
 use codex_utils_path_uri::PathUri;

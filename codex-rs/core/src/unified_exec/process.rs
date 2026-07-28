@@ -675,10 +675,11 @@ impl UnifiedExecProcess {
             loop {
                 match receiver.recv().await {
                     Ok(chunk) => {
-                        let actions = sudo_filter.as_mut().map_or_else(
-                            || vec![SudoPromptAction::Output(chunk)],
-                            |filter| filter.push(chunk),
-                        );
+                        let actions = if let Some(filter) = sudo_filter.as_mut() {
+                            filter.push(chunk)
+                        } else {
+                            vec![SudoPromptAction::Output(chunk)]
+                        };
                         let mut failed = false;
                         for action in actions {
                             match action {
