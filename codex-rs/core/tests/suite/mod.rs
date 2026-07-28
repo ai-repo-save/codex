@@ -134,6 +134,8 @@ mod stream_error_allows_next_turn;
 mod stream_no_completed;
 mod subagent_notifications;
 #[cfg(target_os = "linux")]
+mod sudo_once;
+#[cfg(target_os = "linux")]
 mod token_budget;
 mod tool_harness;
 mod tool_parallelism;

@@ -51,6 +51,7 @@ use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_protocol::protocol::TurnEnvironmentSelections;
 use codex_protocol::user_input::UserInput;
+use codex_sudo_once::LocalSudoOnceBroker;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
 use futures::future::BoxFuture;
@@ -306,6 +307,7 @@ pub struct TestCodexBuilder {
     code_mode_host_program: Option<PathBuf>,
     history_mode: Option<ThreadHistoryMode>,
     session_source: SessionSource,
+    sudo_once_broker: Option<LocalSudoOnceBroker>,
 }
 
 impl TestCodexBuilder {
@@ -336,6 +338,11 @@ impl TestCodexBuilder {
 
     pub fn with_session_source(mut self, session_source: SessionSource) -> Self {
         self.session_source = session_source;
+        self
+    }
+
+    pub fn with_sudo_once_broker(mut self, sudo_once_broker: LocalSudoOnceBroker) -> Self {
+        self.sudo_once_broker = Some(sudo_once_broker);
         self
     }
 
@@ -718,6 +725,7 @@ impl TestCodexBuilder {
                         environments,
                         thread_extension_init: Default::default(),
                         supports_openai_form_elicitation: self.supports_openai_form_elicitation,
+                        sudo_once_broker: self.sudo_once_broker.take(),
                     }),
                 )
                 .await?
@@ -1257,6 +1265,7 @@ pub fn test_codex() -> TestCodexBuilder {
         code_mode_host_program: None,
         history_mode: None,
         session_source: SessionSource::Exec,
+        sudo_once_broker: None,
     }
 }
 
