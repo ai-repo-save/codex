@@ -2214,7 +2214,7 @@ mod tests {
         let (event_tx, event_rx) = mpsc::channel(1);
         let worker_handle = tokio::spawn(async {});
         event_tx
-            .send(InProcessServerEvent::Lagged { skipped: 3 })
+            .send(AppServerEvent::Lagged { skipped: 3 })
             .await
             .expect("lagged marker should enqueue");
         drop(event_tx);
@@ -2230,7 +2230,7 @@ mod tests {
             .expect("lagged marker should arrive before timeout");
         assert!(matches!(
             event,
-            Some(InProcessServerEvent::Lagged { skipped: 3 })
+            Some(AppServerEvent::Lagged { skipped: 3 })
         ));
 
         client.shutdown().await.expect("shutdown should complete");
@@ -2351,7 +2351,7 @@ mod tests {
             opt_out_notification_methods: Vec::new(),
             channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
         }
-        .into_runtime_start_args();
+        .into_runtime_start_args(/*sudo_once_broker*/ None);
 
         assert_eq!(runtime_args.config, config);
         assert!(
@@ -2400,7 +2400,7 @@ mod tests {
             opt_out_notification_methods: Vec::new(),
             channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
         }
-        .into_runtime_start_args();
+        .into_runtime_start_args(/*sudo_once_broker*/ None);
 
         let err = runtime_args
             .thread_config_loader
