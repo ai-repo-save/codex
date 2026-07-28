@@ -4,7 +4,7 @@ assertion_line: 48
 expression: render_overlay(&overlay)
 ---
 Buffer {
-    area: Rect { x: 0, y: 0, width: 80, height: 10 },
+    area: Rect { x: 0, y: 0, width: 80, height: 11 },
     content: [
         "Sudo authorization required                                                     ",
         "This command will run as root and outside the Codex sandbox.                    ",
@@ -16,6 +16,7 @@ Buffer {
         "Reason:                                                                         ",
         "Install the requested package.                                                  ",
         "                                                                                ",
+        "y: authorize once · Esc/Ctrl-C: abort                                           ",
     ],
     styles: [
         x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
@@ -28,5 +29,7 @@ Buffer {
         x: 18, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 0, y: 7, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
         x: 7, y: 7, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 37, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
     ]
 }
