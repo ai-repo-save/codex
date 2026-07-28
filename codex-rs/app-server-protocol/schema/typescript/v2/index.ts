@@ -418,7 +418,6 @@ export type { SubAgentActivityKind } from "./SubAgentActivityKind";
 export type { SubAgentActivityOperation } from "./SubAgentActivityOperation";
 export type { SubAgentActivityOutcome } from "./SubAgentActivityOutcome";
 export type { SubagentMigration } from "./SubagentMigration";
-export type { SudoOnceCredential } from "./SudoOnceCredential";
 export type { TerminalInteractionNotification } from "./TerminalInteractionNotification";
 export type { TextElement } from "./TextElement";
 export type { TextPosition } from "./TextPosition";

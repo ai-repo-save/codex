@@ -3013,10 +3013,6 @@
           "default": false,
           "description": "Opt into `attestation/generate` requests for upstream `x-oai-attestation`.",
           "type": "boolean"
-        },
-        "sudoOnceCredentialPrompt": {
-          "description": "Accept local masked credential prompts for single-use sudo requests.",
-          "type": "boolean"
         }
       },
       "type": "object"
@@ -5891,17 +5887,6 @@
         }
       ],
       "title": "ServerRequest"
-    },
-    "SudoOnceApprovalDecision": {
-      "description": "User decision for a single sudo execution request.",
-      "enum": [
-        "accept",
-        "abort"
-      ],
-      "type": "string"
-    },
-    "SudoOnceCredential": {
-      "type": "string"
     },
     "ToolRequestUserInputAnswer": {
       "description": "EXPERIMENTAL. Captures a user's answer to a request_user_input question.",

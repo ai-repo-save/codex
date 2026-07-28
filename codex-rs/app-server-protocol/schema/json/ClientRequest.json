@@ -1404,10 +1404,6 @@
           "default": false,
           "description": "Opt into `attestation/generate` requests for upstream `x-oai-attestation`.",
           "type": "boolean"
-        },
-        "sudoOnceCredentialPrompt": {
-          "description": "Accept local masked credential prompts for single-use sudo requests.",
-          "type": "boolean"
         }
       },
       "type": "object"
