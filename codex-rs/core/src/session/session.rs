@@ -505,6 +505,7 @@ impl Session {
         multi_agent_version: Option<MultiAgentVersion>,
         prompt_cache_key_override: Option<String>,
         tool_execution_mode: ToolExecutionMode,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
     ) -> anyhow::Result<Arc<Self>> {
         debug!(
             "Configuring session: model={}; provider={:?}",

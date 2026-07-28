@@ -746,6 +746,7 @@ impl ThreadManager {
             environments,
             thread_extension_init: ExtensionDataInit::default(),
             supports_openai_form_elicitation: false,
+            sudo_once_broker: None,
         }))
         .await
     }

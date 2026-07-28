@@ -754,6 +754,7 @@ impl Session {
             multi_agent_version,
             prompt_cache_key_override,
             tool_execution_mode,
+            sudo_once_broker,
         ))
         .await
         .map_err(|e| {

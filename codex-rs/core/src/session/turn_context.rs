@@ -288,6 +288,7 @@ impl TurnContext {
             trace_id: self.trace_id.clone(),
             realtime_active: self.realtime_active,
             tool_execution_mode: self.tool_execution_mode,
+            sudo_once_available: self.sudo_once_available,
             config: Arc::new(config),
             auth_manager: self.auth_manager.clone(),
             model_info: model_info.clone(),
