@@ -665,6 +665,7 @@ async fn mcp_resource_read_returns_error_for_unknown_thread() -> Result<()> {
             capabilities: None,
         },
         channel_capacity: in_process::DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
+        sudo_once_broker: None,
     })
     .await?;
 

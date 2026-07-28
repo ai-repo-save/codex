@@ -111,9 +111,6 @@ use codex_protocol::request_permissions::RequestPermissionProfile as CoreRequest
 use codex_protocol::request_permissions::RequestPermissionsResponse as CoreRequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputAnswer as CoreRequestUserInputAnswer;
 use codex_protocol::request_user_input::RequestUserInputResponse as CoreRequestUserInputResponse;
-use codex_protocol::sudo_once::SudoOnceApprovalDecision;
-use codex_protocol::sudo_once::SudoOnceApprovalResponse;
-use codex_protocol::sudo_once::SudoOnceCredentialResponse;
 use codex_sandboxing::policy_transforms::intersect_permission_profiles;
 use codex_shell_command::parse_command::shlex_join;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -703,28 +700,6 @@ pub(crate) async fn apply_bespoke_event_handling(
                 )
                 .await;
             });
-        }
-        EventMsg::SudoOnceApprovalRequest(request) => {
-            if let Err(error) = conversation
-                .submit(Op::SudoOnceApproval {
-                    id: request.call_id,
-                    turn_id: Some(request.turn_id),
-                    response: SudoOnceApprovalResponse {
-                        decision: SudoOnceApprovalDecision::Abort,
-                    },
-                })
-                .await
-            {
-                error!("failed to reject sudo-once approval on an app-server thread: {error}");
-            }
-        }
-        EventMsg::SudoOnceCredentialRequest(request) => {
-            conversation
-                .resolve_sudo_once_credential(
-                    &request.call_id,
-                    SudoOnceCredentialResponse { credential: None },
-                )
-                .await;
         }
         EventMsg::RequestUserInput(request) => {
             let user_input_guard = thread_watch_manager

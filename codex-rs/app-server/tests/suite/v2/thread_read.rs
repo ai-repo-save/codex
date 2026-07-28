@@ -739,6 +739,7 @@ async fn thread_turns_list_reads_store_history_without_rollout_path() -> Result<
             }),
         },
         channel_capacity: in_process::DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
+        sudo_once_broker: None,
     })
     .await?;
 
@@ -805,6 +806,7 @@ async fn thread_read_loaded_include_turns_reads_store_history_without_rollout_pa
             }),
         },
         channel_capacity: in_process::DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
+        sudo_once_broker: None,
     })
     .await?;
 
@@ -909,6 +911,7 @@ async fn thread_list_includes_store_thread_without_rollout_path() -> Result<()> 
             }),
         },
         channel_capacity: in_process::DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
+        sudo_once_broker: None,
     })
     .await?;
 

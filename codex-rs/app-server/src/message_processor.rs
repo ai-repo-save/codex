@@ -75,6 +75,7 @@ use codex_home::CodexHomeUserInstructionsProvider;
 use codex_login::AuthManager;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::SessionSource;
+use codex_sudo_once::LocalSudoOnceBroker;
 use codex_protocol::protocol::W3cTraceContext;
 use codex_rollout::StateDbHandle;
 use codex_state::log_db::LogDbLayer;
@@ -131,11 +132,23 @@ pub(crate) struct MessageProcessor {
     request_serialization_queues: RequestSerializationQueues,
 }
 
-#[derive(Debug)]
 pub(crate) struct ConnectionSessionState {
     pub(crate) rpc_gate: Arc<ConnectionRpcGate>,
     origin: ConnectionOrigin,
     initialized: OnceLock<InitializedConnectionSessionState>,
+    sudo_once_broker: Option<LocalSudoOnceBroker>,
+}
+
+impl std::fmt::Debug for ConnectionSessionState {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ConnectionSessionState")
+            .field("rpc_gate", &self.rpc_gate)
+            .field("origin", &self.origin)
+            .field("initialized", &self.initialized)
+            .field("has_sudo_once_broker", &self.sudo_once_broker.is_some())
+            .finish()
+    }
 }
 
 #[derive(Debug)]
@@ -160,10 +173,24 @@ impl ConnectionSessionState {
     }
 
     pub(crate) fn new_with_origin(origin: ConnectionOrigin) -> Self {
+        Self::new_with_origin_and_sudo_once_broker(origin, None)
+    }
+
+    pub(crate) fn new_with_sudo_once_broker(
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
+    ) -> Self {
+        Self::new_with_origin_and_sudo_once_broker(ConnectionOrigin::InProcess, sudo_once_broker)
+    }
+
+    fn new_with_origin_and_sudo_once_broker(
+        origin: ConnectionOrigin,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
+    ) -> Self {
         Self {
             rpc_gate: Arc::new(ConnectionRpcGate::new()),
             origin,
             initialized: OnceLock::new(),
+            sudo_once_broker,
         }
     }
 
@@ -206,6 +233,10 @@ impl ConnectionSessionState {
         self.initialized
             .get()
             .is_some_and(|session| session.supports_openai_form_elicitation)
+    }
+
+    pub(crate) fn sudo_once_broker(&self) -> Option<LocalSudoOnceBroker> {
+        self.sudo_once_broker.clone()
     }
 
     pub(crate) fn initialize(&self, session: InitializedConnectionSessionState) -> Result<(), ()> {
@@ -847,6 +878,7 @@ impl MessageProcessor {
         let app_server_client_name = session.app_server_client_name().map(str::to_string);
         let client_version = session.client_version().map(str::to_string);
         let supports_openai_form_elicitation = session.supports_openai_form_elicitation();
+        let sudo_once_broker = session.sudo_once_broker();
         let error_request_id = connection_request_id.clone();
         let rpc_gate = Arc::clone(&session.rpc_gate);
         let processor = Arc::clone(self);
@@ -863,6 +895,7 @@ impl MessageProcessor {
                         app_server_client_name,
                         client_version,
                         supports_openai_form_elicitation,
+                        sudo_once_broker,
                     )
                     .await;
                 if let Err(error) = result {
@@ -893,6 +926,7 @@ impl MessageProcessor {
         app_server_client_name: Option<String>,
         client_version: Option<String>,
         supports_openai_form_elicitation: bool,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
     ) -> Result<(), JSONRPCErrorError> {
         let connection_id = connection_request_id.connection_id;
         let request_id = ConnectionRequestId {
@@ -1052,6 +1086,7 @@ impl MessageProcessor {
                         app_server_client_name.clone(),
                         client_version.clone(),
                         supports_openai_form_elicitation,
+                        sudo_once_broker.clone(),
                         request_context,
                     )
                     .await
@@ -1070,6 +1105,7 @@ impl MessageProcessor {
                         client_version.clone(),
                         /*supports_openai_form_elicitation*/
                         supports_openai_form_elicitation,
+                        sudo_once_broker.clone(),
                     )
                     .await
             }
@@ -1082,6 +1118,7 @@ impl MessageProcessor {
                         client_version.clone(),
                         /*supports_openai_form_elicitation*/
                         supports_openai_form_elicitation,
+                        sudo_once_broker.clone(),
                     )
                     .await
             }
@@ -1092,6 +1129,7 @@ impl MessageProcessor {
                         params,
                         app_server_client_name.clone(),
                         client_version.clone(),
+                        sudo_once_broker,
                     )
                     .await
             }

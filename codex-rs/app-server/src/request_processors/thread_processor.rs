@@ -8,6 +8,7 @@ use codex_protocol::config_types::MultiAgentMode;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
 use codex_protocol::protocol::ThreadHistoryMode;
+use codex_sudo_once::LocalSudoOnceBroker;
 
 const THREAD_LIST_DEFAULT_LIMIT: usize = 25;
 const THREAD_LIST_MAX_LIMIT: usize = 100;
@@ -528,6 +529,7 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
         request_context: RequestContext,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
         self.thread_start_inner(
@@ -536,6 +538,7 @@ impl ThreadRequestProcessor {
             app_server_client_name,
             app_server_client_version,
             supports_openai_form_elicitation,
+            sudo_once_broker,
             request_context,
         )
         .await
@@ -559,6 +562,7 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
         self.thread_resume_inner(
             request_id,
@@ -566,6 +570,7 @@ impl ThreadRequestProcessor {
             app_server_client_name,
             app_server_client_version,
             supports_openai_form_elicitation,
+            sudo_once_broker,
         )
         .await
         .map(|()| None)
@@ -578,6 +583,7 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
         self.thread_fork_inner(
             request_id,
@@ -585,6 +591,7 @@ impl ThreadRequestProcessor {
             app_server_client_name,
             app_server_client_version,
             supports_openai_form_elicitation,
+            sudo_once_broker,
         )
         .await
         .map(|()| None)
@@ -596,12 +603,14 @@ impl ThreadRequestProcessor {
         params: ThreadResetContextParams,
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
         self.thread_reset_context_inner(
             request_id,
             params,
             app_server_client_name,
             app_server_client_version,
+            sudo_once_broker,
         )
         .await
         .map(|()| None)
@@ -1034,6 +1043,7 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
         request_context: RequestContext,
     ) -> Result<(), JSONRPCErrorError> {
         let ThreadStartParams {
@@ -1121,6 +1131,7 @@ impl ThreadRequestProcessor {
                 app_server_client_name,
                 app_server_client_version,
                 supports_openai_form_elicitation,
+                sudo_once_broker,
                 config,
                 typesafe_overrides,
                 dynamic_tools,
@@ -1199,6 +1210,7 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
         config_overrides: Option<HashMap<String, serde_json::Value>>,
         typesafe_overrides: ConfigOverrides,
         dynamic_tools: Option<Vec<DynamicToolSpec>>,
@@ -1346,6 +1358,7 @@ impl ThreadRequestProcessor {
                 environments,
                 thread_extension_init,
                 supports_openai_form_elicitation,
+                sudo_once_broker,
             })
             .instrument(tracing::info_span!(
                 "app_server.thread_start.create_thread",
@@ -3117,6 +3130,7 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
     ) -> Result<(), JSONRPCErrorError> {
         if let Ok(thread_id) = ThreadId::from_string(&params.thread_id)
             && self
@@ -3283,12 +3297,13 @@ impl ThreadRequestProcessor {
 
         match self
             .thread_manager
-            .resume_thread_with_history(
+            .resume_thread_with_history_with_sudo_once_broker(
                 config,
                 thread_history,
                 self.auth_manager.clone(),
                 self.request_trace_context(&request_id).await,
                 supports_openai_form_elicitation,
+                sudo_once_broker,
             )
             .await
         {
@@ -4068,6 +4083,7 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
     ) -> Result<(), JSONRPCErrorError> {
         let result = self
             .build_thread_fork_response(
@@ -4076,6 +4092,7 @@ impl ThreadRequestProcessor {
                 app_server_client_name,
                 app_server_client_version,
                 supports_openai_form_elicitation,
+                sudo_once_broker,
             )
             .await?;
         self.send_thread_fork_response(request_id, result).await;
@@ -4089,6 +4106,7 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
     ) -> Result<ThreadForkBuildResult, JSONRPCErrorError> {
         self.build_thread_fork_response_with_history(
             request_id,
@@ -4096,6 +4114,7 @@ impl ThreadRequestProcessor {
             app_server_client_name,
             app_server_client_version,
             supports_openai_form_elicitation,
+            sudo_once_broker,
             /*source_history_override*/ None,
         )
         .await
@@ -4108,6 +4127,7 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
         source_history_override: Option<Vec<ResponseItem>>,
     ) -> Result<ThreadForkBuildResult, JSONRPCErrorError> {
         let ThreadForkParams {
@@ -4243,7 +4263,7 @@ impl ThreadRequestProcessor {
             ..
         } = self
             .thread_manager
-            .fork_thread_from_history(
+            .fork_thread_from_history_with_sudo_once_broker(
                 ForkSnapshot::Interrupted,
                 config,
                 InitialHistory::Resumed(ResumedHistory {
@@ -4254,6 +4274,7 @@ impl ThreadRequestProcessor {
                 thread_source.map(Into::into),
                 self.request_trace_context(request_id).await,
                 supports_openai_form_elicitation,
+                sudo_once_broker,
             )
             .await
             .map_err(|err| match err {
@@ -4464,6 +4485,7 @@ impl ThreadRequestProcessor {
         params: ThreadResetContextParams,
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
+        sudo_once_broker: Option<LocalSudoOnceBroker>,
     ) -> Result<(), JSONRPCErrorError> {
         let source_thread_id = ThreadId::from_string(params.thread_id.as_str())
             .map_err(|err| invalid_request(format!("invalid thread id: {err}")))?;
@@ -4499,6 +4521,7 @@ impl ThreadRequestProcessor {
                 app_server_client_name,
                 app_server_client_version,
                 /*supports_openai_form_elicitation*/ false,
+                sudo_once_broker,
                 Some(context_history),
             )
             .await?;
