@@ -10,18 +10,76 @@ use codex_protocol::protocol::SessionSource;
 use codex_protocol::sudo_once::SudoOnceApprovalDecision;
 use codex_protocol::sudo_once::SudoOnceApprovalResponse;
 use codex_protocol::user_input::UserInput;
+use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_response_created;
 use core_test_support::responses::mount_sse_once;
 use core_test_support::responses::sse;
 use core_test_support::responses::start_mock_server;
+use core_test_support::skip_if_no_network;
+use core_test_support::test_codex::local;
 use core_test_support::test_codex::local_selections;
 use core_test_support::test_codex::test_codex;
 use core_test_support::test_codex::turn_permission_fields;
 use core_test_support::wait_for_event;
 use pretty_assertions::assert_eq;
 use serde_json::json;
+
+fn exec_command_exposes_sudo_once(body: &serde_json::Value) -> bool {
+    body.get("tools")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|tool| {
+            tool.get("name").and_then(serde_json::Value::as_str) == Some("exec_command")
+        })
+        .and_then(|tool| tool.get("parameters"))
+        .and_then(|parameters| parameters.get("properties"))
+        .and_then(|properties| properties.get("privilege"))
+        .is_some()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sudo_once_is_not_exposed_to_exec_sessions() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let response_mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-sudo-once-exec-source-1"),
+            ev_assistant_message("msg-sudo-once-exec-source-1", "done"),
+            ev_completed("resp-sudo-once-exec-source-1"),
+        ]),
+    )
+    .await;
+    let mut builder = test_codex().with_config(|config| {
+        config.use_experimental_unified_exec_tool = true;
+        config
+            .features
+            .enable(Feature::UnifiedExec)
+            .expect("test config should allow feature update");
+        config
+            .features
+            .enable(Feature::SudoOnce)
+            .expect("test config should allow feature update");
+    });
+    let test = builder.build(&server).await?;
+
+    test.submit_turn_with_environments(
+        "show tools",
+        Some(vec![local(test.config.cwd.clone())]),
+    )
+    .await?;
+
+    assert!(
+        !exec_command_exposes_sudo_once(&response_mock.single_request().body_json()),
+        "sudo_once must remain unavailable to exec sessions"
+    );
+
+    Ok(())
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sudo_once_requests_dedicated_approval_when_general_approval_is_never() -> Result<()> {
