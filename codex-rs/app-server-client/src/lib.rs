@@ -2228,10 +2228,7 @@ mod tests {
         let event = timeout(Duration::from_secs(2), client.next_event())
             .await
             .expect("lagged marker should arrive before timeout");
-        assert!(matches!(
-            event,
-            Some(AppServerEvent::Lagged { skipped: 3 })
-        ));
+        assert!(matches!(event, Some(AppServerEvent::Lagged { skipped: 3 })));
 
         client.shutdown().await.expect("shutdown should complete");
     }
