@@ -62,6 +62,7 @@ mod request_user_input;
 mod status_line_setup;
 mod status_line_style;
 mod status_surface_preview;
+mod sudo_once_credential_overlay;
 mod title_setup;
 pub(crate) use action_required_title::ACTION_REQUIRED_PREVIEW_PREFIX;
 pub(crate) use action_required_title::build_action_required_title_text;
@@ -75,10 +76,13 @@ pub(crate) use approval_overlay::ApprovalRequest;
 pub(crate) use approval_overlay::ExecApprovalRequest;
 pub(crate) use approval_overlay::McpElicitationApprovalRequest;
 pub(crate) use approval_overlay::PermissionsApprovalRequest;
+pub(crate) use approval_overlay::SudoOnceApprovalRequest;
 pub(crate) use approval_overlay::format_requested_permissions_rule;
 pub(crate) use mcp_server_elicitation::McpServerElicitationFormRequest;
 pub(crate) use mcp_server_elicitation::McpServerElicitationOverlay;
 pub(crate) use request_user_input::RequestUserInputOverlay;
+pub(crate) use sudo_once_credential_overlay::SudoOnceCredentialOverlay;
+pub(crate) use sudo_once_credential_overlay::SudoOnceCredentialRequest;
 pub(crate) use status_line_style::status_line_from_segments;
 mod bottom_pane_view;
 mod effort_ignition;
@@ -1465,6 +1469,17 @@ impl BottomPane {
             Some("Answer the questions to continue.".to_string()),
         );
         self.push_view(Box::new(modal));
+    }
+
+    pub(crate) fn push_sudo_once_credential_request(&mut self, request: SudoOnceCredentialRequest) {
+        self.pause_status_timer_for_modal();
+        self.push_view(Box::new(SudoOnceCredentialOverlay::new(
+            request,
+            self.app_event_tx.clone(),
+            self.has_input_focus,
+            self.enhanced_keys_supported,
+            self.disable_paste_burst,
+        )));
     }
 
     pub(crate) fn push_mcp_server_elicitation_request(

@@ -328,6 +328,8 @@ pub struct InProcessClientStartArgs {
     pub experimental_api: bool,
     /// Whether MCP servers may send `openai/form` elicitation requests.
     pub mcp_server_openai_form_elicitation: bool,
+    /// Whether this local client can securely collect a single-use sudo credential.
+    pub sudo_once_credential_prompt: bool,
     /// Notification methods this client opts out of receiving.
     pub opt_out_notification_methods: Vec<String>,
     /// Queue capacity for command/event channels (clamped to at least 1).
@@ -353,6 +355,7 @@ impl InProcessClientStartArgs {
                 Some(self.opt_out_notification_methods.clone())
             },
             mcp_server_openai_form_elicitation: self.mcp_server_openai_form_elicitation,
+            sudo_once_credential_prompt: self.sudo_once_credential_prompt,
         };
 
         InitializeParams {
@@ -1024,6 +1027,7 @@ mod tests {
             client_version: "0.0.0-test".to_string(),
             experimental_api: true,
             mcp_server_openai_form_elicitation: false,
+            sudo_once_credential_prompt: false,
             opt_out_notification_methods: Vec::new(),
             channel_capacity,
         })
@@ -2220,6 +2224,7 @@ mod tests {
             client_version: "0.0.0-test".to_string(),
             experimental_api: true,
             mcp_server_openai_form_elicitation: true,
+            sudo_once_credential_prompt: false,
             opt_out_notification_methods: Vec::new(),
             channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
         }
@@ -2269,6 +2274,7 @@ mod tests {
             client_version: "0.0.0-test".to_string(),
             experimental_api: true,
             mcp_server_openai_form_elicitation: false,
+            sudo_once_credential_prompt: false,
             opt_out_notification_methods: Vec::new(),
             channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
         }

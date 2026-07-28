@@ -6,6 +6,8 @@ use codex_app_server_protocol::FileChangeApprovalDecision;
 use codex_app_server_protocol::McpServerElicitationAction;
 use codex_app_server_protocol::RequestId as AppServerRequestId;
 use codex_app_server_protocol::ReviewTarget;
+use codex_app_server_protocol::SudoOnceCredential;
+use codex_protocol::sudo_once::SudoOnceApprovalDecision;
 use codex_app_server_protocol::ToolRequestUserInputResponse;
 use codex_app_server_protocol::UserInput;
 use codex_config::types::ApprovalsReviewer;
@@ -20,6 +22,51 @@ use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use serde::Serialize;
 use serde_json::Value;
+use std::sync::Arc;
+use std::sync::Mutex;
+
+#[derive(Clone)]
+pub(crate) struct SensitiveSudoOnceCredential(Option<Arc<Mutex<Option<SudoOnceCredential>>>>);
+
+impl SensitiveSudoOnceCredential {
+    fn new(credential: Option<SudoOnceCredential>) -> Self {
+        Self(credential.map(|credential| Arc::new(Mutex::new(Some(credential)))))
+    }
+
+    pub(crate) fn take(&self) -> Option<SudoOnceCredential> {
+        self.0.as_ref().and_then(|credential| {
+            credential
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .take()
+        })
+    }
+}
+
+impl std::fmt::Debug for SensitiveSudoOnceCredential {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("SensitiveSudoOnceCredential([REDACTED])")
+    }
+}
+
+impl PartialEq for SensitiveSudoOnceCredential {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
+            (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+            (None, None) => true,
+            (Some(_), None) | (None, Some(_)) => false,
+        }
+    }
+}
+
+impl Serialize for SensitiveSudoOnceCredential {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_none()
+    }
+}
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -61,6 +108,14 @@ pub(crate) enum AppCommand {
         id: String,
         turn_id: Option<String>,
         decision: CommandExecutionApprovalDecision,
+    },
+    SudoOnceApproval {
+        id: String,
+        decision: SudoOnceApprovalDecision,
+    },
+    SudoOnceCredential {
+        id: String,
+        credential: SensitiveSudoOnceCredential,
     },
     PatchApproval {
         id: String,
@@ -207,6 +262,20 @@ impl AppCommand {
 
     pub(crate) fn user_input_answer(id: String, response: ToolRequestUserInputResponse) -> Self {
         Self::UserInputAnswer { id, response }
+    }
+
+    pub(crate) fn sudo_once_approval(id: String, decision: SudoOnceApprovalDecision) -> Self {
+        Self::SudoOnceApproval { id, decision }
+    }
+
+    pub(crate) fn sudo_once_credential(
+        id: String,
+        credential: Option<SudoOnceCredential>,
+    ) -> Self {
+        Self::SudoOnceCredential {
+            id,
+            credential: SensitiveSudoOnceCredential::new(credential),
+        }
     }
 
     pub(crate) fn request_permissions_response(

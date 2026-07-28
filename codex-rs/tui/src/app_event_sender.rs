@@ -11,6 +11,8 @@ use codex_app_server_protocol::FileChangeApprovalDecision;
 use codex_app_server_protocol::McpServerElicitationAction;
 use codex_app_server_protocol::RequestId as AppServerRequestId;
 use codex_app_server_protocol::ReviewTarget;
+use codex_app_server_protocol::SudoOnceCredential;
+use codex_protocol::sudo_once::SudoOnceApprovalDecision;
 use codex_app_server_protocol::ToolRequestUserInputResponse;
 use codex_protocol::ThreadId;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
@@ -34,7 +36,13 @@ impl AppEventSender {
     pub(crate) fn send(&self, event: AppEvent) {
         // Record inbound events for high-fidelity session replay.
         // Avoid double-logging Ops; those are logged at the point of submission.
-        if !matches!(event, AppEvent::CodexOp(_)) {
+        if !matches!(
+            event,
+            AppEvent::CodexOp(_) | AppEvent::SubmitThreadOp {
+                op: AppCommand::SudoOnceCredential { .. },
+                ..
+            }
+        ) {
             session_log::log_inbound_app_event(&event);
         }
         if let Err(e) = self.app_event_tx.send(event) {
@@ -80,6 +88,30 @@ impl AppEventSender {
         self.send(AppEvent::SubmitThreadOp {
             thread_id,
             op: AppCommand::exec_approval(id, /*turn_id*/ None, decision),
+        });
+    }
+
+    pub(crate) fn sudo_once_approval(
+        &self,
+        thread_id: ThreadId,
+        id: String,
+        decision: SudoOnceApprovalDecision,
+    ) {
+        self.send(AppEvent::SubmitThreadOp {
+            thread_id,
+            op: AppCommand::sudo_once_approval(id, decision),
+        });
+    }
+
+    pub(crate) fn sudo_once_credential(
+        &self,
+        thread_id: ThreadId,
+        id: String,
+        credential: Option<SudoOnceCredential>,
+    ) {
+        self.send(AppEvent::SubmitThreadOp {
+            thread_id,
+            op: AppCommand::sudo_once_credential(id, credential),
         });
     }
 

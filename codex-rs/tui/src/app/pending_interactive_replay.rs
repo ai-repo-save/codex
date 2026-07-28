@@ -40,6 +40,8 @@ pub(super) struct PendingInteractiveReplayState {
     exec_approval_call_ids_by_turn_id: HashMap<String, Vec<String>>,
     patch_approval_call_ids: HashSet<String>,
     patch_approval_call_ids_by_turn_id: HashMap<String, Vec<String>>,
+    sudo_once_approval_item_ids: HashSet<String>,
+    sudo_once_approval_item_ids_by_turn_id: HashMap<String, Vec<String>>,
     elicitation_requests: HashSet<ElicitationRequestKey>,
     request_permissions_call_ids: HashSet<String>,
     request_permissions_call_ids_by_turn_id: HashMap<String, Vec<String>>,
@@ -55,6 +57,10 @@ enum PendingInteractiveRequest {
         approval_id: String,
     },
     PatchApproval {
+        turn_id: String,
+        item_id: String,
+    },
+    SudoOnceApproval {
         turn_id: String,
         item_id: String,
     },
@@ -79,6 +85,8 @@ impl PendingInteractiveReplayState {
             &op,
             AppCommand::ExecApproval { .. }
                 | AppCommand::PatchApproval { .. }
+                | AppCommand::SudoOnceApproval { .. }
+                | AppCommand::SudoOnceCredential { .. }
                 | AppCommand::ResolveElicitation { .. }
                 | AppCommand::RequestPermissionsResponse { .. }
                 | AppCommand::UserInputAnswer { .. }
@@ -112,6 +120,18 @@ impl PendingInteractiveReplayState {
                 );
                 self.pending_requests_by_request_id
                     .retain(|_, pending| !matches!(pending, PendingInteractiveRequest::PatchApproval { item_id, .. } if item_id == id));
+            }
+            AppCommand::SudoOnceApproval { id, .. } => {
+                self.sudo_once_approval_item_ids.remove(id);
+                Self::remove_call_id_from_turn_map(
+                    &mut self.sudo_once_approval_item_ids_by_turn_id,
+                    id,
+                );
+                self.pending_requests_by_request_id.retain(
+                    |_, pending| {
+                        !matches!(pending, PendingInteractiveRequest::SudoOnceApproval { item_id, .. } if item_id == id)
+                    },
+                );
             }
             AppCommand::ResolveElicitation {
                 server_name,
@@ -206,6 +226,21 @@ impl PendingInteractiveReplayState {
                     },
                 );
             }
+            ServerRequest::SudoOnceRequestApproval { request_id, params } => {
+                self.sudo_once_approval_item_ids
+                    .insert(params.item_id.clone());
+                self.sudo_once_approval_item_ids_by_turn_id
+                    .entry(params.turn_id.clone())
+                    .or_default()
+                    .push(params.item_id.clone());
+                self.pending_requests_by_request_id.insert(
+                    request_id.clone(),
+                    PendingInteractiveRequest::SudoOnceApproval {
+                        turn_id: params.turn_id.clone(),
+                        item_id: params.item_id.clone(),
+                    },
+                );
+            }
             ServerRequest::McpServerElicitationRequest { request_id, params } => {
                 let key =
                     ElicitationRequestKey::new(params.server_name.clone(), request_id.clone());
@@ -271,6 +306,7 @@ impl PendingInteractiveReplayState {
             ServerNotification::TurnCompleted(notification) => {
                 self.clear_exec_approval_turn(&notification.turn.id);
                 self.clear_patch_approval_turn(&notification.turn.id);
+                self.clear_sudo_once_approval_turn(&notification.turn.id);
                 self.clear_request_permissions_turn(&notification.turn.id);
                 self.clear_request_user_input_turn(&notification.turn.id);
             }
@@ -300,6 +336,14 @@ impl PendingInteractiveReplayState {
                 self.patch_approval_call_ids.remove(&params.item_id);
                 Self::remove_call_id_from_turn_map_entry(
                     &mut self.patch_approval_call_ids_by_turn_id,
+                    &params.turn_id,
+                    &params.item_id,
+                );
+            }
+            ServerRequest::SudoOnceRequestApproval { params, .. } => {
+                self.sudo_once_approval_item_ids.remove(&params.item_id);
+                Self::remove_call_id_from_turn_map_entry(
+                    &mut self.sudo_once_approval_item_ids_by_turn_id,
                     &params.turn_id,
                     &params.item_id,
                 );
@@ -371,6 +415,10 @@ impl PendingInteractiveReplayState {
             ServerRequest::PermissionsRequestApproval { params, .. } => {
                 self.request_permissions_call_ids.contains(&params.item_id)
             }
+            ServerRequest::SudoOnceRequestApproval { params, .. } => {
+                self.sudo_once_approval_item_ids.contains(&params.item_id)
+            }
+            ServerRequest::SudoOnceRequestCredential { .. } => false,
             _ => true,
         }
     }
@@ -378,6 +426,7 @@ impl PendingInteractiveReplayState {
     pub(super) fn has_pending_thread_approvals(&self) -> bool {
         !self.exec_approval_call_ids.is_empty()
             || !self.patch_approval_call_ids.is_empty()
+            || !self.sudo_once_approval_item_ids.is_empty()
             || !self.elicitation_requests.is_empty()
             || !self.request_permissions_call_ids.is_empty()
     }
@@ -438,6 +487,19 @@ impl PendingInteractiveReplayState {
         );
     }
 
+    fn clear_sudo_once_approval_turn(&mut self, turn_id: &str) {
+        if let Some(item_ids) = self.sudo_once_approval_item_ids_by_turn_id.remove(turn_id) {
+            for item_id in item_ids {
+                self.sudo_once_approval_item_ids.remove(&item_id);
+            }
+        }
+        self.pending_requests_by_request_id.retain(
+            |_, pending| {
+                !matches!(pending, PendingInteractiveRequest::SudoOnceApproval { turn_id: pending_turn_id, .. } if pending_turn_id == turn_id)
+            },
+        );
+    }
+
     fn remove_call_id_from_turn_map(
         call_ids_by_turn_id: &mut HashMap<String, Vec<String>>,
         call_id: &str,
@@ -470,6 +532,8 @@ impl PendingInteractiveReplayState {
         self.exec_approval_call_ids_by_turn_id.clear();
         self.patch_approval_call_ids.clear();
         self.patch_approval_call_ids_by_turn_id.clear();
+        self.sudo_once_approval_item_ids.clear();
+        self.sudo_once_approval_item_ids_by_turn_id.clear();
         self.elicitation_requests.clear();
         self.request_permissions_call_ids.clear();
         self.request_permissions_call_ids_by_turn_id.clear();
@@ -498,6 +562,14 @@ impl PendingInteractiveReplayState {
                 self.patch_approval_call_ids.remove(&item_id);
                 Self::remove_call_id_from_turn_map_entry(
                     &mut self.patch_approval_call_ids_by_turn_id,
+                    &turn_id,
+                    &item_id,
+                );
+            }
+            PendingInteractiveRequest::SudoOnceApproval { turn_id, item_id } => {
+                self.sudo_once_approval_item_ids.remove(&item_id);
+                Self::remove_call_id_from_turn_map_entry(
+                    &mut self.sudo_once_approval_item_ids_by_turn_id,
                     &turn_id,
                     &item_id,
                 );
@@ -542,6 +614,10 @@ impl PendingInteractiveReplayState {
             (
                 PendingInteractiveRequest::PatchApproval { turn_id, item_id },
                 ServerRequest::FileChangeRequestApproval { params, .. },
+            ) => turn_id == &params.turn_id && item_id == &params.item_id,
+            (
+                PendingInteractiveRequest::SudoOnceApproval { turn_id, item_id },
+                ServerRequest::SudoOnceRequestApproval { params, .. },
             ) => turn_id == &params.turn_id && item_id == &params.item_id,
             (
                 PendingInteractiveRequest::Elicitation(key),

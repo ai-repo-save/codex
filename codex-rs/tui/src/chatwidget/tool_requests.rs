@@ -271,6 +271,25 @@ impl ChatWidget {
         );
     }
 
+    pub(super) fn on_sudo_once_approval_request(&mut self, ev: SudoOnceRequestApprovalParams) {
+        self.defer_or_handle(
+            ev,
+            InterruptManager::push_sudo_once_approval,
+            Self::handle_sudo_once_approval_now,
+        );
+    }
+
+    pub(super) fn on_sudo_once_credential_request(
+        &mut self,
+        ev: SudoOnceRequestCredentialParams,
+    ) {
+        self.defer_or_handle(
+            ev,
+            InterruptManager::push_sudo_once_credential,
+            Self::handle_sudo_once_credential_now,
+        );
+    }
+
     pub(super) fn on_request_permissions(&mut self, ev: RequestPermissionsEvent) {
         self.defer_or_handle(
             ev,
@@ -329,6 +348,47 @@ impl ChatWidget {
             cwd: self.config.cwd.to_path_buf(),
             changes: changed_paths,
         });
+    }
+
+    pub(crate) fn handle_sudo_once_approval_now(&mut self, ev: SudoOnceRequestApprovalParams) {
+        self.flush_answer_stream_with_separator();
+        let thread_id = ThreadId::from_string(&ev.thread_id)
+            .unwrap_or_else(|_| self.thread_id.unwrap_or_default());
+        let request = ApprovalRequest::SudoOnce(crate::bottom_pane::SudoOnceApprovalRequest {
+            thread_id,
+            id: ev.item_id,
+            command: ev.command,
+            cwd: ev.cwd.to_string(),
+            reason: ev.reason,
+        });
+        self.bottom_pane
+            .push_approval_request(request, &self.config.features);
+        self.set_ambient_pet_notification(
+            crate::pets::PetNotificationKind::Waiting,
+            /*body*/ None,
+        );
+        self.request_redraw();
+    }
+
+    pub(crate) fn handle_sudo_once_credential_now(
+        &mut self,
+        ev: SudoOnceRequestCredentialParams,
+    ) {
+        self.flush_answer_stream_with_separator();
+        let thread_id = ThreadId::from_string(&ev.thread_id)
+            .unwrap_or_else(|_| self.thread_id.unwrap_or_default());
+        self.bottom_pane.push_sudo_once_credential_request(
+            crate::bottom_pane::SudoOnceCredentialRequest {
+                thread_id,
+                item_id: ev.item_id,
+                attempt: ev.attempt,
+            },
+        );
+        self.set_ambient_pet_notification(
+            crate::pets::PetNotificationKind::Waiting,
+            /*body*/ None,
+        );
+        self.request_redraw();
     }
 
     pub(crate) fn handle_elicitation_request_now(
