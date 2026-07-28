@@ -18,6 +18,8 @@ use crate::exec_env::CODEX_PERMISSION_PROFILE_ENV_VAR;
 use crate::exec_env::CODEX_THREAD_ID_ENV_VAR;
 use crate::exec_env::create_env;
 use crate::exec_env::inject_permission_profile_env;
+use crate::exec::ExecCapturePolicy;
+use crate::exec::ExecExpiration;
 use crate::exec_policy::ExecApprovalRequest;
 use crate::sandboxing::ExecOptions;
 use crate::sandboxing::ExecRequest;
@@ -56,12 +58,15 @@ use crate::unified_exec::head_tail_buffer::HeadTailBuffer;
 use crate::unified_exec::process::OutputBuffer;
 use crate::unified_exec::process::OutputHandles;
 use crate::unified_exec::process::SpawnLifecycleHandle;
+use crate::unified_exec::process::SudoOnceSpawnContext;
 use crate::unified_exec::process::UnifiedExecProcess;
 use codex_network_proxy::NetworkProxy;
 use codex_protocol::config_types::ShellEnvironmentPolicy;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::SandboxErr;
 use codex_protocol::protocol::ExecCommandSource;
+use codex_protocol::sudo_once::ExecPrivilege;
+use codex_protocol::sudo_once::SudoOnceApprovalDecision;
 use codex_sandboxing::SandboxCommand;
 use codex_tools::ToolName;
 use codex_utils_output_truncation::approx_tokens_from_byte_count;
@@ -1070,6 +1075,12 @@ impl UnifiedExecProcessManager {
         cwd: PathUri,
         context: &UnifiedExecContext,
     ) -> Result<(UnifiedExecProcess, Option<DeferredNetworkApproval>), UnifiedExecError> {
+        if request.privilege == Some(ExecPrivilege::SudoOnce) {
+            return self
+                .open_sudo_once_session(request, cwd, context)
+                .await
+                .map(|process| (process, None));
+        }
         let local_policy_env = create_env(
             &context.turn.config.permissions.shell_environment_policy,
             /*thread_id*/ None,
@@ -1162,6 +1173,99 @@ impl UnifiedExecProcessManager {
                 }
                 other => UnifiedExecError::create_process(format!("{other:?}")),
             })
+    }
+
+    async fn open_sudo_once_session(
+        &self,
+        request: &ExecCommandRequest,
+        cwd: PathUri,
+        context: &UnifiedExecContext,
+    ) -> Result<UnifiedExecProcess, UnifiedExecError> {
+        let native_cwd = cwd
+            .to_abs_path()
+            .map_err(|_| UnifiedExecError::ForeignPath { path: cwd.clone() })?;
+        let decision = context
+            .session
+            .request_sudo_once_approval(
+                context.turn.as_ref(),
+                context.call_id.clone(),
+                request.command.clone(),
+                native_cwd.clone(),
+                request.justification.clone(),
+            )
+            .await;
+        if decision != SudoOnceApprovalDecision::Accept {
+            return Err(UnifiedExecError::process_failed(
+                "sudo_once approval was not granted".to_string(),
+            ));
+        }
+
+        let sentinel = format!("__CODEX_SUDO_ONCE_{}__", Uuid::new_v4().simple());
+        let mut command = vec![
+            "/usr/bin/sudo".to_string(),
+            "-k".to_string(),
+            "-S".to_string(),
+            "-p".to_string(),
+            sentinel.clone(),
+            "--".to_string(),
+        ];
+        command.extend(request.command.iter().cloned());
+
+        let mut env = create_env(
+            &context.turn.config.permissions.shell_environment_policy,
+            /*thread_id*/ None,
+        );
+        env.insert(
+            CODEX_THREAD_ID_ENV_VAR.to_string(),
+            context.session.thread_id.to_string(),
+        );
+        let env = apply_unified_exec_env(env);
+        let exec_request = ExecRequest::new(
+            command,
+            native_cwd,
+            env,
+            /*network*/ None,
+            /*network_environment_id*/ None,
+            ExecExpiration::DefaultTimeout,
+            ExecCapturePolicy::ShellTool,
+            SandboxType::None,
+            Vec::new(),
+            context.turn.windows_sandbox_level,
+            /*windows_sandbox_private_desktop*/ false,
+            context.turn.permission_profile().clone(),
+            /*arg0*/ None,
+        );
+        let spawn_cwd =
+            exec_request
+                .cwd
+                .to_abs_path()
+                .map_err(|_| UnifiedExecError::ForeignPath {
+                    path: exec_request.cwd.clone(),
+                })?;
+        let spawn_result = codex_sandboxing::spawn_process(codex_sandboxing::SpawnRequest {
+            command: &exec_request.command,
+            cwd: spawn_cwd.as_path(),
+            env: &exec_request.env,
+            arg0: &exec_request.arg0,
+            sandbox: SandboxType::None,
+            windows_sandbox: None,
+            tty: true,
+            stdin_open: true,
+            inherited_fds: &[],
+        })
+        .await
+        .map_err(|err| UnifiedExecError::create_process(err.to_string()))?;
+        UnifiedExecProcess::from_spawned_sudo_once(
+            spawn_result,
+            Box::new(crate::unified_exec::NoopSpawnLifecycle),
+            SudoOnceSpawnContext {
+                session: Arc::clone(&context.session),
+                turn: Arc::clone(&context.turn),
+                call_id: context.call_id.clone(),
+                sentinel,
+            },
+        )
+        .await
     }
 
     pub(super) async fn collect_output_until_deadline(

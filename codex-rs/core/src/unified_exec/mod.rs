@@ -29,6 +29,7 @@ use std::sync::Weak;
 
 use codex_network_proxy::NetworkProxy;
 use codex_protocol::models::AdditionalPermissionProfile;
+use codex_protocol::sudo_once::ExecPrivilege;
 use codex_tools::UnifiedExecShellMode;
 use codex_utils_output_truncation::TruncationPolicy;
 use codex_utils_path_uri::PathUri;
@@ -49,6 +50,7 @@ mod head_tail_buffer;
 mod process;
 mod process_manager;
 mod process_state;
+mod sudo_once;
 
 pub(crate) fn set_deterministic_process_ids_for_tests(enabled: bool) {
     process_manager::set_deterministic_process_ids_for_tests(enabled);
@@ -107,6 +109,7 @@ pub(crate) struct ExecCommandRequest {
     pub additional_permissions_preapproved: bool,
     pub justification: Option<String>,
     pub prefix_rule: Option<Vec<String>>,
+    pub privilege: Option<ExecPrivilege>,
 }
 
 #[derive(Debug)]

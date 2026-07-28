@@ -9,6 +9,7 @@ use crate::tools::hook_names::HookToolName;
 use crate::tools::registry::PostToolUsePayload;
 use codex_exec_server::Environment;
 use codex_protocol::models::AdditionalPermissionProfile;
+use codex_protocol::sudo_once::ExecPrivilege;
 use codex_tools::UnifiedExecShellMode;
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -45,6 +46,8 @@ pub(crate) struct ExecCommandArgs {
     justification: Option<String>,
     #[serde(default)]
     prefix_rule: Option<Vec<String>>,
+    #[serde(default)]
+    privilege: Option<ExecPrivilege>,
 }
 
 #[derive(Debug, Deserialize)]

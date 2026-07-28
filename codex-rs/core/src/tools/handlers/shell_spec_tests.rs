@@ -18,6 +18,7 @@ fn exec_command_tool_matches_expected_spec() {
     let tool = create_exec_command_tool(CommandToolOptions {
         allow_login_shell: true,
         exec_permission_approvals_enabled: false,
+        sudo_once_enabled: false,
     });
 
     let description = if cfg!(windows) {
@@ -104,6 +105,7 @@ fn exec_command_tool_can_hide_shell_parameter() {
         CommandToolOptions {
             allow_login_shell: true,
             exec_permission_approvals_enabled: false,
+            sudo_once_enabled: false,
         },
         /*include_environment_id*/ false,
         /*include_shell_parameter*/ false,
@@ -207,6 +209,7 @@ fn shell_command_tool_matches_expected_spec() {
     let tool = create_shell_command_tool(CommandToolOptions {
         allow_login_shell: true,
         exec_permission_approvals_enabled: false,
+        sudo_once_enabled: false,
     });
 
     let description = if cfg!(windows) {

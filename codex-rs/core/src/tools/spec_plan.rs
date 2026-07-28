@@ -512,6 +512,7 @@ fn add_tool_sources(context: &CoreToolPlanContext<'_>, planned_tools: &mut Plann
                     turn_context,
                     context.step_context,
                 ),
+                sudo_once_enabled: false,
             }));
             planned_tools.add(WriteStdinHandler);
             planned_tools.add(ViewImageHandler::new(ViewImageToolOptions {
@@ -585,6 +586,7 @@ fn add_shell_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut Planne
                     turn_context,
                     context.step_context,
                 ),
+                sudo_once_enabled: sudo_once_enabled(turn_context),
             }));
             planned_tools.add(WriteStdinHandler);
 
@@ -612,6 +614,16 @@ fn unified_exec_should_include_shell_parameter(
         .environments
         .turn_environments()
         .any(|environment| environment.environment.is_remote())
+}
+
+fn sudo_once_enabled(turn_context: &TurnContext) -> bool {
+    cfg!(target_os = "linux")
+        && turn_context.config.features.enabled(Feature::SudoOnce)
+        && matches!(
+            &turn_context.session_source,
+            codex_protocol::protocol::SessionSource::Cli
+                | codex_protocol::protocol::SessionSource::VSCode
+        )
 }
 
 #[instrument(level = "trace", skip_all)]

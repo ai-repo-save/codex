@@ -48,6 +48,8 @@ use codex_protocol::protocol::TurnAbortReason;
 use codex_protocol::protocol::WarningEvent;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputResponse;
+use codex_protocol::sudo_once::SudoOnceApprovalDecision;
+use codex_protocol::sudo_once::SudoOnceApprovalResponse;
 
 use crate::context_manager::is_user_turn_boundary;
 use codex_protocol::dynamic_tools::DynamicToolResponse;
@@ -421,6 +423,17 @@ pub async fn patch_approval(sess: &Arc<Session>, id: String, decision: ReviewDec
     }
 }
 
+pub async fn sudo_once_approval(
+    sess: &Arc<Session>,
+    id: String,
+    response: SudoOnceApprovalResponse,
+) {
+    match response.decision {
+        SudoOnceApprovalDecision::Abort => sess.interrupt_task().await,
+        SudoOnceApprovalDecision::Accept => sess.notify_sudo_once_approval(&id, response).await,
+    }
+}
+
 pub async fn request_user_input_response(
     sess: &Arc<Session>,
     id: String,
@@ -784,6 +797,10 @@ pub(super) async fn submission_loop(
                     decision,
                 } => {
                     exec_approval(&sess, approval_id, turn_id, decision).await;
+                    false
+                }
+                Op::SudoOnceApproval { id, response, .. } => {
+                    sudo_once_approval(&sess, id, response).await;
                     false
                 }
                 Op::PatchApproval { id, decision } => {

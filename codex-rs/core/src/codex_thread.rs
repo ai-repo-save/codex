@@ -39,6 +39,7 @@ use codex_protocol::protocol::TokenUsageInfo;
 use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_protocol::protocol::TurnEnvironmentSelections;
 use codex_protocol::protocol::W3cTraceContext;
+use codex_protocol::sudo_once::SudoOnceCredentialResponse;
 use codex_protocol::user_input::UserInput;
 use codex_thread_store::StoredThread;
 use codex_thread_store::StoredThreadHistory;
@@ -204,6 +205,16 @@ impl CodexThread {
 
     pub async fn submit(&self, op: Op) -> CodexResult<String> {
         self.io.submit(op).await
+    }
+
+    pub async fn resolve_sudo_once_credential(
+        &self,
+        call_id: &str,
+        response: SudoOnceCredentialResponse,
+    ) {
+        self.session
+            .notify_sudo_once_credential(call_id, response)
+            .await;
     }
 
     /// Returns the session telemetry handle for thread-scoped production instrumentation.

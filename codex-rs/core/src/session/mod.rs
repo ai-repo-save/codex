@@ -128,6 +128,11 @@ use codex_protocol::protocol::ItemStartedEvent;
 use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::RawResponseItemEvent;
 use codex_protocol::protocol::RolloutItem;
+use codex_protocol::sudo_once::SudoOnceApprovalDecision;
+use codex_protocol::sudo_once::SudoOnceApprovalRequestEvent;
+use codex_protocol::sudo_once::SudoOnceApprovalResponse;
+use codex_protocol::sudo_once::SudoOnceCredentialRequestEvent;
+use codex_protocol::sudo_once::SudoOnceCredentialResponse;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::protocol::ThreadHistoryMode;
@@ -2561,6 +2566,88 @@ impl Session {
         clippy::await_holding_invalid_type,
         reason = "active turn checks and turn state updates must remain atomic"
     )]
+    pub(crate) async fn request_sudo_once_approval(
+        &self,
+        turn_context: &TurnContext,
+        call_id: String,
+        command: Vec<String>,
+        cwd: AbsolutePathBuf,
+        reason: Option<String>,
+    ) -> SudoOnceApprovalDecision {
+        let _elicitation = self.services.elicitations.register();
+        let (tx_response, rx_response) = oneshot::channel();
+        let previous = {
+            let mut active = self.active_turn.lock().await;
+            match active.as_mut() {
+                Some(active_turn) => {
+                    let mut turn_state = active_turn.turn_state.lock().await;
+                    turn_state.insert_pending_sudo_once_approval(call_id.clone(), tx_response)
+                }
+                None => None,
+            }
+        };
+        if previous.is_some() {
+            warn!("Overwriting existing sudo-once approval for call_id: {call_id}");
+        }
+
+        self.send_event(
+            turn_context,
+            EventMsg::SudoOnceApprovalRequest(SudoOnceApprovalRequestEvent {
+                call_id,
+                turn_id: turn_context.sub_id.clone(),
+                command,
+                cwd,
+                reason,
+            }),
+        )
+        .await;
+        rx_response
+            .await
+            .map_or(SudoOnceApprovalDecision::Abort, |response| response.decision)
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "active turn checks and turn state updates must remain atomic"
+    )]
+    pub(crate) async fn request_sudo_once_credential(
+        &self,
+        turn_context: &TurnContext,
+        call_id: String,
+        attempt: u32,
+    ) -> Option<SudoOnceCredentialResponse> {
+        let _elicitation = self.services.elicitations.register();
+        let (tx_response, rx_response) = oneshot::channel();
+        let previous = {
+            let mut active = self.active_turn.lock().await;
+            match active.as_mut() {
+                Some(active_turn) => {
+                    let mut turn_state = active_turn.turn_state.lock().await;
+                    turn_state.insert_pending_sudo_once_credential(call_id.clone(), tx_response)
+                }
+                None => None,
+            }
+        };
+        if previous.is_some() {
+            warn!("Overwriting existing sudo-once credential request for call_id: {call_id}");
+        }
+
+        self.send_event(
+            turn_context,
+            EventMsg::SudoOnceCredentialRequest(SudoOnceCredentialRequestEvent {
+                call_id,
+                turn_id: turn_context.sub_id.clone(),
+                attempt,
+            }),
+        )
+        .await;
+        rx_response.await.ok()
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "active turn checks and turn state updates must remain atomic"
+    )]
     pub(crate) async fn request_permissions_for_environment(
         self: &Arc<Self>,
         turn_context: &Arc<TurnContext>,
@@ -3066,6 +3153,60 @@ impl Session {
             None => {
                 warn!("No pending approval found for call_id: {approval_id}");
             }
+        }
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "active turn checks and turn state updates must remain atomic"
+    )]
+    pub(crate) async fn notify_sudo_once_approval(
+        &self,
+        call_id: &str,
+        response: SudoOnceApprovalResponse,
+    ) {
+        let entry = {
+            let mut active = self.active_turn.lock().await;
+            match active.as_mut() {
+                Some(active_turn) => {
+                    let mut turn_state = active_turn.turn_state.lock().await;
+                    turn_state.remove_pending_sudo_once_approval(call_id)
+                }
+                None => None,
+            }
+        };
+        match entry {
+            Some(tx_response) => {
+                tx_response.send(response).ok();
+            }
+            None => warn!("No pending sudo-once approval found for call_id: {call_id}"),
+        }
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "active turn checks and turn state updates must remain atomic"
+    )]
+    pub(crate) async fn notify_sudo_once_credential(
+        &self,
+        call_id: &str,
+        response: SudoOnceCredentialResponse,
+    ) {
+        let entry = {
+            let mut active = self.active_turn.lock().await;
+            match active.as_mut() {
+                Some(active_turn) => {
+                    let mut turn_state = active_turn.turn_state.lock().await;
+                    turn_state.remove_pending_sudo_once_credential(call_id)
+                }
+                None => None,
+            }
+        };
+        match entry {
+            Some(tx_response) => {
+                tx_response.send(response).ok();
+            }
+            None => warn!("No pending sudo-once credential request found for call_id: {call_id}"),
         }
     }
 

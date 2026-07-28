@@ -17,6 +17,7 @@ use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::task::AbortHandle;
 use tokio::task::JoinHandle;
+use zeroize::Zeroizing;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProcessSignal {
@@ -110,6 +111,7 @@ type ResizeFn = Box<dyn FnMut(TerminalSize) -> anyhow::Result<()> + Send>;
 /// Handle for driving an interactive process (PTY or pipe).
 pub struct ProcessHandle {
     writer_tx: StdMutex<Option<mpsc::Sender<Vec<u8>>>>,
+    sensitive_writer_tx: StdMutex<Option<mpsc::Sender<Zeroizing<Vec<u8>>>>>,
     killer: StdMutex<Option<Box<dyn ChildTerminator>>>,
     reader_handle: StdMutex<Option<JoinHandle<()>>>,
     reader_abort_handles: StdMutex<Vec<AbortHandle>>,
@@ -145,8 +147,38 @@ impl ProcessHandle {
         pty_handles: Option<PtyHandles>,
         resizer: Option<ResizeFn>,
     ) -> Self {
+        Self::new_with_sensitive_writer(
+            writer_tx,
+            /*sensitive_writer_tx*/ None,
+            killer,
+            reader_handle,
+            reader_abort_handles,
+            writer_handle,
+            wait_handle,
+            exit_status,
+            exit_code,
+            pty_handles,
+            resizer,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_with_sensitive_writer(
+        writer_tx: mpsc::Sender<Vec<u8>>,
+        sensitive_writer_tx: Option<mpsc::Sender<Zeroizing<Vec<u8>>>>,
+        killer: Box<dyn ChildTerminator>,
+        reader_handle: JoinHandle<()>,
+        reader_abort_handles: Vec<AbortHandle>,
+        writer_handle: JoinHandle<()>,
+        wait_handle: JoinHandle<()>,
+        exit_status: Arc<AtomicBool>,
+        exit_code: Arc<StdMutex<Option<i32>>>,
+        pty_handles: Option<PtyHandles>,
+        resizer: Option<ResizeFn>,
+    ) -> Self {
         Self {
             writer_tx: StdMutex::new(Some(writer_tx)),
+            sensitive_writer_tx: StdMutex::new(sensitive_writer_tx),
             killer: StdMutex::new(Some(killer)),
             reader_handle: StdMutex::new(Some(reader_handle)),
             reader_abort_handles: StdMutex::new(reader_abort_handles),
@@ -157,6 +189,14 @@ impl ProcessHandle {
             _pty_handles: StdMutex::new(pty_handles),
             resizer: StdMutex::new(resizer),
         }
+    }
+
+    /// Returns a channel sender whose payload is zeroized after the child consumes it.
+    pub fn sensitive_writer_sender(&self) -> Option<mpsc::Sender<Zeroizing<Vec<u8>>>> {
+        self.sensitive_writer_tx
+            .lock()
+            .ok()
+            .and_then(|writer_tx| writer_tx.clone())
     }
 
     /// Returns a channel sender for writing raw bytes to the child stdin.
@@ -212,6 +252,9 @@ impl ProcessHandle {
     /// Close the child's stdin channel.
     pub fn close_stdin(&self) {
         if let Ok(mut writer_tx) = self.writer_tx.lock() {
+            writer_tx.take();
+        }
+        if let Ok(mut writer_tx) = self.sensitive_writer_tx.lock() {
             writer_tx.take();
         }
     }
