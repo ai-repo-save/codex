@@ -1124,9 +1124,15 @@ mod tests {
         fs::create_dir(&source_dir).unwrap();
         fs::create_dir(&dest_dir).unwrap();
         let src = source_dir.join("src.txt");
+        let removal_probe = source_dir.join("removal-probe");
         let dest = dest_dir.join("dst.txt");
         fs::write(&src, "line\n").unwrap();
+        fs::write(&removal_probe, "probe\n").unwrap();
         fs::set_permissions(&source_dir, fs::Permissions::from_mode(0o555)).unwrap();
+        if fs::remove_file(&removal_probe).is_ok() {
+            fs::set_permissions(&source_dir, fs::Permissions::from_mode(0o755)).unwrap();
+            return;
+        }
 
         let patch = wrap_patch(
             "*** Update File: locked/src.txt\n*** Move to: out/dst.txt\n@@\n-line\n+line2",
@@ -1640,6 +1646,12 @@ g
         let locked_dir = dir.path().join("locked");
         fs::create_dir(&locked_dir).unwrap();
         fs::set_permissions(&locked_dir, fs::Permissions::from_mode(0o555)).unwrap();
+        let write_probe = locked_dir.join("write-probe");
+        if fs::write(&write_probe, "probe\n").is_ok() {
+            fs::remove_file(write_probe).unwrap();
+            fs::set_permissions(&locked_dir, fs::Permissions::from_mode(0o755)).unwrap();
+            return;
+        }
 
         let patch = wrap_patch("*** Add File: locked/new.txt\n+after");
 

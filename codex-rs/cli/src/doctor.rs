@@ -4003,6 +4003,7 @@ mod tests {
         permissions.set_mode(0o000);
         std::fs::set_permissions(file.path(), permissions).expect("remove read permissions");
 
+        let read_permissions_are_enforced = std::fs::read(file.path()).is_err();
         let result = read_probe_file(file.path());
 
         let mut permissions = std::fs::metadata(file.path())
@@ -4010,7 +4011,9 @@ mod tests {
             .permissions();
         permissions.set_mode(0o600);
         std::fs::set_permissions(file.path(), permissions).expect("restore read permissions");
-        assert!(result.is_err());
+        if read_permissions_are_enforced {
+            assert!(result.is_err());
+        }
     }
 
     #[cfg(unix)]
