@@ -79,7 +79,9 @@ impl BottomPaneView for SudoOnceApprovalOverlay {
             self.abort();
             return;
         }
-        if matches!(key_event.code, KeyCode::Char('y' | 'Y')) {
+        if key_event.modifiers == KeyModifiers::NONE
+            && matches!(key_event.code, KeyCode::Char('y' | 'Y'))
+        {
             self.approve();
         }
     }

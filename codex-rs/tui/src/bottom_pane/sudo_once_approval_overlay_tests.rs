@@ -5,6 +5,7 @@ use codex_protocol::ThreadId;
 use codex_sudo_once::LocalSudoOnceBroker;
 use codex_sudo_once::SudoOnceCommand;
 use codex_sudo_once::SudoOncePrompt;
+use codex_sudo_once::SudoOnceGrant;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use crossterm::event::KeyModifiers;
 
@@ -33,6 +34,19 @@ async fn approval_prompt() -> SudoOnceApprovalOverlay {
     };
     let (command, responder) = prompt.into_parts();
     SudoOnceApprovalOverlay::new(command, responder)
+}
+
+async fn pending_approval() -> (
+    SudoOnceApprovalOverlay,
+    tokio::task::JoinHandle<Option<SudoOnceGrant>>,
+) {
+    let (broker, mut prompts) = LocalSudoOnceBroker::new();
+    let request = tokio::spawn(async move { broker.request_approval(command()).await });
+    let Some(SudoOncePrompt::Approval(prompt)) = prompts.recv().await else {
+        panic!("expected approval prompt");
+    };
+    let (command, responder) = prompt.into_parts();
+    (SudoOnceApprovalOverlay::new(command, responder), request)
 }
 
 fn render_overlay(overlay: &SudoOnceApprovalOverlay) -> String {
@@ -65,4 +79,32 @@ async fn escape_aborts_the_single_use_approval() {
     overlay.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     assert!(request.await.is_none());
     assert!(overlay.is_complete());
+}
+
+#[tokio::test]
+async fn only_unmodified_y_keys_authorize() {
+    for code in ['y', 'Y'] {
+        let (mut overlay, request) = pending_approval().await;
+        overlay.handle_key_event(KeyEvent::new(KeyCode::Char(code), KeyModifiers::NONE));
+        assert!(overlay.is_complete());
+        assert!(request.await.expect("approval task completed").is_some());
+    }
+}
+
+#[tokio::test]
+async fn modified_y_keys_do_not_authorize() {
+    let modifiers = [
+        KeyModifiers::SHIFT,
+        KeyModifiers::CONTROL,
+        KeyModifiers::ALT,
+        KeyModifiers::SUPER,
+        KeyModifiers::SHIFT | KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
+    ];
+    for modifiers in modifiers {
+        let (mut overlay, request) = pending_approval().await;
+        overlay.handle_key_event(KeyEvent::new(KeyCode::Char('y'), modifiers));
+        assert!(!overlay.is_complete());
+        drop(overlay);
+        assert!(request.await.expect("approval task completed").is_none());
+    }
 }
