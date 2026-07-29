@@ -1606,7 +1606,8 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
     let child_initial_request = mount_sse_once_match(
         &server,
         |req: &wiremock::Request| {
-            request_has_input_type(req, "message") && body_contains(req, CHILD_PROMPT)
+            request_has_input_type(req, "message")
+                && body_contains(req, CHILD_PROMPT)
                 && decoded_body(req)
                     .and_then(|body| serde_json::from_slice::<Value>(&body).ok())
                     .is_some_and(|body| {
