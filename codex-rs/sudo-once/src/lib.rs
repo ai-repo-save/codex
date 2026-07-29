@@ -23,6 +23,8 @@ mod linux;
 pub use linux::SealedSudoExecutable;
 #[cfg(target_os = "linux")]
 pub use linux::sudo_once_available;
+#[cfg(target_os = "linux")]
+pub use linux::try_dispatch_helper_from_env;
 
 #[cfg(not(target_os = "linux"))]
 pub fn sudo_once_available() -> bool {

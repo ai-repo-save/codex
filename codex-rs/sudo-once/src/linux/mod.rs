@@ -1,11 +1,17 @@
+#[cfg(test)]
 mod auth;
 mod sealed_executable;
+#[cfg(test)]
 mod wire;
 
 pub use sealed_executable::SealedSudoExecutable;
 
-pub fn sudo_once_available() -> bool {
-    auth::runtime_capability().is_ok() && sealed_executable::kernel_supports_sealed_executable()
+pub const fn sudo_once_available() -> bool {
+    false
+}
+
+pub const fn try_dispatch_helper_from_env() -> Option<i32> {
+    None
 }
 
 #[cfg(test)]

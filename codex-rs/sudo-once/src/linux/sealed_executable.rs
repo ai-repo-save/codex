@@ -66,25 +66,6 @@ impl SealedSudoExecutable {
     }
 }
 
-pub(super) fn kernel_supports_sealed_executable() -> bool {
-    let name = CString::new("codex-sudo-probe").expect("static memfd name");
-    let descriptor = unsafe {
-        libc::memfd_create(
-            name.as_ptr(),
-            libc::MFD_CLOEXEC | libc::MFD_ALLOW_SEALING | libc::MFD_EXEC,
-        )
-    };
-    if descriptor == -1 {
-        return false;
-    }
-    let executable = unsafe { File::from_raw_fd(descriptor) };
-    if unsafe { libc::fcntl(executable.as_raw_fd(), libc::F_ADD_SEALS, REQUIRED_SEALS) } == -1 {
-        return false;
-    }
-    let installed = unsafe { libc::fcntl(executable.as_raw_fd(), libc::F_GET_SEALS) };
-    installed != -1 && installed & REQUIRED_SEALS == REQUIRED_SEALS
-}
-
 #[cfg(test)]
 #[path = "sealed_executable_tests.rs"]
 mod tests;
