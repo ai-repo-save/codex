@@ -575,18 +575,10 @@ pub(crate) fn collect_input_messages(items: &[ResponseItem]) -> Vec<CompactedInp
     items
         .iter()
         .filter_map(|item| {
-            if let ResponseItem::AgentMessage { content, .. } = item {
-                let token_count = content
-                    .iter()
-                    .map(|part| match part {
-                        codex_protocol::models::AgentMessageInputContent::InputText { text } => {
-                            approx_token_count(text)
-                        }
-                        codex_protocol::models::AgentMessageInputContent::EncryptedContent {
-                            encrypted_content,
-                        } => approx_token_count(encrypted_content),
-                    })
-                    .sum();
+            if matches!(item, ResponseItem::AgentMessage { .. }) {
+                let token_count =
+                    usize::try_from(crate::context_manager::estimate_item_token_count(item))
+                        .unwrap_or(usize::MAX);
                 return Some(CompactedInputMessage::Agent {
                     item: item.clone(),
                     token_count,
@@ -623,8 +615,8 @@ pub(crate) fn is_summary_message(message: &str) -> bool {
 /// model-expected boundary.
 ///
 /// Placement rules:
-/// - Prefer immediately before the last real user message.
-/// - If no real user messages remain, insert before the compaction summary so
+/// - Prefer immediately before the last real user or agent message.
+/// - If no real input messages remain, insert before the compaction summary so
 ///   the summary stays last.
 /// - If there are no user messages, insert before the last compaction item so
 ///   that item remains last (remote compaction may return only compaction items).
@@ -633,18 +625,17 @@ pub(crate) fn insert_initial_context_before_last_real_user_or_summary(
     mut compacted_history: Vec<ResponseItem>,
     initial_context: Vec<ResponseItem>,
 ) -> Vec<ResponseItem> {
-    let mut last_user_or_summary_index = None;
-    let mut last_real_user_index = None;
+    let mut last_summary_index = None;
+    let mut last_real_input_index = None;
     for (i, item) in compacted_history.iter().enumerate().rev() {
-        let Some(TurnItem::UserMessage(user)) = crate::event_mapping::parse_turn_item(item) else {
+        if let Some(TurnItem::UserMessage(user)) = crate::event_mapping::parse_turn_item(item)
+            && is_summary_message(&user.message())
+        {
+            last_summary_index.get_or_insert(i);
             continue;
-        };
-        // Compaction summaries are encoded as user messages, so track both:
-        // the last real user message (preferred insertion point) and the last
-        // user-message-like item (fallback summary insertion point).
-        last_user_or_summary_index.get_or_insert(i);
-        if !is_summary_message(&user.message()) {
-            last_real_user_index = Some(i);
+        }
+        if crate::context_manager::is_user_turn_boundary(item) {
+            last_real_input_index = Some(i);
             break;
         }
     }
@@ -659,13 +650,13 @@ pub(crate) fn insert_initial_context_before_last_real_user_or_summary(
             )
             .then_some(i)
         });
-    let insertion_index = last_real_user_index
-        .or(last_user_or_summary_index)
+    let insertion_index = last_real_input_index
+        .or(last_summary_index)
         .or(last_compaction_index);
 
     // Re-inject canonical context from the current session since we stripped it
     // from the pre-compaction history. Prefer placing it before the last real
-    // user message; if there is no real user message left, place it before the
+    // input message; if there is no real input message left, place it before the
     // summary or compaction item so the compaction item remains last.
     if let Some(insertion_index) = insertion_index {
         compacted_history.splice(insertion_index..insertion_index, initial_context);

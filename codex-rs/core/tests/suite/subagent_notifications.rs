@@ -76,6 +76,7 @@ const V2_REQUESTED_MODEL: &str = "gpt-5.6-sol";
 const V2_REQUESTED_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::Low;
 const ROLE_MODEL: &str = "gpt-5.4";
 const ROLE_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::High;
+const RESEARCH_INSTRUCTIONS: &str = "spawned child research mode instructions";
 const SUBAGENT_START_CONTEXT: &str = "subagent start context reaches child";
 const SUBAGENT_STOP_CONTINUATION: &str = "continue only the child";
 const INTERNAL_SUBAGENT_PROMPT: &str = "internal subagent: review";
@@ -1145,8 +1146,6 @@ async fn assert_v2_spawn_collaboration_mode(
     requested_mode: Option<&str>,
     set_parent_research_mode: bool,
 ) -> Result<()> {
-    const RESEARCH_INSTRUCTIONS: &str = "spawned child research mode instructions";
-
     let server = start_mock_server().await;
     let mut spawn_args = json!({
         "message": CHILD_PROMPT,
@@ -1487,7 +1486,7 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
     let child_request_log = mount_sse_once_match(
         &server,
         |req: &wiremock::Request| {
-            request_has_input_type(req, "agent_message")
+            request_has_input_type(req, "message")
                 && body_contains(req, CHILD_PROMPT)
                 && !body_contains(req, SPAWN_CALL_ID)
         },
@@ -1527,29 +1526,21 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
     let child_request = wait_for_matching_request(
         &child_request_log,
         "child developer context request",
-        |request| !request.inputs_of_type("agent_message").is_empty(),
+        |request| {
+            message_texts_by_role_and_type(request, "user", "input_text")
+                .iter()
+                .any(|text| text == CHILD_PROMPT)
+        },
     )
     .await?;
     assert!(child_request.body_contains_text("Parent developer instructions."));
     assert_eq!(
-        strip_response_item_ids_from_json(strip_metadata_from_json(Value::Array(
-            child_request.inputs_of_type("agent_message"),
-        ))),
-        Value::Array(vec![json!({
-            "type": "agent_message",
-            "author": "/root",
-            "recipient": "/root/worker",
-            "content": [{
-                "type": "input_text",
-                "text": CHILD_PROMPT,
-            }],
-        })])
+        message_texts_by_role_and_type(&child_request, "user", "input_text"),
+        vec![CHILD_PROMPT.to_string()]
     );
     assert!(
-        !message_texts_by_role_and_type(&child_request, "user", "input_text")
-            .iter()
-            .any(|text| text.contains(CHILD_PROMPT)),
-        "spawned child's initial task should not be delivered as user input"
+        child_request.inputs_of_type("agent_message").is_empty(),
+        "plaintext spawn should not create an agent message"
     );
 
     Ok(())
@@ -1582,7 +1573,7 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
     let child_initial_request = mount_sse_once_match(
         &server,
         |req: &wiremock::Request| {
-            request_has_input_type(req, "agent_message") && body_contains(req, CHILD_PROMPT)
+            request_has_input_type(req, "message") && body_contains(req, CHILD_PROMPT)
         },
         sse(vec![
             ev_response_created("resp-child-reminder-1"),
@@ -1657,7 +1648,9 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
     let child_initial_request =
         wait_for_matching_request(&child_initial_request, "initial child request", |request| {
             request.body_contains_text(CHILD_PROMPT)
-                && !request.inputs_of_type("agent_message").is_empty()
+                && message_texts_by_role_and_type(request, "user", "input_text")
+                    .iter()
+                    .any(|text| text == CHILD_PROMPT)
                 && request.body_json()["client_metadata"]["x-openai-subagent"]
                     == json!("collab_spawn")
         })
@@ -1689,6 +1682,7 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
     let spawn_args = serde_json::to_string(&json!({
         "message": encrypted_message,
         "task_name": "worker",
+        "collaboration_mode": "research",
     }))?;
     mount_sse_once_match(
         &server,
@@ -1737,6 +1731,14 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
             .enable(Feature::MultiAgentV2)
             .expect("test config should allow feature update");
         config.multi_agent_v2.encrypt_messages = true;
+        let research = config
+            .collaboration_mode_presets
+            .iter_mut()
+            .find(|preset| {
+                preset.mode == Some(codex_protocol::config_types::ModeKind::Research)
+            })
+            .expect("research collaboration mode preset");
+        research.developer_instructions = Some(Some(RESEARCH_INSTRUCTIONS.to_string()));
     });
     let test = builder.build(&server).await?;
     let root_thread_id = test.session_configured.thread_id;
@@ -1769,6 +1771,7 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
             ],
         })])
     );
+    assert!(child_request.body_contains_text(RESEARCH_INSTRUCTIONS));
 
     let child_thread_id = test
         .thread_manager

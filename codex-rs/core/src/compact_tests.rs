@@ -58,6 +58,25 @@ fn compacted_user_input(text: &str) -> CompactedInputMessage {
     CompactedInputMessage::User(compacted_user_message(text))
 }
 
+fn rich_agent_message() -> ResponseItem {
+    ResponseItem::AgentMessage {
+        id: Some(ResponseItemId::with_suffix("amsg", "task")),
+        author: "/root".to_string(),
+        recipient: "/root/explorer".to_string(),
+        content: vec![
+            codex_protocol::models::AgentMessageInputContent::InputText {
+                text: "inspect the compaction path".to_string(),
+            },
+            codex_protocol::models::AgentMessageInputContent::EncryptedContent {
+                encrypted_content: "opaque encrypted task".to_string(),
+            },
+        ],
+        internal_chat_message_metadata_passthrough: Some(InternalChatMessageMetadataPassthrough {
+            turn_id: Some("turn-agent-task".to_string()),
+        }),
+    }
+}
+
 #[test]
 fn content_items_to_text_joins_non_empty_segments() {
     let items = vec![
@@ -266,24 +285,41 @@ fn build_compacted_history_preserves_user_message_passthrough_metadata() {
 
 #[test]
 fn local_compaction_preserves_agent_message_routing_content_and_metadata() {
-    let agent_message = ResponseItem::AgentMessage {
-        id: Some(ResponseItemId::with_suffix("amsg", "task")),
-        author: "/root".to_string(),
-        recipient: "/root/explorer".to_string(),
-        content: vec![
-            codex_protocol::models::AgentMessageInputContent::InputText {
-                text: "inspect the compaction path".to_string(),
-            },
-        ],
-        internal_chat_message_metadata_passthrough: Some(InternalChatMessageMetadataPassthrough {
-            turn_id: Some("turn-agent-task".to_string()),
-        }),
-    };
+    let agent_message = rich_agent_message();
     let input_messages = collect_input_messages(std::slice::from_ref(&agent_message));
 
     let history = build_compacted_history(Vec::new(), &input_messages, "summary text");
 
     assert_eq!(history, vec![agent_message, user_message("summary text")]);
+}
+
+#[test]
+fn local_compaction_budgets_the_complete_agent_message() {
+    let agent_message = rich_agent_message();
+    let input_messages = collect_input_messages(std::slice::from_ref(&agent_message));
+    let token_count = usize::try_from(crate::context_manager::estimate_item_token_count(
+        &agent_message,
+    ))
+    .expect("agent message estimate should be non-negative");
+
+    let retained = super::build_compacted_history_with_limit(
+        Vec::new(),
+        &input_messages,
+        "summary text",
+        token_count,
+    );
+    let excluded = super::build_compacted_history_with_limit(
+        Vec::new(),
+        &input_messages,
+        "summary text",
+        token_count.saturating_sub(1),
+    );
+
+    assert_eq!(
+        retained,
+        vec![agent_message, user_message("summary text")]
+    );
+    assert_eq!(excluded, vec![user_message("summary text")]);
 }
 
 #[test]
@@ -689,6 +725,40 @@ fn insert_initial_context_before_last_real_user_or_summary_keeps_summary_last() 
         },
     ];
     assert_eq!(refreshed, expected);
+}
+
+#[test]
+fn insert_initial_context_before_last_agent_message_keeps_summary_last() {
+    let agent_message = rich_agent_message();
+    let initial_context = vec![ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: "fresh permissions".to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    }];
+    let compacted_history = vec![
+        user_message("older user"),
+        agent_message.clone(),
+        user_message(&format!("{SUMMARY_PREFIX}\nsummary text")),
+    ];
+
+    let refreshed = insert_initial_context_before_last_real_user_or_summary(
+        compacted_history,
+        initial_context.clone(),
+    );
+
+    assert_eq!(
+        refreshed,
+        vec![
+            user_message("older user"),
+            initial_context[0].clone(),
+            agent_message,
+            user_message(&format!("{SUMMARY_PREFIX}\nsummary text")),
+        ]
+    );
 }
 
 #[test]

@@ -203,6 +203,7 @@ async fn enqueue_queue_only_agent_mail(codex: &CodexThread, text: &str) {
                 text.to_string(),
                 /*trigger_turn*/ false,
             ),
+            thread_settings: Default::default(),
         })
         .await
         .expect("submit queue-only agent mail");

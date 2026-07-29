@@ -3,9 +3,12 @@ use crate::agent::control::SpawnAgentForkMode;
 use crate::agent::control::SpawnAgentOptions;
 use crate::agent::next_thread_spawn_depth;
 use crate::agent::role::DEFAULT_ROLE_NAME;
+use crate::agent_communication::AgentCommunicationContext;
+use crate::agent_communication::AgentCommunicationKind;
 use crate::tools::handlers::multi_agents_v2::message_tool::message_content;
 use codex_agent_control::SpawnAgentToolOptions;
 use codex_agent_control::create_spawn_agent_tool_v2;
+use codex_protocol::AgentPath;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::protocol::SpawnContextInheritance;
@@ -120,22 +123,47 @@ async fn handle_spawn_agent(
             "spawned agent is missing a canonical task name".to_string(),
         )
     })?;
-    let spawned_agent = Box::pin(session.services.agent_control.spawn_agent_with_metadata(
-        config,
-        vec![UserInput::Text {
-            text: message,
-            text_elements: Vec::new(),
-        }],
-        Some(spawn_source),
-        SpawnAgentOptions {
-            fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
-            fork_mode,
-            parent_thread_id: Some(session.thread_id),
-            environments: Some(turn.environments.to_selections()),
-            collaboration_mode: Some(collaboration_mode),
-        },
-    ))
-    .await
+    let spawn_options = SpawnAgentOptions {
+        fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
+        fork_mode,
+        parent_thread_id: Some(session.thread_id),
+        environments: Some(turn.environments.to_selections()),
+        collaboration_mode: Some(collaboration_mode),
+    };
+    let spawned_agent = if turn.config.multi_agent_v2.encrypt_messages {
+        let author = turn
+            .session_source
+            .get_agent_path()
+            .unwrap_or_else(AgentPath::root);
+        let communication =
+            communication_from_tool_message(author, new_agent_path.clone(), message, true);
+        let context =
+            AgentCommunicationContext::new(AgentCommunicationKind::Spawn, session.thread_id);
+        Box::pin(
+            session
+                .services
+                .agent_control
+                .spawn_agent_with_communication(
+                    config,
+                    communication,
+                    context,
+                    Some(spawn_source),
+                    spawn_options,
+                ),
+        )
+        .await
+    } else {
+        Box::pin(session.services.agent_control.spawn_agent_with_metadata(
+            config,
+            vec![UserInput::Text {
+                text: message,
+                text_elements: Vec::new(),
+            }],
+            Some(spawn_source),
+            spawn_options,
+        ))
+        .await
+    }
     .map_err(collab_spawn_error)?;
     let new_thread_id = spawned_agent.thread_id;
     let agent_snapshot = session

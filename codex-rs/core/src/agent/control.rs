@@ -293,6 +293,7 @@ impl AgentControl {
             &state,
             communication,
             agent_communication_context,
+            ThreadSettingsOverrides::default(),
         )
         .await
     }
@@ -303,9 +304,16 @@ impl AgentControl {
         state: &Arc<ThreadManagerState>,
         communication: InterAgentCommunication,
         context: AgentCommunicationContext,
+        thread_settings: ThreadSettingsOverrides,
     ) -> CodexResult<String> {
-        self.submit_inter_agent_communication(agent_id, state, communication, context)
-            .await
+        self.submit_inter_agent_communication(
+            agent_id,
+            state,
+            communication,
+            context,
+            thread_settings,
+        )
+        .await
     }
 
     async fn submit_inter_agent_communication(
@@ -314,6 +322,7 @@ impl AgentControl {
         state: &Arc<ThreadManagerState>,
         communication: InterAgentCommunication,
         context: AgentCommunicationContext,
+        thread_settings: ThreadSettingsOverrides,
     ) -> CodexResult<String> {
         let last_task_message = last_task_message_from_communication(&communication);
         let communication_for_log =
@@ -323,7 +332,13 @@ impl AgentControl {
                 agent_id,
                 state,
                 state
-                    .send_op(agent_id, Op::InterAgentCommunication { communication })
+                    .send_op(
+                        agent_id,
+                        Op::InterAgentCommunication {
+                            communication,
+                            thread_settings,
+                        },
+                    )
                     .await,
             )
             .await;

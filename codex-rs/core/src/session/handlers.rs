@@ -92,24 +92,34 @@ pub async fn update_thread_settings(
     sub_id: String,
     thread_settings: ThreadSettingsOverrides,
 ) {
+    apply_thread_settings(sess, &sub_id, thread_settings).await;
+}
+
+async fn apply_thread_settings(
+    sess: &Arc<Session>,
+    sub_id: &str,
+    thread_settings: ThreadSettingsOverrides,
+) -> bool {
     let updates = thread_settings_update(sess, thread_settings).await;
     match sess.update_settings(updates).await {
         Ok(()) => {
             sess.send_event_raw_without_materializing_rollout(Event {
-                id: sub_id,
+                id: sub_id.to_string(),
                 msg: thread_settings_applied_event(sess).await,
             })
             .await;
+            true
         }
         Err(err) => {
             sess.send_event_raw(Event {
-                id: sub_id,
+                id: sub_id.to_string(),
                 msg: EventMsg::Error(ErrorEvent {
                     message: format!("invalid thread settings override: {err}"),
                     codex_error_info: Some(CodexErrorInfo::BadRequest),
                 }),
             })
             .await;
+            false
         }
     }
 }
@@ -268,7 +278,13 @@ pub async fn inter_agent_communication(
     sess: &Arc<Session>,
     sub_id: String,
     communication: InterAgentCommunication,
+    thread_settings: ThreadSettingsOverrides,
 ) {
+    if thread_settings != ThreadSettingsOverrides::default()
+        && !apply_thread_settings(sess, &sub_id, thread_settings).await
+    {
+        return;
+    }
     let trigger_turn = communication.trigger_turn;
     sess.input_queue
         .enqueue_mailbox_communication(communication)
@@ -756,8 +772,17 @@ pub(super) async fn submission_loop(
                     update_thread_settings(&sess, sub.id.clone(), thread_settings).await;
                     false
                 }
-                Op::InterAgentCommunication { communication } => {
-                    inter_agent_communication(&sess, sub.id.clone(), communication).await;
+                Op::InterAgentCommunication {
+                    communication,
+                    thread_settings,
+                } => {
+                    inter_agent_communication(
+                        &sess,
+                        sub.id.clone(),
+                        communication,
+                        thread_settings,
+                    )
+                    .await;
                     false
                 }
                 Op::ExecApproval {

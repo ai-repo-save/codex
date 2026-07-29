@@ -574,6 +574,8 @@ pub enum Op {
     /// while still using the normal thread submission lifecycle.
     InterAgentCommunication {
         communication: InterAgentCommunication,
+        /// Persistent thread-settings overrides to apply before the communication can start a turn.
+        thread_settings: ThreadSettingsOverrides,
     },
 
     /// Approve a command execution
