@@ -136,7 +136,7 @@ bazel-code-mode-host *args:
 
 [no-cd]
 cargo-lock-update:
-    cargo metadata --format-version 1 --no-deps --manifest-path {{ justfile_directory() }}/codex-rs/Cargo.toml > /dev/null
+    cargo update --workspace --offline --manifest-path {{ justfile_directory() }}/codex-rs/Cargo.toml
 
 [no-cd]
 bazel-lock-update:
