@@ -9,12 +9,10 @@ use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::responses_metadata::CompactionTurnMetadata;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
-use crate::session::turn::built_tools;
 use codex_protocol::auth::AuthMode;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::ResponseItem;
 use codex_rollout_trace::CompactionTraceContext;
-use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 pub(super) struct RemoteCompactAttempt {
@@ -29,7 +27,6 @@ pub(super) async fn run_remote_compact_attempt(
     compaction_trace: &CompactionTraceContext,
     compaction_metadata: CompactionTurnMetadata,
     analytics_details: &mut CompactionAnalyticsDetails,
-    cancellation_token: &CancellationToken,
 ) -> CodexResult<RemoteCompactAttempt> {
     let turn_context = &step_context.turn;
     let mut history = sess.clone_history().await;
@@ -62,7 +59,7 @@ pub(super) async fn run_remote_compact_attempt(
         .is_enabled()
         .then(|| history.raw_items().to_vec());
     let prompt_input = history.for_prompt(&turn_context.model_info.input_modalities);
-    let tool_router = built_tools(sess.as_ref(), step_context.as_ref(), cancellation_token).await?;
+    let tool_router = &step_context.tool_router;
     let prompt = Prompt {
         input: prompt_input,
         tools: tool_router.model_visible_specs(),

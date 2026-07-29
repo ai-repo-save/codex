@@ -13,6 +13,7 @@ pub use agent_mailbox::AgentMailboxHostHandle;
 pub use agent_mailbox::AgentMailboxTarget;
 pub use agent_mailbox::NoopAgentMailboxHost;
 pub use events::ExtensionEventSink;
+pub use events::ExtensionWarning;
 pub use events::NoopExtensionEventSink;
 pub use goal_turn::GoalTurnHost;
 pub use goal_turn::GoalTurnHostFuture;

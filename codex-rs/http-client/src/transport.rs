@@ -1,5 +1,5 @@
-use crate::default_client::HttpClient;
-use crate::default_client::RequestBuilder;
+use crate::client::HttpClient;
+use crate::client::RequestBuilder;
 use crate::error::TransportError;
 use crate::request::Request;
 use crate::request::RequestBody;
@@ -46,6 +46,10 @@ impl ReqwestTransport {
         }
     }
 
+    pub fn from_http_client(client: HttpClient) -> Self {
+        Self { client }
+    }
+
     fn build(&self, req: Request) -> Result<RequestBuilder, TransportError> {
         let prepared = req.prepare_body_for_send().map_err(TransportError::Build)?;
 
@@ -82,6 +86,17 @@ impl ReqwestTransport {
             TransportError::Network(err.to_string())
         }
     }
+
+    fn trace_request(&self, req: &Request) {
+        if self.client.request_logging_enabled() && enabled!(Level::TRACE) {
+            trace!(
+                "{} to {}: {}",
+                req.method,
+                req.url,
+                request_body_for_trace(req)
+            );
+        }
+    }
 }
 
 fn request_body_for_trace(req: &Request) -> String {
@@ -97,14 +112,7 @@ fn request_body_for_trace(req: &Request) -> String {
 
 impl HttpTransport for ReqwestTransport {
     async fn execute(&self, req: Request) -> Result<Response, TransportError> {
-        if enabled!(Level::TRACE) {
-            trace!(
-                "{} to {}: {}",
-                req.method,
-                req.url,
-                request_body_for_trace(&req)
-            );
-        }
+        self.trace_request(&req);
 
         let url = req.url.clone();
         let builder = self.build(req)?;
@@ -129,14 +137,7 @@ impl HttpTransport for ReqwestTransport {
     }
 
     async fn stream(&self, req: Request) -> Result<StreamResponse, TransportError> {
-        if enabled!(Level::TRACE) {
-            trace!(
-                "{} to {}: {}",
-                req.method,
-                req.url,
-                request_body_for_trace(&req)
-            );
-        }
+        self.trace_request(&req);
 
         let url = req.url.clone();
         let response_header_timeout = req.response_header_timeout;
@@ -169,3 +170,7 @@ impl HttpTransport for ReqwestTransport {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "transport_tests.rs"]
+mod tests;

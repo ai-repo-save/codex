@@ -12,6 +12,7 @@ pub use capabilities::AgentMailboxTarget;
 pub use capabilities::AgentSpawnFuture;
 pub use capabilities::AgentSpawner;
 pub use capabilities::ExtensionEventSink;
+pub use capabilities::ExtensionWarning;
 pub use capabilities::GoalTurnHost;
 pub use capabilities::GoalTurnHostFuture;
 pub use capabilities::GoalTurnHostHandle;

@@ -77,6 +77,8 @@ pub struct ModelProvider {
     pub supports_websockets: bool,
     #[prost(uint64, optional, tag = "18")]
     pub stream_response_header_timeout_ms: ::core::option::Option<u64>,
+    #[prost(bool, tag = "19")]
+    pub supports_standalone_web_search: bool,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StringMap {

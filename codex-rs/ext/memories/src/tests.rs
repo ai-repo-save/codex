@@ -64,7 +64,7 @@ fn tools_are_not_contributed_without_thread_config() {
         extension
             .tools(
                 &ExtensionData::new("session"),
-                &ExtensionData::new("thread")
+                &ExtensionData::new("thread"),
             )
             .is_empty()
     );

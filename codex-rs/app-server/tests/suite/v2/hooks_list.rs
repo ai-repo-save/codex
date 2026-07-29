@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use anyhow::Result;
+use app_test_support::MockResponsesConfig;
 use app_test_support::TestAppServer;
 use app_test_support::create_final_assistant_message_sse_response;
 use app_test_support::create_mock_responses_server_sequence_unchecked;
-use app_test_support::to_response;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigEdit;
 use codex_app_server_protocol::ConfiguredPromptHookFilter;
@@ -16,12 +16,11 @@ use codex_app_server_protocol::HookTrustStatus;
 use codex_app_server_protocol::HooksListEntry;
 use codex_app_server_protocol::HooksListParams;
 use codex_app_server_protocol::HooksListResponse;
-use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::MergeStrategy;
-use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
 use codex_app_server_protocol::TurnStartParams;
+use codex_app_server_protocol::TurnStartResponse;
 use codex_app_server_protocol::UserInput as V2UserInput;
 use codex_core::config::set_project_trust_level;
 use codex_protocol::config_types::TrustLevel;
@@ -201,21 +200,16 @@ async fn hooks_list_shows_discovered_hook() -> Result<()> {
 
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
-        .build()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
         .await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
 
     let request_id = mcp
         .send_hooks_list_request(HooksListParams {
             cwds: vec![cwd.path().to_path_buf()],
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-    let HooksListResponse { data } = to_response(response)?;
+    let HooksListResponse { data } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
     let config_path = AbsolutePathBuf::from_absolute_path(std::fs::canonicalize(
         codex_home.path().join("config.toml"),
     )?)?;
@@ -362,21 +356,16 @@ async fn hooks_list_shows_discovered_plugin_hook() -> Result<()> {
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
         .without_auto_env()
-        .build()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
         .await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
 
     let request_id = mcp
         .send_hooks_list_request(HooksListParams {
             cwds: vec![cwd.path().to_path_buf()],
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-    let HooksListResponse { data } = to_response(response)?;
+    let HooksListResponse { data } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
     let plugin_hooks_path = AbsolutePathBuf::from_absolute_path(std::fs::canonicalize(
         codex_home
             .path()
@@ -460,33 +449,23 @@ async fn hooks_list_warms_plugin_capabilities_for_thread_start() -> Result<()> {
 
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
-        .build()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
         .await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
 
     let hooks_list_id = mcp
         .send_hooks_list_request(HooksListParams {
             cwds: vec![cwd.path().to_path_buf()],
         })
         .await?;
-    timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(hooks_list_id)),
-    )
-    .await??;
+    let _: HooksListResponse = timeout(DEFAULT_TIMEOUT, mcp.read_response(hooks_list_id)).await??;
 
     std::fs::remove_file(plugin_mcp_path)?;
 
     let thread_start_id = mcp
         .send_thread_start_request_with_auto_env(ThreadStartParams::default())
         .await?;
-    let _: ThreadStartResponse = to_response(
-        timeout(
-            DEFAULT_TIMEOUT,
-            mcp.read_stream_until_response_message(RequestId::Integer(thread_start_id)),
-        )
-        .await??,
-    )?;
+    let _: ThreadStartResponse =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(thread_start_id)).await??;
     timeout(
         DEFAULT_TIMEOUT,
         mcp.read_stream_until_matching_notification("plugin MCP server starting", |notification| {
@@ -513,21 +492,16 @@ async fn hooks_list_shows_plugin_hook_load_warnings() -> Result<()> {
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
         .without_auto_env()
-        .build()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
         .await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
 
     let request_id = mcp
         .send_hooks_list_request(HooksListParams {
             cwds: vec![cwd.path().to_path_buf()],
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-    let HooksListResponse { data } = to_response(response)?;
+    let HooksListResponse { data } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
 
     assert_eq!(data.len(), 1);
     assert_eq!(data[0].hooks, Vec::new());
@@ -573,9 +547,8 @@ timeout = 5
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
         .without_auto_env()
-        .build()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
         .await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
 
     let request_id = mcp
         .send_hooks_list_request(HooksListParams {
@@ -585,12 +558,8 @@ timeout = 5
             ],
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-    let HooksListResponse { data } = to_response(response)?;
+    let HooksListResponse { data } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
     let project_config_path =
         AbsolutePathBuf::try_from(workspace.path().join(".codex/config.toml"))?;
     assert_eq!(
@@ -666,21 +635,15 @@ async fn hooks_list_uses_root_repo_hooks_for_linked_worktrees() -> Result<()> {
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
         .without_auto_env()
-        .build()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
         .await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
 
     let list_id = mcp
         .send_hooks_list_request(HooksListParams {
             cwds: vec![repo_root.clone(), worktree_root.clone()],
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(list_id)),
-    )
-    .await??;
-    let HooksListResponse { data } = to_response(response)?;
+    let HooksListResponse { data } = timeout(DEFAULT_TIMEOUT, mcp.read_response(list_id)).await??;
     let repo_hook = data[0].hooks[0].clone();
     let worktree_hook = data[1].hooks[0].clone();
     let repo_config_path =
@@ -708,24 +671,15 @@ async fn hooks_list_uses_root_repo_hooks_for_linked_worktrees() -> Result<()> {
             reload_user_config: true,
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(write_id)),
-    )
-    .await??;
-    let _: codex_app_server_protocol::ConfigWriteResponse = to_response(response)?;
+    let _: codex_app_server_protocol::ConfigWriteResponse =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(write_id)).await??;
 
     let list_id = mcp
         .send_hooks_list_request(HooksListParams {
             cwds: vec![worktree_root],
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(list_id)),
-    )
-    .await??;
-    let HooksListResponse { data } = to_response(response)?;
+    let HooksListResponse { data } = timeout(DEFAULT_TIMEOUT, mcp.read_response(list_id)).await??;
     assert_eq!(data[0].hooks[0].trust_status, HookTrustStatus::Trusted);
 
     Ok(())
@@ -740,21 +694,16 @@ async fn config_batch_write_toggles_user_hook() -> Result<()> {
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
         .without_auto_env()
-        .build()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
         .await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
 
     let request_id = mcp
         .send_hooks_list_request(HooksListParams {
             cwds: vec![cwd.path().to_path_buf()],
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-    let HooksListResponse { data } = to_response(response)?;
+    let HooksListResponse { data } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
     let hook = &data[0].hooks[0];
     assert_eq!(hook.enabled, true);
 
@@ -774,24 +723,16 @@ async fn config_batch_write_toggles_user_hook() -> Result<()> {
             reload_user_config: true,
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(write_id)),
-    )
-    .await??;
-    let _: codex_app_server_protocol::ConfigWriteResponse = to_response(response)?;
+    let _: codex_app_server_protocol::ConfigWriteResponse =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(write_id)).await??;
 
     let request_id = mcp
         .send_hooks_list_request(HooksListParams {
             cwds: vec![cwd.path().to_path_buf()],
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-    let HooksListResponse { data } = to_response(response)?;
+    let HooksListResponse { data } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
     assert_eq!(data[0].hooks.len(), 1);
     assert_eq!(data[0].hooks[0].key, hook.key);
     assert_eq!(data[0].hooks[0].enabled, false);
@@ -812,24 +753,16 @@ async fn config_batch_write_toggles_user_hook() -> Result<()> {
             reload_user_config: true,
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(write_id)),
-    )
-    .await??;
-    let _: codex_app_server_protocol::ConfigWriteResponse = to_response(response)?;
+    let _: codex_app_server_protocol::ConfigWriteResponse =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(write_id)).await??;
 
     let request_id = mcp
         .send_hooks_list_request(HooksListParams {
             cwds: vec![cwd.path().to_path_buf()],
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-    let HooksListResponse { data } = to_response(response)?;
+    let HooksListResponse { data } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
     assert_eq!(data[0].hooks[0].enabled, true);
     Ok(())
 }
@@ -864,53 +797,32 @@ with Path(r"{hook_log_path}").open("a", encoding="utf-8") as handle:
             hook_log_path = hook_log_path.display(),
         ),
     )?;
-    std::fs::write(
-        codex_home.path().join("config.toml"),
-        format!(
-            r#"
-model = "mock-model"
-approval_policy = "never"
-sandbox_mode = "read-only"
-
-model_provider = "mock_provider"
-
-[model_providers.mock_provider]
-name = "Mock provider for test"
-base_url = "{server_uri}/v1"
-wire_api = "responses"
-request_max_retries = 0
-stream_max_retries = 0
-
-[hooks]
+    MockResponsesConfig::new(&server.uri())
+        .with_extra_config(&format!(
+            r#"[hooks]
 
 [[hooks.UserPromptSubmit]]
 
 [[hooks.UserPromptSubmit.hooks]]
 type = "command"
-command = "python3 {hook_script_path}"
+command = "python3 {}"
 "#,
-            server_uri = server.uri(),
-            hook_script_path = hook_script_path.display(),
-        ),
-    )?;
+            hook_script_path.display()
+        ))
+        .write(codex_home.path())?;
 
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
-        .build()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
         .await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
 
     let hook_list_id = mcp
         .send_hooks_list_request(HooksListParams {
             cwds: vec![codex_home.path().to_path_buf()],
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(hook_list_id)),
-    )
-    .await??;
-    let HooksListResponse { data } = to_response(response)?;
+    let HooksListResponse { data } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(hook_list_id)).await??;
     let hook = data[0].hooks[0].clone();
     assert_eq!(hook.trust_status, HookTrustStatus::Untrusted);
 
@@ -920,12 +832,8 @@ command = "python3 {hook_script_path}"
             ..Default::default()
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(thread_start_id)),
-    )
-    .await??;
-    let ThreadStartResponse { thread, .. } = to_response(response)?;
+    let ThreadStartResponse { thread, .. } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(thread_start_id)).await??;
 
     let first_turn_id = mcp
         .send_turn_start_request(TurnStartParams {
@@ -938,11 +846,7 @@ command = "python3 {hook_script_path}"
             ..Default::default()
         })
         .await?;
-    timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(first_turn_id)),
-    )
-    .await??;
+    let _: TurnStartResponse = timeout(DEFAULT_TIMEOUT, mcp.read_response(first_turn_id)).await??;
     timeout(
         DEFAULT_TIMEOUT,
         mcp.read_stream_until_notification_message("turn/completed"),
@@ -966,24 +870,16 @@ command = "python3 {hook_script_path}"
             reload_user_config: true,
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(write_id)),
-    )
-    .await??;
-    let _: codex_app_server_protocol::ConfigWriteResponse = to_response(response)?;
+    let _: codex_app_server_protocol::ConfigWriteResponse =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(write_id)).await??;
 
     let hook_list_id = mcp
         .send_hooks_list_request(HooksListParams {
             cwds: vec![codex_home.path().to_path_buf()],
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(hook_list_id)),
-    )
-    .await??;
-    let HooksListResponse { data } = to_response(response)?;
+    let HooksListResponse { data } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(hook_list_id)).await??;
     let trusted_hook = &data[0].hooks[0];
     assert_eq!(trusted_hook.key, hook.key);
     assert_eq!(trusted_hook.current_hash, hook.current_hash);
@@ -1000,11 +896,8 @@ command = "python3 {hook_script_path}"
             ..Default::default()
         })
         .await?;
-    timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(second_turn_id)),
-    )
-    .await??;
+    let _: TurnStartResponse =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(second_turn_id)).await??;
     timeout(
         DEFAULT_TIMEOUT,
         mcp.read_stream_until_notification_message("turn/completed"),
@@ -1036,24 +929,16 @@ command = "python3 {hook_script_path}"
             reload_user_config: true,
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(write_id)),
-    )
-    .await??;
-    let _: codex_app_server_protocol::ConfigWriteResponse = to_response(response)?;
+    let _: codex_app_server_protocol::ConfigWriteResponse =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(write_id)).await??;
 
     let hook_list_id = mcp
         .send_hooks_list_request(HooksListParams {
             cwds: vec![codex_home.path().to_path_buf()],
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(hook_list_id)),
-    )
-    .await??;
-    let HooksListResponse { data } = to_response(response)?;
+    let HooksListResponse { data } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(hook_list_id)).await??;
     let modified_hook = &data[0].hooks[0];
     assert_eq!(modified_hook.key, hook.key);
     assert_ne!(modified_hook.current_hash, hook.current_hash);
@@ -1070,11 +955,7 @@ command = "python3 {hook_script_path}"
             ..Default::default()
         })
         .await?;
-    timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(third_turn_id)),
-    )
-    .await??;
+    let _: TurnStartResponse = timeout(DEFAULT_TIMEOUT, mcp.read_response(third_turn_id)).await??;
     timeout(
         DEFAULT_TIMEOUT,
         mcp.read_stream_until_notification_message("turn/completed"),
@@ -1119,53 +1000,32 @@ with Path(r"{hook_log_path}").open("a", encoding="utf-8") as handle:
             hook_log_path = hook_log_path.display(),
         ),
     )?;
-    std::fs::write(
-        codex_home.path().join("config.toml"),
-        format!(
-            r#"
-model = "mock-model"
-approval_policy = "never"
-sandbox_mode = "read-only"
-
-model_provider = "mock_provider"
-
-[model_providers.mock_provider]
-name = "Mock provider for test"
-base_url = "{server_uri}/v1"
-wire_api = "responses"
-request_max_retries = 0
-stream_max_retries = 0
-
-[hooks]
+    MockResponsesConfig::new(&server.uri())
+        .with_extra_config(&format!(
+            r#"[hooks]
 
 [[hooks.UserPromptSubmit]]
 
 [[hooks.UserPromptSubmit.hooks]]
 type = "command"
-command = "python3 {hook_script_path}"
+command = "python3 {}"
 "#,
-            server_uri = server.uri(),
-            hook_script_path = hook_script_path.display(),
-        ),
-    )?;
+            hook_script_path.display()
+        ))
+        .write(codex_home.path())?;
 
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
-        .build()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
         .await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
 
     let hook_list_id = mcp
         .send_hooks_list_request(HooksListParams {
             cwds: vec![codex_home.path().to_path_buf()],
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(hook_list_id)),
-    )
-    .await??;
-    let HooksListResponse { data } = to_response(response)?;
+    let HooksListResponse { data } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(hook_list_id)).await??;
     let hook = &data[0].hooks[0];
     assert_eq!(hook.enabled, true);
 
@@ -1185,12 +1045,8 @@ command = "python3 {hook_script_path}"
             reload_user_config: true,
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(write_id)),
-    )
-    .await??;
-    let _: codex_app_server_protocol::ConfigWriteResponse = to_response(response)?;
+    let _: codex_app_server_protocol::ConfigWriteResponse =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(write_id)).await??;
 
     let thread_start_id = mcp
         .send_thread_start_request_with_auto_env(ThreadStartParams {
@@ -1198,12 +1054,8 @@ command = "python3 {hook_script_path}"
             ..Default::default()
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(thread_start_id)),
-    )
-    .await??;
-    let ThreadStartResponse { thread, .. } = to_response(response)?;
+    let ThreadStartResponse { thread, .. } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(thread_start_id)).await??;
 
     let first_turn_id = mcp
         .send_turn_start_request(TurnStartParams {
@@ -1216,11 +1068,7 @@ command = "python3 {hook_script_path}"
             ..Default::default()
         })
         .await?;
-    timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(first_turn_id)),
-    )
-    .await??;
+    let _: TurnStartResponse = timeout(DEFAULT_TIMEOUT, mcp.read_response(first_turn_id)).await??;
     timeout(
         DEFAULT_TIMEOUT,
         mcp.read_stream_until_notification_message("turn/completed"),
@@ -1250,12 +1098,8 @@ command = "python3 {hook_script_path}"
             reload_user_config: true,
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(write_id)),
-    )
-    .await??;
-    let _: codex_app_server_protocol::ConfigWriteResponse = to_response(response)?;
+    let _: codex_app_server_protocol::ConfigWriteResponse =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(write_id)).await??;
 
     let second_turn_id = mcp
         .send_turn_start_request(TurnStartParams {
@@ -1268,11 +1112,8 @@ command = "python3 {hook_script_path}"
             ..Default::default()
         })
         .await?;
-    timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(second_turn_id)),
-    )
-    .await??;
+    let _: TurnStartResponse =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(second_turn_id)).await??;
     timeout(
         DEFAULT_TIMEOUT,
         mcp.read_stream_until_notification_message("turn/completed"),
