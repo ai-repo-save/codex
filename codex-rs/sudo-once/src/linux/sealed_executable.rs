@@ -5,6 +5,7 @@ use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::path::Path;
 
+const SUID_DUMPABLE_PATH: &str = "/proc/sys/fs/suid_dumpable";
 const REQUIRED_SEALS: libc::c_int = libc::F_SEAL_WRITE
     | libc::F_SEAL_FUTURE_WRITE
     | libc::F_SEAL_GROW
@@ -19,17 +20,18 @@ const REQUIRED_SEALS: libc::c_int = libc::F_SEAL_WRITE
 /// stderr, so `/proc/self/fd/0` remains a stable executable path after sudo
 /// drops the child back to the original user.
 pub struct SealedSudoExecutable {
-    executable: File,
+    read_only: File,
 }
 
 impl SealedSudoExecutable {
     pub fn from_current_executable() -> io::Result<Self> {
+        require_secure_exec_dumpability()?;
         Self::from_path(Path::new("/proc/self/exe"))
     }
 
     /// Opens a read-only descriptor suitable for installation as child fd 0.
     pub fn open_read_only(&self) -> io::Result<File> {
-        File::open(format!("/proc/self/fd/{}", self.executable.as_raw_fd()))
+        self.read_only.try_clone()
     }
 
     fn from_path(path: &Path) -> io::Result<Self> {
@@ -47,7 +49,8 @@ impl SealedSudoExecutable {
         let mut executable = unsafe { File::from_raw_fd(descriptor) };
         io::copy(&mut source, &mut executable)?;
         executable.sync_all()?;
-        if unsafe { libc::fchmod(executable.as_raw_fd(), 0o500) } == -1 {
+        let read_only = File::open(format!("/proc/self/fd/{}", executable.as_raw_fd()))?;
+        if unsafe { libc::fchmod(executable.as_raw_fd(), 0o100) } == -1 {
             return Err(io::Error::last_os_error());
         }
         if unsafe { libc::fcntl(executable.as_raw_fd(), libc::F_ADD_SEALS, REQUIRED_SEALS) } == -1 {
@@ -62,7 +65,22 @@ impl SealedSudoExecutable {
                 "kernel did not install every required executable seal",
             ));
         }
-        Ok(Self { executable })
+        drop(executable);
+        Ok(Self { read_only })
+    }
+}
+
+fn require_secure_exec_dumpability() -> io::Result<()> {
+    match std::fs::read_to_string(SUID_DUMPABLE_PATH)?
+        .trim()
+        .parse::<u8>()
+        .map_err(io::Error::other)?
+    {
+        0 | 2 => Ok(()),
+        1 => Err(io::Error::other(
+            "execute-only sudo helper would remain ptraceable",
+        )),
+        _ => Err(io::Error::other("invalid fs.suid_dumpable value")),
     }
 }
 
