@@ -311,6 +311,7 @@ fn memory_mutation_completion_is_durable_in_all_history_modes() {
             .with_status(MemoryMutationStatus::Succeeded)
             .with_path("notes/rewind-reminder.md".to_string()),
         )),
+        started_at_ms: Some(0),
         completed_at_ms: 0,
     }));
     let web_search = RolloutItem::EventMsg(EventMsg::ItemCompleted(ItemCompletedEvent {
@@ -322,6 +323,7 @@ fn memory_mutation_completion_is_durable_in_all_history_modes() {
             action: None,
             results: None,
         })),
+        started_at_ms: Some(0),
         completed_at_ms: 0,
     }));
     let items = vec![memory_mutation.clone(), web_search.clone()];
@@ -381,6 +383,7 @@ fn sub_agent_activity_uses_history_mode_specific_durable_representation() {
             service_tier: None,
             context_inheritance: None,
         }),
+        started_at_ms: Some(1),
         completed_at_ms: 1,
     };
     let canonical = RolloutItem::EventMsg(EventMsg::ItemCompleted(completed.clone()));

@@ -537,6 +537,7 @@ usage_hint_enabled = false
             min_wait_timeout_ms: None,
             max_wait_timeout_ms: None,
             default_wait_timeout_ms: None,
+            wait_agent_enabled: None,
             multi_agent_mode: None,
             usage_hint_enabled: Some(false),
             usage_hint_text: None,
