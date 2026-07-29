@@ -28,6 +28,7 @@ fn persisted_multi_agent_items_render_safe_transcript_summaries() {
         parent_thread_id: None,
         preview: "preview".to_string(),
         ephemeral: false,
+        is_pinned: false,
         history_mode: Default::default(),
         model_provider: "openai".to_string(),
         created_at: 1,
