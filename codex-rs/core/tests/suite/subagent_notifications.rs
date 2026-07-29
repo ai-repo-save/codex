@@ -1236,10 +1236,10 @@ async fn assert_v2_spawn_collaboration_mode(
             let body = request.body_json();
             body["client_metadata"]["x-openai-subagent"] == json!("collab_spawn")
                 && body
-                .pointer("/client_metadata/x-codex-turn-metadata")
-                .and_then(Value::as_str)
-                .and_then(|metadata| serde_json::from_str::<Value>(metadata).ok())
-                .is_some_and(|metadata| metadata["request_kind"].as_str() == Some("turn"))
+                    .pointer("/client_metadata/x-codex-turn-metadata")
+                    .and_then(Value::as_str)
+                    .and_then(|metadata| serde_json::from_str::<Value>(metadata).ok())
+                    .is_some_and(|metadata| metadata["request_kind"].as_str() == Some("turn"))
                 && message_texts_by_role_and_type(request, "user", "input_text")
                     .iter()
                     .any(|text| text == CHILD_PROMPT)
