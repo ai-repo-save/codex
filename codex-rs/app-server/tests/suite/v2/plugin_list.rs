@@ -53,8 +53,6 @@ const TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS: &str =
     "CODEX_TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS";
 #[cfg(target_os = "linux")]
 const TEST_USER_CONFIG_FILE: &str = "CODEX_APP_SERVER_TEST_USER_CONFIG_FILE";
-#[cfg(target_os = "linux")]
-const UNWRITABLE_USER_CONFIG_FILE: &str = "/proc/interrupts";
 const ALTERNATE_MARKETPLACE_RELATIVE_PATH: &str = ".claude-plugin/marketplace.json";
 const ALTERNATE_PLUGIN_MANIFEST_RELATIVE_PATH: &str = ".claude-plugin/plugin.json";
 
@@ -3498,6 +3496,8 @@ trusted_hash = "sha256:unrelated"
 #[cfg(unix)]
 #[tokio::test]
 async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<()> {
+    #[cfg(target_os = "linux")]
+    use std::os::fd::AsRawFd;
     #[cfg(not(target_os = "linux"))]
     use std::os::unix::fs::PermissionsExt;
     #[cfg(not(target_os = "linux"))]
@@ -3521,6 +3521,14 @@ async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<(
         &format!("{}/backend-api/", server.uri()),
         "",
     )?;
+    #[cfg(target_os = "linux")]
+    let config_file = std::fs::File::open(codex_home.path().join("config.toml"))?;
+    #[cfg(target_os = "linux")]
+    let unwritable_user_config_file = format!(
+        "/proc/{}/fd/{}",
+        std::process::id(),
+        config_file.as_raw_fd()
+    );
     #[cfg(not(target_os = "linux"))]
     symlink(&config_target, codex_home.path().join("config.toml"))?;
     write_remote_plugin_test_auth(codex_home.path())?;
@@ -3552,7 +3560,10 @@ async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<(
         ])
         .with_env_overrides(&[
             (TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS, Some("1")),
-            (TEST_USER_CONFIG_FILE, Some(UNWRITABLE_USER_CONFIG_FILE)),
+            (
+                TEST_USER_CONFIG_FILE,
+                Some(unwritable_user_config_file.as_str()),
+            ),
         ]);
     #[cfg(not(target_os = "linux"))]
     let mcp_builder = mcp_builder
