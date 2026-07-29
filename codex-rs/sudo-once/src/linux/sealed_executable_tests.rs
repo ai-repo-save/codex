@@ -1,6 +1,7 @@
 use std::io::Write;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
 use std::process::Stdio;
@@ -8,6 +9,7 @@ use std::process::Stdio;
 use pretty_assertions::assert_eq;
 
 use super::REQUIRED_SEALS;
+use super::SUID_DUMPABLE_PATH;
 use super::SealedSudoExecutable;
 
 const TRUE_PATH: &str = "/bin/true";
@@ -56,15 +58,43 @@ fn installed_seals_prevent_mutating_the_helper_image() {
 
 #[test]
 fn execute_only_helper_is_not_user_dumpable() {
-    let executable =
-        SealedSudoExecutable::from_path(Path::new("/proc/self/exe")).expect("seal test executable");
-    let read_only = executable.open_read_only().expect("read-only executable");
+    let suid_dumpable = std::fs::read_to_string(SUID_DUMPABLE_PATH)
+        .expect("read fs.suid_dumpable")
+        .trim()
+        .parse::<u8>()
+        .expect("parse fs.suid_dumpable");
+    if suid_dumpable == 1 {
+        let Err(error) = SealedSudoExecutable::from_current_executable() else {
+            panic!("unsafe fs.suid_dumpable must disable the helper");
+        };
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        return;
+    }
 
-    let status = Command::new(SELF_FD_ZERO_PATH)
+    let executable =
+        SealedSudoExecutable::from_current_executable().expect("seal test executable");
+    let read_only = executable.open_read_only().expect("read-only executable");
+    let mut command = Command::new(SELF_FD_ZERO_PATH);
+    command
         .stdin(Stdio::from(read_only))
         .arg("--exact")
         .arg(DUMPABILITY_PROBE_TEST)
-        .env(DUMPABILITY_PROBE_ENV, "1")
+        .env(DUMPABILITY_PROBE_ENV, "1");
+    if unsafe { libc::geteuid() } == 0 {
+        let unprivileged_uid = 65_534;
+        let unprivileged_gid = 65_534;
+        let chown_result = unsafe {
+            libc::fchown(
+                executable.read_only.as_raw_fd(),
+                unprivileged_uid,
+                unprivileged_gid,
+            )
+        };
+        assert_eq!(chown_result, 0);
+        command.uid(unprivileged_uid).gid(unprivileged_gid);
+    }
+
+    let status = command
         .status()
         .expect("execute dumpability probe");
 
