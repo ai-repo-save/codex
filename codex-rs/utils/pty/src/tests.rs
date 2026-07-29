@@ -562,7 +562,7 @@ async fn pipe_and_pty_share_interface() -> anyhow::Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn spawned_process_exposes_direct_child_pid() -> anyhow::Result<()> {
     let env_map: HashMap<String, String> = std::env::vars().collect();
-    let (program, args) = shell_command("sleep 5");
+    let (program, args) = shell_command(&echo_sleep_command("pid-test"));
     let spawned = spawn_pipe_process(&program, &args, Path::new("."), &env_map, &None, &[]).await?;
     let process_id = spawned
         .session
@@ -570,7 +570,10 @@ async fn spawned_process_exposes_direct_child_pid() -> anyhow::Result<()> {
         .ok_or_else(|| anyhow::anyhow!("pipe spawn did not expose its child PID"))?;
 
     #[cfg(unix)]
-    assert_eq!(unsafe { libc::kill(process_id as i32, /*signum*/ 0) }, 0);
+    assert_eq!(
+        unsafe { libc::kill(i32::try_from(process_id)?, /*signum*/ 0) },
+        0
+    );
 
     spawned.session.terminate();
     let exit_code = tokio::time::timeout(tokio::time::Duration::from_secs(2), spawned.exit_rx)
