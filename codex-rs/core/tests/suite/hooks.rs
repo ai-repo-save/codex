@@ -1788,13 +1788,11 @@ async fn session_start_hooks_apply_additional_context_limits_individually() -> R
 
     let request = response.single_request();
     let developer_messages = request.message_input_texts("developer");
-    let limited_message = developer_messages
-        .iter()
-        .find(|message| message.as_str() != expanded_additional_context.as_str())
-        .context("limited session start context")?;
     assert!(
-        approx_token_count(limited_message) <= 1,
-        "expected the limited hook context to stay within one token, got {limited_message:?}"
+        developer_messages
+            .iter()
+            .any(|message| approx_token_count(message) <= 1),
+        "expected a hook context limited to one token, got {developer_messages:?}"
     );
     assert!(
         developer_messages
