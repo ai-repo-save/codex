@@ -58,7 +58,7 @@ async fn sqlite_sink_drops_low_level_opentelemetry_sdk_logs() {
 }
 
 #[tokio::test]
-async fn sqlite_sink_honors_configured_default_filter_level() {
+async fn sqlite_sink_honors_configured_filter_level_across_target_overrides() {
     let codex_home =
         std::env::temp_dir().join(format!("codex-state-log-db-filter-{}", Uuid::new_v4()));
     let runtime = StateRuntime::init(
@@ -73,12 +73,14 @@ async fn sqlite_sink_honors_configured_default_filter_level() {
         .with(
             layer
                 .clone()
-                .with_filter(default_filter_with_level(LevelFilter::WARN)),
+                .with_filter(default_filter_with_level(LevelFilter::ERROR)),
         )
         .set_default();
 
-    tracing::info!("retained-info");
-    tracing::warn!("retained-warn");
+    tracing::warn!("dropped-default-warn");
+    tracing::warn!(target: "hyper_util", "dropped-hyper-warn");
+    tracing::info!(target: "rmcp::service", "dropped-rmcp-info");
+    tracing::error!("retained-error");
 
     layer.flush().await;
     drop(guard);
@@ -91,7 +93,7 @@ async fn sqlite_sink_honors_configured_default_filter_level() {
         logs.iter()
             .map(|row| row.message.as_deref())
             .collect::<Vec<_>>(),
-        vec![Some("retained-warn")]
+        vec![Some("retained-error")]
     );
 
     let _ = tokio::fs::remove_dir_all(codex_home).await;

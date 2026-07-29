@@ -57,11 +57,11 @@ pub fn default_filter() -> Targets {
 pub fn default_filter_with_level(level: LevelFilter) -> Targets {
     Targets::new()
         .with_default(level)
-        .with_target("hyper_util", LevelFilter::WARN)
+        .with_target("hyper_util", level.min(LevelFilter::WARN))
         .with_target("log", LevelFilter::OFF)
         .with_target("codex_otel.log_only", LevelFilter::OFF)
         .with_target("codex_otel.trace_safe", LevelFilter::OFF)
-        .with_target("rmcp::service", LevelFilter::INFO)
+        .with_target("rmcp::service", level.min(LevelFilter::INFO))
         .with_target("codex_api::responses_websocket_timing", LevelFilter::OFF)
         .with_target("codex_core::post_sampling_token_estimate", LevelFilter::OFF)
 }
