@@ -432,7 +432,6 @@ pub(crate) enum ForkPersistence {
 
 pub(crate) struct SessionSpawnArgs {
     pub(crate) config: Config,
-    pub(crate) initial_collaboration_mode: Option<CollaborationMode>,
     pub(crate) tool_execution_mode: turn_context::ToolExecutionMode,
     pub(crate) allow_provider_model_fallback: bool,
     pub(crate) user_instructions: LoadedUserInstructions,
@@ -544,7 +543,6 @@ impl Session {
     async fn spawn_internal(args: SessionSpawnArgs) -> CodexResult<(Arc<Self>, SessionIo)> {
         let SessionSpawnArgs {
             mut config,
-            initial_collaboration_mode,
             tool_execution_mode,
             allow_provider_model_fallback,
             user_instructions,
@@ -690,14 +688,14 @@ impl Session {
         };
         // TODO (aibrahim): Consolidate config.model and config.model_reasoning_effort into config.collaboration_mode
         // to avoid extracting these fields separately and constructing CollaborationMode here.
-        let collaboration_mode = initial_collaboration_mode.unwrap_or_else(|| CollaborationMode {
+        let collaboration_mode = CollaborationMode {
             mode: ModeKind::Default,
             settings: Settings {
                 model: model.clone(),
                 reasoning_effort: config.model_reasoning_effort.clone(),
                 developer_instructions: None,
             },
-        });
+        };
         let fast_mode_enabled = config.features.enabled(Feature::FastMode);
         let initial_service_tier_warning = unsupported_service_tier_warning(
             config.service_tier.as_deref(),

@@ -462,7 +462,6 @@ impl AgentControl {
                     self.clone(),
                     session_source,
                     history_mode,
-                    options.collaboration_mode.clone(),
                     options.parent_thread_id,
                     /*forked_from_thread_id*/ None,
                     /*thread_source*/ Some(ThreadSource::Subagent),
@@ -526,7 +525,10 @@ impl AgentControl {
         )
         .await;
 
-        let thread_settings = ThreadSettingsOverrides::default();
+        let thread_settings = ThreadSettingsOverrides {
+            collaboration_mode: options.collaboration_mode,
+            ..Default::default()
+        };
         match initial_input {
             SpawnInitialInput::UserInput(input) => {
                 self.send_input_after_capacity_check(
@@ -721,7 +723,6 @@ impl AgentControl {
                 self.clone(),
                 session_source,
                 /*thread_source*/ Some(ThreadSource::Subagent),
-                options.collaboration_mode.clone(),
                 /*parent_thread_id*/ Some(parent_thread_id),
                 /*forked_from_thread_id*/ Some(parent_thread_id),
                 inherited_environments,
