@@ -104,4 +104,5 @@ impl InstallerHttp for FakeInstallerHttp {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(url.to_string());
         Ok(self.response.clone())
+    }
 }
