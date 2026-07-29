@@ -19,7 +19,6 @@ use super::ConfiguredHandler;
 #[cfg(unix)]
 use super::ShellCommandRequest;
 use super::run_command;
-use super::run_command;
 #[cfg(unix)]
 use super::run_shell_command;
 
