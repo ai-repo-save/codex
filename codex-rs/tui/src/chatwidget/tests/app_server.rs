@@ -1054,30 +1054,42 @@ async fn live_app_server_collab_wait_items_render_history() {
 }
 
 #[tokio::test]
-async fn live_app_server_sub_agent_activity_renders_history() {
+async fn live_app_server_sub_agent_activity_lifecycle_renders_once() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let item = AppServerThreadItem::SubAgentActivity {
+        id: "activity-1".to_string(),
+        kind: SubAgentActivityKind::Started,
+        agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
+        agent_path: "/root/research".to_string(),
+        operation: None,
+        outcome: None,
+        model: Some("gpt-5.6".to_string()),
+        reasoning_effort: Some(ReasoningEffortConfig::High),
+        service_tier: Some(
+            codex_protocol::config_types::ServiceTier::Fast
+                .request_value()
+                .to_string(),
+        ),
+        context_inheritance: Some(codex_app_server_protocol::SpawnContextInheritance::Full),
+    };
+
+    chat.handle_server_notification(
+        ServerNotification::ItemStarted(ItemStartedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            started_at_ms: 0,
+            item: item.clone(),
+        }),
+        /*replay_kind*/ None,
+    );
+    assert!(drain_insert_history(&mut rx).is_empty());
 
     chat.handle_server_notification(
         ServerNotification::ItemCompleted(ItemCompletedNotification {
             thread_id: "thread-1".to_string(),
             turn_id: "turn-1".to_string(),
             completed_at_ms: 0,
-            item: AppServerThreadItem::SubAgentActivity {
-                id: "activity-1".to_string(),
-                kind: SubAgentActivityKind::Started,
-                agent_thread_id: "00000000-0000-0000-0000-000000000002".to_string(),
-                agent_path: "/root/research".to_string(),
-                operation: None,
-                outcome: None,
-                model: Some("gpt-5.6".to_string()),
-                reasoning_effort: Some(ReasoningEffortConfig::High),
-                service_tier: Some(
-                    codex_protocol::config_types::ServiceTier::Fast
-                        .request_value()
-                        .to_string(),
-                ),
-                context_inheritance: Some(codex_app_server_protocol::SpawnContextInheritance::Full),
-            },
+            item,
         }),
         /*replay_kind*/ None,
     );

@@ -41,6 +41,8 @@ impl ChatWidget {
             item @ ThreadItem::CollabAgentToolCall { .. } => {
                 self.on_collab_agent_tool_call(item);
             }
+            ThreadItem::SubAgentActivity { .. }
+                if matches!(lifecycle, FeatureItemLifecycle::Started) => {}
             item @ ThreadItem::SubAgentActivity { .. } => self.on_sub_agent_activity(item),
             item => return Some(item),
         }
