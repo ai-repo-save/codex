@@ -106,7 +106,7 @@ async fn lossless_combination_preserves_output_under_backpressure() {
     let mut expected = Vec::new();
     for value in 0..512_u16 {
         let chunk = if value == 300 {
-            b"__sudo_started_marker__".to_vec()
+            b"control-like ordinary output".to_vec()
         } else {
             value.to_le_bytes().to_vec()
         };
@@ -555,6 +555,28 @@ async fn pipe_and_pty_share_interface() -> anyhow::Result<()> {
         String::from_utf8_lossy(&pty_out).contains("pty_ok"),
         "pty output mismatch: {pty_out:?}"
     );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn spawned_process_exposes_direct_child_pid() -> anyhow::Result<()> {
+    let env_map: HashMap<String, String> = std::env::vars().collect();
+    let (program, args) = shell_command("sleep 5");
+    let spawned = spawn_pipe_process(&program, &args, Path::new("."), &env_map, &None, &[]).await?;
+    let process_id = spawned
+        .session
+        .process_id()
+        .ok_or_else(|| anyhow::anyhow!("pipe spawn did not expose its child PID"))?;
+
+    #[cfg(unix)]
+    assert_eq!(unsafe { libc::kill(process_id as i32, /*signum*/ 0) }, 0);
+
+    spawned.session.terminate();
+    let exit_code = tokio::time::timeout(tokio::time::Duration::from_secs(2), spawned.exit_rx)
+        .await?
+        .unwrap_or(-1);
+    assert_ne!(exit_code, 0, "terminated process unexpectedly exited cleanly");
 
     Ok(())
 }

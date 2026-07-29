@@ -27,7 +27,6 @@ use portable_pty::native_pty_system;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use zeroize::Zeroizing;
 
 use crate::process::ChildTerminator;
 use crate::process::ProcessHandle;
@@ -38,20 +37,6 @@ use crate::process::SpawnedProcess;
 use crate::process::TerminalSize;
 #[cfg(unix)]
 use crate::process::exit_code_from_status;
-
-enum WriterInput {
-    Regular(Vec<u8>),
-    Sensitive(Zeroizing<Vec<u8>>),
-}
-
-impl AsRef<[u8]> for WriterInput {
-    fn as_ref(&self) -> &[u8] {
-        match self {
-            Self::Regular(bytes) => bytes,
-            Self::Sensitive(bytes) => bytes,
-        }
-    }
-}
 
 /// Returns true when ConPTY support is available (Windows only).
 #[cfg(windows)]
@@ -186,15 +171,15 @@ async fn spawn_process_portable(
     }
 
     let mut child = pair.slave.spawn_command(command_builder)?;
+    let process_id = child.process_id();
     #[cfg(unix)]
     // portable-pty establishes the spawned PTY child as a new session leader on
     // Unix, so PID == PGID and we can reuse the pipe backend's process-group
     // hard-kill semantics for descendants.
-    let process_group_id = child.process_id();
+    let process_group_id = process_id;
     let killer = child.clone_killer();
 
     let (writer_tx, mut writer_rx) = mpsc::channel::<Vec<u8>>(128);
-    let (sensitive_writer_tx, mut sensitive_writer_rx) = mpsc::channel::<Zeroizing<Vec<u8>>>(1);
     let (stdout_tx, stdout_rx) = mpsc::channel::<Vec<u8>>(128);
     let (_stderr_tx, stderr_rx) = mpsc::channel::<Vec<u8>>(1);
     let mut reader = pair.master.try_clone_reader()?;
@@ -223,39 +208,14 @@ async fn spawn_process_portable(
         async move {
             #[cfg(windows)]
             let mut windows_input = crate::WindowsTtyInputNormalizer::default();
-            let mut regular_open = true;
-            let mut sensitive_open = true;
-            loop {
-                let bytes = tokio::select! {
-                    bytes = sensitive_writer_rx.recv(), if sensitive_open => match bytes {
-                        Some(bytes) => Some(WriterInput::Sensitive(bytes)),
-                        None => {
-                            sensitive_open = false;
-                            None
-                        }
-                    },
-                    bytes = writer_rx.recv(), if regular_open => match bytes {
-                        Some(bytes) => Some(WriterInput::Regular(bytes)),
-                        None => {
-                            regular_open = false;
-                            None
-                        }
-                    },
-                    else => break,
-                };
-                let Some(bytes) = bytes else {
-                    continue;
-                };
+            while let Some(mut bytes) = writer_rx.recv().await {
                 #[cfg(windows)]
-                let bytes = match bytes {
-                    WriterInput::Regular(bytes) => {
-                        WriterInput::Regular(windows_input.normalize(&bytes))
-                    }
-                    sensitive => sensitive,
-                };
+                {
+                    bytes = windows_input.normalize(&bytes);
+                }
                 let mut guard = writer.lock().await;
                 use std::io::Write;
-                let _ = guard.write_all(bytes.as_ref());
+                let _ = guard.write_all(&bytes);
                 let _ = guard.flush();
             }
         }
@@ -287,9 +247,9 @@ async fn spawn_process_portable(
         _master: PtyMasterHandle::Resizable(pair.master),
     };
 
-    let handle = ProcessHandle::new_with_sensitive_writer(
+    let handle = ProcessHandle::new(
         writer_tx,
-        Some(sensitive_writer_tx),
+        Some(process_id),
         Box::new(PtyChildTerminator {
             killer,
             #[cfg(unix)]
@@ -387,7 +347,6 @@ async fn spawn_process_preserving_fds(
     let process_group_id = child.id();
 
     let (writer_tx, mut writer_rx) = mpsc::channel::<Vec<u8>>(128);
-    let (sensitive_writer_tx, mut sensitive_writer_rx) = mpsc::channel::<Zeroizing<Vec<u8>>>(1);
     let (stdout_tx, stdout_rx) = mpsc::channel::<Vec<u8>>(128);
     let (_stderr_tx, stderr_rx) = mpsc::channel::<Vec<u8>>(1);
     let mut reader = master.try_clone()?;
@@ -413,32 +372,10 @@ async fn spawn_process_preserving_fds(
     let writer_handle: JoinHandle<()> = tokio::spawn({
         let writer = Arc::clone(&writer);
         async move {
-            let mut regular_open = true;
-            let mut sensitive_open = true;
-            loop {
-                let bytes = tokio::select! {
-                    bytes = sensitive_writer_rx.recv(), if sensitive_open => match bytes {
-                        Some(bytes) => Some(WriterInput::Sensitive(bytes)),
-                        None => {
-                            sensitive_open = false;
-                            None
-                        }
-                    },
-                    bytes = writer_rx.recv(), if regular_open => match bytes {
-                        Some(bytes) => Some(WriterInput::Regular(bytes)),
-                        None => {
-                            regular_open = false;
-                            None
-                        }
-                    },
-                    else => break,
-                };
-                let Some(bytes) = bytes else {
-                    continue;
-                };
+            while let Some(bytes) = writer_rx.recv().await {
                 let mut guard = writer.lock().await;
                 use std::io::Write;
-                let _ = guard.write_all(bytes.as_ref());
+                let _ = guard.write_all(&bytes);
                 let _ = guard.flush();
             }
         }
@@ -469,9 +406,9 @@ async fn spawn_process_preserving_fds(
         },
     };
 
-    let handle = ProcessHandle::new_with_sensitive_writer(
+    let handle = ProcessHandle::new(
         writer_tx,
-        Some(sensitive_writer_tx),
+        Some(process_group_id),
         Box::new(RawPidTerminator { process_group_id }),
         reader_handle,
         Vec::new(),
