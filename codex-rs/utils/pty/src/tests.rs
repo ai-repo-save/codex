@@ -4,6 +4,8 @@ use std::path::Path;
 use pretty_assertions::assert_eq;
 
 use crate::ProcessDriver;
+#[cfg(unix)]
+use crate::PtyStdin;
 use crate::SpawnedProcess;
 use crate::TerminalSize;
 use crate::combine_output_receivers;
@@ -14,8 +16,6 @@ use crate::spawn_pipe_process_no_stdin;
 use crate::spawn_pty_process;
 #[cfg(unix)]
 use crate::spawn_pty_process_with_stdin;
-#[cfg(unix)]
-use crate::PtyStdin;
 
 #[cfg(windows)]
 #[path = "windows_tests.rs"]
