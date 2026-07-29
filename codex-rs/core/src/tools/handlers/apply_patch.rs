@@ -261,27 +261,35 @@ fn apply_patch_payload_command(payload: &ToolPayload) -> Option<String> {
 async fn effective_patch_permissions(
     session: &Session,
     turn: &TurnContext,
-    environment_id: &str,
+    turn_environment: &TurnEnvironment,
     action: &ApplyPatchAction,
-    cwd: &PathUri,
 ) -> std::io::Result<(
     Vec<PathUri>,
     crate::tools::handlers::EffectiveAdditionalPermissions,
     codex_protocol::permissions::FileSystemSandboxPolicy,
 )> {
     let file_paths = file_paths_for_action(action);
-    let native_cwd = cwd.to_abs_path()?;
+    let native_cwd = turn_environment.cwd().to_abs_path()?;
     let granted_permissions = merge_permission_profiles(
         session
-            .granted_session_permissions(environment_id)
+            .granted_session_permissions(&turn_environment.environment_id)
             .await
             .as_ref(),
         session
-            .granted_turn_permissions(environment_id)
+            .granted_turn_permissions(&turn_environment.environment_id)
             .await
             .as_ref(),
     );
-    let base_file_system_sandbox_policy = turn.file_system_sandbox_policy();
+    let workspace_roots = turn_environment
+        .workspace_roots()
+        .iter()
+        .map(PathUri::to_abs_path)
+        .collect::<std::io::Result<Vec<_>>>()?;
+    let base_file_system_sandbox_policy = turn
+        .canonical_permission_profile
+        .clone()
+        .materialize_project_roots_with_workspace_roots(&workspace_roots)
+        .file_system_sandbox_policy();
     let file_system_sandbox_policy = effective_file_system_sandbox_policy(
         &base_file_system_sandbox_policy,
         granted_permissions.as_ref(),
@@ -292,7 +300,7 @@ async fn effective_patch_permissions(
         .collect::<Result<Vec<_>, _>>()?;
     let effective_additional_permissions = apply_granted_turn_permissions(
         session,
-        environment_id,
+        &turn_environment.environment_id,
         native_cwd.as_path(),
         crate::sandboxing::SandboxPermissions::UseDefault,
         write_permissions_for_paths(&native_file_paths, &file_system_sandbox_policy, &native_cwd),
@@ -398,9 +406,8 @@ impl ApplyPatchHandler {
                     effective_patch_permissions(
                         session.as_ref(),
                         turn.as_ref(),
-                        &turn_environment.environment_id,
+                        turn_environment,
                         &changes,
-                        turn_environment.cwd(),
                     )
                     .await
                     .unwrap_or_else(|_| patch_permissions_without_path_matching(&changes));
@@ -563,9 +570,8 @@ pub(crate) async fn intercept_apply_patch(
                 effective_patch_permissions(
                     session.as_ref(),
                     turn.as_ref(),
-                    &turn_environment.environment_id,
+                    &turn_environment,
                     &changes,
-                    cwd,
                 )
                 .await
                 .unwrap_or_else(|_| patch_permissions_without_path_matching(&changes));
