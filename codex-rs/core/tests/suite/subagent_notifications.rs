@@ -1734,9 +1734,7 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
         let research = config
             .collaboration_mode_presets
             .iter_mut()
-            .find(|preset| {
-                preset.mode == Some(codex_protocol::config_types::ModeKind::Research)
-            })
+            .find(|preset| preset.mode == Some(codex_protocol::config_types::ModeKind::Research))
             .expect("research collaboration mode preset");
         research.developer_instructions = Some(Some(RESEARCH_INSTRUCTIONS.to_string()));
     });

@@ -315,10 +315,7 @@ fn local_compaction_budgets_the_complete_agent_message() {
         token_count.saturating_sub(1),
     );
 
-    assert_eq!(
-        retained,
-        vec![agent_message, user_message("summary text")]
-    );
+    assert_eq!(retained, vec![agent_message, user_message("summary text")]);
     assert_eq!(excluded, vec![user_message("summary text")]);
 }
 
