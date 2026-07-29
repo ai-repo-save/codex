@@ -1231,11 +1231,19 @@ async fn assert_v2_spawn_collaboration_mode(
 
     test.submit_turn(TURN_1_PROMPT).await?;
     let _ = spawn_turn.single_request();
-    let child_request = wait_for_requests(&child_request_log)
-        .await?
-        .into_iter()
-        .last()
-        .expect("child request should be captured");
+    let child_request = wait_for_matching_request(
+        &child_request_log,
+        "child turn request",
+        |request| {
+            request
+                .body_json()
+                .pointer("/client_metadata/x-codex-turn-metadata")
+                .and_then(Value::as_str)
+                .and_then(|metadata| serde_json::from_str::<Value>(metadata).ok())
+                .is_some_and(|metadata| metadata["request_kind"].as_str() == Some("turn"))
+        },
+    )
+    .await?;
     let input = child_request.input();
 
     assert!(input.iter().any(|item| {
