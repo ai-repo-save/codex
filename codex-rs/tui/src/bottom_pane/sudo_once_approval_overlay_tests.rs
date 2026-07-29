@@ -4,8 +4,8 @@ use super::*;
 use codex_protocol::ThreadId;
 use codex_sudo_once::LocalSudoOnceBroker;
 use codex_sudo_once::SudoOnceCommand;
-use codex_sudo_once::SudoOncePrompt;
 use codex_sudo_once::SudoOnceGrant;
+use codex_sudo_once::SudoOncePrompt;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use crossterm::event::KeyModifiers;
 
