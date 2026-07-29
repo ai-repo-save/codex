@@ -1243,19 +1243,22 @@ async fn assert_v2_spawn_collaboration_mode(
         .await?;
     let input = child_request.input();
 
-    assert!(input.iter().any(|item| {
-        item.get("role").and_then(Value::as_str) == Some("developer")
-            && item
-                .get("content")
-                .and_then(Value::as_array)
-                .is_some_and(|content| {
-                    content.iter().any(|part| {
-                        part.get("text")
-                            .and_then(Value::as_str)
-                            .is_some_and(|text| text.contains(RESEARCH_INSTRUCTIONS))
+    assert!(
+        input.iter().any(|item| {
+            item.get("role").and_then(Value::as_str) == Some("developer")
+                && item
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .is_some_and(|content| {
+                        content.iter().any(|part| {
+                            part.get("text")
+                                .and_then(Value::as_str)
+                                .is_some_and(|text| text.contains(RESEARCH_INSTRUCTIONS))
+                        })
                     })
-                })
-    }));
+        }),
+        "child request input: {input:#?}"
+    );
     assert!(input.iter().any(|item| {
         item.get("type").and_then(Value::as_str) == Some("message")
             && item.get("role").and_then(Value::as_str) == Some("user")
