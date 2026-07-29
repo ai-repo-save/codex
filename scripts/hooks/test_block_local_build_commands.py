@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 
 import importlib.util
 import unittest
@@ -47,6 +46,35 @@ class BlockLocalBuildCommandsTest(unittest.TestCase):
                 "ssh 192.168.50.8 'cd /root/codex && git status --short'"
             )
         )
+
+    def test_blocks_branch_switch_commands(self) -> None:
+        commands = (
+            "git switch main",
+            "git switch --detach rust-v0.146.0",
+            "git checkout rust-v0.146.0",
+            "git -C /home/bluebird/git/codex checkout -b scratch",
+            "bash -lc 'git switch sync/rust-v0.146.0'",
+        )
+
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertEqual(
+                    block_local_build_commands.blocked_command_reason(command),
+                    block_local_build_commands.BRANCH_SWITCH_BLOCK_REASON,
+                )
+
+    def test_allows_git_commands_that_do_not_switch_branches(self) -> None:
+        commands = (
+            "git status --short",
+            "git restore -- scripts/uv.lock",
+            "git checkout -- scripts/uv.lock",
+            "git checkout HEAD -- scripts/uv.lock",
+            "rg -n 'git switch|git checkout' scripts/hooks",
+        )
+
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertFalse(block_local_build_commands.is_blocked_command(command))
 
 
 if __name__ == "__main__":

@@ -19,6 +19,10 @@ REMOTE_BLOCK_REASON = (
     "For codex-rs just recipes, run: "
     "uv run --project scripts python scripts/remote/just.py <recipe> [args...]"
 )
+BRANCH_SWITCH_BLOCK_REASON = (
+    "Changing the current Git branch is forbidden while Codex is running. "
+    "Keep the checkout on the branch where the session started."
+)
 
 BLOCKED_EXECUTABLE_NAMES = frozenset(
     {
@@ -47,6 +51,18 @@ BLOCKED_SCRIPT_PATHS = frozenset(
 SHELL_EXECUTABLES = frozenset({"bash", "sh", "zsh", "fish"})
 REMOTE_EXECUTABLES = frozenset({"ssh", "scp", "rsync"})
 COMMAND_SEPARATORS = frozenset({";", "&&", "||", "|", "(", ")"})
+GIT_OPTIONS_WITH_VALUE = frozenset(
+    {
+        "-C",
+        "-c",
+        "--config-env",
+        "--exec-path",
+        "--git-dir",
+        "--namespace",
+        "--super-prefix",
+        "--work-tree",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -109,6 +125,8 @@ def blocked_command_reason(command: str) -> str | None:
         if remote_command_is_blocked(words):
             return REMOTE_BLOCK_REASON
         return None
+    if shell_words_switch_branch(words):
+        return BRANCH_SWITCH_BLOCK_REASON
     if shell_words_are_blocked(words):
         return BLOCK_REASON
     return None
@@ -146,6 +164,72 @@ def shell_words_are_blocked(words: list[str]) -> bool:
             command_position = False
         index += 1
     return False
+
+
+def shell_words_switch_branch(words: list[str]) -> bool:
+    index = 0
+    command_position = True
+    while index < len(words):
+        word = words[index]
+        if word in COMMAND_SEPARATORS:
+            command_position = True
+            index += 1
+            continue
+
+        if command_position:
+            executable = PurePath(word).name
+            if executable in SHELL_EXECUTABLES:
+                script = shell_inline_script(words[index + 1 :])
+                return script is not None and blocked_branch_switch(script)
+            if executable == "git" and git_command_switches_branch(words[index:]):
+                return True
+            command_position = False
+        index += 1
+    return False
+
+
+def blocked_branch_switch(command: str) -> bool:
+    try:
+        words = shlex.split(command, comments=False, posix=True)
+    except ValueError:
+        return False
+    return shell_words_switch_branch(strip_env_prefix(words))
+
+
+def git_command_switches_branch(words: list[str]) -> bool:
+    subcommand_index = git_subcommand_index(words)
+    if subcommand_index is None:
+        return False
+
+    subcommand = words[subcommand_index]
+    if subcommand == "switch":
+        return True
+    if subcommand != "checkout":
+        return False
+    return "--" not in words[subcommand_index + 1 :]
+
+
+def git_subcommand_index(words: list[str]) -> int | None:
+    index = 1
+    while index < len(words):
+        word = words[index]
+        if word == "--":
+            return index + 1 if index + 1 < len(words) else None
+        if word in GIT_OPTIONS_WITH_VALUE:
+            index += 2
+            continue
+        if any(
+            word.startswith(f"{option}=")
+            for option in GIT_OPTIONS_WITH_VALUE
+            if option.startswith("--")
+        ):
+            index += 1
+            continue
+        if word.startswith("-"):
+            index += 1
+            continue
+        return index
+    return None
 
 
 def remote_command_is_blocked(words: list[str]) -> bool:
