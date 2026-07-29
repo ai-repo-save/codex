@@ -67,7 +67,7 @@ async fn sqlite_sink_honors_configured_default_filter_level() {
     )
     .await
     .expect("initialize runtime");
-    let layer = start_with_config(runtime.clone(), LogSinkQueueConfig::default());
+    let layer = LogDbLayer::start_with_config(runtime.clone(), LogSinkQueueConfig::default());
 
     let guard = tracing_subscriber::registry()
         .with(
