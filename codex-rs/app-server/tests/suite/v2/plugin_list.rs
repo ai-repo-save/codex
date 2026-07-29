@@ -3497,7 +3497,13 @@ trusted_hash = "sha256:unrelated"
 #[tokio::test]
 async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<()> {
     #[cfg(target_os = "linux")]
+    use std::ffi::CString;
+    #[cfg(target_os = "linux")]
+    use std::io::Write;
+    #[cfg(target_os = "linux")]
     use std::os::fd::AsRawFd;
+    #[cfg(target_os = "linux")]
+    use std::os::fd::FromRawFd;
     #[cfg(not(target_os = "linux"))]
     use std::os::unix::fs::PermissionsExt;
     #[cfg(not(target_os = "linux"))]
@@ -3522,12 +3528,34 @@ async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<(
         "",
     )?;
     #[cfg(target_os = "linux")]
-    let config_file = std::fs::File::open(codex_home.path().join("config.toml"))?;
+    let sealed_user_config = {
+        let name = CString::new("codex-app-server-test-config")?;
+        let file_descriptor = unsafe {
+            libc::memfd_create(
+                name.as_ptr(),
+                libc::MFD_CLOEXEC | libc::MFD_ALLOW_SEALING,
+            )
+        };
+        if file_descriptor == -1 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        let mut file = unsafe { std::fs::File::from_raw_fd(file_descriptor) };
+        file.write_all(
+            remote_plugin_hook_config(&format!("{}/backend-api/", server.uri()), "").as_bytes(),
+        )?;
+        file.flush()?;
+        let seals =
+            libc::F_SEAL_SEAL | libc::F_SEAL_SHRINK | libc::F_SEAL_GROW | libc::F_SEAL_WRITE;
+        if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_ADD_SEALS, seals) } == -1 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        file
+    };
     #[cfg(target_os = "linux")]
     let unwritable_user_config_file = format!(
         "/proc/{}/fd/{}",
         std::process::id(),
-        config_file.as_raw_fd()
+        sealed_user_config.as_raw_fd()
     );
     #[cfg(not(target_os = "linux"))]
     symlink(&config_target, codex_home.path().join("config.toml"))?;
@@ -5195,14 +5223,18 @@ fn write_remote_plugin_hook_config(
 ) -> std::io::Result<()> {
     std::fs::write(
         codex_home.join("config.toml"),
-        format!(
-            r#"chatgpt_base_url = "{base_url}"
+        remote_plugin_hook_config(base_url, hook_state),
+    )
+}
+
+fn remote_plugin_hook_config(base_url: &str, hook_state: &str) -> String {
+    format!(
+        r#"chatgpt_base_url = "{base_url}"
 
 [features]
 plugins = true
 hooks = true
-{hook_state}"#,
-        ),
+{hook_state}"#
     )
 }
 
