@@ -10,7 +10,6 @@ use crate::session::turn_context::TurnContext;
 use crate::state::TaskKind;
 use codex_features::Feature;
 use codex_protocol::error::CodexErrorDetails;
-use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::user_input::UserInput;
 use tokio_util::sync::CancellationToken;

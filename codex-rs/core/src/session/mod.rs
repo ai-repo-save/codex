@@ -542,7 +542,7 @@ impl Session {
 
     async fn spawn_internal(args: SessionSpawnArgs) -> CodexResult<(Arc<Self>, SessionIo)> {
         let SessionSpawnArgs {
-            config,
+            mut config,
             tool_execution_mode,
             allow_provider_model_fallback,
             user_instructions,
