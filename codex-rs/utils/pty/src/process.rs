@@ -45,7 +45,9 @@ pub struct LinuxProcessIdentity {
 #[cfg(target_os = "linux")]
 impl LinuxProcessIdentity {
     pub(crate) fn try_open(process_id: u32) -> Option<Arc<Self>> {
-        let raw_pidfd = unsafe { libc::syscall(libc::SYS_pidfd_open, process_id, /*flags*/ 0) };
+        let raw_pidfd = unsafe {
+            libc::syscall(libc::SYS_pidfd_open, process_id, /*flags*/ 0)
+        };
         let raw_pidfd = i32::try_from(raw_pidfd).ok()?;
         if raw_pidfd == -1 {
             return None;
@@ -540,7 +542,8 @@ pub fn spawn_from_driver(driver: ProcessDriver) -> SpawnedProcess {
         writer_tx,
         /*process_id*/ None,
         #[cfg(target_os = "linux")]
-        /*linux_process_identity*/ None,
+        /*linux_process_identity*/
+        None,
         Box::new(ClosureTerminator { inner: terminator }),
         reader_handle,
         stderr_reader_handle

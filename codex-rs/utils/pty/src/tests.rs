@@ -572,7 +572,9 @@ async fn spawned_process_exposes_direct_child_pid() -> anyhow::Result<()> {
 
     #[cfg(unix)]
     assert_eq!(
-        unsafe { libc::kill(i32::try_from(process_id)?, /*signum*/ 0) },
+        unsafe {
+            libc::kill(i32::try_from(process_id)?, /*signum*/ 0)
+        },
         0
     );
 
@@ -595,7 +597,10 @@ async fn spawned_process_exposes_direct_child_pid() -> anyhow::Result<()> {
     let exit_code = tokio::time::timeout(tokio::time::Duration::from_secs(2), spawned.exit_rx)
         .await?
         .unwrap_or(-1);
-    assert_ne!(exit_code, 0, "terminated process unexpectedly exited cleanly");
+    assert_ne!(
+        exit_code, 0,
+        "terminated process unexpectedly exited cleanly"
+    );
 
     Ok(())
 }

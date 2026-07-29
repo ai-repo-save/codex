@@ -15,13 +15,13 @@ pub const DEFAULT_OUTPUT_BYTES_CAP: usize = 1024 * 1024;
 pub use pipe::spawn_process as spawn_pipe_process;
 /// Spawn a non-interactive process using regular pipes, but close stdin immediately.
 pub use pipe::spawn_process_no_stdin as spawn_pipe_process_no_stdin;
+/// Kernel-pinned identity for a directly spawned Linux process.
+#[cfg(target_os = "linux")]
+pub use process::LinuxProcessIdentity;
 /// Driver-backed process adapter used by integrations with their own process transport.
 pub use process::ProcessDriver;
 /// Handle for interacting with a spawned process (PTY or pipe).
 pub use process::ProcessHandle;
-/// Kernel-pinned identity for a directly spawned Linux process.
-#[cfg(target_os = "linux")]
-pub use process::LinuxProcessIdentity;
 /// Process signal supported by spawned-process handles.
 pub use process::ProcessSignal;
 /// Bundle of process handles plus split output and exit receivers returned by spawn helpers.
