@@ -1104,7 +1104,7 @@ async fn spawned_full_history_v2_child_uses_model_precedence_without_dropping_co
         ]),
     )
     .await;
-    let builder = test_codex().with_config(|config| {
+    let mut builder = test_codex().with_config(|config| {
         config
             .features
             .enable(Feature::Collab)
