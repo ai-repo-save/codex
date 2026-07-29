@@ -3515,6 +3515,12 @@ async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<(
         &format!("{}/backend-api/", server.uri()),
         "",
     )?;
+    #[cfg(target_os = "linux")]
+    write_remote_plugin_hook_config(
+        codex_home.path(),
+        &format!("{}/backend-api/", server.uri()),
+        "",
+    )?;
     #[cfg(not(target_os = "linux"))]
     symlink(&config_target, codex_home.path().join("config.toml"))?;
     write_remote_plugin_test_auth(codex_home.path())?;
@@ -3589,7 +3595,9 @@ async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<(
 
     assert_eq!(after[0].current_hash, before[0].current_hash);
     #[cfg(target_os = "linux")]
-    assert!(!codex_home.path().join("config.toml").exists());
+    assert!(
+        !std::fs::read_to_string(codex_home.path().join("config.toml"))?.contains("trusted_hash")
+    );
     #[cfg(not(target_os = "linux"))]
     assert!(!std::fs::read_to_string(config_target)?.contains("trusted_hash"));
     Ok(())
