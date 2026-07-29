@@ -91,9 +91,7 @@ pub(super) async fn write_frame_async(
     stream.flush().await
 }
 
-pub(super) async fn read_frame_async(
-    stream: &mut (impl AsyncRead + Unpin),
-) -> io::Result<Frame> {
+pub(super) async fn read_frame_async(stream: &mut (impl AsyncRead + Unpin)) -> io::Result<Frame> {
     let mut header = [0_u8; HEADER_LEN];
     stream.read_exact(&mut header).await?;
     let (kind, payload_len) = decode_header(header)?;
@@ -127,7 +125,9 @@ pub(super) async fn write_credential_async(
     credential: &[u8],
 ) -> io::Result<()> {
     if credential.len() > MAX_CREDENTIAL_LEN {
-        return Err(protocol_error("sudo credential exceeded the maximum length"));
+        return Err(protocol_error(
+            "sudo credential exceeded the maximum length",
+        ));
     }
     write_frame_async(stream, FrameKind::Credential, credential).await
 }
@@ -155,7 +155,11 @@ pub(super) fn encode_command(cwd: &OsStr, argv: &[String]) -> io::Result<Vec<u8>
     append_element(&mut payload, cwd, /*allow_empty*/ false)?;
     append_u32(&mut payload, argv.len())?;
     for (index, argument) in argv.iter().enumerate() {
-        append_element(&mut payload, argument.as_bytes(), /*allow_empty*/ index != 0)?;
+        append_element(
+            &mut payload,
+            argument.as_bytes(),
+            /*allow_empty*/ index != 0,
+        )?;
     }
     if payload.len() > MAX_FRAME_LEN {
         return Err(protocol_error("sudo command frame was too large"));
@@ -165,7 +169,9 @@ pub(super) fn encode_command(cwd: &OsStr, argv: &[String]) -> io::Result<Vec<u8>
 
 pub(super) fn decode_command(payload: &[u8]) -> io::Result<CommandFrame> {
     let mut cursor = Cursor::new(payload);
-    let cwd = PathBuf::from(OsString::from_vec(cursor.take_element(/*allow_empty*/ false)?));
+    let cwd = PathBuf::from(OsString::from_vec(
+        cursor.take_element(/*allow_empty*/ false)?,
+    ));
     let argument_count = cursor.take_u32()?;
     if argument_count == 0 || argument_count > MAX_ARGUMENTS {
         return Err(protocol_error("invalid sudo command argument count"));
@@ -222,11 +228,7 @@ fn decode_header(header: [u8; HEADER_LEN]) -> io::Result<(FrameKind, usize)> {
     Ok((kind, payload_len))
 }
 
-fn append_element(
-    payload: &mut Vec<u8>,
-    element: &[u8],
-    allow_empty: bool,
-) -> io::Result<()> {
+fn append_element(payload: &mut Vec<u8>, element: &[u8], allow_empty: bool) -> io::Result<()> {
     validate_element(element, allow_empty)?;
     append_u32(payload, element.len())?;
     payload.extend_from_slice(element);

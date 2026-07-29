@@ -30,7 +30,9 @@ pub(super) fn runtime_capability() -> io::Result<()> {
         || sudo_mode & 0o022 != 0
         || sudo_mode & 0o111 == 0
     {
-        return Err(io::Error::other("sudo executable did not meet trust requirements"));
+        return Err(io::Error::other(
+            "sudo executable did not meet trust requirements",
+        ));
     }
     fs::metadata("/proc/self/exe")?;
     let (left, right) = UnixStream::pair()?;
@@ -38,7 +40,9 @@ pub(super) fn runtime_capability() -> io::Result<()> {
     let right_identity = peer_identity(&right)?;
     let own_pid = std::process::id();
     if left_identity.pid != own_pid || right_identity.pid != own_pid {
-        return Err(io::Error::other("SO_PEERPIDFD did not identify this process"));
+        return Err(io::Error::other(
+            "SO_PEERPIDFD did not identify this process",
+        ));
     }
     Ok(())
 }

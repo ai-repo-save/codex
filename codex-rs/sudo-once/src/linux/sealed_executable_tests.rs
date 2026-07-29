@@ -30,8 +30,7 @@ fn sealed_read_only_fd_zero_remains_executable() {
 fn installed_seals_prevent_mutating_the_helper_image() {
     let executable =
         SealedSudoExecutable::from_path(Path::new(TRUE_PATH)).expect("seal executable");
-    let installed =
-        unsafe { libc::fcntl(executable.executable.as_raw_fd(), libc::F_GET_SEALS) };
+    let installed = unsafe { libc::fcntl(executable.executable.as_raw_fd(), libc::F_GET_SEALS) };
     assert_eq!(installed & REQUIRED_SEALS, REQUIRED_SEALS);
 
     let mut read_only = executable.open_read_only().expect("read-only executable");
