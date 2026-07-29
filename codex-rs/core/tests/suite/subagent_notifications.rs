@@ -1235,6 +1235,16 @@ async fn assert_v2_spawn_collaboration_mode(
             },
         })
         .await?;
+    let turn_id = wait_for_event_match(&test.codex, |event| match event {
+        EventMsg::TurnStarted(event) => Some(event.turn_id.clone()),
+        _ => None,
+    })
+    .await;
+    wait_for_event_match(&test.codex, |event| match event {
+        EventMsg::TurnComplete(event) if event.turn_id == turn_id => Some(()),
+        _ => None,
+    })
+    .await;
     let _ = spawn_turn.single_request();
     let child_request =
         wait_for_matching_request(&child_request_log, "child turn request", |request| {
