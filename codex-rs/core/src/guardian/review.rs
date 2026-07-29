@@ -215,32 +215,6 @@ pub(crate) fn routes_approval_action_to_guardian_with_reviewer(
     }
 }
 
-/// Whether this turn should route allowed approval prompts through the guardian
-/// reviewer instead of surfacing them to the user. ARC may still block actions
-/// earlier in the flow.
-pub(crate) fn routes_approval_to_guardian(turn: &TurnContext) -> bool {
-    routes_approval_to_guardian_with_reviewer(turn, turn.config.approvals_reviewer)
-}
-
-/// Whether an approval with its own reviewer selection should be routed through guardian.
-pub(crate) fn routes_approval_to_guardian_with_reviewer(
-    turn: &TurnContext,
-    approvals_reviewer: ApprovalsReviewer,
-) -> bool {
-    routes_approval_policy_to_guardian(turn.approval_policy.value(), approvals_reviewer)
-}
-
-/// Whether an exact approval policy and reviewer should route through Guardian.
-pub(crate) fn routes_approval_policy_to_guardian(
-    approval_policy: AskForApproval,
-    approvals_reviewer: ApprovalsReviewer,
-) -> bool {
-    matches!(
-        approval_policy,
-        AskForApproval::OnRequest | AskForApproval::Granular(_)
-    ) && approvals_reviewer == ApprovalsReviewer::AutoReview
-}
-
 pub(crate) fn is_guardian_reviewer_source(
     session_source: &codex_protocol::protocol::SessionSource,
 ) -> bool {

@@ -11,6 +11,7 @@ use app_test_support::create_mock_responses_server_sequence_unchecked;
 use app_test_support::create_request_user_input_sse_response;
 use app_test_support::create_shell_command_sse_response;
 use app_test_support::format_with_current_shell_display;
+use app_test_support::to_response;
 use app_test_support::write_mock_responses_config_toml_with_chatgpt_base_url;
 use app_test_support::write_models_cache;
 use codex_app_server::INPUT_TOO_LARGE_ERROR_CODE;
@@ -33,6 +34,7 @@ use codex_app_server_protocol::ItemCompletedNotification;
 use codex_app_server_protocol::ItemStartedNotification;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCMessage;
+use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::PatchApplyStatus;
 use codex_app_server_protocol::PatchChangeKind;
 use codex_app_server_protocol::RawResponseCompletedNotification;
@@ -1572,12 +1574,7 @@ async fn turn_start_uses_configured_research_mode_instructions_v2() -> Result<()
     let response_mock = responses::mount_sse_once(&server, body).await;
 
     let codex_home = TempDir::new()?;
-    create_config_toml(
-        codex_home.path(),
-        &server.uri(),
-        "never",
-        &BTreeMap::default(),
-    )?;
+    MockResponsesConfig::new(&server.uri()).write(codex_home.path())?;
     std::fs::OpenOptions::new()
         .append(true)
         .open(codex_home.path().join("config.toml"))?
@@ -3321,12 +3318,16 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
     let spawn_started = timeout(DEFAULT_READ_TIMEOUT, async {
         loop {
             let started: ItemStartedNotification = mcp.read_notification("item/started").await?;
-            if let ThreadItem::CollabAgentToolCall { id, .. } = &started.item
+            if let ThreadItem::CollabAgentToolCall {
+                id,
+                context_inheritance,
+                ..
+            } = &started.item
                 && id == SPAWN_CALL_ID
             {
                 assert_eq!(
-                    params["item"]["contextInheritance"],
-                    json!({ "type": "full" })
+                    context_inheritance,
+                    &Some(SpawnContextInheritance::Full)
                 );
                 return Ok::<ThreadItem, anyhow::Error>(started.item);
             }
@@ -3557,10 +3558,6 @@ async fn direct_input_to_multi_agent_v2_subagent_is_rejected() -> Result<()> {
             } = completed.item
                 && id == SPAWN_CALL_ID
             {
-                assert_eq!(
-                    params["item"]["contextInheritance"],
-                    json!({ "type": "full" })
-                );
                 assert_eq!(operation, None);
                 assert_eq!(outcome, None);
                 assert_eq!(model.as_deref(), Some("gpt-5.4"));
