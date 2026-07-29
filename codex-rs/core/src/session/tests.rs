@@ -887,10 +887,7 @@ async fn start_managed_network_proxy_ignores_invalid_execpolicy_network_rules() 
 async fn managed_network_proxy_decider_survives_full_access_start() -> anyhow::Result<()> {
     let full_access_permission_profile = PermissionProfile::Disabled;
     let spec = crate::config::NetworkProxySpec::from_config_and_constraints(
-        NetworkProxyConfig {
-            allow_local_binding: true,
-            ..NetworkProxyConfig::default()
-        },
+        NetworkProxyConfig::default(),
         Some(NetworkConstraints {
             enabled: Some(true),
             ..Default::default()
