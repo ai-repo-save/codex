@@ -488,14 +488,14 @@ async fn mcp_invalidation_refreshes_threads_that_are_still_starting() {
         projections: std::sync::atomic::AtomicUsize,
     }
 
-    impl codex_extension_api::ThreadLifecycleContributor<Config> for BlockingThreadStartup {
-        fn on_thread_start<'a>(
-            &'a self,
-            _input: codex_extension_api::ThreadStartInput<'a, Config>,
-        ) -> codex_extension_api::ExtensionFuture<'a, ()> {
+    impl codex_extension_api::UserInstructionsProvider for BlockingThreadStartup {
+        fn load_user_instructions(
+            &self,
+        ) -> codex_extension_api::LoadUserInstructionsFuture<'_> {
             Box::pin(async move {
                 self.entered.notify_one();
                 self.release.notified().await;
+                codex_extension_api::LoadedUserInstructions::default()
             })
         }
     }
@@ -532,7 +532,6 @@ async fn mcp_invalidation_refreshes_threads_that_are_still_starting() {
         projections: std::sync::atomic::AtomicUsize::new(0),
     });
     let mut extensions = codex_extension_api::ExtensionRegistryBuilder::new();
-    extensions.thread_lifecycle_contributor(observer.clone());
     extensions.mcp_server_contributor(observer.clone());
     let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("dummy"));
     let manager = Arc::new(ThreadManager::new(
@@ -543,7 +542,7 @@ async fn mcp_invalidation_refreshes_threads_that_are_still_starting() {
         SessionSource::Exec,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         Arc::new(extensions.build()),
-        Arc::new(crate::test_support::EmptyUserInstructionsProvider),
+        observer.clone(),
         /*analytics_events_client*/ None,
         thread_store_from_config(&config, /*state_db*/ None),
         /*agent_graph_store*/ None,
