@@ -268,6 +268,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         agent_mailbox: Default::default(),
         memories: MemoriesConfig::default(),
         sqlite: SqliteConfig::from_sqlite_home(codex_home.clone()),
+        log_db: Default::default(),
         log_dir: codex_home.join("log").to_path_buf(),
         config_lock_export_dir: None,
         config_lock_allow_codex_version_mismatch: false,
