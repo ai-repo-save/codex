@@ -1,7 +1,7 @@
 # Local Fork Capability Contract
 
 This repository carries a maintained Codex Rust fork on top of upstream stable release tags. The
-current integration baseline is `rust-v0.145.0`. Future stable syncs preserve the capabilities in
+current integration baseline is `rust-v0.146.0`. Future stable syncs preserve the capabilities in
 this document as behavioral contracts rather than reproducing a historical commit range.
 
 ## Stable Sync Invariants
@@ -35,14 +35,22 @@ sccache, fast-linker configuration, diagnostics, artifact transfer, and local in
 
 ## Skills
 
-- `use_skill` is a first-party model tool. A successful load returns the canonical `SKILL.md` body
-  and records the skill load in conversation and rollout history.
+- `use_skill` is the host-filesystem skill loader. A successful load returns the canonical
+  `SKILL.md` body and records a `SkillLoad` item in conversation and rollout history.
+- Executor and orchestrator connections keep the upstream `skills.list` and `skills.read` MCP
+  tools. Their outputs remain model-visible through the standard MCP tool-result path.
+- The host loader and MCP tools have separate authorities and do not replace each other. The host
+  loader does not acquire executor or orchestrator authority, and MCP skill reads do not create
+  host `SkillLoad` items.
 - Skill discovery merges system, user, repository, plugin, orchestrator, and executor sources under
-  their runtime gates.
+  their runtime gates. Local compatibility code fills only capabilities absent from the upstream
+  path.
 - Model-visible skill metadata has a bounded context budget. Skill bodies are loaded on demand
   rather than injected in full during initial context construction.
 - Skill prompt guidance remains present after upstream prompt and extension refactors.
-- App-server history conversion, analytics, and resume behavior preserve skill-load items.
+- App-server history conversion, analytics, TUI rendering, and resume behavior preserve host
+  skill-load items. Executor and orchestrator reads use the upstream MCP display behavior without a
+  separate `skillRead` API.
 
 ## Multi-Agent V2
 
