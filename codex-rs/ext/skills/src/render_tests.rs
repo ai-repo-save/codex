@@ -319,7 +319,7 @@ fn mixed_catalogs_keep_absolute_authority_aware_rendering_under_budget_pressure(
     assert!(!body.contains("### Skill roots"));
     assert!(body.contains(&format!("(file: {root}/skill-0/SKILL.md)")));
     assert!(body.contains("(environment resource: skill://executor/demo/SKILL.md)"));
-    assert!(body.contains("For a `file` entry, open the listed path."));
+    assert!(body.contains("call the `use_skill` tool with its listed name"));
     assert!(!body.contains("additional skills omitted"));
 }
 
