@@ -173,7 +173,7 @@ async fn spawn_process_portable(
     let mut child = pair.slave.spawn_command(command_builder)?;
     let process_id = child.process_id();
     #[cfg(target_os = "linux")]
-    let linux_process_identity = crate::process::LinuxProcessIdentity::try_open(process_id);
+    let linux_process_identity = process_id.and_then(crate::process::LinuxProcessIdentity::try_open);
     #[cfg(unix)]
     // portable-pty establishes the spawned PTY child as a new session leader on
     // Unix, so PID == PGID and we can reuse the pipe backend's process-group
@@ -251,7 +251,7 @@ async fn spawn_process_portable(
 
     let handle = ProcessHandle::new(
         writer_tx,
-        Some(process_id),
+        process_id,
         #[cfg(target_os = "linux")]
         linux_process_identity,
         Box::new(PtyChildTerminator {
