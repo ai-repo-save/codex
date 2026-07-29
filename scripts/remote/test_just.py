@@ -94,8 +94,13 @@ class RemoteJustTest(unittest.TestCase):
             "test(policy_resolution_retries_after_auth_refresh)",
             shell_command,
         )
+        self.assertIn(
+            "test(environment_id_fallback_has_cwd_prefix)",
+            shell_command,
+        )
         output = stderr.getvalue()
         self.assertIn("isolated TMPDIR", output)
+        self.assertIn("30 environment-incompatible tests excluded", output)
         self.assertIn(
             "codex-apply-patch::test_apply_patch_fails_on_write_error",
             output,
@@ -106,6 +111,10 @@ class RemoteJustTest(unittest.TestCase):
         )
         self.assertIn(
             "codex-git-attribution::policy_resolution_retries_after_auth_refresh",
+            output,
+        )
+        self.assertIn(
+            "codex-secrets::environment_id_fallback_has_cwd_prefix",
             output,
         )
 

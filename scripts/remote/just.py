@@ -98,6 +98,11 @@ REMOTE_FULL_TEST_EXCLUSIONS: tuple[RemoteTestExclusion, ...] = (
         ),
         reason="uses public hostnames that the configured remote DNS rewrites to local addresses",
     ),
+    RemoteTestExclusion(
+        package="codex-secrets",
+        tests=("environment_id_fallback_has_cwd_prefix",),
+        reason="assumes the shared test TMPDIR has not been initialized as a Git repository",
+    ),
 )
 
 
