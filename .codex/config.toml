@@ -9,3 +9,8 @@ hooks = true
 type = "command"
 command = "uv run --project scripts python scripts/hooks/block-local-build-commands.py"
 statusMessage = "checking local build command policy"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "uv run --project scripts python scripts/hooks/block-branch-switch-commands.py"
+statusMessage = "checking git branch switch policy"
