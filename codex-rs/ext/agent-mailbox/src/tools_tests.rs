@@ -32,7 +32,9 @@ use codex_state::AgentMailboxCategory;
 use codex_state::AgentMailboxMessageInput;
 use codex_state::AgentMailboxPayload;
 use codex_state::MAX_AGENT_MAILBOX_READ_LIMIT;
+use codex_state::SqliteConfig;
 use codex_state::StateRuntime;
+use codex_utils_absolute_path::test_support::PathExt;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
@@ -57,7 +59,11 @@ const RECEIVED_AT_SECONDS: i64 = 1_700_000_000;
 #[tokio::test]
 async fn send_emits_a_resolved_agent_mailbox_action_lifecycle() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
-    let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
+    let state = StateRuntime::init(
+        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        "test".to_string(),
+    )
+    .await?;
     let recipient_thread_id = thread_id("00000000-0000-0000-0000-000000000803");
     let tool = AgentMailboxTool::send(
         runtime(thread_id(SENDER_THREAD_ID), AgentPath::root()),
@@ -102,7 +108,11 @@ async fn send_emits_a_resolved_agent_mailbox_action_lifecycle() -> anyhow::Resul
 #[tokio::test]
 async fn read_emits_consumed_messages_without_exposing_encrypted_content() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
-    let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
+    let state = StateRuntime::init(
+        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        "test".to_string(),
+    )
+    .await?;
     let root_thread_id = thread_id(ROOT_THREAD_ID);
     let sender_thread_id = thread_id(SENDER_THREAD_ID);
     state
@@ -169,7 +179,11 @@ async fn read_emits_consumed_messages_without_exposing_encrypted_content() -> an
 #[tokio::test]
 async fn read_sender_filter_failure_emits_a_failed_action() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
-    let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
+    let state = StateRuntime::init(
+        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        "test".to_string(),
+    )
+    .await?;
     let tool = AgentMailboxTool::read(
         runtime(thread_id(ROOT_THREAD_ID), AgentPath::root()),
         state,
@@ -203,7 +217,11 @@ async fn read_sender_filter_failure_emits_a_failed_action() -> anyhow::Result<()
 #[tokio::test]
 async fn send_rejects_a_message_larger_than_the_storage_payload_limit() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
-    let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
+    let state = StateRuntime::init(
+        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        "test".to_string(),
+    )
+    .await?;
     let tool = AgentMailboxTool::send(
         runtime(thread_id(SENDER_THREAD_ID), AgentPath::root()),
         state,
@@ -234,7 +252,11 @@ async fn send_rejects_a_message_larger_than_the_storage_payload_limit() -> anyho
 #[tokio::test]
 async fn user_requested_batch_limit_leaves_mailbox_unchanged_when_rejected() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
-    let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
+    let state = StateRuntime::init(
+        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        "test".to_string(),
+    )
+    .await?;
     let root_thread_id = thread_id(ROOT_THREAD_ID);
     let sender_thread_id = thread_id(SENDER_THREAD_ID);
     for id in [MESSAGE_ONE_ID, MESSAGE_TWO_ID, MESSAGE_THREE_ID] {
@@ -302,7 +324,11 @@ async fn user_requested_batch_limit_leaves_mailbox_unchanged_when_rejected() -> 
 async fn read_consumes_only_messages_fully_delivered_within_invocation_budget() -> anyhow::Result<()>
 {
     let temporary_home = tempfile::tempdir()?;
-    let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
+    let state = StateRuntime::init(
+        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        "test".to_string(),
+    )
+    .await?;
     let root_thread_id = thread_id(ROOT_THREAD_ID);
     let sender_thread_id = thread_id(SENDER_THREAD_ID);
     let content = "x".repeat(LARGE_MESSAGE_BYTES);

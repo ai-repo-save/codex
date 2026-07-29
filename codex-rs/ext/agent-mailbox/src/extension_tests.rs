@@ -15,7 +15,9 @@ use codex_protocol::protocol::AgentStatus;
 use codex_protocol::protocol::InterAgentCommunication;
 use codex_state::AgentMailboxCategory;
 use codex_state::AgentMailboxReadRequest;
+use codex_state::SqliteConfig;
 use codex_state::StateRuntime;
+use codex_utils_absolute_path::test_support::PathExt;
 use pretty_assertions::assert_eq;
 
 use super::AgentMailboxExtension;
@@ -32,7 +34,11 @@ const TERMINAL_MESSAGE_BODY: &str = "terminal child result";
 async fn terminal_capture_claims_only_after_persisting_the_completed_message() -> anyhow::Result<()>
 {
     let temporary_home = tempfile::tempdir()?;
-    let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
+    let state = StateRuntime::init(
+        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        "test".to_string(),
+    )
+    .await?;
     let session_id = SessionId::new();
     let sender_thread_id = thread_id(SENDER_THREAD_ID);
     let recipient_thread_id = thread_id(RECIPIENT_THREAD_ID);
@@ -98,7 +104,11 @@ async fn terminal_capture_claims_only_after_persisting_the_completed_message() -
 async fn terminal_capture_leaves_disabled_or_ephemeral_recipients_unclaimed() -> anyhow::Result<()>
 {
     let temporary_home = tempfile::tempdir()?;
-    let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
+    let state = StateRuntime::init(
+        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        "test".to_string(),
+    )
+    .await?;
     let session_id = SessionId::new();
     let sender_thread_id = thread_id(SENDER_THREAD_ID);
     let recipient_thread_id = thread_id(RECIPIENT_THREAD_ID);
@@ -138,7 +148,11 @@ async fn terminal_capture_leaves_disabled_or_ephemeral_recipients_unclaimed() ->
 #[tokio::test]
 async fn terminal_capture_enforces_the_encrypted_payload_budget() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
-    let state = StateRuntime::init(temporary_home.path().to_path_buf(), "test".to_string()).await?;
+    let state = StateRuntime::init(
+        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        "test".to_string(),
+    )
+    .await?;
     let session_id = SessionId::new();
     let sender_thread_id = thread_id(SENDER_THREAD_ID);
     let recipient_thread_id = thread_id(RECIPIENT_THREAD_ID);
