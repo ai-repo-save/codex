@@ -27,6 +27,12 @@ use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 
+fn tempdir_with_git_discovery_boundary() -> TempDir {
+    let root = TempDir::new().expect("tempdir");
+    fs::write(root.path().join(".git"), "gitdir: missing").expect("write git boundary");
+    root
+}
+
 fn stored_thread(cwd: &str, title: &str, first_user_message: &str) -> StoredThread {
     StoredThread {
         thread_id: ThreadId::new(),
@@ -243,9 +249,11 @@ fn fixed_section_budgets_apply_per_section_without_total_blob_truncation() {
 
 #[tokio::test]
 async fn workspace_section_requires_meaningful_structure() {
-    let cwd = TempDir::new().expect("tempdir");
+    let root = tempdir_with_git_discovery_boundary();
+    let cwd = root.path().join("cwd");
+    fs::create_dir(&cwd).expect("create cwd");
     assert_eq!(
-        build_workspace_section_with_user_root(&cwd.path().abs(), /*user_root*/ None).await,
+        build_workspace_section_with_user_root(&cwd.abs(), /*user_root*/ None).await,
         None
     );
 }
@@ -289,7 +297,7 @@ async fn workspace_section_includes_user_root_tree_when_distinct() {
 
 #[tokio::test]
 async fn recent_work_section_groups_threads_by_cwd() {
-    let root = TempDir::new().expect("tempdir");
+    let root = tempdir_with_git_discovery_boundary();
     let repo = root.path().join("repo");
     let workspace_a = repo.join("workspace-a");
     let workspace_b = repo.join("workspace-b");

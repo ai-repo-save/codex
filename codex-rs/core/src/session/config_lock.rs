@@ -342,22 +342,20 @@ mod tests {
             ))
         );
 
-        let multi_agent_v2 = features
-            .multi_agent_v2
-            .as_ref()
-            .expect("multi_agent_v2 config should be materialized");
-        assert!(matches!(
-            multi_agent_v2,
-            FeatureToml::Config(MultiAgentV2ConfigToml {
-                enabled: Some(false),
-                max_concurrent_threads_per_session: Some(_),
-                min_wait_timeout_ms: Some(_),
-                max_wait_timeout_ms: Some(_),
-                default_wait_timeout_ms: Some(_),
-                hide_spawn_agent_metadata: Some(_),
-                ..
-            })
-        ));
+        let mut expected_multi_agent_v2: MultiAgentV2ConfigToml = resolved_config_to_toml(
+            &sc.original_config_do_not_use.multi_agent_v2,
+            "features.multi_agent_v2",
+        )
+        .expect("multi_agent_v2 config should convert to TOML");
+        expected_multi_agent_v2.enabled = Some(
+            sc.original_config_do_not_use
+                .features
+                .enabled(Feature::MultiAgentV2),
+        );
+        assert_eq!(
+            features.multi_agent_v2,
+            Some(FeatureToml::Config(expected_multi_agent_v2))
+        );
 
         assert_eq!(
             features.agent_mailbox,

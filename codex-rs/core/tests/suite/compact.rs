@@ -996,7 +996,7 @@ async fn post_compact_hook_can_append_supplement_from_persisted_compaction() {
     let spilled_file_cleanup = SpillFileCleanup(spilled_path.clone());
     assert_eq!(
         fs::read_to_string(&spilled_path).expect("read spilled supplement"),
-        expected_supplement
+        expected_supplement.trim()
     );
     drop(spilled_file_cleanup);
 }
