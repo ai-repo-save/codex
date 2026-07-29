@@ -1648,6 +1648,32 @@
     "LegacyAppPathString": {
       "type": "string"
     },
+    "LogDbConfigToml": {
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/LogDbLevel"
+            }
+          ],
+          "default": "trace",
+          "description": "Minimum event level captured in `logs_2.sqlite`. Defaults to `trace`."
+        }
+      },
+      "type": "object"
+    },
+    "LogDbLevel": {
+      "enum": [
+        "off",
+        "error",
+        "warn",
+        "info",
+        "debug",
+        "trace"
+      ],
+      "type": "string"
+    },
     "MarketplaceConfig": {
       "additionalProperties": false,
       "properties": {
@@ -5738,6 +5764,15 @@
     "instructions": {
       "description": "System instructions.",
       "type": "string"
+    },
+    "log_db": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/LogDbConfigToml"
+        }
+      ],
+      "default": null,
+      "description": "Settings for logs persisted to `logs_2.sqlite`."
     },
     "log_dir": {
       "allOf": [
