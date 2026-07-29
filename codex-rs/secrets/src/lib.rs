@@ -166,6 +166,10 @@ pub fn environment_id_from_cwd(cwd: &Path) -> String {
         }
     }
 
+    cwd_fallback_environment_id(cwd)
+}
+
+fn cwd_fallback_environment_id(cwd: &Path) -> String {
     let canonical = cwd
         .canonicalize()
         .unwrap_or_else(|_| cwd.to_path_buf())
@@ -205,9 +209,9 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     #[test]
-    fn environment_id_fallback_has_cwd_prefix() {
+    fn cwd_fallback_environment_id_has_cwd_prefix() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let env_id = environment_id_from_cwd(dir.path());
+        let env_id = cwd_fallback_environment_id(dir.path());
         let canonical = dir
             .path()
             .canonicalize()

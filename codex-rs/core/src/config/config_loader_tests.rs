@@ -3071,6 +3071,7 @@ async fn project_layer_is_added_when_dot_codex_exists_without_config_toml() -> s
 #[tokio::test]
 async fn codex_home_is_not_loaded_as_project_layer_from_home_dir() -> std::io::Result<()> {
     let tmp = tempdir()?;
+    tokio::fs::write(tmp.path().join(".git"), "gitdir: missing").await?;
     let home_dir = tmp.path().join("home");
     let codex_home = home_dir.join(".codex");
     tokio::fs::create_dir_all(&codex_home).await?;
@@ -3191,6 +3192,7 @@ async fn project_layers_disabled_when_untrusted_or_unknown() -> std::io::Result<
     let tmp = tempdir()?;
     let project_root = tmp.path().join("project");
     let nested = project_root.join("child");
+    tokio::fs::create_dir_all(project_root.join(".git")).await?;
     tokio::fs::create_dir_all(nested.join(".codex")).await?;
     tokio::fs::write(
         nested.join(".codex").join(CONFIG_TOML_FILE),
