@@ -34,7 +34,6 @@ use codex_state::AgentMailboxPayload;
 use codex_state::MAX_AGENT_MAILBOX_READ_LIMIT;
 use codex_state::SqliteConfig;
 use codex_state::StateRuntime;
-use codex_utils_absolute_path::test_support::PathExt;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
@@ -60,7 +59,7 @@ const RECEIVED_AT_SECONDS: i64 = 1_700_000_000;
 async fn send_emits_a_resolved_agent_mailbox_action_lifecycle() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
     let state = StateRuntime::init(
-        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        SqliteConfig::new_for_testing(temporary_home.path().try_into()?),
         "test".to_string(),
     )
     .await?;
@@ -109,7 +108,7 @@ async fn send_emits_a_resolved_agent_mailbox_action_lifecycle() -> anyhow::Resul
 async fn read_emits_consumed_messages_without_exposing_encrypted_content() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
     let state = StateRuntime::init(
-        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        SqliteConfig::new_for_testing(temporary_home.path().try_into()?),
         "test".to_string(),
     )
     .await?;
@@ -180,7 +179,7 @@ async fn read_emits_consumed_messages_without_exposing_encrypted_content() -> an
 async fn read_sender_filter_failure_emits_a_failed_action() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
     let state = StateRuntime::init(
-        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        SqliteConfig::new_for_testing(temporary_home.path().try_into()?),
         "test".to_string(),
     )
     .await?;
@@ -218,7 +217,7 @@ async fn read_sender_filter_failure_emits_a_failed_action() -> anyhow::Result<()
 async fn send_rejects_a_message_larger_than_the_storage_payload_limit() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
     let state = StateRuntime::init(
-        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        SqliteConfig::new_for_testing(temporary_home.path().try_into()?),
         "test".to_string(),
     )
     .await?;
@@ -253,7 +252,7 @@ async fn send_rejects_a_message_larger_than_the_storage_payload_limit() -> anyho
 async fn user_requested_batch_limit_leaves_mailbox_unchanged_when_rejected() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
     let state = StateRuntime::init(
-        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        SqliteConfig::new_for_testing(temporary_home.path().try_into()?),
         "test".to_string(),
     )
     .await?;
@@ -325,7 +324,7 @@ async fn read_consumes_only_messages_fully_delivered_within_invocation_budget() 
 {
     let temporary_home = tempfile::tempdir()?;
     let state = StateRuntime::init(
-        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        SqliteConfig::new_for_testing(temporary_home.path().try_into()?),
         "test".to_string(),
     )
     .await?;

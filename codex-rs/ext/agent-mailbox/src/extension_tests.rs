@@ -17,7 +17,6 @@ use codex_state::AgentMailboxCategory;
 use codex_state::AgentMailboxReadRequest;
 use codex_state::SqliteConfig;
 use codex_state::StateRuntime;
-use codex_utils_absolute_path::test_support::PathExt;
 use pretty_assertions::assert_eq;
 
 use super::AgentMailboxExtension;
@@ -35,7 +34,7 @@ async fn terminal_capture_claims_only_after_persisting_the_completed_message() -
 {
     let temporary_home = tempfile::tempdir()?;
     let state = StateRuntime::init(
-        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        SqliteConfig::new_for_testing(temporary_home.path().try_into()?),
         "test".to_string(),
     )
     .await?;
@@ -105,7 +104,7 @@ async fn terminal_capture_leaves_disabled_or_ephemeral_recipients_unclaimed() ->
 {
     let temporary_home = tempfile::tempdir()?;
     let state = StateRuntime::init(
-        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        SqliteConfig::new_for_testing(temporary_home.path().try_into()?),
         "test".to_string(),
     )
     .await?;
@@ -149,7 +148,7 @@ async fn terminal_capture_leaves_disabled_or_ephemeral_recipients_unclaimed() ->
 async fn terminal_capture_enforces_the_encrypted_payload_budget() -> anyhow::Result<()> {
     let temporary_home = tempfile::tempdir()?;
     let state = StateRuntime::init(
-        SqliteConfig::new_for_testing(temporary_home.path().abs()),
+        SqliteConfig::new_for_testing(temporary_home.path().try_into()?),
         "test".to_string(),
     )
     .await?;
