@@ -5,7 +5,6 @@ const AGENT_COMMUNICATION_TARGET: &str = "codex_otel.agent_communication";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AgentCommunicationKind {
-    Spawn,
     Message,
     Followup,
     ParentRequest,
@@ -16,7 +15,6 @@ pub(crate) enum AgentCommunicationKind {
 impl AgentCommunicationKind {
     fn as_str(self) -> &'static str {
         match self {
-            Self::Spawn => "spawn",
             Self::Message => "message",
             Self::Followup => "followup",
             Self::ParentRequest => "parent_request",

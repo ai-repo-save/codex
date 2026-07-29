@@ -369,9 +369,9 @@ async fn run_compact_task_inner_impl(
     let history_items = history_snapshot.raw_items();
     let summary_suffix = get_last_assistant_message_from_turn(history_items).unwrap_or_default();
     let summary_text = format!("{SUMMARY_PREFIX}\n{summary_suffix}");
-    let user_messages = collect_user_messages(history_items);
+    let input_messages = collect_input_messages(history_items);
 
-    let mut new_history = build_compacted_history(Vec::new(), &user_messages, &summary_text);
+    let mut new_history = build_compacted_history(Vec::new(), &input_messages, &summary_text);
     if let Some(summary_item) = new_history.last_mut() {
         // This replacement history skips `record_conversation_items`; only the appended summary
         // belongs to this compaction turn.
@@ -553,27 +553,64 @@ pub(crate) struct CompactedUserMessage {
     internal_chat_message_metadata_passthrough: Option<InternalChatMessageMetadataPassthrough>,
 }
 
-pub(crate) fn collect_user_messages(items: &[ResponseItem]) -> Vec<CompactedUserMessage> {
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum CompactedInputMessage {
+    User(CompactedUserMessage),
+    Agent {
+        item: ResponseItem,
+        token_count: usize,
+    },
+}
+
+impl CompactedInputMessage {
+    fn token_count(&self) -> usize {
+        match self {
+            Self::User(message) => approx_token_count(&message.message),
+            Self::Agent { token_count, .. } => *token_count,
+        }
+    }
+}
+
+pub(crate) fn collect_input_messages(items: &[ResponseItem]) -> Vec<CompactedInputMessage> {
     items
         .iter()
-        .filter_map(|item| match crate::event_mapping::parse_turn_item(item) {
-            Some(TurnItem::UserMessage(user)) => {
-                if is_summary_message(&user.message()) {
-                    None
-                } else {
-                    Some(CompactedUserMessage {
-                        message: user.message(),
-                        internal_chat_message_metadata_passthrough: match item {
-                            ResponseItem::Message {
-                                internal_chat_message_metadata_passthrough,
-                                ..
-                            } => internal_chat_message_metadata_passthrough.clone(),
-                            _ => None,
-                        },
+        .filter_map(|item| {
+            if let ResponseItem::AgentMessage { content, .. } = item {
+                let token_count = content
+                    .iter()
+                    .map(|part| match part {
+                        codex_protocol::models::AgentMessageInputContent::InputText { text } => {
+                            approx_token_count(text)
+                        }
+                        codex_protocol::models::AgentMessageInputContent::EncryptedContent {
+                            encrypted_content,
+                        } => approx_token_count(encrypted_content),
                     })
-                }
+                    .sum();
+                return Some(CompactedInputMessage::Agent {
+                    item: item.clone(),
+                    token_count,
+                });
             }
-            _ => None,
+            match crate::event_mapping::parse_turn_item(item) {
+                Some(TurnItem::UserMessage(user)) => {
+                    if is_summary_message(&user.message()) {
+                        None
+                    } else {
+                        Some(CompactedInputMessage::User(CompactedUserMessage {
+                            message: user.message(),
+                            internal_chat_message_metadata_passthrough: match item {
+                                ResponseItem::Message {
+                                    internal_chat_message_metadata_passthrough,
+                                    ..
+                                } => internal_chat_message_metadata_passthrough.clone(),
+                                _ => None,
+                            },
+                        }))
+                    }
+                }
+                _ => None,
+            }
         })
         .collect()
 }
@@ -641,12 +678,12 @@ pub(crate) fn insert_initial_context_before_last_real_user_or_summary(
 
 pub(crate) fn build_compacted_history(
     initial_context: Vec<ResponseItem>,
-    user_messages: &[CompactedUserMessage],
+    input_messages: &[CompactedInputMessage],
     summary_text: &str,
 ) -> Vec<ResponseItem> {
     build_compacted_history_with_limit(
         initial_context,
-        user_messages,
+        input_messages,
         summary_text,
         COMPACT_USER_MESSAGE_MAX_TOKENS,
     )
@@ -654,30 +691,32 @@ pub(crate) fn build_compacted_history(
 
 fn build_compacted_history_with_limit(
     mut history: Vec<ResponseItem>,
-    user_messages: &[CompactedUserMessage],
+    input_messages: &[CompactedInputMessage],
     summary_text: &str,
     max_tokens: usize,
 ) -> Vec<ResponseItem> {
-    let mut selected_messages: Vec<CompactedUserMessage> = Vec::new();
+    let mut selected_messages: Vec<CompactedInputMessage> = Vec::new();
     if max_tokens > 0 {
         let mut remaining = max_tokens;
-        for message in user_messages.iter().rev() {
+        for message in input_messages.iter().rev() {
             if remaining == 0 {
                 break;
             }
-            let tokens = approx_token_count(&message.message);
+            let tokens = message.token_count();
             if tokens <= remaining {
                 selected_messages.push(message.clone());
                 remaining = remaining.saturating_sub(tokens);
-            } else {
+            } else if let CompactedInputMessage::User(message) = message {
                 let truncated =
                     truncate_text(&message.message, TruncationPolicy::Tokens(remaining));
-                selected_messages.push(CompactedUserMessage {
+                selected_messages.push(CompactedInputMessage::User(CompactedUserMessage {
                     message: truncated,
                     internal_chat_message_metadata_passthrough: message
                         .internal_chat_message_metadata_passthrough
                         .clone(),
-                });
+                }));
+                break;
+            } else {
                 break;
             }
         }
@@ -685,17 +724,20 @@ fn build_compacted_history_with_limit(
     }
 
     for message in &selected_messages {
-        history.push(ResponseItem::Message {
-            id: None,
-            role: "user".to_string(),
-            content: vec![ContentItem::InputText {
-                text: message.message.clone(),
-            }],
-            phase: None,
-            internal_chat_message_metadata_passthrough: message
-                .internal_chat_message_metadata_passthrough
-                .clone(),
-        });
+        match message {
+            CompactedInputMessage::User(message) => history.push(ResponseItem::Message {
+                id: None,
+                role: "user".to_string(),
+                content: vec![ContentItem::InputText {
+                    text: message.message.clone(),
+                }],
+                phase: None,
+                internal_chat_message_metadata_passthrough: message
+                    .internal_chat_message_metadata_passthrough
+                    .clone(),
+            }),
+            CompactedInputMessage::Agent { item, .. } => history.push(item.clone()),
+        }
     }
 
     let summary_text = if summary_text.is_empty() {

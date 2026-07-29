@@ -3,13 +3,13 @@ use crate::agent::control::SpawnAgentForkMode;
 use crate::agent::control::SpawnAgentOptions;
 use crate::agent::next_thread_spawn_depth;
 use crate::agent::role::DEFAULT_ROLE_NAME;
-use crate::agent_communication::AgentCommunicationContext;
-use crate::agent_communication::AgentCommunicationKind;
 use crate::tools::handlers::multi_agents_v2::message_tool::message_content;
 use codex_agent_control::SpawnAgentToolOptions;
 use codex_agent_control::create_spawn_agent_tool_v2;
-use codex_protocol::AgentPath;
+use codex_protocol::config_types::CollaborationMode;
+use codex_protocol::config_types::ModeKind;
 use codex_protocol::protocol::SpawnContextInheritance;
+use codex_protocol::user_input::UserInput;
 use codex_tools::ToolSpec;
 
 #[derive(Default)]
@@ -99,6 +99,8 @@ async fn handle_spawn_agent(
     )
     .await?;
     apply_spawn_agent_runtime_overrides(&mut config, turn.as_ref())?;
+    let collaboration_mode =
+        resolve_spawn_collaboration_mode(turn.as_ref(), &config, args.collaboration_mode)?;
     let configured_model = config.model.clone().ok_or_else(|| {
         FunctionCallError::RespondToModel(
             "spawn_agent could not resolve the effective child model".to_string(),
@@ -118,34 +120,21 @@ async fn handle_spawn_agent(
             "spawned agent is missing a canonical task name".to_string(),
         )
     })?;
-    let author = turn
-        .session_source
-        .get_agent_path()
-        .unwrap_or_else(AgentPath::root);
-    let communication = communication_from_tool_message(
-        author,
-        new_agent_path.clone(),
-        message,
-        turn.config.multi_agent_v2.encrypt_messages,
-    );
-    let context = AgentCommunicationContext::new(AgentCommunicationKind::Spawn, session.thread_id);
-    let spawned_agent = Box::pin(
-        session
-            .services
-            .agent_control
-            .spawn_agent_with_communication(
-                config,
-                communication,
-                context,
-                Some(spawn_source),
-                SpawnAgentOptions {
-                    fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
-                    fork_mode,
-                    parent_thread_id: Some(session.thread_id),
-                    environments: Some(turn.environments.to_selections()),
-                },
-            ),
-    )
+    let spawned_agent = Box::pin(session.services.agent_control.spawn_agent_with_metadata(
+        config,
+        vec![UserInput::Text {
+            text: message,
+            text_elements: Vec::new(),
+        }],
+        Some(spawn_source),
+        SpawnAgentOptions {
+            fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
+            fork_mode,
+            parent_thread_id: Some(session.thread_id),
+            environments: Some(turn.environments.to_selections()),
+            collaboration_mode: Some(collaboration_mode),
+        },
+    ))
     .await
     .map_err(collab_spawn_error)?;
     let new_thread_id = spawned_agent.thread_id;
@@ -220,8 +209,55 @@ struct SpawnAgentArgs {
     model: Option<String>,
     reasoning_effort: Option<ReasoningEffort>,
     service_tier: Option<String>,
+    collaboration_mode: Option<SpawnCollaborationMode>,
     fork_turns: Option<String>,
     fork_context: Option<bool>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum SpawnCollaborationMode {
+    Default,
+    Research,
+    Plan,
+}
+
+impl From<SpawnCollaborationMode> for ModeKind {
+    fn from(mode: SpawnCollaborationMode) -> Self {
+        match mode {
+            SpawnCollaborationMode::Default => Self::Default,
+            SpawnCollaborationMode::Research => Self::Research,
+            SpawnCollaborationMode::Plan => Self::Plan,
+        }
+    }
+}
+
+fn resolve_spawn_collaboration_mode(
+    turn: &crate::session::turn_context::TurnContext,
+    config: &crate::config::Config,
+    requested_mode: Option<SpawnCollaborationMode>,
+) -> Result<CollaborationMode, FunctionCallError> {
+    let mut collaboration_mode = turn.collaboration_mode();
+    if let Some(requested_mode) = requested_mode {
+        let requested_mode = ModeKind::from(requested_mode);
+        let preset = config
+            .collaboration_mode_presets
+            .iter()
+            .find(|preset| preset.mode == Some(requested_mode))
+            .ok_or_else(|| {
+                FunctionCallError::RespondToModel(format!(
+                    "collaboration mode `{}` is unavailable",
+                    requested_mode.display_name().to_lowercase()
+                ))
+            })?;
+        collaboration_mode = collaboration_mode.apply_mask(preset);
+    }
+
+    Ok(collaboration_mode.with_updates(
+        config.model.clone(),
+        Some(config.model_reasoning_effort.clone()),
+        /*developer_instructions*/ None,
+    ))
 }
 
 impl SpawnAgentArgs {

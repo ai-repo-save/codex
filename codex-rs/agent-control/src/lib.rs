@@ -860,6 +860,16 @@ fn spawn_agent_common_properties_v2(
                 SPAWN_AGENT_SERVICE_TIER_OVERRIDE_DESCRIPTION.to_string(),
             )),
         ),
+        (
+            "collaboration_mode".to_string(),
+            JsonSchema::string_enum(
+                vec!["default".into(), "research".into(), "plan".into()],
+                Some(
+                    "Collaboration mode for the spawned agent. Omit to inherit the parent turn's current mode."
+                        .to_string(),
+                ),
+            ),
+        ),
     ])
 }
 

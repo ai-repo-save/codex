@@ -24,6 +24,7 @@ use crate::thread_rollout_truncation::truncate_rollout_to_last_n_fork_turns;
 use codex_protocol::AgentPath;
 use codex_protocol::SessionId;
 use codex_protocol::ThreadId;
+use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::error::Result as CodexResult;
@@ -40,6 +41,7 @@ use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::protocol::ThreadHistoryMode;
+use codex_protocol::protocol::ThreadSettingsOverrides;
 use codex_protocol::protocol::ThreadSource;
 use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_protocol::user_input::UserInput;
@@ -79,6 +81,7 @@ pub(crate) struct SpawnAgentOptions {
     pub(crate) fork_mode: Option<SpawnAgentForkMode>,
     pub(crate) parent_thread_id: Option<ThreadId>,
     pub(crate) environments: Option<Vec<TurnEnvironmentSelection>>,
+    pub(crate) collaboration_mode: Option<CollaborationMode>,
 }
 
 #[derive(Clone, Debug)]
@@ -238,8 +241,13 @@ impl AgentControl {
         let state = self.upgrade()?;
         self.ensure_execution_capacity_for_turn_start(agent_id, /*starts_turn*/ true)
             .await?;
-        self.send_input_after_capacity_check(agent_id, &state, input)
-            .await
+        self.send_input_after_capacity_check(
+            agent_id,
+            &state,
+            input,
+            ThreadSettingsOverrides::default(),
+        )
+        .await
     }
 
     async fn send_input_after_capacity_check(
@@ -247,14 +255,18 @@ impl AgentControl {
         agent_id: ThreadId,
         state: &Arc<ThreadManagerState>,
         input: Vec<UserInput>,
+        thread_settings: ThreadSettingsOverrides,
     ) -> CodexResult<String> {
         let last_task_message = non_empty_task_message(render_input_preview(&input));
+        let op = Op::UserInput {
+            items: input,
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings,
+        };
         let result = self
-            .handle_thread_request_result(
-                agent_id,
-                state,
-                state.send_op(agent_id, input.into()).await,
-            )
+            .handle_thread_request_result(agent_id, state, state.send_op(agent_id, op).await)
             .await;
         if result.is_ok() {
             match last_task_message {

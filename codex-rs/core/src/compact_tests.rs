@@ -54,6 +54,10 @@ fn compacted_user_message(text: &str) -> CompactedUserMessage {
     }
 }
 
+fn compacted_user_input(text: &str) -> CompactedInputMessage {
+    CompactedInputMessage::User(compacted_user_message(text))
+}
+
 #[test]
 fn content_items_to_text_joins_non_empty_segments() {
     let items = vec![
@@ -86,7 +90,7 @@ fn content_items_to_text_ignores_image_only_content() {
 }
 
 #[test]
-fn collect_user_messages_extracts_user_text_only() {
+fn collect_input_messages_extracts_user_text_only() {
     let items = vec![
         ResponseItem::Message {
             id: Some(ResponseItemId::with_suffix("msg", "assistant")),
@@ -109,13 +113,13 @@ fn collect_user_messages_extracts_user_text_only() {
         ResponseItem::Other,
     ];
 
-    let collected = collect_user_messages(&items);
+    let collected = collect_input_messages(&items);
 
-    assert_eq!(vec![compacted_user_message("first")], collected);
+    assert_eq!(vec![compacted_user_input("first")], collected);
 }
 
 #[test]
-fn collect_user_messages_filters_session_prefix_entries() {
+fn collect_input_messages_filters_session_prefix_entries() {
     let items = vec![
         ResponseItem::Message {
             id: None,
@@ -151,13 +155,13 @@ do things
         },
     ];
 
-    let collected = collect_user_messages(&items);
+    let collected = collect_input_messages(&items);
 
-    assert_eq!(vec![compacted_user_message("real user message")], collected);
+    assert_eq!(vec![compacted_user_input("real user message")], collected);
 }
 
 #[test]
-fn collect_user_messages_filters_legacy_warnings() {
+fn collect_input_messages_filters_legacy_warnings() {
     let items = vec![
         user_message(
             "Warning: The maximum number of unified exec processes you can keep open is 60 and you currently have 61 processes open. Reuse older processes or close them to prevent automatic pruning of old processes",
@@ -171,9 +175,9 @@ fn collect_user_messages_filters_legacy_warnings() {
         user_message("real user message"),
     ];
 
-    let collected = collect_user_messages(&items);
+    let collected = collect_input_messages(&items);
 
-    assert_eq!(vec![compacted_user_message("real user message")], collected);
+    assert_eq!(vec![compacted_user_input("real user message")], collected);
 }
 
 #[test]
@@ -182,7 +186,7 @@ fn build_token_limited_compacted_history_truncates_overlong_user_messages() {
     // that oversized user content is truncated.
     let max_tokens = 16;
     let big = "word ".repeat(200);
-    let user_message = compacted_user_message(&big);
+    let user_message = compacted_user_input(&big);
     let history = super::build_compacted_history_with_limit(
         Vec::new(),
         std::slice::from_ref(&user_message),
@@ -222,7 +226,7 @@ fn build_token_limited_compacted_history_truncates_overlong_user_messages() {
 #[test]
 fn build_token_limited_compacted_history_appends_summary_message() {
     let initial_context: Vec<ResponseItem> = Vec::new();
-    let user_messages = vec![compacted_user_message("first user message")];
+    let user_messages = vec![compacted_user_input("first user message")];
     let summary_text = "summary text";
 
     let history = build_compacted_history(initial_context, &user_messages, summary_text);
@@ -245,19 +249,41 @@ fn build_token_limited_compacted_history_appends_summary_message() {
 fn build_compacted_history_preserves_user_message_passthrough_metadata() {
     let history = build_compacted_history(
         Vec::new(),
-        &[CompactedUserMessage {
+        &[CompactedInputMessage::User(CompactedUserMessage {
             message: "first user message".to_string(),
             internal_chat_message_metadata_passthrough: Some(
                 InternalChatMessageMetadataPassthrough {
                     turn_id: Some("turn-1".to_string()),
                 },
             ),
-        }],
+        })],
         "summary text",
     );
 
     assert_eq!(history[0].turn_id(), Some("turn-1"));
     assert_eq!(history[1].turn_id(), None);
+}
+
+#[test]
+fn local_compaction_preserves_agent_message_routing_content_and_metadata() {
+    let agent_message = ResponseItem::AgentMessage {
+        id: Some(ResponseItemId::with_suffix("amsg", "task")),
+        author: "/root".to_string(),
+        recipient: "/root/explorer".to_string(),
+        content: vec![
+            codex_protocol::models::AgentMessageInputContent::InputText {
+                text: "inspect the compaction path".to_string(),
+            },
+        ],
+        internal_chat_message_metadata_passthrough: Some(InternalChatMessageMetadataPassthrough {
+            turn_id: Some("turn-agent-task".to_string()),
+        }),
+    };
+    let input_messages = collect_input_messages(std::slice::from_ref(&agent_message));
+
+    let history = build_compacted_history(Vec::new(), &input_messages, "summary text");
+
+    assert_eq!(history, vec![agent_message, user_message("summary text")]);
 }
 
 #[test]

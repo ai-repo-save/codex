@@ -1103,7 +1103,7 @@ async fn spawned_full_history_v2_child_uses_model_precedence_without_dropping_co
         ]),
     )
     .await;
-    let mut builder = test_codex().with_config(|config| {
+    let builder = test_codex().with_config(|config| {
         config
             .features
             .enable(Feature::Collab)
@@ -1139,6 +1139,154 @@ async fn spawned_full_history_v2_child_uses_model_precedence_without_dropping_co
     );
 
     Ok(())
+}
+
+async fn assert_v2_spawn_collaboration_mode(
+    requested_mode: Option<&str>,
+    set_parent_research_mode: bool,
+) -> Result<()> {
+    const RESEARCH_INSTRUCTIONS: &str = "spawned child research mode instructions";
+
+    let server = start_mock_server().await;
+    let mut spawn_args = json!({
+        "message": CHILD_PROMPT,
+        "task_name": "researcher",
+        "fork_turns": "none",
+    });
+    if let Some(requested_mode) = requested_mode {
+        spawn_args["collaboration_mode"] = json!(requested_mode);
+    }
+    let spawn_args = serde_json::to_string(&spawn_args)?;
+    let spawn_turn = mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, TURN_1_PROMPT),
+        sse(vec![
+            ev_response_created("resp-turn1-1"),
+            ev_function_call_with_namespace(
+                SPAWN_CALL_ID,
+                MULTI_AGENT_V2_NAMESPACE,
+                "spawn_agent",
+                &spawn_args,
+            ),
+            ev_completed("resp-turn1-1"),
+        ]),
+    )
+    .await;
+    let child_request_log = mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| {
+            body_contains(req, CHILD_PROMPT) && !body_contains(req, SPAWN_CALL_ID)
+        },
+        sse(vec![
+            ev_response_created("resp-child-1"),
+            ev_assistant_message("msg-child-1", "child done"),
+            ev_completed("resp-child-1"),
+        ]),
+    )
+    .await;
+    let _turn1_followup = mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, SPAWN_CALL_ID),
+        sse(vec![
+            ev_response_created("resp-turn1-2"),
+            ev_assistant_message("msg-turn1-2", "parent done"),
+            ev_completed("resp-turn1-2"),
+        ]),
+    )
+    .await;
+
+    let mut builder = test_codex().with_config(|config| {
+        config
+            .features
+            .enable(Feature::Collab)
+            .expect("test config should allow feature update");
+        config
+            .features
+            .enable(Feature::MultiAgentV2)
+            .expect("test config should allow feature update");
+        let research = config
+            .collaboration_mode_presets
+            .iter_mut()
+            .find(|preset| preset.mode == Some(codex_protocol::config_types::ModeKind::Research))
+            .expect("research collaboration mode preset");
+        research.developer_instructions = Some(Some(RESEARCH_INSTRUCTIONS.to_string()));
+    });
+    let test = builder.build_with_auto_env(&server).await?;
+    if set_parent_research_mode {
+        core_test_support::submit_thread_settings(
+            &test.codex,
+            codex_protocol::protocol::ThreadSettingsOverrides {
+                collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
+                    mode: codex_protocol::config_types::ModeKind::Research,
+                    settings: codex_protocol::config_types::Settings {
+                        model: test.session_configured.model.clone(),
+                        reasoning_effort: test.session_configured.reasoning_effort.clone(),
+                        developer_instructions: Some(RESEARCH_INSTRUCTIONS.to_string()),
+                    },
+                }),
+                ..Default::default()
+            },
+        )
+        .await?;
+    }
+
+    test.submit_turn(TURN_1_PROMPT).await?;
+    let _ = spawn_turn.single_request();
+    let child_request = wait_for_requests(&child_request_log)
+        .await?
+        .into_iter()
+        .last()
+        .expect("child request should be captured");
+    let input = child_request.input();
+
+    assert!(input.iter().any(|item| {
+        item.get("role").and_then(Value::as_str) == Some("developer")
+            && item
+                .get("content")
+                .and_then(Value::as_array)
+                .is_some_and(|content| {
+                    content.iter().any(|part| {
+                        part.get("text")
+                            .and_then(Value::as_str)
+                            .is_some_and(|text| text.contains(RESEARCH_INSTRUCTIONS))
+                    })
+                })
+    }));
+    assert!(input.iter().any(|item| {
+        item.get("type").and_then(Value::as_str) == Some("message")
+            && item.get("role").and_then(Value::as_str) == Some("user")
+            && item
+                .get("content")
+                .and_then(Value::as_array)
+                .is_some_and(|content| {
+                    content.iter().any(|part| {
+                        part.get("type").and_then(Value::as_str) == Some("input_text")
+                            && part.get("text").and_then(Value::as_str) == Some(CHILD_PROMPT)
+                    })
+                })
+    }));
+    assert!(
+        !input
+            .iter()
+            .any(|item| item.get("type").and_then(Value::as_str) == Some("agent_message"))
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn v2_spawn_uses_user_input_and_explicit_collaboration_mode() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    assert_v2_spawn_collaboration_mode(Some("research"), /*set_parent_research_mode*/ false).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn v2_spawn_inherits_parent_collaboration_mode_when_omitted() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    assert_v2_spawn_collaboration_mode(
+        /*requested_mode*/ None, /*set_parent_research_mode*/ true,
+    )
+    .await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
