@@ -1607,6 +1607,13 @@ async fn spawned_multi_agent_v2_child_receives_its_own_context_reminder() -> Res
         &server,
         |req: &wiremock::Request| {
             request_has_input_type(req, "message") && body_contains(req, CHILD_PROMPT)
+                && decoded_body(req)
+                    .and_then(|body| serde_json::from_slice::<Value>(&body).ok())
+                    .is_some_and(|body| {
+                        body.pointer("/client_metadata/x-openai-subagent")
+                            .and_then(Value::as_str)
+                            == Some("collab_spawn")
+                    })
         },
         sse(vec![
             ev_response_created("resp-child-reminder-1"),
