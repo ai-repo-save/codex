@@ -80,3 +80,13 @@ async fn additional_contexts_apply_limits_individually() -> Result<()> {
     assert_eq!(high_limit_output, &unlimited_text);
     Ok(())
 }
+
+#[test]
+fn bounded_preview_prefers_suffix_when_body_budget_exhausted() {
+    let text = "hook output that cannot fit into one token ".repeat(20);
+    let suffix = "\n\nFull hook output saved to: /tmp/hook_outputs/thread/id.txt";
+    let preview = bounded_formatted_preview(text, suffix, 1);
+
+    assert!(preview.starts_with("Full hook output saved to:"));
+    assert!(preview.contains("hook_outputs"));
+}

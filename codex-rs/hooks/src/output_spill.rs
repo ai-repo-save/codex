@@ -136,6 +136,10 @@ fn spilled_hook_output_preview(text: &str, path: &AbsolutePathBuf, token_limit: 
 }
 
 fn bounded_formatted_preview(text: &str, suffix: &str, token_limit: usize) -> String {
+    if !suffix.is_empty() && approx_token_count(suffix) >= token_limit {
+        return suffix.trim_start().to_string();
+    }
+
     let mut minimum_body_tokens = 0;
     let mut maximum_body_tokens = token_limit;
     let mut best_preview = None;
