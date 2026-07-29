@@ -5822,6 +5822,7 @@ mod tests {
         let completed = ItemCompletedEvent {
             thread_id: ThreadId::new(),
             turn_id: "turn-1".into(),
+            started_at_ms: None,
             completed_at_ms: 42,
             item: TurnItem::SubAgentActivity(SubAgentActivityItem {
                 id: "spawn-1".into(),
@@ -5947,6 +5948,7 @@ mod tests {
         let completed = ItemCompletedEvent {
             thread_id: sender_thread_id,
             turn_id: "turn-1".into(),
+            started_at_ms: Some(10),
             completed_at_ms: 20,
             item: TurnItem::CollabAgentToolCall(item),
         };
