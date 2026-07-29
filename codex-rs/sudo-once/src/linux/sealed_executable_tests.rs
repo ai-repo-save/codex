@@ -71,8 +71,7 @@ fn execute_only_helper_is_not_user_dumpable() {
         return;
     }
 
-    let executable =
-        SealedSudoExecutable::from_current_executable().expect("seal test executable");
+    let executable = SealedSudoExecutable::from_current_executable().expect("seal test executable");
     let read_only = executable.open_read_only().expect("read-only executable");
     let mut command = Command::new(SELF_FD_ZERO_PATH);
     command
@@ -94,9 +93,7 @@ fn execute_only_helper_is_not_user_dumpable() {
         command.uid(unprivileged_uid).gid(unprivileged_gid);
     }
 
-    let status = command
-        .status()
-        .expect("execute dumpability probe");
+    let status = command.status().expect("execute dumpability probe");
 
     assert_eq!(status.code(), Some(0));
 }
