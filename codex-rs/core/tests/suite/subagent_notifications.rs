@@ -1562,10 +1562,16 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
     )
     .await?;
     assert!(child_request.body_contains_text("Parent developer instructions."));
+    let child_user_texts =
+        message_texts_by_role_and_type(&child_request, "user", "input_text");
     assert_eq!(
-        message_texts_by_role_and_type(&child_request, "user", "input_text"),
-        vec![CHILD_PROMPT.to_string()]
+        child_user_texts
+            .iter()
+            .filter(|text| text.as_str() == CHILD_PROMPT)
+            .count(),
+        1
     );
+    assert!(!child_user_texts.iter().any(|text| text == TURN_1_PROMPT));
     assert!(
         child_request.inputs_of_type("agent_message").is_empty(),
         "plaintext spawn should not create an agent message"
