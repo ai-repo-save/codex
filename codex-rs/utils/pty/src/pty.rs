@@ -249,11 +249,9 @@ async fn spawn_process_portable(
         async move {
             #[cfg(windows)]
             let mut windows_input = crate::WindowsTtyInputNormalizer::default();
-            while let Some(mut bytes) = writer_rx.recv().await {
+            while let Some(bytes) = writer_rx.recv().await {
                 #[cfg(windows)]
-                {
-                    bytes = windows_input.normalize(&bytes);
-                }
+                let bytes = windows_input.normalize(&bytes);
                 let mut guard = writer.lock().await;
                 use std::io::Write;
                 let _ = guard.write_all(&bytes);
