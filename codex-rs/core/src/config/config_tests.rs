@@ -18,9 +18,9 @@ use codex_config::config_toml::AgentsToml;
 use codex_config::config_toml::AutoReviewReviewToml;
 use codex_config::config_toml::AutoReviewToml;
 use codex_config::config_toml::ConfigToml;
-use codex_config::config_toml::LogDbConfigToml;
 use codex_config::config_toml::ExperimentalRequestUserInput;
 use codex_config::config_toml::GoalsToml;
+use codex_config::config_toml::LogDbConfigToml;
 use codex_config::config_toml::ProjectConfig;
 use codex_config::config_toml::RealtimeConfig;
 use codex_config::config_toml::RealtimeToml;
@@ -12772,7 +12772,7 @@ async fn load_config_maps_log_db_level_to_runtime() -> std::io::Result<()> {
     let fixture = create_test_fixture()?;
     let mut cfg = fixture.cfg.clone();
     cfg.log_db = Some(LogDbConfigToml {
-        level: Some(LevelFilter::WARN),
+        level: Some(codex_config::config_toml::LogDbLevel::Warn),
     });
 
     let config = Config::load_from_base_config_with_overrides(

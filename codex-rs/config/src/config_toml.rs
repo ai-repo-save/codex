@@ -53,13 +53,13 @@ use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AskForApproval;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path::normalize_for_path_comparison;
-use tracing::level_filters::LevelFilter;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::de::Error as SerdeError;
 use serde_json::Value as JsonValue;
+use tracing::level_filters::LevelFilter;
 
 const RESERVED_MODEL_PROVIDER_IDS: [&str; 4] = [
     AMAZON_BEDROCK_PROVIDER_ID,
@@ -561,13 +561,37 @@ pub struct ConfigLockfileToml {
 pub struct LogDbConfigToml {
     /// Minimum event level captured in `logs_2.sqlite`.
     /// Defaults to `trace`.
-    pub level: Option<LevelFilter>,
+    pub level: Option<LogDbLevel>,
 }
 
 impl Default for LogDbConfigToml {
     fn default() -> Self {
         Self {
-            level: Some(LevelFilter::TRACE),
+            level: Some(LogDbLevel::Trace),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum LogDbLevel {
+    Off,
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl From<LogDbLevel> for LevelFilter {
+    fn from(level: LogDbLevel) -> Self {
+        match level {
+            LogDbLevel::Off => Self::OFF,
+            LogDbLevel::Error => Self::ERROR,
+            LogDbLevel::Warn => Self::WARN,
+            LogDbLevel::Info => Self::INFO,
+            LogDbLevel::Debug => Self::DEBUG,
+            LogDbLevel::Trace => Self::TRACE,
         }
     }
 }

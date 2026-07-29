@@ -121,7 +121,6 @@ use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::SandboxPolicy;
-use tracing::level_filters::LevelFilter;
 pub use codex_thread_store::ExtraConfig;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_absolute_path::AbsolutePathBufGuard;
@@ -138,6 +137,7 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tracing::level_filters::LevelFilter;
 
 use crate::config::permissions::BUILT_IN_READ_ONLY_PROFILE;
 use crate::config::permissions::BUILT_IN_WORKSPACE_PROFILE;
@@ -698,12 +698,11 @@ impl Default for LogDbConfig {
 }
 
 impl LogDbConfig {
-    fn resolve(config: &ConfigToml) -> Self {
+    fn resolve(config: Option<codex_config::config_toml::LogDbConfigToml>) -> Self {
         Self {
             level: config
-                .log_db
-                .as_ref()
                 .and_then(|log_db| log_db.level)
+                .map(LevelFilter::from)
                 .unwrap_or(LevelFilter::TRACE),
         }
     }
@@ -4325,6 +4324,7 @@ impl Config {
             profile_workspace_roots,
         )
         .map_err(std::io::Error::from)?;
+        let log_db = LogDbConfig::resolve(cfg.log_db);
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
         let config = Self {
             model,
@@ -4413,7 +4413,7 @@ impl Config {
             codex_home,
             sqlite: codex_state::SqliteConfig::from_sqlite_home(sqlite_home),
             log_dir,
-            log_db: LogDbConfig::resolve(&cfg),
+            log_db,
             config_lock_export_dir: cfg
                 .debug
                 .as_ref()
