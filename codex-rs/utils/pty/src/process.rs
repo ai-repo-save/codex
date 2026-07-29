@@ -1,5 +1,13 @@
 use core::fmt;
 use std::io;
+#[cfg(target_os = "linux")]
+use std::os::fd::AsFd;
+#[cfg(target_os = "linux")]
+use std::os::fd::BorrowedFd;
+#[cfg(target_os = "linux")]
+use std::os::fd::FromRawFd;
+#[cfg(target_os = "linux")]
+use std::os::fd::OwnedFd;
 #[cfg(unix)]
 use std::os::fd::RawFd;
 use std::process::ExitStatus;
@@ -21,6 +29,39 @@ use tokio::task::JoinHandle;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProcessSignal {
     Interrupt,
+}
+
+/// Kernel-pinned identity for a directly spawned Linux process.
+///
+/// The pidfd is opened before the process's wait task is started, so the identity cannot be
+/// confused with a later process that reuses the numeric PID.
+#[cfg(target_os = "linux")]
+#[derive(Debug)]
+pub struct LinuxProcessIdentity {
+    process_id: u32,
+    pidfd: OwnedFd,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxProcessIdentity {
+    pub(crate) fn try_open(process_id: u32) -> Option<Arc<Self>> {
+        let raw_pidfd = unsafe { libc::syscall(libc::SYS_pidfd_open, process_id, /*flags*/ 0) };
+        let raw_pidfd = i32::try_from(raw_pidfd).ok()?;
+        if raw_pidfd == -1 {
+            return None;
+        }
+
+        let pidfd = unsafe { OwnedFd::from_raw_fd(raw_pidfd) };
+        Some(Arc::new(Self { process_id, pidfd }))
+    }
+
+    pub fn process_id(&self) -> u32 {
+        self.process_id
+    }
+
+    pub fn pidfd(&self) -> BorrowedFd<'_> {
+        self.pidfd.as_fd()
+    }
 }
 
 pub(crate) fn unsupported_signal(signal: ProcessSignal) -> io::Error {
@@ -111,6 +152,8 @@ type ResizeFn = Box<dyn FnMut(TerminalSize) -> anyhow::Result<()> + Send>;
 pub struct ProcessHandle {
     writer_tx: StdMutex<Option<mpsc::Sender<Vec<u8>>>>,
     process_id: Option<u32>,
+    #[cfg(target_os = "linux")]
+    linux_process_identity: Option<Arc<LinuxProcessIdentity>>,
     killer: StdMutex<Option<Box<dyn ChildTerminator>>>,
     reader_handle: StdMutex<Option<JoinHandle<()>>>,
     reader_abort_handles: StdMutex<Vec<AbortHandle>>,
@@ -137,6 +180,7 @@ impl ProcessHandle {
     pub(crate) fn new(
         writer_tx: mpsc::Sender<Vec<u8>>,
         process_id: Option<u32>,
+        #[cfg(target_os = "linux")] linux_process_identity: Option<Arc<LinuxProcessIdentity>>,
         killer: Box<dyn ChildTerminator>,
         reader_handle: JoinHandle<()>,
         reader_abort_handles: Vec<AbortHandle>,
@@ -150,6 +194,8 @@ impl ProcessHandle {
         Self {
             writer_tx: StdMutex::new(Some(writer_tx)),
             process_id,
+            #[cfg(target_os = "linux")]
+            linux_process_identity,
             killer: StdMutex::new(Some(killer)),
             reader_handle: StdMutex::new(Some(reader_handle)),
             reader_abort_handles: StdMutex::new(reader_abort_handles),
@@ -168,6 +214,12 @@ impl ProcessHandle {
     /// before allowing a privilege-sensitive child to proceed.
     pub fn process_id(&self) -> Option<u32> {
         self.process_id
+    }
+
+    /// Returns the kernel-pinned identity of the directly spawned Linux process.
+    #[cfg(target_os = "linux")]
+    pub fn linux_process_identity(&self) -> Option<Arc<LinuxProcessIdentity>> {
+        self.linux_process_identity.clone()
     }
 
     /// Returns a channel sender for writing raw bytes to the child stdin.
@@ -487,6 +539,8 @@ pub fn spawn_from_driver(driver: ProcessDriver) -> SpawnedProcess {
     let handle = ProcessHandle::new(
         writer_tx,
         /*process_id*/ None,
+        #[cfg(target_os = "linux")]
+        /*linux_process_identity*/ None,
         Box::new(ClosureTerminator { inner: terminator }),
         reader_handle,
         stderr_reader_handle

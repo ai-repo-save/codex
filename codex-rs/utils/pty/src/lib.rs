@@ -19,6 +19,9 @@ pub use pipe::spawn_process_no_stdin as spawn_pipe_process_no_stdin;
 pub use process::ProcessDriver;
 /// Handle for interacting with a spawned process (PTY or pipe).
 pub use process::ProcessHandle;
+/// Kernel-pinned identity for a directly spawned Linux process.
+#[cfg(target_os = "linux")]
+pub use process::LinuxProcessIdentity;
 /// Process signal supported by spawned-process handles.
 pub use process::ProcessSignal;
 /// Bundle of process handles plus split output and exit receivers returned by spawn helpers.

@@ -576,6 +576,21 @@ async fn spawned_process_exposes_direct_child_pid() -> anyhow::Result<()> {
         0
     );
 
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::fd::AsRawFd;
+
+        let identity = spawned
+            .session
+            .linux_process_identity()
+            .ok_or_else(|| anyhow::anyhow!("pipe spawn did not pin its child PID"))?;
+        assert_eq!(identity.process_id(), process_id);
+        assert!(
+            unsafe { libc::fcntl(identity.pidfd().as_raw_fd(), libc::F_GETFD) } >= 0,
+            "PID file descriptor is invalid"
+        );
+    }
+
     spawned.session.terminate();
     let exit_code = tokio::time::timeout(tokio::time::Duration::from_secs(2), spawned.exit_rx)
         .await?

@@ -172,6 +172,8 @@ async fn spawn_process_portable(
 
     let mut child = pair.slave.spawn_command(command_builder)?;
     let process_id = child.process_id();
+    #[cfg(target_os = "linux")]
+    let linux_process_identity = crate::process::LinuxProcessIdentity::try_open(process_id);
     #[cfg(unix)]
     // portable-pty establishes the spawned PTY child as a new session leader on
     // Unix, so PID == PGID and we can reuse the pipe backend's process-group
@@ -250,6 +252,8 @@ async fn spawn_process_portable(
     let handle = ProcessHandle::new(
         writer_tx,
         Some(process_id),
+        #[cfg(target_os = "linux")]
+        linux_process_identity,
         Box::new(PtyChildTerminator {
             killer,
             #[cfg(unix)]
@@ -345,6 +349,8 @@ async fn spawn_process_preserving_fds(
     let mut child = command.spawn()?;
     drop(slave);
     let process_group_id = child.id();
+    #[cfg(target_os = "linux")]
+    let linux_process_identity = crate::process::LinuxProcessIdentity::try_open(process_group_id);
 
     let (writer_tx, mut writer_rx) = mpsc::channel::<Vec<u8>>(128);
     let (stdout_tx, stdout_rx) = mpsc::channel::<Vec<u8>>(128);
@@ -409,6 +415,8 @@ async fn spawn_process_preserving_fds(
     let handle = ProcessHandle::new(
         writer_tx,
         Some(process_group_id),
+        #[cfg(target_os = "linux")]
+        linux_process_identity,
         Box::new(RawPidTerminator { process_group_id }),
         reader_handle,
         Vec::new(),
