@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use sqlx::Acquire;
 use sqlx::SqlitePool;
 use sqlx::migrate::Migrator;
 
@@ -108,6 +109,79 @@ WHERE version = ?
     .bind(recency_migration.version)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+pub(crate) async fn repair_legacy_agent_mailbox_migration_versions(
+    pool: &SqlitePool,
+    migrator: &Migrator,
+) -> anyhow::Result<()> {
+    let migrations_table_exists = sqlx::query_scalar::<_, i64>(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations'",
+    )
+    .fetch_optional(pool)
+    .await?
+    .is_some();
+    if !migrations_table_exists {
+        return Ok(());
+    }
+
+    let version_repairs = [(44_i64, 46_i64), (43_i64, 45_i64)]
+        .into_iter()
+        .filter_map(|(legacy_version, current_version)| {
+            migrator
+                .migrations
+                .iter()
+                .find(|migration| migration.version == current_version)
+                .map(|migration| (legacy_version, migration))
+        })
+        .collect::<Vec<_>>();
+    let mut repairs_needed = false;
+    for (legacy_version, migration) in &version_repairs {
+        repairs_needed |= sqlx::query_scalar::<_, i64>(
+            r#"
+SELECT 1
+FROM _sqlx_migrations
+WHERE version = ?
+  AND checksum = ?
+  AND NOT EXISTS (
+      SELECT 1 FROM _sqlx_migrations WHERE version = ?
+  )
+            "#,
+        )
+        .bind(legacy_version)
+        .bind(migration.checksum.as_ref())
+        .bind(migration.version)
+        .fetch_optional(pool)
+        .await?
+        .is_some();
+    }
+    if !repairs_needed {
+        return Ok(());
+    }
+
+    let mut transaction = pool.begin().await?;
+    for (legacy_version, migration) in version_repairs {
+        sqlx::query(
+            r#"
+UPDATE _sqlx_migrations
+SET version = ?, description = ?
+WHERE version = ?
+  AND checksum = ?
+  AND NOT EXISTS (
+      SELECT 1 FROM _sqlx_migrations WHERE version = ?
+  )
+            "#,
+        )
+        .bind(migration.version)
+        .bind(migration.description.as_ref())
+        .bind(legacy_version)
+        .bind(migration.checksum.as_ref())
+        .bind(migration.version)
+        .execute(&mut *transaction)
+        .await?;
+    }
+    transaction.commit().await?;
     Ok(())
 }
 

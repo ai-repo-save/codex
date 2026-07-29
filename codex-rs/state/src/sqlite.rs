@@ -1,6 +1,7 @@
 //! Shared SQLite connection configuration.
 
 use crate::DbTelemetry;
+use crate::migrations::repair_legacy_agent_mailbox_migration_versions;
 use crate::migrations::repair_legacy_recency_migration_version;
 use crate::runtime::RuntimeDbInitError;
 use crate::telemetry;
@@ -220,6 +221,7 @@ impl SqliteConfig {
         let migrate_result = async {
             if matches!(spec.kind, DbKind::State) {
                 repair_legacy_recency_migration_version(&pool, migrator).await?;
+                repair_legacy_agent_mailbox_migration_versions(&pool, migrator).await?;
             }
             migrator.run(&pool).await.map_err(anyhow::Error::from)
         }

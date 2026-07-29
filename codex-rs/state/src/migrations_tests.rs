@@ -7,6 +7,7 @@ use std::borrow::Cow;
 
 use super::STATE_MIGRATOR;
 use super::THREAD_HISTORY_MIGRATOR;
+use super::repair_legacy_agent_mailbox_migration_versions;
 use super::repair_legacy_recency_migration_version;
 
 fn migrator_through(version: i64) -> Migrator {
@@ -447,6 +448,83 @@ async fn repairs_recency_migration_that_was_applied_as_version_38() {
         .migrations
         .iter()
         .filter(|migration| migration.version >= 38)
+        .map(|migration| (migration.version, migration.checksum.to_vec()))
+        .collect::<Vec<_>>();
+    assert_eq!(applied, expected);
+
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn repairs_agent_mailbox_migrations_that_were_applied_as_versions_43_and_44() {
+    let sqlite_home = crate::runtime::test_support::unique_temp_dir();
+    tokio::fs::create_dir_all(&sqlite_home)
+        .await
+        .expect("sqlite home should be created");
+    let _cleanup = scopeguard::guard(sqlite_home.clone(), |sqlite_home| {
+        let _ = std::fs::remove_dir_all(sqlite_home);
+    });
+    let sqlite = crate::SqliteConfig::new_for_testing(sqlite_home.as_path().abs());
+    let state_path = sqlite.state_db_path();
+    let pool = sqlite
+        .open_read_write_pool(&state_path)
+        .await
+        .expect("sqlite database should open");
+    migrator_through(/*version*/ 42)
+        .run(&pool)
+        .await
+        .expect("pre-mailbox migrations should apply");
+
+    let mut legacy_migrations = STATE_MIGRATOR
+        .migrations
+        .iter()
+        .filter(|migration| migration.version <= 42)
+        .cloned()
+        .collect::<Vec<_>>();
+    for (legacy_version, current_version) in [(43_i64, 45_i64), (44_i64, 46_i64)] {
+        let migration = STATE_MIGRATOR
+            .migrations
+            .iter()
+            .find(|migration| migration.version == current_version)
+            .expect("current mailbox migration should exist");
+        legacy_migrations.push(Migration::new(
+            legacy_version,
+            migration.description.clone(),
+            migration.migration_type,
+            migration.sql.clone(),
+            migration.no_tx,
+        ));
+    }
+    Migrator::with_migrations(legacy_migrations)
+        .run(&pool)
+        .await
+        .expect("legacy mailbox migrations should apply");
+
+    repair_legacy_agent_mailbox_migration_versions(&pool, &STATE_MIGRATOR)
+        .await
+        .expect("legacy mailbox migration history should be repaired");
+    STATE_MIGRATOR
+        .run(&pool)
+        .await
+        .expect("current migrations should apply after repair");
+
+    let applied = sqlx::query(
+        "SELECT version, checksum FROM _sqlx_migrations ORDER BY version",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("applied migrations should load")
+    .into_iter()
+    .map(|row| {
+        (
+            row.get::<i64, _>("version"),
+            row.get::<Vec<u8>, _>("checksum"),
+        )
+    })
+    .collect::<Vec<_>>();
+    let expected = STATE_MIGRATOR
+        .migrations
+        .iter()
         .map(|migration| (migration.version, migration.checksum.to_vec()))
         .collect::<Vec<_>>();
     assert_eq!(applied, expected);
