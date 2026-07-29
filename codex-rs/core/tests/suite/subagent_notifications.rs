@@ -2047,9 +2047,9 @@ async fn encrypted_spawn_agent_message_survives_local_child_compaction() -> Resu
         .position(|item| item.to_string().contains(CHILD_POST_COMPACT_PROMPT))
         .expect("post-compaction follow-up");
     assert!(
-        developer_index < agent_message_index
-            && agent_message_index < summary_index
-            && summary_index < follow_up_index,
+        agent_message_index < summary_index
+            && summary_index < developer_index
+            && developer_index < follow_up_index,
         "post-compaction input: {input:#?}"
     );
 
