@@ -489,9 +489,7 @@ async fn mcp_invalidation_refreshes_threads_that_are_still_starting() {
     }
 
     impl codex_extension_api::UserInstructionsProvider for BlockingThreadStartup {
-        fn load_user_instructions(
-            &self,
-        ) -> codex_extension_api::LoadUserInstructionsFuture<'_> {
+        fn load_user_instructions(&self) -> codex_extension_api::LoadUserInstructionsFuture<'_> {
             Box::pin(async move {
                 self.entered.notify_one();
                 self.release.notified().await;
