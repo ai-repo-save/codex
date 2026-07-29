@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 
-use sqlx::Acquire;
 use sqlx::SqlitePool;
 use sqlx::migrate::Migrator;
 

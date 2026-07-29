@@ -10,7 +10,9 @@ use crate::runtime::test_support::unique_temp_dir;
 use chrono::DateTime;
 use chrono::Utc;
 use codex_protocol::ThreadId;
+use codex_utils_absolute_path::test_support::PathExt;
 use pretty_assertions::assert_eq;
+use std::path::Path;
 
 const ROOT_THREAD_ID: &str = "00000000-0000-0000-0000-000000000501";
 const SENDER_THREAD_ID: &str = "00000000-0000-0000-0000-000000000502";
@@ -32,6 +34,10 @@ fn thread_id(value: &str) -> ThreadId {
 
 fn timestamp(seconds: i64) -> DateTime<Utc> {
     DateTime::from_timestamp(seconds, 0).expect("valid timestamp")
+}
+
+fn test_sqlite_config(codex_home: &Path) -> crate::SqliteConfig {
+    crate::SqliteConfig::new_for_testing(codex_home.abs())
 }
 
 fn message(
@@ -86,7 +92,9 @@ fn expected_snapshot(
 
 #[tokio::test]
 async fn mailbox_reads_filtered_messages_in_global_arrival_order() -> anyhow::Result<()> {
-    let runtime = StateRuntime::init(unique_temp_dir(), "test-provider".to_string()).await?;
+    let codex_home = unique_temp_dir();
+    let runtime =
+        StateRuntime::init(test_sqlite_config(&codex_home), "test-provider".to_string()).await?;
     let mailbox = runtime.agent_mailbox();
     mailbox
         .enqueue(message(
@@ -170,7 +178,8 @@ async fn mailbox_reads_filtered_messages_in_global_arrival_order() -> anyhow::Re
 async fn mailbox_enqueue_is_idempotent_after_consumption_and_runtime_restart() -> anyhow::Result<()>
 {
     let codex_home = unique_temp_dir();
-    let first_runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string()).await?;
+    let first_runtime =
+        StateRuntime::init(test_sqlite_config(&codex_home), "test-provider".to_string()).await?;
     let input = message(
         MESSAGE_ONE_ID,
         thread_id(SENDER_THREAD_ID),
@@ -195,7 +204,8 @@ async fn mailbox_enqueue_is_idempotent_after_consumption_and_runtime_restart() -
     );
     first_runtime.close().await;
 
-    let resumed_runtime = StateRuntime::init(codex_home, "test-provider".to_string()).await?;
+    let resumed_runtime =
+        StateRuntime::init(test_sqlite_config(&codex_home), "test-provider".to_string()).await?;
     let mut retried_input = input;
     retried_input.sender_thread_id = thread_id(SECOND_SENDER_THREAD_ID);
     retried_input.sender_agent_path = SECOND_SENDER_AGENT_PATH.to_string();
@@ -241,7 +251,9 @@ async fn mailbox_enqueue_is_idempotent_after_consumption_and_runtime_restart() -
 
 #[tokio::test]
 async fn concurrent_mailbox_reads_do_not_return_the_same_message() -> anyhow::Result<()> {
-    let runtime = StateRuntime::init(unique_temp_dir(), "test-provider".to_string()).await?;
+    let codex_home = unique_temp_dir();
+    let runtime =
+        StateRuntime::init(test_sqlite_config(&codex_home), "test-provider".to_string()).await?;
     let mailbox = runtime.agent_mailbox();
     mailbox
         .enqueue(message(
@@ -300,7 +312,8 @@ async fn concurrent_mailbox_reads_do_not_return_the_same_message() -> anyhow::Re
 #[tokio::test]
 async fn deleting_recipient_thread_removes_its_mailbox() -> anyhow::Result<()> {
     let codex_home = unique_temp_dir();
-    let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string()).await?;
+    let runtime =
+        StateRuntime::init(test_sqlite_config(&codex_home), "test-provider".to_string()).await?;
     let recipient_thread_id = thread_id(RECIPIENT_THREAD_ID);
     runtime
         .upsert_thread(&test_thread_metadata(
