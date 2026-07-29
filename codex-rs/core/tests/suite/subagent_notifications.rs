@@ -1562,8 +1562,7 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
     )
     .await?;
     assert!(child_request.body_contains_text("Parent developer instructions."));
-    let child_user_texts =
-        message_texts_by_role_and_type(&child_request, "user", "input_text");
+    let child_user_texts = message_texts_by_role_and_type(&child_request, "user", "input_text");
     assert_eq!(
         child_user_texts
             .iter()
