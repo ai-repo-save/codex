@@ -135,6 +135,10 @@ bazel-code-mode-host *args:
     bazel run //codex-rs/code-mode-host:codex-code-mode-host --run_under='cd /d "{{ invocation_directory_native() }}" &&' -- @($args | Select-Object -Skip 1)
 
 [no-cd]
+cargo-lock-update:
+    cargo metadata --format-version 1 --no-deps --manifest-path {{ justfile_directory() }}/codex-rs/Cargo.toml > /dev/null
+
+[no-cd]
 bazel-lock-update:
     bazel mod deps --lockfile_mode=update
 
