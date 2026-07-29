@@ -146,10 +146,10 @@ pub(crate) async fn run_shell_command(request: ShellCommandRequest<'_>) -> Comma
         let write_stdin = async move {
             if let Some(mut stdin) = stdin
                 && let Err(err) = stdin.write_all(input_json.as_bytes()).await
-                    && err.kind() != ErrorKind::BrokenPipe
-                {
-                    return Err(("stdin_error", format!("failed to write hook stdin: {err}")));
-                }
+                && err.kind() != ErrorKind::BrokenPipe
+            {
+                return Err(("stdin_error", format!("failed to write hook stdin: {err}")));
+            }
             Ok::<_, (&'static str, String)>(())
         };
         let collect_process = async {

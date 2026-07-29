@@ -3531,10 +3531,7 @@ async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<(
     let sealed_user_config = {
         let name = CString::new("codex-app-server-test-config")?;
         let file_descriptor = unsafe {
-            libc::memfd_create(
-                name.as_ptr(),
-                libc::MFD_CLOEXEC | libc::MFD_ALLOW_SEALING,
-            )
+            libc::memfd_create(name.as_ptr(), libc::MFD_CLOEXEC | libc::MFD_ALLOW_SEALING)
         };
         if file_descriptor == -1 {
             return Err(std::io::Error::last_os_error().into());

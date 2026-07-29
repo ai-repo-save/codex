@@ -486,11 +486,7 @@ mod tests {
     #[test]
     fn mcp_prefix_expansion_returns_empty_for_unknown_prefix() {
         let handler = ToolSearchHandler::new(
-            search_infos_for_mcp_tools(&[tool_info(
-                "calendar",
-                "create_event",
-                "Create events",
-            )]),
+            search_infos_for_mcp_tools(&[tool_info("calendar", "create_event", "Create events")]),
             ToolSearchSourceListing::Include,
         );
 
@@ -508,11 +504,7 @@ mod tests {
     #[test]
     fn tool_search_requires_query_or_mcp_prefix() {
         let handler = ToolSearchHandler::new(
-            search_infos_for_mcp_tools(&[tool_info(
-                "calendar",
-                "create_event",
-                "Create events",
-            )]),
+            search_infos_for_mcp_tools(&[tool_info("calendar", "create_event", "Create events")]),
             ToolSearchSourceListing::Include,
         );
 

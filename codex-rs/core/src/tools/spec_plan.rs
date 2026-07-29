@@ -573,7 +573,9 @@ fn add_tool_sources(context: &CoreToolPlanContext<'_>, planned_tools: &mut Plann
     add_core_utility_tools(context, planned_tools);
     planned_tools
         .runtimes
-        .extend(crate::tools::collaboration_plan::build(context.turn_context));
+        .extend(crate::tools::collaboration_plan::build(
+            context.turn_context,
+        ));
     for runtime in context.tool_runtimes {
         planned_tools.add_arc(Arc::clone(runtime));
     }

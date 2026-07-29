@@ -3325,10 +3325,7 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
             } = &started.item
                 && id == SPAWN_CALL_ID
             {
-                assert_eq!(
-                    context_inheritance,
-                    &Some(SpawnContextInheritance::Full)
-                );
+                assert_eq!(context_inheritance, &Some(SpawnContextInheritance::Full));
                 return Ok::<ThreadItem, anyhow::Error>(started.item);
             }
         }

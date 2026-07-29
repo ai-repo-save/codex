@@ -756,7 +756,7 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         dynamic_tools: Vec::new(),
         metrics_service_name: None,
         inherited_environments: None,
-    inherited_exec_policy: Some(Arc::new(parent_exec_policy)),
+        inherited_exec_policy: Some(Arc::new(parent_exec_policy)),
         parent_rollout_thread_trace: codex_rollout_trace::ThreadTraceContext::disabled(),
         user_shell_override: None,
         parent_trace: None,
@@ -766,11 +766,12 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         analytics_events_client: None,
         thread_store,
         attestation_provider: None,
-    external_time_provider: None,
-    inherited_multi_agent_version: None,
+        external_time_provider: None,
+        inherited_multi_agent_version: None,
         prompt_cache_key_override: None,
-    git_enrichment_policy: GitEnrichmentPolicy::Skip,
-    windows_sandbox_proxy_settings_mode: codex_sandboxing::WindowsSandboxProxySettingsMode::Preserve,
+        git_enrichment_policy: GitEnrichmentPolicy::Skip,
+        windows_sandbox_proxy_settings_mode:
+            codex_sandboxing::WindowsSandboxProxySettingsMode::Preserve,
     })
     .await
     .expect("spawn guardian subagent");

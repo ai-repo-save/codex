@@ -1,12 +1,12 @@
 use std::collections::HashMap;
+#[cfg(windows)]
+use std::fs;
 #[cfg(unix)]
 use std::path::Path;
 #[cfg(unix)]
 use std::process::Command;
 #[cfg(unix)]
 use std::time::Duration;
-#[cfg(windows)]
-use std::fs;
 
 use codex_protocol::protocol::HookEventName;
 use codex_protocol::protocol::HookSource;

@@ -2099,9 +2099,7 @@ async fn drain_in_flight(
                     /*fallback_step_context*/ None,
                     client_session,
                     InitialContextInjection::BeforeLastUserMessage {
-                        world_state: Arc::new(
-                            sess.build_world_state_for_step(&step_context).await,
-                        ),
+                        world_state: Arc::new(sess.build_world_state_for_step(&step_context).await),
                         step_context: Arc::clone(&step_context),
                     },
                     CompactionReason::UserRequested,

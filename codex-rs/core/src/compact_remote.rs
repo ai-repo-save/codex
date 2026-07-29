@@ -276,12 +276,8 @@ async fn run_remote_compact_task_inner_impl(
         new_history,
         trace_input_history,
     } = attempt;
-    let (mut new_history, world_state_baseline) = process_compacted_history(
-        sess.as_ref(),
-        new_history,
-        &initial_context_injection,
-    )
-    .await;
+    let (mut new_history, world_state_baseline) =
+        process_compacted_history(sess.as_ref(), new_history, &initial_context_injection).await;
     new_history.extend(retained_response_items);
     let (window_number, window_ids) = sess.advance_auto_compact_window().await;
 
