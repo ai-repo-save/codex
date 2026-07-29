@@ -37,6 +37,7 @@ use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::user_input::UserInput;
 use codex_thread_store::InMemoryThreadStore;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_utils_output_truncation::approx_token_count;
 use core_test_support::TestTargetOs;
 use core_test_support::hooks::trust_discovered_hooks;
 use core_test_support::hooks::trust_hooks;
@@ -1787,12 +1788,14 @@ async fn session_start_hooks_apply_additional_context_limits_individually() -> R
 
     let request = response.single_request();
     let developer_messages = request.message_input_texts("developer");
-    let spilled_message = developer_messages
+    let limited_message = developer_messages
         .iter()
-        .find(|message| spilled_hook_output_path(message).is_some())
-        .context("spilled limited session start context")?;
-    let path = spilled_hook_output_path(spilled_message).context("spill path")?;
-    assert_eq!(fs::read_to_string(path)?, limited_additional_context);
+        .find(|message| message.as_str() != expanded_additional_context.as_str())
+        .context("limited session start context")?;
+    assert!(
+        approx_token_count(limited_message) <= 1,
+        "expected the limited hook context to stay within one token, got {limited_message:?}"
+    );
     assert!(
         developer_messages
             .iter()
