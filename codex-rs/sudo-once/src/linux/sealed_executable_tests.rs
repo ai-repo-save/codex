@@ -56,8 +56,8 @@ fn installed_seals_prevent_mutating_the_helper_image() {
 
 #[test]
 fn execute_only_helper_is_not_user_dumpable() {
-    let executable = SealedSudoExecutable::from_path(Path::new("/proc/self/exe"))
-        .expect("seal test executable");
+    let executable =
+        SealedSudoExecutable::from_path(Path::new("/proc/self/exe")).expect("seal test executable");
     let read_only = executable.open_read_only().expect("read-only executable");
 
     let status = Command::new(SELF_FD_ZERO_PATH)
