@@ -139,14 +139,16 @@ fn build_v2(turn_context: &TurnContext) -> Vec<Arc<dyn CoreToolRuntime>> {
             exposure,
         ));
     }
-    runtimes.extend([
-        override_tool_exposure(
+    if turn_context.config.multi_agent_v2.wait_agent_enabled {
+        runtimes.push(override_tool_exposure(
             multi_agent_v2_handler(
                 WaitAgentHandlerV2::new(wait_agent_timeout_options(turn_context)),
                 tool_namespace,
             ),
             exposure,
-        ),
+        ));
+    }
+    runtimes.extend([
         override_tool_exposure(
             multi_agent_v2_handler(InterruptAgentHandler, tool_namespace),
             exposure,

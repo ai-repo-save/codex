@@ -1376,13 +1376,17 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
 
     test.submit_turn(TURN_1_PROMPT).await?;
 
-    let child_requests = wait_for_requests(&child_request_log).await?;
-    let child_request = child_requests
-        .last()
-        .expect("child request log should capture at least one request");
+    let child_request = wait_for_matching_request(
+        &child_request_log,
+        "child developer context request",
+        |request| !request.inputs_of_type("agent_message").is_empty(),
+    )
+    .await?;
     assert!(child_request.body_contains_text("Parent developer instructions."));
     assert_eq!(
-        strip_metadata_from_json(Value::Array(child_request.inputs_of_type("agent_message"))),
+        strip_response_item_ids_from_json(strip_metadata_from_json(Value::Array(
+            child_request.inputs_of_type("agent_message"),
+        ))),
         Value::Array(vec![json!({
             "type": "agent_message",
             "author": "/root",
