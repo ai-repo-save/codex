@@ -54,7 +54,7 @@ const TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS: &str =
 #[cfg(target_os = "linux")]
 const TEST_USER_CONFIG_FILE: &str = "CODEX_APP_SERVER_TEST_USER_CONFIG_FILE";
 #[cfg(target_os = "linux")]
-const UNWRITABLE_USER_CONFIG_FILE: &str = "/proc/1/task/1/children";
+const UNWRITABLE_USER_CONFIG_FILE: &str = "/proc/interrupts";
 const ALTERNATE_MARKETPLACE_RELATIVE_PATH: &str = ".claude-plugin/marketplace.json";
 const ALTERNATE_PLUGIN_MANIFEST_RELATIVE_PATH: &str = ".claude-plugin/plugin.json";
 
