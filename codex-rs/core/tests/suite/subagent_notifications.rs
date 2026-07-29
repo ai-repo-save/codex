@@ -1493,6 +1493,7 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
     let spawn_args = serde_json::to_string(&json!({
         "message": CHILD_PROMPT,
         "task_name": "worker",
+        "fork_turns": "none",
     }))?;
     mount_sse_once_match(
         &server,
