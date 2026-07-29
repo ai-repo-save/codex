@@ -58,11 +58,6 @@ impl Arg0PathEntryGuard {
 pub fn arg0_dispatch() -> Option<Arg0PathEntryGuard> {
     #[cfg(target_os = "linux")]
     if let Some(exit_code) = codex_sudo_once::try_dispatch_helper_from_env() {
-        let exit_code = if exit_code == std::process::ExitCode::SUCCESS {
-            0
-        } else {
-            1
-        };
         std::process::exit(exit_code);
     }
 
