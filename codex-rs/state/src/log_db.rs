@@ -51,8 +51,12 @@ const LOG_BATCH_SIZE: usize = 128;
 const LOG_FLUSH_INTERVAL: Duration = Duration::from_secs(2);
 
 pub fn default_filter() -> Targets {
+    default_filter_with_level(LevelFilter::TRACE)
+}
+
+pub fn default_filter_with_level(level: LevelFilter) -> Targets {
     Targets::new()
-        .with_default(LevelFilter::TRACE)
+        .with_default(level)
         .with_target("hyper_util", LevelFilter::WARN)
         .with_target("log", LevelFilter::OFF)
         .with_target("codex_otel.log_only", LevelFilter::OFF)

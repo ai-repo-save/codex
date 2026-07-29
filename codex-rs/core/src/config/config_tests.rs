@@ -18,6 +18,7 @@ use codex_config::config_toml::AgentsToml;
 use codex_config::config_toml::AutoReviewReviewToml;
 use codex_config::config_toml::AutoReviewToml;
 use codex_config::config_toml::ConfigToml;
+use codex_config::config_toml::LogDbConfigToml;
 use codex_config::config_toml::ExperimentalRequestUserInput;
 use codex_config::config_toml::GoalsToml;
 use codex_config::config_toml::ProjectConfig;
@@ -129,6 +130,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
+use tracing::level_filters::LevelFilter;
 
 fn stdio_mcp(command: &str) -> McpServerConfig {
     stdio_mcp_with_args(command, &[])
@@ -12762,6 +12764,28 @@ sandbox_private_desktop = false
     assert!(config.startup_warnings.iter().any(|warning| {
         warning.contains("Configured value for `check_for_update_on_startup` is overridden")
     }));
+    Ok(())
+}
+
+#[tokio::test]
+async fn load_config_maps_log_db_level_to_runtime() -> std::io::Result<()> {
+    let fixture = create_test_fixture()?;
+    let mut cfg = fixture.cfg.clone();
+    cfg.log_db = Some(LogDbConfigToml {
+        level: Some(LevelFilter::WARN),
+    });
+
+    let config = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides {
+            cwd: Some(fixture.cwd_path()),
+            ..Default::default()
+        },
+        fixture.codex_home(),
+    )
+    .await?;
+
+    assert_eq!(config.log_db.level, LevelFilter::WARN);
     Ok(())
 }
 

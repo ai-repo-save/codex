@@ -900,6 +900,33 @@ async fn read_materializes_default_allow_login_shell() {
 }
 
 #[tokio::test]
+async fn read_includes_log_db_as_additional_config() {
+    let tmp = tempdir().expect("tempdir");
+    let config = r#"
+[log_db]
+level = "warn"
+"#;
+    std::fs::write(tmp.path().join(CONFIG_TOML_FILE), config).unwrap();
+
+    let service = ConfigManager::without_managed_config_for_tests(tmp.path().to_path_buf());
+    let response = service
+        .read(ConfigReadParams {
+            include_layers: false,
+            cwd: None,
+        })
+        .await
+        .expect("config read should succeed");
+
+    let level = response
+        .config
+        .additional
+        .get("log_db")
+        .and_then(|value| value.get("level"))
+        .and_then(|value| value.as_str());
+    assert_eq!(level.map(str::to_uppercase), Some("WARN".to_string()));
+}
+
+#[tokio::test]
 async fn write_value_allows_unmanaged_sibling_of_exact_requirement() {
     let tmp = tempdir().expect("tempdir");
     let path = tmp.path().join(CONFIG_TOML_FILE);

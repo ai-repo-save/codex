@@ -53,6 +53,7 @@ use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AskForApproval;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path::normalize_for_path_comparison;
+use tracing::level_filters::LevelFilter;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Deserializer;
@@ -351,6 +352,10 @@ pub struct ConfigToml {
     /// Defaults to `$CODEX_HOME/log`.
     pub log_dir: Option<AbsolutePathBuf>,
 
+    /// Settings for logs persisted to `logs_2.sqlite`.
+    #[serde(default)]
+    pub log_db: Option<LogDbConfigToml>,
+
     /// Debugging and reproducibility settings.
     pub debug: Option<DebugToml>,
 
@@ -548,6 +553,23 @@ pub struct ConfigLockfileToml {
 
     /// Replayable effective config captured in the lockfile.
     pub config: ConfigToml,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema)]
+#[serde(default)]
+#[schemars(deny_unknown_fields)]
+pub struct LogDbConfigToml {
+    /// Minimum event level captured in `logs_2.sqlite`.
+    /// Defaults to `trace`.
+    pub level: Option<LevelFilter>,
+}
+
+impl Default for LogDbConfigToml {
+    fn default() -> Self {
+        Self {
+            level: Some(LevelFilter::TRACE),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]

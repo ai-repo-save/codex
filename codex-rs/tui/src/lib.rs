@@ -1296,7 +1296,7 @@ pub async fn run_main(
     let log_db = state_db.clone().map(log_db::start);
     let log_db_layer = log_db
         .clone()
-        .map(|layer| layer.with_filter(log_db::default_filter()));
+        .map(|layer| layer.with_filter(log_db::default_filter_with_level(config.log_db.level)));
 
     let _ = tracing_subscriber::registry()
         .with(tui_file_layer)

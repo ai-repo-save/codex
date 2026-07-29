@@ -121,6 +121,7 @@ use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::SandboxPolicy;
+use tracing::level_filters::LevelFilter;
 pub use codex_thread_store::ExtraConfig;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_absolute_path::AbsolutePathBufGuard;
@@ -683,6 +684,31 @@ impl AutoReviewReviewConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogDbConfig {
+    pub level: LevelFilter,
+}
+
+impl Default for LogDbConfig {
+    fn default() -> Self {
+        Self {
+            level: LevelFilter::TRACE,
+        }
+    }
+}
+
+impl LogDbConfig {
+    fn resolve(config: &ConfigToml) -> Self {
+        Self {
+            level: config
+                .log_db
+                .as_ref()
+                .and_then(|log_db| log_db.level)
+                .unwrap_or(LevelFilter::TRACE),
+        }
+    }
+}
+
 /// Application configuration loaded from disk and merged with overrides.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -992,6 +1018,9 @@ pub struct Config {
 
     /// Directory where Codex writes log files (defaults to `$CODEX_HOME/log`).
     pub log_dir: PathBuf,
+
+    /// Logging configuration for entries persisted in `logs_2.sqlite`.
+    pub log_db: LogDbConfig,
 
     /// Directory where Codex writes effective session config lock files.
     pub config_lock_export_dir: Option<AbsolutePathBuf>,
@@ -4384,6 +4413,7 @@ impl Config {
             codex_home,
             sqlite: codex_state::SqliteConfig::from_sqlite_home(sqlite_home),
             log_dir,
+            log_db: LogDbConfig::resolve(&cfg),
             config_lock_export_dir: cfg
                 .debug
                 .as_ref()

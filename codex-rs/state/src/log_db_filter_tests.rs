@@ -1,5 +1,6 @@
 use codex_utils_absolute_path::test_support::PathExt;
 use pretty_assertions::assert_eq;
+use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use uuid::Uuid;
@@ -51,6 +52,40 @@ async fn sqlite_sink_drops_low_level_opentelemetry_sdk_logs() {
             ("INFO", "opentelemetry_sdk", Some("retained-info")),
             ("TRACE", "codex_state", Some("retained-trace")),
         ]
+    );
+
+    let _ = tokio::fs::remove_dir_all(codex_home).await;
+}
+
+#[tokio::test]
+async fn sqlite_sink_honors_configured_default_filter_level() {
+    let codex_home =
+        std::env::temp_dir().join(format!("codex-state-log-db-filter-{}", Uuid::new_v4()));
+    let runtime = StateRuntime::init(
+        crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+        "test-provider".to_string(),
+    )
+    .await
+    .expect("initialize runtime");
+    let layer = start_with_config(runtime.clone(), LogSinkQueueConfig::default());
+
+    let guard = tracing_subscriber::registry()
+        .with(layer.clone().with_filter(default_filter_with_level(LevelFilter::WARN)))
+        .set_default();
+
+    tracing::info!("retained-info");
+    tracing::warn!("retained-warn");
+
+    layer.flush().await;
+    drop(guard);
+
+    let logs = runtime
+        .query_logs(&crate::LogQuery::default())
+        .await
+        .expect("query logs after flush");
+    assert_eq!(
+        logs.iter().map(|row| row.message.as_deref()).collect::<Vec<_>>(),
+        vec![Some("retained-warn")]
     );
 
     let _ = tokio::fs::remove_dir_all(codex_home).await;
