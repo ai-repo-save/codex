@@ -137,6 +137,7 @@ async fn stream_continues_when_response_body_arrives_after_header_timeout() {
     server.join().expect("test server should finish");
 
     assert_eq!(body.as_ref(), RESPONSE_BODY);
+}
 
 #[tokio::test]
 async fn enabled_request_logging_emits_transport_url_and_body() {
