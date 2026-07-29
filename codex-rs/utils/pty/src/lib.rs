@@ -15,9 +15,6 @@ pub const DEFAULT_OUTPUT_BYTES_CAP: usize = 1024 * 1024;
 pub use pipe::spawn_process as spawn_pipe_process;
 /// Spawn a non-interactive process using regular pipes, but close stdin immediately.
 pub use pipe::spawn_process_no_stdin as spawn_pipe_process_no_stdin;
-/// Kernel-pinned identity for a directly spawned Linux process.
-#[cfg(target_os = "linux")]
-pub use process::LinuxProcessIdentity;
 /// Driver-backed process adapter used by integrations with their own process transport.
 pub use process::ProcessDriver;
 /// Handle for interacting with a spawned process (PTY or pipe).
@@ -30,24 +27,16 @@ pub use process::SpawnedProcess;
 pub use process::TerminalSize;
 /// Combine stdout/stderr receivers into a single broadcast receiver.
 pub use process::combine_output_receivers;
-/// Combine stdout/stderr receivers without lossy broadcast fanout.
-pub use process::combine_output_receivers_lossless;
 /// Adapt an externally-driven process into the standard spawned-process handle.
 pub use process::spawn_from_driver;
 /// Backwards-compatible alias for ProcessHandle.
 pub type ExecCommandSession = ProcessHandle;
 /// Backwards-compatible alias for SpawnedProcess.
 pub type SpawnedPty = SpawnedProcess;
-/// Source connected to stdin for a manually spawned Unix PTY child.
-#[cfg(unix)]
-pub use pty::PtyStdin;
 /// Report whether ConPTY is available on this platform (Windows only).
 pub use pty::conpty_supported;
 /// Spawn a process attached to a PTY for interactive use.
 pub use pty::spawn_process as spawn_pty_process;
-/// Spawn a Unix process with explicit stdin while retaining a controlling PTY.
-#[cfg(unix)]
-pub use pty::spawn_process_with_stdin as spawn_pty_process_with_stdin;
 #[cfg(windows)]
 pub use win::PsuedoCon;
 #[cfg(windows)]

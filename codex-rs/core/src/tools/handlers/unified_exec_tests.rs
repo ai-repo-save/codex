@@ -262,41 +262,6 @@ async fn exec_command_pre_tool_use_payload_uses_raw_command() {
 }
 
 #[tokio::test]
-async fn exec_command_pre_tool_use_payload_marks_sudo_once() {
-    let payload = ToolPayload::Function {
-        arguments: serde_json::json!({
-            "cmd": "printf exec command",
-            "privilege": "sudo_once",
-        })
-        .to_string(),
-    };
-    let (session, turn) = make_session_and_context().await;
-    let turn = Arc::new(turn);
-    let handler = ExecCommandHandler::default();
-
-    assert_eq!(
-        handler.pre_tool_use_payload(&ToolInvocation {
-            session: session.into(),
-            step_context: StepContext::for_test(Arc::clone(&turn)),
-            turn,
-            cancellation_token: tokio_util::sync::CancellationToken::new(),
-            tracker: Arc::new(Mutex::new(TurnDiffTracker::new())),
-            call_id: "call-43-sudo".to_string(),
-            tool_name: codex_tools::ToolName::plain("exec_command"),
-            source: crate::tools::context::ToolCallSource::Direct,
-            payload,
-        }),
-        Some(crate::tools::registry::PreToolUsePayload {
-            tool_name: HookToolName::bash(),
-            tool_input: serde_json::json!({
-                "command": "printf exec command",
-                "privilege": "sudo_once",
-            }),
-        })
-    );
-}
-
-#[tokio::test]
 async fn exec_command_pre_tool_use_payload_skips_write_stdin() {
     let payload = ToolPayload::Function {
         arguments: serde_json::json!({ "chars": "echo hi" }).to_string(),

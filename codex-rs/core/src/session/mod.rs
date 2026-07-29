@@ -154,7 +154,6 @@ use codex_rollout_trace::ThreadStartedTraceMetadata;
 use codex_rollout_trace::ThreadTraceContext;
 use codex_sandboxing::policy_transforms::intersect_permission_profiles;
 use codex_shell_command::parse_command::parse_command;
-use codex_sudo_once::LocalSudoOnceBroker;
 use codex_terminal_detection::user_agent;
 use codex_thread_store::CreateThreadParams;
 use codex_thread_store::LiveThread;
@@ -454,7 +453,6 @@ pub(crate) struct SessionSpawnArgs {
     pub(crate) external_time_provider: Option<Arc<dyn TimeProvider>>,
     pub(crate) inherited_multi_agent_version: Option<MultiAgentVersion>,
     pub(crate) prompt_cache_key_override: Option<String>,
-    pub(crate) sudo_once_broker: Option<LocalSudoOnceBroker>,
 }
 
 #[derive(Clone)]
@@ -558,7 +556,6 @@ impl Session {
             external_time_provider,
             inherited_multi_agent_version,
             prompt_cache_key_override,
-            sudo_once_broker,
         } = args;
         let (tx_sub, rx_sub) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
         let (tx_event, rx_event) = async_channel::unbounded();
@@ -754,7 +751,6 @@ impl Session {
             multi_agent_version,
             prompt_cache_key_override,
             tool_execution_mode,
-            sudo_once_broker,
         ))
         .await
         .map_err(|e| {

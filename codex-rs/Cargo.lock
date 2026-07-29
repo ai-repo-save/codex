@@ -2034,7 +2034,6 @@ dependencies = [
  "codex-skills",
  "codex-skills-extension",
  "codex-state",
- "codex-sudo-once",
  "codex-thread-store",
  "codex-tools",
  "codex-utils-absolute-path",
@@ -2088,7 +2087,6 @@ dependencies = [
  "codex-exec-server",
  "codex-feedback",
  "codex-protocol",
- "codex-sudo-once",
  "codex-uds",
  "codex-utils-absolute-path",
  "codex-utils-rustls-provider",
@@ -2251,7 +2249,6 @@ dependencies = [
  "codex-linux-sandbox",
  "codex-sandboxing",
  "codex-shell-escalation",
- "codex-sudo-once",
  "codex-utils-absolute-path",
  "codex-utils-home-dir",
  "codex-windows-sandbox",
@@ -2708,7 +2705,6 @@ dependencies = [
  "codex-shell-escalation",
  "codex-skills",
  "codex-state",
- "codex-sudo-once",
  "codex-terminal-detection",
  "codex-test-binary-support",
  "codex-thread-store",
@@ -2776,7 +2772,6 @@ dependencies = [
  "which 8.0.0",
  "whoami 1.6.1",
  "wiremock",
- "zeroize",
  "zstd",
 ]
 
@@ -4070,18 +4065,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-sudo-once"
-version = "0.145.0"
-dependencies = [
- "codex-protocol",
- "codex-utils-absolute-path",
- "libc",
- "pretty_assertions",
- "tokio",
- "zeroize",
-]
-
-[[package]]
 name = "codex-terminal-detection"
 version = "0.145.0"
 dependencies = [
@@ -4198,7 +4181,6 @@ dependencies = [
  "codex-sandboxing",
  "codex-shell-command",
  "codex-state",
- "codex-sudo-once",
  "codex-terminal-detection",
  "codex-utils-absolute-path",
  "codex-utils-approval-presets",
@@ -4269,7 +4251,6 @@ dependencies = [
  "windows-sys 0.52.0",
  "winsplit",
  "wiremock",
- "zeroize",
 ]
 
 [[package]]
@@ -4825,7 +4806,6 @@ dependencies = [
  "codex-model-provider-info",
  "codex-models-manager",
  "codex-protocol",
- "codex-sudo-once",
  "codex-utils-absolute-path",
  "codex-utils-cargo-bin",
  "codex-utils-path-uri",

@@ -14,8 +14,6 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::codex_thread::BackgroundTerminalInfo;
-use crate::exec::ExecCapturePolicy;
-use crate::exec::ExecExpiration;
 use crate::exec_env::CODEX_PERMISSION_PROFILE_ENV_VAR;
 use crate::exec_env::CODEX_THREAD_ID_ENV_VAR;
 use crate::exec_env::create_env;
@@ -58,17 +56,13 @@ use crate::unified_exec::head_tail_buffer::HeadTailBuffer;
 use crate::unified_exec::process::OutputBuffer;
 use crate::unified_exec::process::OutputHandles;
 use crate::unified_exec::process::SpawnLifecycleHandle;
-use crate::unified_exec::process::SudoOnceSpawnContext;
 use crate::unified_exec::process::UnifiedExecProcess;
 use codex_network_proxy::NetworkProxy;
 use codex_protocol::config_types::ShellEnvironmentPolicy;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::SandboxErr;
 use codex_protocol::protocol::ExecCommandSource;
-use codex_protocol::sudo_once::ExecPrivilege;
 use codex_sandboxing::SandboxCommand;
-use codex_sandboxing::SandboxType;
-use codex_sudo_once::SudoOnceCommand;
 use codex_tools::ToolName;
 use codex_utils_output_truncation::approx_tokens_from_byte_count;
 use codex_utils_path_uri::PathUri;
@@ -89,7 +83,6 @@ const NETWORK_ACCESS_DENIED_MESSAGE: &str =
     "Network access was denied by the Codex sandbox network proxy.";
 const LATE_NETWORK_DENIAL_GRACE_PERIOD: Duration = Duration::from_millis(100);
 const INTERRUPT: &str = "\u{3}";
-const SUDO_ONCE_EXEC_WRAPPER: &str = "printf '%s' \"$1\" >&2; shift; exec \"$@\"";
 
 /// Test-only override for deterministic unified exec process IDs.
 ///
@@ -475,7 +468,6 @@ impl UnifiedExecProcessManager {
                 deferred_network_approval.clone(),
                 Arc::clone(&transcript),
                 Arc::clone(&initial_exec_command_active),
-                request.privilege == Some(ExecPrivilege::SudoOnce),
             )
             .await;
             Some(InitialExecCommandGuard {
@@ -921,7 +913,6 @@ impl UnifiedExecProcessManager {
         network_approval: Option<DeferredNetworkApproval>,
         transcript: Arc<tokio::sync::Mutex<HeadTailBuffer>>,
         initial_exec_command_active: Arc<AtomicBool>,
-        sudo_once: bool,
     ) {
         let entry = ProcessEntry {
             process: Arc::clone(&process),
@@ -932,7 +923,6 @@ impl UnifiedExecProcessManager {
             hook_command,
             tty,
             network_approval,
-            sudo_once_turn_id: sudo_once.then(|| context.turn.sub_id.clone()),
             session: Arc::downgrade(&context.session),
             last_used: started_at,
         };
@@ -1080,12 +1070,6 @@ impl UnifiedExecProcessManager {
         cwd: PathUri,
         context: &UnifiedExecContext,
     ) -> Result<(UnifiedExecProcess, Option<DeferredNetworkApproval>), UnifiedExecError> {
-        if request.privilege == Some(ExecPrivilege::SudoOnce) {
-            return self
-                .open_sudo_once_session(request, cwd, context)
-                .await
-                .map(|process| (process, None));
-        }
         let local_policy_env = create_env(
             &context.turn.config.permissions.shell_environment_policy,
             /*thread_id*/ None,
@@ -1178,111 +1162,6 @@ impl UnifiedExecProcessManager {
                 }
                 other => UnifiedExecError::create_process(format!("{other:?}")),
             })
-    }
-
-    async fn open_sudo_once_session(
-        &self,
-        request: &ExecCommandRequest,
-        cwd: PathUri,
-        context: &UnifiedExecContext,
-    ) -> Result<UnifiedExecProcess, UnifiedExecError> {
-        let native_cwd = cwd
-            .to_abs_path()
-            .map_err(|_| UnifiedExecError::ForeignPath { path: cwd.clone() })?;
-        let Some(broker) = context.session.services.sudo_once_broker.as_ref().cloned() else {
-            return Err(UnifiedExecError::process_failed(
-                "sudo_once is unavailable in this session".to_string(),
-            ));
-        };
-        let command = Arc::new(SudoOnceCommand::new(
-            context.session.thread_id,
-            Arc::<[String]>::from(request.command.clone()),
-            native_cwd.clone(),
-            request.justification.clone(),
-        ));
-        let approval_wait = context.session.services.elicitations.register();
-        let grant = broker.request_approval(command).await;
-        drop(approval_wait);
-        let Some(grant) = grant else {
-            return Err(UnifiedExecError::process_failed(
-                "sudo_once approval was not granted".to_string(),
-            ));
-        };
-
-        let prompt_sentinel = format!("__CODEX_SUDO_PROMPT_{}__", Uuid::new_v4().simple());
-        let started_sentinel = format!("__CODEX_SUDO_STARTED_{}__", Uuid::new_v4().simple());
-        let mut command = vec![
-            "/usr/bin/sudo".to_string(),
-            "-k".to_string(),
-            "-S".to_string(),
-            "-p".to_string(),
-            prompt_sentinel.clone(),
-            "--".to_string(),
-            "/bin/sh".to_string(),
-            "-p".to_string(),
-            "-c".to_string(),
-            SUDO_ONCE_EXEC_WRAPPER.to_string(),
-            "sh".to_string(),
-            started_sentinel.clone(),
-        ];
-        command.extend(grant.command().argv().iter().cloned());
-
-        let mut env = create_env(
-            &context.turn.config.permissions.shell_environment_policy,
-            /*thread_id*/ None,
-        );
-        env.insert(
-            CODEX_THREAD_ID_ENV_VAR.to_string(),
-            context.session.thread_id.to_string(),
-        );
-        let env = apply_unified_exec_env(env);
-        let exec_request = ExecRequest::new(
-            command,
-            grant.command().cwd().clone(),
-            env,
-            /*network*/ None,
-            /*network_environment_id*/ None,
-            ExecExpiration::DefaultTimeout,
-            ExecCapturePolicy::ShellTool,
-            SandboxType::None,
-            Vec::new(),
-            context.turn.windows_sandbox_level,
-            /*windows_sandbox_private_desktop*/ false,
-            context.turn.permission_profile().clone(),
-            /*arg0*/ None,
-        );
-        let spawn_cwd =
-            exec_request
-                .cwd
-                .to_abs_path()
-                .map_err(|_| UnifiedExecError::ForeignPath {
-                    path: exec_request.cwd.clone(),
-                })?;
-        let spawn_result = codex_sandboxing::spawn_process(codex_sandboxing::SpawnRequest {
-            command: &exec_request.command,
-            cwd: spawn_cwd.as_path(),
-            env: &exec_request.env,
-            arg0: &exec_request.arg0,
-            sandbox: SandboxType::None,
-            windows_sandbox: None,
-            tty: true,
-            stdin_open: true,
-            inherited_fds: &[],
-        })
-        .await
-        .map_err(|err| UnifiedExecError::create_process(err.to_string()))?;
-        UnifiedExecProcess::from_spawned_sudo_once(
-            spawn_result,
-            Box::new(crate::unified_exec::NoopSpawnLifecycle),
-            SudoOnceSpawnContext {
-                broker,
-                grant,
-                prompt_sentinel,
-                started_sentinel,
-                elicitation: Some(context.session.services.elicitations.register()),
-            },
-        )
-        .await
     }
 
     pub(super) async fn collect_output_until_deadline(
@@ -1477,34 +1356,6 @@ impl UnifiedExecProcessManager {
                 .collect();
             processes.reserved_process_ids.clear();
             entries
-        };
-
-        for entry in entries {
-            unregister_network_approval_for_entry(&entry).await;
-            entry.process.terminate();
-        }
-    }
-
-    pub(crate) async fn terminate_sudo_once_processes(&self, turn_id: Option<&str>) {
-        let entries: Vec<ProcessEntry> = {
-            let mut store = self.process_store.lock().await;
-            let process_ids = store
-                .processes
-                .iter()
-                .filter_map(|(process_id, entry)| {
-                    entry
-                        .sudo_once_turn_id
-                        .as_deref()
-                        .is_some_and(|entry_turn_id| {
-                            turn_id.is_none_or(|turn_id| turn_id == entry_turn_id)
-                        })
-                        .then_some(*process_id)
-                })
-                .collect::<Vec<_>>();
-            process_ids
-                .into_iter()
-                .filter_map(|process_id| store.remove(process_id))
-                .collect()
         };
 
         for entry in entries {

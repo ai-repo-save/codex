@@ -505,7 +505,6 @@ impl Session {
         multi_agent_version: Option<MultiAgentVersion>,
         prompt_cache_key_override: Option<String>,
         tool_execution_mode: ToolExecutionMode,
-        sudo_once_broker: Option<LocalSudoOnceBroker>,
     ) -> anyhow::Result<Arc<Self>> {
         debug!(
             "Configuring session: model={}; provider={:?}",
@@ -1112,7 +1111,6 @@ impl Session {
                 unified_exec_manager: UnifiedExecProcessManager::new(
                     config.background_terminal_max_timeout,
                 ),
-                sudo_once_broker,
                 elicitations: crate::elicitation::ElicitationService::new(),
                 shell_zsh_path: config.zsh_path.clone(),
                 main_execve_wrapper_exe: config.main_execve_wrapper_exe.clone(),

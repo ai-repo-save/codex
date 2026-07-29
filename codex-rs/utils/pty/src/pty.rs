@@ -122,16 +122,6 @@ fn platform_native_pty_system() -> Box<dyn portable_pty::PtySystem + Send> {
     }
 }
 
-/// Source connected to stdin for a manually spawned Unix PTY child.
-#[cfg(unix)]
-#[derive(Debug)]
-pub enum PtyStdin {
-    /// Connect stdin to the PTY slave, matching a conventional terminal process.
-    PtySlave,
-    /// Connect stdin to an explicit file while stdout and stderr remain on the PTY slave.
-    File(File),
-}
-
 /// Spawn a process attached to a PTY, preserving selected inherited file
 /// descriptors across exec on Unix.
 pub async fn spawn_process(
@@ -152,39 +142,11 @@ pub async fn spawn_process(
 
     #[cfg(unix)]
     if !inherited_fds.is_empty() {
-        return spawn_process_unix(
-            program,
-            args,
-            cwd,
-            env,
-            arg0,
-            size,
-            PtyStdin::PtySlave,
-            inherited_fds,
-        )
-        .await;
+        return spawn_process_preserving_fds(program, args, cwd, env, arg0, size, inherited_fds)
+            .await;
     }
 
     spawn_process_portable(program, args, cwd, env, arg0, size).await
-}
-
-/// Spawn a Unix process with an explicit stdin source while retaining a controlling PTY.
-#[cfg(unix)]
-pub async fn spawn_process_with_stdin(
-    program: &str,
-    args: &[String],
-    cwd: &Path,
-    env: &HashMap<String, String>,
-    arg0: &Option<String>,
-    size: TerminalSize,
-    stdin: PtyStdin,
-    inherited_fds: &[RawFd],
-) -> Result<SpawnedProcess> {
-    if program.is_empty() {
-        anyhow::bail!("missing program for PTY spawn");
-    }
-
-    spawn_process_unix(program, args, cwd, env, arg0, size, stdin, inherited_fds).await
 }
 
 async fn spawn_process_portable(
@@ -209,15 +171,11 @@ async fn spawn_process_portable(
     }
 
     let mut child = pair.slave.spawn_command(command_builder)?;
-    let process_id = child.process_id();
-    #[cfg(target_os = "linux")]
-    let linux_process_identity =
-        process_id.and_then(crate::process::LinuxProcessIdentity::try_open);
     #[cfg(unix)]
     // portable-pty establishes the spawned PTY child as a new session leader on
     // Unix, so PID == PGID and we can reuse the pipe backend's process-group
     // hard-kill semantics for descendants.
-    let process_group_id = process_id;
+    let process_group_id = child.process_id();
     let killer = child.clone_killer();
 
     let (writer_tx, mut writer_rx) = mpsc::channel::<Vec<u8>>(128);
@@ -288,9 +246,6 @@ async fn spawn_process_portable(
 
     let handle = ProcessHandle::new(
         writer_tx,
-        process_id,
-        #[cfg(target_os = "linux")]
-        linux_process_identity,
         Box::new(PtyChildTerminator {
             killer,
             #[cfg(unix)]
@@ -315,14 +270,13 @@ async fn spawn_process_portable(
 }
 
 #[cfg(unix)]
-async fn spawn_process_unix(
+async fn spawn_process_preserving_fds(
     program: &str,
     args: &[String],
     cwd: &Path,
     env: &HashMap<String, String>,
     arg0: &Option<String>,
     size: TerminalSize,
-    stdin: PtyStdin,
     inherited_fds: &[RawFd],
 ) -> Result<SpawnedProcess> {
     let (master, slave) = open_unix_pty(size)?;
@@ -339,10 +293,10 @@ async fn spawn_process_unix(
         command.env(key, value);
     }
 
-    let stdin = match stdin {
-        PtyStdin::PtySlave => slave.try_clone()?,
-        PtyStdin::File(file) => file,
-    };
+    // The child should see one terminal on all three stdio streams. Cloning
+    // the slave fd gives us three owned handles to the same PTY slave device
+    // so Command can wire them up independently as stdin/stdout/stderr.
+    let stdin = slave.try_clone()?;
     let stdout = slave.try_clone()?;
     let stderr = slave.try_clone()?;
     let inherited_fds = inherited_fds.to_vec();
@@ -371,11 +325,11 @@ async fn spawn_process_unix(
                     return Err(std::io::Error::last_os_error());
                 }
 
-                // stdout always refers to the PTY slave, even when stdin is an
-                // explicit file. Any descriptor for the slave can establish the
-                // controlling terminal for the child's new session.
+                // stdin now refers to the PTY slave, so make that fd the
+                // controlling terminal for the child's new session. stdout and
+                // stderr point at clones of the same slave device.
                 #[allow(clippy::cast_lossless)]
-                if libc::ioctl(1, libc::TIOCSCTTY as _, 0) == -1 {
+                if libc::ioctl(0, libc::TIOCSCTTY as _, 0) == -1 {
                     return Err(std::io::Error::last_os_error());
                 }
 
@@ -387,8 +341,6 @@ async fn spawn_process_unix(
     let mut child = command.spawn()?;
     drop(slave);
     let process_group_id = child.id();
-    #[cfg(target_os = "linux")]
-    let linux_process_identity = crate::process::LinuxProcessIdentity::try_open(process_group_id);
 
     let (writer_tx, mut writer_rx) = mpsc::channel::<Vec<u8>>(128);
     let (stdout_tx, stdout_rx) = mpsc::channel::<Vec<u8>>(128);
@@ -452,9 +404,6 @@ async fn spawn_process_unix(
 
     let handle = ProcessHandle::new(
         writer_tx,
-        Some(process_group_id),
-        #[cfg(target_os = "linux")]
-        linux_process_identity,
         Box::new(RawPidTerminator { process_group_id }),
         reader_handle,
         Vec::new(),

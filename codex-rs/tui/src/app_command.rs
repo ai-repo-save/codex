@@ -18,10 +18,11 @@ use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
+use serde::Serialize;
 use serde_json::Value;
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) enum AppCommand {
     Interrupt,
     CleanBackgroundTerminals,

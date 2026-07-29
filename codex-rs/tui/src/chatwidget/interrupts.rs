@@ -10,7 +10,6 @@ use codex_app_server_protocol::RequestId as AppServerRequestId;
 use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::ToolRequestUserInputParams;
 use codex_protocol::request_permissions::RequestPermissionsEvent;
-use codex_sudo_once::SudoOncePrompt;
 
 use super::ChatWidget;
 
@@ -24,7 +23,6 @@ pub(crate) enum QueuedInterrupt {
     },
     RequestPermissions(RequestPermissionsEvent),
     RequestUserInput(ToolRequestUserInputParams),
-    SudoOnce(SudoOncePrompt),
     ItemStarted(ThreadItem),
     ItemCompleted(ThreadItem),
 }
@@ -73,10 +71,6 @@ impl InterruptManager {
         self.queue.push_back(QueuedInterrupt::RequestUserInput(ev));
     }
 
-    pub(crate) fn push_sudo_once(&mut self, prompt: SudoOncePrompt) {
-        self.queue.push_back(QueuedInterrupt::SudoOnce(prompt));
-    }
-
     pub(crate) fn push_item_started(&mut self, item: ThreadItem) {
         self.queue.push_back(QueuedInterrupt::ItemStarted(item));
     }
@@ -102,7 +96,6 @@ impl InterruptManager {
                 }
                 QueuedInterrupt::RequestPermissions(ev) => chat.handle_request_permissions_now(ev),
                 QueuedInterrupt::RequestUserInput(ev) => chat.handle_request_user_input_now(ev),
-                QueuedInterrupt::SudoOnce(prompt) => chat.handle_sudo_once_prompt_now(prompt),
                 QueuedInterrupt::ItemStarted(item) => chat.handle_queued_item_started_now(item),
                 QueuedInterrupt::ItemCompleted(item) => {
                     chat.handle_queued_item_completed_now(item);
@@ -137,7 +130,6 @@ impl QueuedInterrupt {
                 matches!(request, ResolvedAppServerRequest::UserInput { call_id }
                     if ev.item_id == call_id.as_str())
             }
-            QueuedInterrupt::SudoOnce(_) => false,
             QueuedInterrupt::ItemStarted(_) | QueuedInterrupt::ItemCompleted(_) => false,
         }
     }

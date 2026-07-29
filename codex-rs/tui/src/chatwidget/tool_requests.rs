@@ -4,7 +4,6 @@
 //! that block on user decisions.
 
 use super::*;
-use codex_sudo_once::SudoOncePrompt;
 
 impl ChatWidget {
     pub(super) fn on_exec_approval_request(&mut self, _id: String, ev: ExecApprovalRequestEvent) {
@@ -272,14 +271,6 @@ impl ChatWidget {
         );
     }
 
-    pub(crate) fn on_sudo_once_prompt(&mut self, prompt: SudoOncePrompt) {
-        self.defer_or_handle(
-            prompt,
-            InterruptManager::push_sudo_once,
-            Self::handle_sudo_once_prompt_now,
-        );
-    }
-
     pub(super) fn on_request_permissions(&mut self, ev: RequestPermissionsEvent) {
         self.defer_or_handle(
             ev,
@@ -338,27 +329,6 @@ impl ChatWidget {
             cwd: self.config.cwd.to_path_buf(),
             changes: changed_paths,
         });
-    }
-
-    pub(crate) fn handle_sudo_once_prompt_now(&mut self, prompt: SudoOncePrompt) {
-        self.flush_answer_stream_with_separator();
-        match prompt {
-            SudoOncePrompt::Approval(prompt) => {
-                let (command, responder) = prompt.into_parts();
-                self.bottom_pane
-                    .push_sudo_once_approval_request(command, responder);
-            }
-            SudoOncePrompt::Credential(prompt) => {
-                let (command, attempt, responder) = prompt.into_parts();
-                self.bottom_pane
-                    .push_sudo_once_credential_request(command, attempt, responder);
-            }
-        }
-        self.set_ambient_pet_notification(
-            crate::pets::PetNotificationKind::Waiting,
-            /*body*/ None,
-        );
-        self.request_redraw();
     }
 
     pub(crate) fn handle_elicitation_request_now(

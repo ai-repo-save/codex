@@ -344,7 +344,6 @@ impl MemoryStartupContext {
                 environments,
                 thread_extension_init: Default::default(),
                 supports_openai_form_elicitation: false,
-                sudo_once_broker: None,
             })
             .await?;
 

@@ -368,7 +368,6 @@ async fn start_in_process_client(
             capabilities: None,
         },
         channel_capacity: in_process::DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
-        sudo_once_broker: None,
     })
     .await
 }

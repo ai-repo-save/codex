@@ -7,7 +7,7 @@
 //! - Typed caller-provided startup identity (`SessionSource` + client name).
 //! - Typed and raw request/notification dispatch.
 //! - Server request resolution and rejection.
-//! - Event consumption with backpressure signaling ([`AppServerEvent::Lagged`]).
+//! - Event consumption with backpressure signaling ([`InProcessServerEvent::Lagged`]).
 //! - Bounded graceful shutdown with abort fallback.
 //!
 //! The facade interposes a worker task between the caller and the underlying
@@ -55,9 +55,6 @@ pub use codex_exec_server::EnvironmentManager;
 pub use codex_exec_server::ExecServerRuntimePaths;
 use codex_feedback::CodexFeedback;
 use codex_protocol::protocol::SessionSource;
-use codex_sudo_once::LocalSudoOnceBroker;
-use codex_sudo_once::SudoOncePrompt;
-use codex_sudo_once::SudoOncePromptReceiver;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use serde::de::DeserializeOwned;
 use tokio::sync::mpsc;
@@ -95,21 +92,12 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 /// `MessageProcessor` continues to produce that shape internally.
 pub type RequestResult = std::result::Result<JsonRpcResult, JSONRPCErrorError>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AppServerEvent {
-    Lagged {
-        skipped: usize,
-    },
+    Lagged { skipped: usize },
     ServerNotification(ServerNotification),
     ServerRequest(ServerRequest),
-    /// Local-only sudo prompt delivered through the trusted TUI broker.
-    ///
-    /// This has no JSON-RPC representation and is deliberately non-cloneable
-    /// so the opaque response capability cannot leak to another consumer.
-    SudoOncePrompt(SudoOncePrompt),
-    Disconnected {
-        message: String,
-    },
+    Disconnected { message: String },
 }
 
 impl From<InProcessServerEvent> for AppServerEvent {
@@ -182,7 +170,7 @@ enum ForwardEventResult {
 /// If a dropped event is a `ServerRequest`, `reject_server_request` is called
 /// so the server does not wait for a response that will never come.
 async fn forward_in_process_event<F>(
-    event_tx: &mpsc::Sender<AppServerEvent>,
+    event_tx: &mpsc::Sender<InProcessServerEvent>,
     skipped_events: &mut usize,
     event: InProcessServerEvent,
     mut reject_server_request: F,
@@ -190,14 +178,12 @@ async fn forward_in_process_event<F>(
 where
     F: FnMut(ServerRequest),
 {
-    let requires_delivery = event_requires_delivery(&event);
-    let event = AppServerEvent::from(event);
     if *skipped_events > 0 {
-        if requires_delivery {
+        if event_requires_delivery(&event) {
             // Surface lag before the lossless event, but do not let the lag marker itself cause
             // us to drop the transcript/completion notification the caller is blocked on.
             if event_tx
-                .send(AppServerEvent::Lagged {
+                .send(InProcessServerEvent::Lagged {
                     skipped: *skipped_events,
                 })
                 .await
@@ -207,7 +193,7 @@ where
             }
             *skipped_events = 0;
         } else {
-            match event_tx.try_send(AppServerEvent::Lagged {
+            match event_tx.try_send(InProcessServerEvent::Lagged {
                 skipped: *skipped_events,
             }) {
                 Ok(()) => {
@@ -216,7 +202,7 @@ where
                 Err(mpsc::error::TrySendError::Full(_)) => {
                     *skipped_events = skipped_events.saturating_add(1);
                     warn!("dropping in-process app-server event because consumer queue is full");
-                    if let AppServerEvent::ServerRequest(request) = event {
+                    if let InProcessServerEvent::ServerRequest(request) = event {
                         reject_server_request(request);
                     }
                     return ForwardEventResult::Continue;
@@ -228,7 +214,7 @@ where
         }
     }
 
-    if requires_delivery {
+    if event_requires_delivery(&event) {
         // Block until the consumer catches up for transcript/completion notifications; this
         // preserves the visible assistant output even when the queue is otherwise saturated.
         if event_tx.send(event).await.is_err() {
@@ -242,7 +228,7 @@ where
         Err(mpsc::error::TrySendError::Full(event)) => {
             *skipped_events = skipped_events.saturating_add(1);
             warn!("dropping in-process app-server event because consumer queue is full");
-            if let AppServerEvent::ServerRequest(request) = event {
+            if let InProcessServerEvent::ServerRequest(request) = event {
                 reject_server_request(request);
             }
             ForwardEventResult::Continue
@@ -379,10 +365,7 @@ impl InProcessClientStartArgs {
         }
     }
 
-    fn into_runtime_start_args(
-        self,
-        sudo_once_broker: Option<LocalSudoOnceBroker>,
-    ) -> InProcessStartArgs {
+    fn into_runtime_start_args(self) -> InProcessStartArgs {
         let initialize = self.initialize_params();
         let thread_config_loader = configured_thread_config_loader(&self.config);
         InProcessStartArgs {
@@ -402,7 +385,6 @@ impl InProcessClientStartArgs {
             enable_codex_api_key_env: self.enable_codex_api_key_env,
             initialize,
             channel_capacity: self.channel_capacity,
-            sudo_once_broker,
         }
     }
 }
@@ -448,7 +430,7 @@ enum ClientCommand {
 /// boundary.
 pub struct InProcessAppServerClient {
     command_tx: mpsc::Sender<ClientCommand>,
-    event_rx: mpsc::Receiver<AppServerEvent>,
+    event_rx: mpsc::Receiver<InProcessServerEvent>,
     worker_handle: tokio::task::JoinHandle<()>,
 }
 
@@ -475,37 +457,16 @@ impl InProcessAppServerClient {
     /// internal event queue is saturated later, server requests are rejected
     /// with overload error instead of being silently dropped.
     pub async fn start(args: InProcessClientStartArgs) -> IoResult<Self> {
-        Self::start_with_sudo_once_broker(args, None, None).await
-    }
-
-    /// Starts an embedded app-server for the local interactive TUI.
-    ///
-    /// This is the only startup path that creates a sudo-once broker. The
-    /// broker and prompt receiver are process-local capabilities and never
-    /// appear in app-server JSON-RPC traffic.
-    pub async fn start_local_tui(args: InProcessClientStartArgs) -> IoResult<Self> {
-        let (sudo_once_broker, sudo_once_prompts) = LocalSudoOnceBroker::new();
-        Self::start_with_sudo_once_broker(args, Some(sudo_once_broker), Some(sudo_once_prompts))
-            .await
-    }
-
-    async fn start_with_sudo_once_broker(
-        args: InProcessClientStartArgs,
-        sudo_once_broker: Option<LocalSudoOnceBroker>,
-        sudo_once_prompts: Option<SudoOncePromptReceiver>,
-    ) -> IoResult<Self> {
         let channel_capacity = args.channel_capacity.max(1);
         let mut handle =
-            codex_app_server::in_process::start(args.into_runtime_start_args(sudo_once_broker))
-                .await?;
+            codex_app_server::in_process::start(args.into_runtime_start_args()).await?;
         let request_sender = handle.sender();
         let (command_tx, mut command_rx) = mpsc::channel::<ClientCommand>(channel_capacity);
-        let (event_tx, event_rx) = mpsc::channel::<AppServerEvent>(channel_capacity);
+        let (event_tx, event_rx) = mpsc::channel::<InProcessServerEvent>(channel_capacity);
 
         let worker_handle = tokio::spawn(async move {
             let mut event_stream_enabled = true;
             let mut skipped_events = 0usize;
-            let mut sudo_once_prompts = sudo_once_prompts;
             loop {
                 tokio::select! {
                     command = command_rx.recv() => {
@@ -600,27 +561,6 @@ impl InProcessAppServerClient {
                             ForwardEventResult::Continue => {}
                             ForwardEventResult::DisableStream => {
                                 event_stream_enabled = false;
-                            }
-                        }
-                    }
-                    prompt = async {
-                        match sudo_once_prompts.as_mut() {
-                            Some(receiver) => receiver.recv().await,
-                            None => std::future::pending::<Option<SudoOncePrompt>>().await,
-                        }
-                    }, if sudo_once_prompts.is_some() => {
-                        match prompt {
-                            Some(prompt) => {
-                                // Unlike regular app-server events, sudo prompts are
-                                // authorization capabilities and must never be dropped.
-                                // If the consumer disappears, dropping the prompt drops its
-                                // responder and therefore denies the pending operation.
-                                if event_tx.send(AppServerEvent::SudoOncePrompt(prompt)).await.is_err() {
-                                    break;
-                                }
-                            }
-                            None => {
-                                sudo_once_prompts = None;
                             }
                         }
                     }
@@ -778,9 +718,9 @@ impl InProcessAppServerClient {
     /// Returns the next in-process event, or `None` when worker exits.
     ///
     /// Callers are expected to drain this stream promptly. If they fall behind,
-    /// the worker emits [`AppServerEvent::Lagged`] markers and may reject
+    /// the worker emits [`InProcessServerEvent::Lagged`] markers and may reject
     /// pending server requests rather than letting approval flows hang.
-    pub async fn next_event(&mut self) -> Option<AppServerEvent> {
+    pub async fn next_event(&mut self) -> Option<InProcessServerEvent> {
         self.event_rx.recv().await
     }
 
@@ -944,7 +884,7 @@ impl AppServerClient {
 
     pub async fn next_event(&mut self) -> Option<AppServerEvent> {
         match self {
-            Self::InProcess(client) => client.next_event().await,
+            Self::InProcess(client) => client.next_event().await.map(Into::into),
             Self::Remote(client) => client.next_event().await,
         }
     }
@@ -995,7 +935,6 @@ mod tests {
     use codex_app_server_protocol::ToolRequestUserInputQuestion;
     use codex_core::config::ConfigBuilder;
     use codex_core::init_state_db;
-    use codex_sudo_once::SudoOnceCommand;
     use codex_uds::UnixListener;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use futures::SinkExt;
@@ -1003,7 +942,6 @@ mod tests {
     use pretty_assertions::assert_eq;
     use std::ops::Deref;
     use std::path::Path;
-    use std::sync::Arc;
     use tempfile::TempDir;
     use tokio::net::TcpListener;
     use tokio::time::Duration;
@@ -1354,75 +1292,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn local_tui_broker_forwards_a_single_use_approval_capability() {
-        const COMMAND: [&str; 2] = ["id", "-u"];
-        const CWD: &str = "/tmp";
-
-        let codex_home = TempDir::new().expect("temp dir");
-        let config = Arc::new(build_test_config_for_codex_home(codex_home.path()).await);
-        let state_db = init_state_db(config.as_ref())
-            .await
-            .expect("state db should initialize for in-process test");
-        let (broker, prompts) = LocalSudoOnceBroker::new();
-        let mut client = InProcessAppServerClient::start_with_sudo_once_broker(
-            InProcessClientStartArgs {
-                arg0_paths: Arg0DispatchPaths::default(),
-                config,
-                cli_overrides: Vec::new(),
-                loader_overrides: LoaderOverrides::default(),
-                strict_config: false,
-                cloud_config_bundle: CloudConfigBundleLoader::default(),
-                feedback: CodexFeedback::new(),
-                log_db: None,
-                state_db: Some(state_db),
-                environment_manager: Arc::new(EnvironmentManager::default_for_tests()),
-                config_warnings: Vec::new(),
-                session_source: SessionSource::Cli,
-                enable_codex_api_key_env: false,
-                client_name: "codex-app-server-client-test".to_string(),
-                client_version: "0.0.0-test".to_string(),
-                experimental_api: true,
-                mcp_server_openai_form_elicitation: false,
-                opt_out_notification_methods: Vec::new(),
-                channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
-            },
-            Some(broker.clone()),
-            Some(prompts),
-        )
-        .await
-        .expect("local TUI client should start");
-        let command = Arc::new(SudoOnceCommand::new(
-            codex_protocol::ThreadId::new(),
-            Arc::from(COMMAND.map(str::to_string)),
-            AbsolutePathBuf::try_from(CWD).expect("absolute cwd"),
-            None,
-        ));
-        let approval = {
-            let broker = broker.clone();
-            let command = Arc::clone(&command);
-            tokio::spawn(async move { broker.request_approval(command).await })
-        };
-
-        let event = timeout(Duration::from_secs(2), client.next_event())
-            .await
-            .expect("typed prompt should be forwarded before timeout")
-            .expect("local TUI event stream should remain open");
-        let AppServerEvent::SudoOncePrompt(SudoOncePrompt::Approval(prompt)) = event else {
-            panic!("expected local typed sudo approval prompt");
-        };
-        let (prompt_command, responder) = prompt.into_parts();
-        assert!(Arc::ptr_eq(&command, &prompt_command));
-        assert!(responder.approve());
-
-        let grant = approval
-            .await
-            .expect("approval task should join")
-            .expect("approved prompt should return a grant");
-        assert!(Arc::ptr_eq(&command, grant.command()));
-        client.shutdown().await.expect("shutdown should complete");
-    }
-
-    #[tokio::test]
     async fn threads_started_via_app_server_are_visible_through_typed_requests() {
         let client = start_test_client(SessionSource::Cli).await;
 
@@ -1471,7 +1340,7 @@ mod tests {
     async fn forward_in_process_event_preserves_transcript_notifications_under_backpressure() {
         let (event_tx, mut event_rx) = mpsc::channel(1);
         event_tx
-            .send(AppServerEvent::ServerNotification(
+            .send(InProcessServerEvent::ServerNotification(
                 command_execution_output_delta_notification("stdout-1"),
             ))
             .await
@@ -1524,20 +1393,23 @@ mod tests {
             .expect("receiver task should join successfully");
         assert!(matches!(
             &events[0],
-            AppServerEvent::ServerNotification(
+            InProcessServerEvent::ServerNotification(
                 ServerNotification::CommandExecutionOutputDelta(notification)
             ) if notification.delta == "stdout-1"
         ));
-        assert!(matches!(&events[1], AppServerEvent::Lagged { skipped: 1 }));
+        assert!(matches!(
+            &events[1],
+            InProcessServerEvent::Lagged { skipped: 1 }
+        ));
         assert!(matches!(
             &events[2],
-            AppServerEvent::ServerNotification(ServerNotification::AgentMessageDelta(
+            InProcessServerEvent::ServerNotification(ServerNotification::AgentMessageDelta(
                 notification
             )) if notification.delta == "hello"
         ));
         assert!(matches!(
             &events[3],
-            AppServerEvent::ServerNotification(ServerNotification::ItemCompleted(
+            InProcessServerEvent::ServerNotification(ServerNotification::ItemCompleted(
                 notification
             )) if matches!(
                 &notification.item,
@@ -1546,7 +1418,7 @@ mod tests {
         ));
         assert!(matches!(
             &events[4],
-            AppServerEvent::ServerNotification(ServerNotification::TurnCompleted(
+            InProcessServerEvent::ServerNotification(ServerNotification::TurnCompleted(
                 notification
             )) if notification.turn.status == codex_app_server_protocol::TurnStatus::Completed
         ));
@@ -2214,7 +2086,7 @@ mod tests {
         let (event_tx, event_rx) = mpsc::channel(1);
         let worker_handle = tokio::spawn(async {});
         event_tx
-            .send(AppServerEvent::Lagged { skipped: 3 })
+            .send(InProcessServerEvent::Lagged { skipped: 3 })
             .await
             .expect("lagged marker should enqueue");
         drop(event_tx);
@@ -2228,7 +2100,10 @@ mod tests {
         let event = timeout(Duration::from_secs(2), client.next_event())
             .await
             .expect("lagged marker should arrive before timeout");
-        assert!(matches!(event, Some(AppServerEvent::Lagged { skipped: 3 })));
+        assert!(matches!(
+            event,
+            Some(InProcessServerEvent::Lagged { skipped: 3 })
+        ));
 
         client.shutdown().await.expect("shutdown should complete");
     }
@@ -2348,7 +2223,7 @@ mod tests {
             opt_out_notification_methods: Vec::new(),
             channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
         }
-        .into_runtime_start_args(/*sudo_once_broker*/ None);
+        .into_runtime_start_args();
 
         assert_eq!(runtime_args.config, config);
         assert!(
@@ -2397,7 +2272,7 @@ mod tests {
             opt_out_notification_methods: Vec::new(),
             channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
         }
-        .into_runtime_start_args(/*sudo_once_broker*/ None);
+        .into_runtime_start_args();
 
         let err = runtime_args
             .thread_config_loader

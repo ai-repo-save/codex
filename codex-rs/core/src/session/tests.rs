@@ -5441,7 +5441,6 @@ async fn session_new_fails_when_zsh_fork_enabled_without_packaged_zsh() {
         Some(config.multi_agent_version_from_features()),
         /*prompt_cache_key_override*/ None,
         ToolExecutionMode::Normal,
-        /*sudo_once_broker*/ None,
     )
     .await;
 
@@ -5582,7 +5581,6 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         unified_exec_manager: UnifiedExecProcessManager::new(
             config.background_terminal_max_timeout,
         ),
-        sudo_once_broker: None,
         elicitations: crate::elicitation::ElicitationService::new(),
         shell_zsh_path: None,
         main_execve_wrapper_exe: config.main_execve_wrapper_exe.clone(),
@@ -5834,7 +5832,6 @@ async fn make_session_with_config_and_rx(
         Some(config.multi_agent_version_from_features()),
         /*prompt_cache_key_override*/ None,
         ToolExecutionMode::Normal,
-        /*sudo_once_broker*/ None,
     )
     .await?;
 
@@ -5951,7 +5948,6 @@ async fn make_session_with_history_source_and_agent_control_and_rx(
         Some(config.multi_agent_version_from_features()),
         /*prompt_cache_key_override*/ None,
         ToolExecutionMode::Normal,
-        /*sudo_once_broker*/ None,
     )
     .await?;
 
@@ -7775,7 +7771,6 @@ where
         unified_exec_manager: UnifiedExecProcessManager::new(
             config.background_terminal_max_timeout,
         ),
-        sudo_once_broker: None,
         elicitations: crate::elicitation::ElicitationService::new(),
         shell_zsh_path: None,
         main_execve_wrapper_exe: config.main_execve_wrapper_exe.clone(),

@@ -137,7 +137,6 @@ pub(crate) async fn run_codex_thread_interactive(
         external_time_provider: Some(Arc::clone(&parent_session.services.time_provider)),
         inherited_multi_agent_version: Some(MultiAgentVersion::Disabled),
         prompt_cache_key_override: None,
-        sudo_once_broker: None,
     }))
     .or_cancel(&cancel_token)
     .await??;

@@ -1,13 +1,5 @@
 use core::fmt;
 use std::io;
-#[cfg(target_os = "linux")]
-use std::os::fd::AsFd;
-#[cfg(target_os = "linux")]
-use std::os::fd::BorrowedFd;
-#[cfg(target_os = "linux")]
-use std::os::fd::FromRawFd;
-#[cfg(target_os = "linux")]
-use std::os::fd::OwnedFd;
 #[cfg(unix)]
 use std::os::fd::RawFd;
 use std::process::ExitStatus;
@@ -29,41 +21,6 @@ use tokio::task::JoinHandle;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProcessSignal {
     Interrupt,
-}
-
-/// Kernel-pinned identity for a directly spawned Linux process.
-///
-/// The pidfd is opened before the process's wait task is started, so the identity cannot be
-/// confused with a later process that reuses the numeric PID.
-#[cfg(target_os = "linux")]
-#[derive(Debug)]
-pub struct LinuxProcessIdentity {
-    process_id: u32,
-    pidfd: OwnedFd,
-}
-
-#[cfg(target_os = "linux")]
-impl LinuxProcessIdentity {
-    pub(crate) fn try_open(process_id: u32) -> Option<Arc<Self>> {
-        let raw_pidfd = unsafe {
-            libc::syscall(libc::SYS_pidfd_open, process_id, /*flags*/ 0)
-        };
-        let raw_pidfd = i32::try_from(raw_pidfd).ok()?;
-        if raw_pidfd == -1 {
-            return None;
-        }
-
-        let pidfd = unsafe { OwnedFd::from_raw_fd(raw_pidfd) };
-        Some(Arc::new(Self { process_id, pidfd }))
-    }
-
-    pub fn process_id(&self) -> u32 {
-        self.process_id
-    }
-
-    pub fn pidfd(&self) -> BorrowedFd<'_> {
-        self.pidfd.as_fd()
-    }
 }
 
 pub(crate) fn unsupported_signal(signal: ProcessSignal) -> io::Error {
@@ -153,9 +110,6 @@ type ResizeFn = Box<dyn FnMut(TerminalSize) -> anyhow::Result<()> + Send>;
 /// Handle for driving an interactive process (PTY or pipe).
 pub struct ProcessHandle {
     writer_tx: StdMutex<Option<mpsc::Sender<Vec<u8>>>>,
-    process_id: Option<u32>,
-    #[cfg(target_os = "linux")]
-    linux_process_identity: Option<Arc<LinuxProcessIdentity>>,
     killer: StdMutex<Option<Box<dyn ChildTerminator>>>,
     reader_handle: StdMutex<Option<JoinHandle<()>>>,
     reader_abort_handles: StdMutex<Vec<AbortHandle>>,
@@ -181,8 +135,6 @@ impl ProcessHandle {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         writer_tx: mpsc::Sender<Vec<u8>>,
-        process_id: Option<u32>,
-        #[cfg(target_os = "linux")] linux_process_identity: Option<Arc<LinuxProcessIdentity>>,
         killer: Box<dyn ChildTerminator>,
         reader_handle: JoinHandle<()>,
         reader_abort_handles: Vec<AbortHandle>,
@@ -195,9 +147,6 @@ impl ProcessHandle {
     ) -> Self {
         Self {
             writer_tx: StdMutex::new(Some(writer_tx)),
-            process_id,
-            #[cfg(target_os = "linux")]
-            linux_process_identity,
             killer: StdMutex::new(Some(killer)),
             reader_handle: StdMutex::new(Some(reader_handle)),
             reader_abort_handles: StdMutex::new(reader_abort_handles),
@@ -208,20 +157,6 @@ impl ProcessHandle {
             _pty_handles: StdMutex::new(pty_handles),
             resizer: StdMutex::new(resizer),
         }
-    }
-
-    /// Returns the PID of the directly spawned process when the local backend provides one.
-    ///
-    /// This is captured synchronously during spawn. Linux callers that need a stable process
-    /// identity must use `linux_process_identity` rather than reopening a pidfd by PID.
-    pub fn process_id(&self) -> Option<u32> {
-        self.process_id
-    }
-
-    /// Returns the kernel-pinned identity of the directly spawned Linux process.
-    #[cfg(target_os = "linux")]
-    pub fn linux_process_identity(&self) -> Option<Arc<LinuxProcessIdentity>> {
-        self.linux_process_identity.clone()
     }
 
     /// Returns a channel sender for writing raw bytes to the child stdin.
@@ -403,48 +338,6 @@ pub fn combine_output_receivers(
     combined_rx
 }
 
-/// Combine split stdout/stderr receivers without dropping output under backpressure.
-///
-/// This is intended for control protocols embedded in process output. Callers must
-/// consume the returned receiver directly before any lossy fanout.
-pub fn combine_output_receivers_lossless(
-    mut stdout_rx: mpsc::Receiver<Vec<u8>>,
-    mut stderr_rx: mpsc::Receiver<Vec<u8>>,
-) -> mpsc::Receiver<Vec<u8>> {
-    let (combined_tx, combined_rx) = mpsc::channel(256);
-    tokio::spawn(async move {
-        let mut stdout_open = true;
-        let mut stderr_open = true;
-
-        loop {
-            tokio::select! {
-                stdout = stdout_rx.recv(), if stdout_open => match stdout {
-                    Some(chunk) => {
-                        if combined_tx.send(chunk).await.is_err() {
-                            break;
-                        }
-                    }
-                    None => {
-                        stdout_open = false;
-                    }
-                },
-                stderr = stderr_rx.recv(), if stderr_open => match stderr {
-                    Some(chunk) => {
-                        if combined_tx.send(chunk).await.is_err() {
-                            break;
-                        }
-                    }
-                    None => {
-                        stderr_open = false;
-                    }
-                },
-                else => break,
-            }
-        }
-    });
-    combined_rx
-}
-
 /// Return value from PTY or pipe spawn helpers.
 #[derive(Debug)]
 pub struct SpawnedProcess {
@@ -540,10 +433,6 @@ pub fn spawn_from_driver(driver: ProcessDriver) -> SpawnedProcess {
 
     let handle = ProcessHandle::new(
         writer_tx,
-        /*process_id*/ None,
-        #[cfg(target_os = "linux")]
-        /*linux_process_identity*/
-        None,
         Box::new(ClosureTerminator { inner: terminator }),
         reader_handle,
         stderr_reader_handle

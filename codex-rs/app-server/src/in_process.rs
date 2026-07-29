@@ -89,7 +89,6 @@ use codex_login::AuthManager;
 use codex_protocol::protocol::SessionSource;
 pub use codex_rollout::StateDbHandle;
 pub use codex_state::log_db::LogDbLayer;
-use codex_sudo_once::LocalSudoOnceBroker;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
@@ -150,11 +149,6 @@ pub struct InProcessStartArgs {
     pub initialize: InitializeParams,
     /// Capacity used for all runtime queues (clamped to at least 1).
     pub channel_capacity: usize,
-    /// Local-only sudo prompt broker for a trusted TUI embedder.
-    ///
-    /// This value never comes from JSON-RPC and is scoped to the single
-    /// in-process connection created by this runtime.
-    pub sudo_once_broker: Option<LocalSudoOnceBroker>,
 }
 
 /// Event emitted from the app-server to the in-process client.
@@ -458,9 +452,7 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
                 plugin_startup_tasks: crate::PluginStartupTasks::Start,
             }));
             let mut thread_created_rx = processor.thread_created_receiver();
-            let session = Arc::new(ConnectionSessionState::new_with_sudo_once_broker(
-                args.sudo_once_broker,
-            ));
+            let session = Arc::new(ConnectionSessionState::new());
             let mut listen_for_threads = true;
 
             loop {
@@ -496,12 +488,6 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
                                 );
                                 if !was_initialized && is_initialized {
                                     processor.send_initialize_notifications().await;
-                                    processor
-                                        .connection_initialized(
-                                            IN_PROCESS_CONNECTION_ID,
-                                            session.request_attestation(),
-                                        )
-                                        .await;
                                 }
                             }
                             Some(ProcessorCommand::Notification(notification)) => {
@@ -605,10 +591,14 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
                             }
                         }
                         Some(InProcessClientMessage::ServerRequestResponse { request_id, result }) => {
-                            outgoing_message_sender.notify_client_response(request_id, result).await;
+                            outgoing_message_sender
+                                .notify_client_response(request_id, result)
+                                .await;
                         }
                         Some(InProcessClientMessage::ServerRequestError { request_id, error }) => {
-                            outgoing_message_sender.notify_client_error(request_id, error).await;
+                            outgoing_message_sender
+                                .notify_client_error(request_id, error)
+                                .await;
                         }
                         Some(InProcessClientMessage::Shutdown { done_tx }) => {
                             shutdown_ack = Some(done_tx);
@@ -814,7 +804,6 @@ mod tests {
                 capabilities: None,
             },
             channel_capacity,
-            sudo_once_broker: None,
         };
         let mut client = start(args).await.expect("in-process runtime should start");
         client._test_codex_home = Some(codex_home);

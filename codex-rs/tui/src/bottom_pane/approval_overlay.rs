@@ -1154,22 +1154,6 @@ mod tests {
             .collect()
     }
 
-    fn render_renderable_lines(renderable: &dyn Renderable, width: u16) -> String {
-        let height = renderable.desired_height(width);
-        let mut buf = Buffer::empty(Rect::new(0, 0, width, height));
-        renderable.render(Rect::new(0, 0, width, height), &mut buf);
-        (0..buf.area.height)
-            .map(|row| {
-                (0..buf.area.width)
-                    .map(|col| buf[(col, row)].symbol().to_string())
-                    .collect::<String>()
-                    .trim_end()
-                    .to_string()
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
     fn normalize_snapshot_paths(rendered: String) -> String {
         [
             (absolute_path("/tmp/readme.txt"), "/tmp/readme.txt"),

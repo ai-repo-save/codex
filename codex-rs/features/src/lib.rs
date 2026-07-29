@@ -101,8 +101,6 @@ pub enum Feature {
     CodeModeOnly,
     /// Use the single unified PTY-backed exec tool.
     UnifiedExec,
-    /// Allow one command to request an independently approved sudo execution.
-    SudoOnce,
     /// Route shell tool execution through the zsh exec bridge.
     ShellZshFork,
     /// Allow unified exec to compose with the zsh exec bridge.
@@ -840,12 +838,6 @@ pub const FEATURES: &[FeatureSpec] = &[
         key: "unified_exec",
         stage: Stage::Stable,
         default_enabled: !cfg!(windows),
-    },
-    FeatureSpec {
-        id: Feature::SudoOnce,
-        key: "sudo_once",
-        stage: Stage::UnderDevelopment,
-        default_enabled: false,
     },
     FeatureSpec {
         id: Feature::ShellZshFork,

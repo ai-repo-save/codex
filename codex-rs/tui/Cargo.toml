@@ -52,7 +52,6 @@ codex-rollout = { workspace = true }
 codex-sandboxing = { workspace = true }
 codex-shell-command = { workspace = true }
 codex-state = { workspace = true }
-codex-sudo-once = { workspace = true }
 codex-terminal-detection = { workspace = true }
 codex-utils-approval-presets = { workspace = true }
 codex-utils-absolute-path = { workspace = true }
@@ -121,7 +120,6 @@ url = { workspace = true }
 urlencoding = { workspace = true }
 webbrowser = { workspace = true }
 uuid = { workspace = true }
-zeroize = { workspace = true }
 
 codex-windows-sandbox = { workspace = true }
 tokio-util = { workspace = true, features = ["time"] }

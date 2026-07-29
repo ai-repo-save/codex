@@ -56,11 +56,6 @@ impl Arg0PathEntryGuard {
 }
 
 pub fn arg0_dispatch() -> Option<Arg0PathEntryGuard> {
-    #[cfg(target_os = "linux")]
-    if let Some(exit_code) = codex_sudo_once::try_dispatch_helper_from_env() {
-        std::process::exit(exit_code);
-    }
-
     // Determine if we were invoked via the special alias.
     let mut args = std::env::args_os();
     let argv0 = args.next().unwrap_or_default();
@@ -196,16 +191,14 @@ fn prepare_path_env_var_with_aliases(
 /// `codex-linux-sandbox` we *directly* execute
 /// [`codex_linux_sandbox::run_main`] (which never returns). Otherwise we:
 ///
-/// 1.  Dispatch a Linux-only internal sudo helper before processing normal
-///     arguments or mutable configuration.
-/// 2.  Load `.env` values from `~/.codex/.env` before creating any threads.
-/// 3.  Spawn a main runtime thread with a controlled stack size.
-/// 4.  Construct a Tokio multi-thread runtime.
-/// 5.  Capture the current executable path and derive the
+/// 1.  Load `.env` values from `~/.codex/.env` before creating any threads.
+/// 2.  Spawn a main runtime thread with a controlled stack size.
+/// 3.  Construct a Tokio multi-thread runtime.
+/// 4.  Capture the current executable path and derive the
 ///     `codex-linux-sandbox` helper path (falling back to the current
 ///     executable if needed) so children can re-invoke the sandbox when running
 ///     on Linux.
-/// 6.  Execute the provided async `main_fn` inside that runtime, forwarding any
+/// 5.  Execute the provided async `main_fn` inside that runtime, forwarding any
 ///     error. Note that `main_fn` receives [`Arg0DispatchPaths`], which
 ///     contains the helper executable paths needed to construct
 ///     [`codex_core::config::Config`].

@@ -6,15 +6,12 @@ use std::sync::atomic::Ordering;
 use tokio::sync::Mutex;
 use tokio::sync::Notify;
 use tokio::sync::broadcast;
-use tokio::sync::mpsc;
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
-use zeroize::Zeroizing;
 
-use crate::elicitation::ElicitationRegistration;
 use crate::exec::is_likely_sandbox_denied;
 use codex_exec_server::ExecProcess;
 use codex_exec_server::ExecProcessEvent;
@@ -26,8 +23,6 @@ use codex_protocol::exec_output::ExecToolCallOutput;
 use codex_protocol::exec_output::StreamOutput;
 use codex_protocol::protocol::TruncationPolicy;
 use codex_sandboxing::SandboxType;
-use codex_sudo_once::LocalSudoOnceBroker;
-use codex_sudo_once::SudoOnceGrant;
 use codex_utils_output_truncation::formatted_truncate_text;
 use codex_utils_pty::ExecCommandSession;
 use codex_utils_pty::ProcessSignal as PtyProcessSignal;
@@ -37,9 +32,6 @@ use super::UNIFIED_EXEC_OUTPUT_MAX_TOKENS;
 use super::UnifiedExecError;
 use super::head_tail_buffer::HeadTailBuffer;
 use super::process_state::ProcessState;
-use super::sudo_once::SudoAuthenticationState;
-use super::sudo_once::SudoPromptAction;
-use super::sudo_once::SudoPromptFilter;
 
 const EARLY_EXIT_GRACE_PERIOD: Duration = Duration::from_millis(150);
 pub(crate) trait SpawnLifecycle: std::fmt::Debug + Send + Sync {
@@ -75,40 +67,8 @@ pub(crate) struct OutputHandles {
 
 /// Transport-specific process handle used by unified exec.
 enum ProcessHandle {
-    Local(Arc<ExecCommandSession>),
+    Local(Box<ExecCommandSession>),
     ExecServer(Arc<dyn ExecProcess>),
-}
-
-pub(super) struct SudoOnceSpawnContext {
-    pub(super) broker: LocalSudoOnceBroker,
-    pub(super) grant: SudoOnceGrant,
-    pub(super) prompt_sentinel: String,
-    pub(super) started_sentinel: String,
-    pub(super) elicitation: Option<ElicitationRegistration>,
-}
-
-enum LocalOutputReceiver {
-    Broadcast(broadcast::Receiver<Vec<u8>>),
-    Lossless(mpsc::Receiver<Vec<u8>>),
-}
-
-enum LocalOutputReceiveError {
-    Lagged,
-    Closed,
-}
-
-impl LocalOutputReceiver {
-    async fn recv(&mut self) -> Result<Vec<u8>, LocalOutputReceiveError> {
-        match self {
-            Self::Broadcast(receiver) => receiver.recv().await.map_err(|error| match error {
-                broadcast::error::RecvError::Lagged(_) => LocalOutputReceiveError::Lagged,
-                broadcast::error::RecvError::Closed => LocalOutputReceiveError::Closed,
-            }),
-            Self::Lossless(receiver) => {
-                receiver.recv().await.ok_or(LocalOutputReceiveError::Closed)
-            }
-        }
-    }
 }
 
 /// Unified wrapper over directly spawned PTY sessions and exec-server-backed
@@ -123,7 +83,6 @@ pub(crate) struct UnifiedExecProcess {
     cancellation_token: CancellationToken,
     output_drained: Arc<Notify>,
     interaction_lock: Arc<Mutex<()>>,
-    stdin_ready: Arc<AtomicBool>,
     state_tx: watch::Sender<ProcessState>,
     state_rx: watch::Receiver<ProcessState>,
     output_task: Option<JoinHandle<()>>,
@@ -166,7 +125,6 @@ impl UnifiedExecProcess {
             cancellation_token,
             output_drained,
             interaction_lock: Arc::new(Mutex::new(())),
-            stdin_ready: Arc::new(AtomicBool::new(true)),
             state_tx,
             state_rx,
             output_task: None,
@@ -176,9 +134,6 @@ impl UnifiedExecProcess {
     }
 
     pub(super) async fn write(&self, data: &[u8]) -> Result<(), UnifiedExecError> {
-        if !self.stdin_ready.load(Ordering::Acquire) {
-            return Err(UnifiedExecError::StdinClosed);
-        }
         match &self.process_handle {
             ProcessHandle::Local(process_handle) => process_handle
                 .writer_sender()
@@ -377,24 +332,18 @@ impl UnifiedExecProcess {
             mut exit_rx,
         } = spawned;
         let output_rx = codex_utils_pty::combine_output_receivers(stdout_rx, stderr_rx);
-        let process_handle = Arc::new(process_handle);
         let mut managed = Self::new(
-            ProcessHandle::Local(Arc::clone(&process_handle)),
+            ProcessHandle::Local(Box::new(process_handle)),
             sandbox_type,
             Some(spawn_lifecycle),
         );
         managed.output_task = Some(Self::spawn_local_output_task(
-            LocalOutputReceiver::Broadcast(output_rx),
+            output_rx,
             Arc::clone(&managed.output_buffer),
             Arc::clone(&managed.output_notify),
             Arc::clone(&managed.output_closed),
             Arc::clone(&managed.output_closed_notify),
             managed.output_tx.clone(),
-            managed.cancellation_token.clone(),
-            managed.state_tx.clone(),
-            Arc::clone(&managed.stdin_ready),
-            process_handle,
-            /*sudo_once*/ None,
         ));
 
         match exit_rx.try_recv() {
@@ -415,65 +364,6 @@ impl UnifiedExecProcess {
             managed.signal_exit(exit_result.ok());
             managed.check_for_sandbox_denial().await?;
             return Ok(managed);
-        }
-
-        tokio::spawn({
-            let state_tx = managed.state_tx.clone();
-            let cancellation_token = managed.cancellation_token.clone();
-            async move {
-                let exit_code = exit_rx.await.ok();
-                let state = state_tx.borrow().clone();
-                let _ = state_tx.send_replace(state.exited(exit_code));
-                cancellation_token.cancel();
-            }
-        });
-
-        Ok(managed)
-    }
-
-    pub(super) async fn from_spawned_sudo_once(
-        spawned: SpawnedPty,
-        spawn_lifecycle: SpawnLifecycleHandle,
-        sudo_once: SudoOnceSpawnContext,
-    ) -> Result<Self, UnifiedExecError> {
-        let SpawnedPty {
-            session: process_handle,
-            stdout_rx,
-            stderr_rx,
-            mut exit_rx,
-        } = spawned;
-        let output_rx = codex_utils_pty::combine_output_receivers_lossless(stdout_rx, stderr_rx);
-        let process_handle = Arc::new(process_handle);
-        let mut managed = Self::new(
-            ProcessHandle::Local(Arc::clone(&process_handle)),
-            SandboxType::None,
-            Some(spawn_lifecycle),
-        );
-        managed.stdin_ready.store(false, Ordering::Release);
-        managed.output_task = Some(Self::spawn_local_output_task(
-            LocalOutputReceiver::Lossless(output_rx),
-            Arc::clone(&managed.output_buffer),
-            Arc::clone(&managed.output_notify),
-            Arc::clone(&managed.output_closed),
-            Arc::clone(&managed.output_closed_notify),
-            managed.output_tx.clone(),
-            managed.cancellation_token.clone(),
-            managed.state_tx.clone(),
-            Arc::clone(&managed.stdin_ready),
-            process_handle,
-            Some(sudo_once),
-        ));
-
-        match exit_rx.try_recv() {
-            Ok(exit_code) => {
-                managed.signal_exit(Some(exit_code));
-                return Ok(managed);
-            }
-            Err(TryRecvError::Closed) => {
-                managed.signal_exit(/*exit_code*/ None);
-                return Ok(managed);
-            }
-            Err(TryRecvError::Empty) => {}
         }
 
         tokio::spawn({
@@ -692,137 +582,25 @@ impl UnifiedExecProcess {
     }
 
     fn spawn_local_output_task(
-        mut receiver: LocalOutputReceiver,
+        mut receiver: tokio::sync::broadcast::Receiver<Vec<u8>>,
         buffer: OutputBuffer,
         output_notify: Arc<Notify>,
         output_closed: Arc<AtomicBool>,
         output_closed_notify: Arc<Notify>,
         output_tx: broadcast::Sender<Vec<u8>>,
-        cancellation_token: CancellationToken,
-        state_tx: watch::Sender<ProcessState>,
-        stdin_ready: Arc<AtomicBool>,
-        process_handle: Arc<ExecCommandSession>,
-        mut sudo_once: Option<SudoOnceSpawnContext>,
     ) -> JoinHandle<()> {
         tokio::spawn(async move {
-            let mut sudo_filter = sudo_once.as_ref().map(|context| {
-                SudoPromptFilter::new(
-                    context.prompt_sentinel.clone(),
-                    context.started_sentinel.clone(),
-                )
-            });
-            let mut sudo_authentication = sudo_once
-                .as_ref()
-                .map(|_| SudoAuthenticationState::default());
-            let mut credential_attempt = 0;
             loop {
                 match receiver.recv().await {
                     Ok(chunk) => {
-                        let actions = if let Some(filter) = sudo_filter.as_mut() {
-                            filter.push(chunk)
-                        } else {
-                            vec![SudoPromptAction::Output(chunk)]
-                        };
-                        let mut failed = false;
-                        for action in actions {
-                            match action {
-                                SudoPromptAction::Output(chunk) => {
-                                    Self::publish_local_output(
-                                        chunk,
-                                        &buffer,
-                                        &output_notify,
-                                        &output_tx,
-                                    )
-                                    .await;
-                                }
-                                SudoPromptAction::Prompt => {
-                                    let Some(authentication) = sudo_authentication.as_ref() else {
-                                        failed = true;
-                                        break;
-                                    };
-                                    if !authentication.permits_credential_request() {
-                                        failed = true;
-                                        break;
-                                    }
-                                    let Some(context) = sudo_once.as_ref() else {
-                                        failed = true;
-                                        break;
-                                    };
-                                    credential_attempt += 1;
-                                    let response = tokio::select! {
-                                        response = context.broker.request_credential(
-                                            &context.grant,
-                                            credential_attempt,
-                                        ) => response,
-                                        _ = cancellation_token.cancelled() => None,
-                                    };
-                                    let Some(credential) = response else {
-                                        failed = true;
-                                        break;
-                                    };
-                                    if credential.expose_secret().contains('\r')
-                                        || credential.expose_secret().contains('\n')
-                                    {
-                                        failed = true;
-                                        break;
-                                    }
-                                    let mut input = Zeroizing::new(
-                                        credential.expose_secret().as_bytes().to_vec(),
-                                    );
-                                    input.push(b'\n');
-                                    let Some(writer) = process_handle.sensitive_writer_sender()
-                                    else {
-                                        failed = true;
-                                        break;
-                                    };
-                                    if writer.send(input).await.is_err() {
-                                        failed = true;
-                                        break;
-                                    }
-                                }
-                                SudoPromptAction::Started => {
-                                    let Some(authentication) = sudo_authentication.as_mut() else {
-                                        failed = true;
-                                        break;
-                                    };
-                                    if !authentication.mark_started() {
-                                        failed = true;
-                                        break;
-                                    }
-                                    let Some(mut context) = sudo_once.take() else {
-                                        failed = true;
-                                        break;
-                                    };
-                                    stdin_ready.store(true, Ordering::Release);
-                                    context.elicitation.take();
-                                }
-                            }
-                        }
-                        if failed {
-                            let state = state_tx.borrow().clone();
-                            let _ = state_tx.send_replace(state.failed(
-                                "sudo_once credential request was cancelled or failed".to_string(),
-                            ));
-                            process_handle.request_terminate();
-                            break;
-                        }
+                        let mut guard = buffer.lock().await;
+                        guard.push_chunk(chunk.clone());
+                        drop(guard);
+                        let _ = output_tx.send(chunk);
+                        output_notify.notify_waiters();
                     }
-                    Err(LocalOutputReceiveError::Lagged) => {
-                        if sudo_filter.is_none() {
-                            continue;
-                        }
-                        let state = state_tx.borrow().clone();
-                        let _ = state_tx.send_replace(
-                            state.failed("sudo_once control output was lost".to_string()),
-                        );
-                        process_handle.request_terminate();
-                        break;
-                    }
-                    Err(LocalOutputReceiveError::Closed) => {
-                        if let Some(chunk) = sudo_filter.and_then(SudoPromptFilter::finish) {
-                            Self::publish_local_output(chunk, &buffer, &output_notify, &output_tx)
-                                .await;
-                        }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                         output_closed.store(true, Ordering::Release);
                         output_closed_notify.notify_waiters();
                         break;
@@ -830,22 +608,6 @@ impl UnifiedExecProcess {
                 };
             }
         })
-    }
-
-    async fn publish_local_output(
-        chunk: Vec<u8>,
-        buffer: &OutputBuffer,
-        output_notify: &Notify,
-        output_tx: &broadcast::Sender<Vec<u8>>,
-    ) {
-        if chunk.is_empty() {
-            return;
-        }
-        let mut guard = buffer.lock().await;
-        guard.push_chunk(chunk.clone());
-        drop(guard);
-        let _ = output_tx.send(chunk);
-        output_notify.notify_waiters();
     }
 
     fn signal_exit(&self, exit_code: Option<i32>) {

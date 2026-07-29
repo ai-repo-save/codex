@@ -134,7 +134,6 @@ pub struct TurnContext {
     pub(crate) reasoning_effort: Option<ReasoningEffortConfig>,
     pub(crate) reasoning_summary: ReasoningSummaryConfig,
     pub(crate) session_source: SessionSource,
-    pub(crate) sudo_once_available: bool,
     pub(crate) history_mode: ThreadHistoryMode,
     pub(crate) parent_thread_id: Option<ThreadId>,
     pub(crate) originator: String,
@@ -288,7 +287,6 @@ impl TurnContext {
             trace_id: self.trace_id.clone(),
             realtime_active: self.realtime_active,
             tool_execution_mode: self.tool_execution_mode,
-            sudo_once_available: self.sudo_once_available,
             config: Arc::new(config),
             auth_manager: self.auth_manager.clone(),
             model_info: model_info.clone(),
@@ -579,7 +577,6 @@ impl Session {
             reasoning_effort,
             reasoning_summary,
             session_source,
-            sudo_once_available: false,
             history_mode: session_configuration.history_mode,
             parent_thread_id: session_configuration.parent_thread_id,
             originator: session_configuration.originator.clone(),
@@ -810,7 +807,6 @@ impl Session {
         );
         turn_context.realtime_active = self.conversation.running_state().await.is_some();
         turn_context.tool_execution_mode = self.tool_execution_mode;
-        turn_context.sudo_once_available = self.services.sudo_once_broker.is_some();
 
         if let Some(final_schema) = final_output_json_schema {
             turn_context.final_output_json_schema = final_schema;

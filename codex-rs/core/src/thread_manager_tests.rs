@@ -505,7 +505,6 @@ async fn start_thread_keeps_internal_threads_hidden_from_normal_lookups() {
             environments: Vec::new(),
             thread_extension_init: Default::default(),
             supports_openai_form_elicitation: false,
-            sudo_once_broker: None,
         })
         .await
         .expect("internal thread should start");
@@ -657,7 +656,6 @@ async fn start_thread_seeds_extension_data_for_mcp_and_lifecycle_contributors() 
             environments: Vec::new(),
             thread_extension_init: selected_root_init("selected-a", "env-a"),
             supports_openai_form_elicitation: false,
-            sudo_once_broker: None,
         })
         .await
         .expect("start first thread");
@@ -675,7 +673,6 @@ async fn start_thread_seeds_extension_data_for_mcp_and_lifecycle_contributors() 
             environments: Vec::new(),
             thread_extension_init: selected_root_init("selected-b", "env-b"),
             supports_openai_form_elicitation: false,
-            sudo_once_broker: None,
         })
         .await
         .expect("start second thread");
@@ -806,7 +803,6 @@ async fn selected_capability_roots_round_trip_through_fork() {
             environments: Vec::new(),
             thread_extension_init: Default::default(),
             supports_openai_form_elicitation: false,
-            sudo_once_broker: None,
         })
         .await
         .expect("start inherited fork");
@@ -882,7 +878,6 @@ async fn resume_and_fork_do_not_restore_thread_environments_from_rollout() {
             environments: environments.clone(),
             thread_extension_init: Default::default(),
             supports_openai_form_elicitation: false,
-            sudo_once_broker: None,
         })
         .await
         .expect("start source thread");
@@ -1190,7 +1185,6 @@ async fn resume_stopped_thread_from_rollout_preserves_thread_source() {
             environments: Vec::new(),
             thread_extension_init: Default::default(),
             supports_openai_form_elicitation: false,
-            sudo_once_broker: None,
         })
         .await
         .expect("start source thread");

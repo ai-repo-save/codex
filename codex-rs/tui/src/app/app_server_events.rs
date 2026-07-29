@@ -51,30 +51,12 @@ impl App {
                 self.handle_server_request_event(app_server_client, request)
                     .await;
             }
-            AppServerEvent::SudoOncePrompt(prompt) => {
-                self.handle_sudo_once_prompt_event(prompt);
-            }
             AppServerEvent::Disconnected { message } => {
                 tracing::warn!("app-server event stream disconnected: {message}");
                 self.chat_widget.add_error_message(message.clone());
                 self.app_event_tx.send(AppEvent::FatalExitRequest(message));
             }
         }
-    }
-
-    fn handle_sudo_once_prompt_event(&mut self, prompt: codex_sudo_once::SudoOncePrompt) {
-        let thread_id = match &prompt {
-            codex_sudo_once::SudoOncePrompt::Approval(prompt) => prompt.command().thread_id(),
-            codex_sudo_once::SudoOncePrompt::Credential(prompt) => prompt.command().thread_id(),
-        };
-        if self.primary_thread_id == Some(thread_id) || self.primary_thread_id.is_none() {
-            self.chat_widget.on_sudo_once_prompt(prompt);
-            return;
-        }
-        tracing::warn!(
-            thread_id = %thread_id,
-            "dropping sudo prompt for a non-local TUI root thread"
-        );
     }
 
     async fn handle_server_notification_event(

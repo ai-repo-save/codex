@@ -9,7 +9,6 @@ use std::collections::BTreeMap;
 pub struct CommandToolOptions {
     pub allow_login_shell: bool,
     pub exec_permission_approvals_enabled: bool,
-    pub sudo_once_enabled: bool,
 }
 
 #[cfg(test)]
@@ -83,18 +82,6 @@ pub(crate) fn create_exec_command_tool_with_environment_id(
                 "Environment id from <environment_context>. Omit to use the primary environment."
                     .to_string(),
             )),
-        );
-    }
-    if options.sudo_once_enabled {
-        properties.insert(
-            "privilege".to_string(),
-            JsonSchema::string_enum(
-                vec![json!("sudo_once")],
-                Some(
-                    "Runs exactly this command through one-shot sudo after a dedicated approval. Linux local sessions only. This always forces a PTY and runs unsandboxed; the approval is never cached."
-                        .to_string(),
-                ),
-            ),
         );
     }
     properties.extend(create_approval_parameters(

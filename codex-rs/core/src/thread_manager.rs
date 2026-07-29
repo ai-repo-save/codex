@@ -67,7 +67,6 @@ use codex_protocol::protocol::TurnAbortedEvent;
 use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_protocol::protocol::W3cTraceContext;
 use codex_rollout::state_db::StateDbHandle;
-use codex_sudo_once::LocalSudoOnceBroker;
 use codex_thread_store::InMemoryThreadStore;
 use codex_thread_store::LoadThreadHistoryParams;
 use codex_thread_store::LocalThreadStore;
@@ -204,7 +203,6 @@ pub struct StartThreadOptions {
     pub environments: Vec<TurnEnvironmentSelection>,
     pub thread_extension_init: ExtensionDataInit,
     pub supports_openai_form_elicitation: bool,
-    pub sudo_once_broker: Option<LocalSudoOnceBroker>,
 }
 
 fn originator_from_service_name(service_name: Option<&str>) -> Option<String> {
@@ -746,7 +744,6 @@ impl ThreadManager {
             environments,
             thread_extension_init: ExtensionDataInit::default(),
             supports_openai_form_elicitation: false,
-            sudo_once_broker: None,
         }))
         .await
     }
@@ -791,7 +788,6 @@ impl ThreadManager {
             options.thread_extension_init,
             options.supports_openai_form_elicitation,
             /*user_shell_override*/ None,
-            options.sudo_once_broker,
         ))
         .await
     }
@@ -803,7 +799,6 @@ impl ThreadManager {
         forked_from_thread_id: ThreadId,
         mut options: StartThreadOptions,
     ) -> CodexResult<NewThread> {
-        options.sudo_once_broker = None;
         let fork_source = self.get_thread(forked_from_thread_id).await?;
         // Persist queued rollout updates before reading the fork snapshot.
         fork_source.ensure_rollout_materialized().await;
@@ -862,27 +857,6 @@ impl ThreadManager {
         parent_trace: Option<W3cTraceContext>,
         supports_openai_form_elicitation: bool,
     ) -> CodexResult<NewThread> {
-        self.resume_thread_with_history_with_sudo_once_broker(
-            config,
-            initial_history,
-            auth_manager,
-            parent_trace,
-            supports_openai_form_elicitation,
-            /*sudo_once_broker*/ None,
-        )
-        .await
-    }
-
-    #[instrument(level = "trace", skip_all)]
-    pub async fn resume_thread_with_history_with_sudo_once_broker(
-        &self,
-        config: Config,
-        initial_history: InitialHistory,
-        auth_manager: Arc<AuthManager>,
-        parent_trace: Option<W3cTraceContext>,
-        supports_openai_form_elicitation: bool,
-        sudo_once_broker: Option<LocalSudoOnceBroker>,
-    ) -> CodexResult<NewThread> {
         let agent_control = self.agent_control_for_config(&config);
         let environments = default_thread_environment_selections(
             self.state.environment_manager.as_ref(),
@@ -920,7 +894,6 @@ impl ThreadManager {
             /*thread_extension_init*/ ExtensionDataInit::default(),
             supports_openai_form_elicitation,
             /*user_shell_override*/ None,
-            sudo_once_broker,
         ))
         .await
     }
@@ -952,7 +925,6 @@ impl ThreadManager {
             /*thread_extension_init*/ ExtensionDataInit::default(),
             supports_openai_form_elicitation,
             /*user_shell_override*/ Some(user_shell_override),
-            /*sudo_once_broker*/ None,
         ))
         .await
     }
@@ -995,7 +967,6 @@ impl ThreadManager {
             /*thread_extension_init*/ ExtensionDataInit::default(),
             supports_openai_form_elicitation,
             /*user_shell_override*/ Some(user_shell_override),
-            /*sudo_once_broker*/ None,
         ))
         .await
     }
@@ -1117,31 +1088,6 @@ impl ThreadManager {
     where
         S: Into<ForkSnapshot>,
     {
-        self.fork_thread_from_history_with_sudo_once_broker(
-            snapshot.into(),
-            config,
-            history,
-            thread_source,
-            parent_trace,
-            supports_openai_form_elicitation,
-            /*sudo_once_broker*/ None,
-        )
-        .await
-    }
-
-    pub async fn fork_thread_from_history_with_sudo_once_broker<S>(
-        &self,
-        snapshot: S,
-        config: Config,
-        history: InitialHistory,
-        thread_source: Option<ThreadSource>,
-        parent_trace: Option<W3cTraceContext>,
-        supports_openai_form_elicitation: bool,
-        sudo_once_broker: Option<LocalSudoOnceBroker>,
-    ) -> CodexResult<NewThread>
-    where
-        S: Into<ForkSnapshot>,
-    {
         self.fork_thread_with_initial_history(
             snapshot.into(),
             config,
@@ -1149,7 +1095,6 @@ impl ThreadManager {
             thread_source,
             parent_trace,
             supports_openai_form_elicitation,
-            sudo_once_broker,
         )
         .await
     }
@@ -1162,7 +1107,6 @@ impl ThreadManager {
         thread_source: Option<ThreadSource>,
         parent_trace: Option<W3cTraceContext>,
         supports_openai_form_elicitation: bool,
-        sudo_once_broker: Option<LocalSudoOnceBroker>,
     ) -> CodexResult<NewThread> {
         // `forked_from_id()` describes this history's existing lineage. When
         // forking a resumed thread, the child copies the resumed thread itself.
@@ -1205,7 +1149,6 @@ impl ThreadManager {
             /*thread_extension_init*/ ExtensionDataInit::default(),
             supports_openai_form_elicitation,
             /*user_shell_override*/ None,
-            sudo_once_broker,
         ))
         .await
     }
@@ -1554,7 +1497,6 @@ impl ThreadManagerState {
             /*thread_extension_init*/ ExtensionDataInit::default(),
             /*supports_openai_form_elicitation*/ false,
             /*user_shell_override*/ None,
-            /*sudo_once_broker*/ None,
         ))
         .await
     }
@@ -1598,7 +1540,6 @@ impl ThreadManagerState {
             /*thread_extension_init*/ ExtensionDataInit::default(),
             /*supports_openai_form_elicitation*/ false,
             /*user_shell_override*/ None,
-            /*sudo_once_broker*/ None,
         ))
         .await
     }
@@ -1646,7 +1587,6 @@ impl ThreadManagerState {
             thread_extension_init,
             /*supports_openai_form_elicitation*/ false,
             /*user_shell_override*/ None,
-            /*sudo_once_broker*/ None,
         ))
         .await
     }
@@ -1669,7 +1609,6 @@ impl ThreadManagerState {
         thread_extension_init: ExtensionDataInit,
         supports_openai_form_elicitation: bool,
         user_shell_override: Option<crate::shell::Shell>,
-        sudo_once_broker: Option<LocalSudoOnceBroker>,
     ) -> CodexResult<NewThread> {
         Box::pin(self.spawn_thread_with_source(
             config,
@@ -1691,7 +1630,6 @@ impl ThreadManagerState {
             thread_extension_init,
             supports_openai_form_elicitation,
             user_shell_override,
-            sudo_once_broker,
         ))
         .await
     }
@@ -1718,7 +1656,6 @@ impl ThreadManagerState {
         thread_extension_init: ExtensionDataInit,
         supports_openai_form_elicitation: bool,
         user_shell_override: Option<crate::shell::Shell>,
-        sudo_once_broker: Option<LocalSudoOnceBroker>,
     ) -> CodexResult<NewThread> {
         let is_resumed_thread = matches!(&initial_history, InitialHistory::Resumed(_));
         if let InitialHistory::Resumed(resumed) = &initial_history {
@@ -1804,7 +1741,6 @@ impl ThreadManagerState {
             external_time_provider: self.external_time_provider.clone(),
             inherited_multi_agent_version: multi_agent_version,
             prompt_cache_key_override: None,
-            sudo_once_broker,
         }))
         .await?;
         let new_thread = self

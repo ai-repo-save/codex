@@ -34,5 +34,4 @@ pub mod request_permissions;
 pub mod request_user_input;
 pub mod review_format;
 pub mod shell_environment;
-pub mod sudo_once;
 pub mod user_input;

@@ -52,7 +52,6 @@ pub(crate) struct ExecCommandHandlerOptions {
     pub(crate) exec_permission_approvals_enabled: bool,
     pub(crate) include_environment_id: bool,
     pub(crate) include_shell_parameter: bool,
-    pub(crate) sudo_once_enabled: bool,
 }
 
 pub struct ExecCommandHandler {
@@ -67,7 +66,6 @@ impl Default for ExecCommandHandler {
                 exec_permission_approvals_enabled: false,
                 include_environment_id: false,
                 include_shell_parameter: true,
-                sudo_once_enabled: false,
             },
         }
     }
@@ -89,7 +87,6 @@ impl ToolExecutor<ToolInvocation> for ExecCommandHandler {
             CommandToolOptions {
                 allow_login_shell: self.options.allow_login_shell,
                 exec_permission_approvals_enabled: self.options.exec_permission_approvals_enabled,
-                sudo_once_enabled: self.options.sudo_once_enabled,
             },
             self.options.include_environment_id,
             self.options.include_shell_parameter,
@@ -251,62 +248,8 @@ impl ExecCommandHandler {
             additional_permissions,
             justification,
             prefix_rule,
-            privilege,
             ..
         } = args;
-
-        if privilege.is_some() {
-            if !self.options.sudo_once_enabled
-                || !cfg!(target_os = "linux")
-                || environment.is_remote()
-                || sandbox_permissions.requests_sandbox_override()
-                || additional_permissions.is_some()
-                || prefix_rule.is_some()
-            {
-                manager.release_process_id(process_id).await;
-                return Err(FunctionCallError::RespondToModel(
-                    "sudo_once is only available for local Linux commands without sandbox, additional-permission, or prefix-rule requests".to_string(),
-                ));
-            }
-            if native_cwd.is_none() {
-                manager.release_process_id(process_id).await;
-                return Err(FunctionCallError::RespondToModel(
-                    "sudo_once requires a native local working directory".to_string(),
-                ));
-            }
-            emit_unified_exec_tty_metric(&turn.session_telemetry, /*tty*/ true);
-            return manager
-                .exec_command(
-                    ExecCommandRequest {
-                        command,
-                        shell_type,
-                        hook_command,
-                        process_id,
-                        yield_time_ms,
-                        max_output_tokens,
-                        cwd,
-                        sandbox_cwd: native_environment_cwd,
-                        turn_environment: turn_environment.clone(),
-                        shell_mode,
-                        network: None,
-                        tty: true,
-                        sandbox_permissions,
-                        additional_permissions: None,
-                        additional_permissions_preapproved: false,
-                        justification,
-                        prefix_rule: None,
-                        privilege,
-                    },
-                    &context,
-                )
-                .await
-                .map(|response| boxed_tool_output(response))
-                .map_err(|err| {
-                    FunctionCallError::RespondToModel(format!(
-                        "exec_command failed for `{command_for_display}`: {err:?}"
-                    ))
-                });
-        }
 
         let exec_permission_approvals_enabled =
             session.features().enabled(Feature::ExecPermissionApprovals);
@@ -419,7 +362,6 @@ impl ExecCommandHandler {
                         .permissions_preapproved,
                     justification,
                     prefix_rule,
-                    privilege: None,
                 },
                 &context,
             )
@@ -470,15 +412,9 @@ impl CoreToolRuntime for ExecCommandHandler {
 
         parse_arguments::<ExecCommandArgs>(arguments)
             .ok()
-            .map(|args| {
-                let mut tool_input = serde_json::json!({ "command": args.cmd });
-                if let Some(privilege) = args.privilege {
-                    tool_input["privilege"] = serde_json::json!(privilege);
-                }
-                PreToolUsePayload {
-                    tool_name: HookToolName::bash(),
-                    tool_input,
-                }
+            .map(|args| PreToolUsePayload {
+                tool_name: HookToolName::bash(),
+                tool_input: serde_json::json!({ "command": args.cmd }),
             })
     }
 

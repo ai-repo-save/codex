@@ -4,18 +4,13 @@ use std::path::Path;
 use pretty_assertions::assert_eq;
 
 use crate::ProcessDriver;
-#[cfg(unix)]
-use crate::PtyStdin;
 use crate::SpawnedProcess;
 use crate::TerminalSize;
 use crate::combine_output_receivers;
-use crate::combine_output_receivers_lossless;
 use crate::spawn_from_driver;
 use crate::spawn_pipe_process;
 use crate::spawn_pipe_process_no_stdin;
 use crate::spawn_pty_process;
-#[cfg(unix)]
-use crate::spawn_pty_process_with_stdin;
 
 #[cfg(windows)]
 #[path = "windows_tests.rs"]
@@ -101,32 +96,6 @@ fn combine_spawned_output(
         combine_output_receivers(stdout_rx, stderr_rx),
         exit_rx,
     )
-}
-
-#[tokio::test]
-async fn lossless_combination_preserves_output_under_backpressure() {
-    let (stdout_tx, stdout_rx) = tokio::sync::mpsc::channel(512);
-    let (stderr_tx, stderr_rx) = tokio::sync::mpsc::channel(512);
-    let mut expected = Vec::new();
-    for value in 0..512_u16 {
-        let chunk = if value == 300 {
-            b"control-like ordinary output".to_vec()
-        } else {
-            value.to_le_bytes().to_vec()
-        };
-        stdout_tx.send(chunk.clone()).await.unwrap();
-        expected.push(chunk);
-    }
-    drop(stdout_tx);
-    drop(stderr_tx);
-
-    let mut output_rx = combine_output_receivers_lossless(stdout_rx, stderr_rx);
-    let mut output = Vec::new();
-    while let Some(chunk) = output_rx.recv().await {
-        output.push(chunk);
-    }
-
-    assert_eq!(output, expected);
 }
 
 async fn collect_output_until_exit(
@@ -563,70 +532,6 @@ async fn pipe_and_pty_share_interface() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn assert_spawned_process_exposes_direct_child_pid(
-    spawned: SpawnedProcess,
-) -> anyhow::Result<()> {
-    let process_id = spawned
-        .session
-        .process_id()
-        .ok_or_else(|| anyhow::anyhow!("pipe spawn did not expose its child PID"))?;
-    assert_ne!(process_id, 0, "pipe spawn returned an invalid child PID");
-
-    #[cfg(unix)]
-    assert_eq!(
-        unsafe {
-            libc::kill(i32::try_from(process_id)?, /*signum*/ 0)
-        },
-        0
-    );
-
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::fd::AsRawFd;
-
-        let identity = spawned
-            .session
-            .linux_process_identity()
-            .ok_or_else(|| anyhow::anyhow!("pipe spawn did not pin its child PID"))?;
-        assert_eq!(identity.process_id(), process_id);
-        assert!(
-            unsafe { libc::fcntl(identity.pidfd().as_raw_fd(), libc::F_GETFD) } >= 0,
-            "PID file descriptor is invalid"
-        );
-    }
-
-    spawned.session.terminate();
-    let exit_code = tokio::time::timeout(tokio::time::Duration::from_secs(2), spawned.exit_rx)
-        .await?
-        .unwrap_or(-1);
-    assert_ne!(
-        exit_code, 0,
-        "terminated process unexpectedly exited cleanly"
-    );
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn spawned_processes_expose_direct_child_pid() -> anyhow::Result<()> {
-    let env_map: HashMap<String, String> = std::env::vars().collect();
-    let (program, args) = shell_command(&echo_sleep_command("pid-test"));
-    let pipe = spawn_pipe_process(&program, &args, Path::new("."), &env_map, &None, &[]).await?;
-    assert_spawned_process_exposes_direct_child_pid(pipe).await?;
-
-    let pty = spawn_pty_process(
-        &program,
-        &args,
-        Path::new("."),
-        &env_map,
-        &None,
-        TerminalSize::default(),
-        &[],
-    )
-    .await?;
-    assert_spawned_process_exposes_direct_child_pid(pty).await
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn pipe_drains_stderr_without_stdout_activity() -> anyhow::Result<()> {
     let Some(python) = find_python() else {
@@ -962,73 +867,6 @@ async fn pty_spawn_can_preserve_inherited_fds() -> anyhow::Result<()> {
     let mut pipe_output = String::new();
     read_end.read_to_string(&mut pipe_output)?;
     assert_eq!(pipe_output, "__preserved__");
-
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn pty_spawn_with_file_stdin_retains_controlling_terminal() -> anyhow::Result<()> {
-    use std::ffi::CString;
-    use std::io::Seek;
-    use std::io::Write;
-    use std::os::fd::FromRawFd;
-
-    let memfd_name = CString::new("codex-pty-stdin")?;
-    let raw_fd = unsafe { libc::memfd_create(memfd_name.as_ptr(), libc::MFD_CLOEXEC) };
-    if raw_fd == -1 {
-        return Err(std::io::Error::last_os_error().into());
-    }
-    let mut stdin_file = unsafe { std::fs::File::from_raw_fd(raw_fd) };
-    stdin_file.write_all(b"file-input\n")?;
-    stdin_file.rewind()?;
-
-    let script = "fd0=file; [ -t 0 ] && fd0=tty; fd1=file; [ -t 1 ] && fd1=tty; fd2=file; [ -t 2 ] && fd2=tty; IFS= read -r file_input; printf '__stdio__:%s:%s:%s:%s\\n' \"$fd0\" \"$fd1\" \"$fd2\" \"$file_input\"; IFS= read -r tty_input </dev/tty; printf '__tty__:%s\\n' \"$tty_input\"";
-    let env_map: HashMap<String, String> = std::env::vars().collect();
-    let spawned = spawn_pty_process_with_stdin(
-        "/bin/sh",
-        &["-c".to_string(), script.to_string()],
-        Path::new("."),
-        &env_map,
-        &None,
-        TerminalSize::default(),
-        PtyStdin::File(stdin_file),
-        &[],
-    )
-    .await?;
-
-    let process_id = spawned
-        .session
-        .process_id()
-        .ok_or_else(|| anyhow::anyhow!("custom-stdin PTY spawn did not expose its child PID"))?;
-    let identity = spawned
-        .session
-        .linux_process_identity()
-        .ok_or_else(|| anyhow::anyhow!("custom-stdin PTY spawn did not pin its child PID"))?;
-    assert_eq!(identity.process_id(), process_id);
-
-    let (session, mut output_rx, exit_rx) = combine_spawned_output(spawned);
-    let mut output = wait_for_output_contains(
-        &mut output_rx,
-        "__stdio__:file:tty:tty:file-input\r\n",
-        /*timeout_ms*/ 2_000,
-    )
-    .await?;
-
-    let writer = session.writer_sender();
-    writer.send(b"tty-input\n".to_vec()).await?;
-    drop(writer);
-    session.close_stdin();
-
-    let (remaining_output, code) =
-        collect_output_until_exit(output_rx, exit_rx, /*timeout_ms*/ 2_000).await;
-    output.extend_from_slice(&remaining_output);
-    let text = String::from_utf8_lossy(&output);
-    assert!(
-        text.contains("__tty__:tty-input\r\n"),
-        "expected /dev/tty input after file stdin: {text:?}"
-    );
-    assert_eq!(code, 0, "expected custom-stdin PTY child to exit cleanly");
 
     Ok(())
 }

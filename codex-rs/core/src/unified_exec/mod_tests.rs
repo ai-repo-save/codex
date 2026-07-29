@@ -137,7 +137,6 @@ async fn exec_command_with_tty(
             hook_command: cmd.to_string(),
             tty,
             network_approval: None,
-            sudo_once_turn_id: None,
             session: Arc::downgrade(session),
             last_used: started_at,
         };
@@ -620,7 +619,6 @@ async fn terminating_initial_exec_command_rechecks_initial_response_state() -> a
             hook_command: "sleep 60".to_string(),
             tty: true,
             network_approval: None,
-            sudo_once_turn_id: None,
             session: Arc::downgrade(&session),
             last_used: Instant::now(),
         },
@@ -694,7 +692,6 @@ async fn terminating_during_stdin_poll_returns_exited_response() -> anyhow::Resu
             hook_command: "sleep 60".to_string(),
             tty: true,
             network_approval: None,
-            sudo_once_turn_id: None,
             session: Arc::downgrade(&session),
             last_used,
         },

@@ -51,7 +51,6 @@ use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_protocol::protocol::TurnEnvironmentSelections;
 use codex_protocol::user_input::UserInput;
-use codex_sudo_once::LocalSudoOnceBroker;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
 use futures::future::BoxFuture;
@@ -306,8 +305,6 @@ pub struct TestCodexBuilder {
     external_time_provider: Option<Arc<dyn TimeProvider>>,
     code_mode_host_program: Option<PathBuf>,
     history_mode: Option<ThreadHistoryMode>,
-    session_source: SessionSource,
-    sudo_once_broker: Option<LocalSudoOnceBroker>,
 }
 
 impl TestCodexBuilder {
@@ -333,16 +330,6 @@ impl TestCodexBuilder {
 
     pub fn with_history_mode(mut self, history_mode: ThreadHistoryMode) -> Self {
         self.history_mode = Some(history_mode);
-        self
-    }
-
-    pub fn with_session_source(mut self, session_source: SessionSource) -> Self {
-        self.session_source = session_source;
-        self
-    }
-
-    pub fn with_sudo_once_broker(mut self, sudo_once_broker: LocalSudoOnceBroker) -> Self {
-        self.sudo_once_broker = Some(sudo_once_broker);
         self
     }
 
@@ -643,7 +630,7 @@ impl TestCodexBuilder {
             auth_manager.clone(),
             codex_core::build_models_manager(&config, auth_manager),
             codex_core::CodexAppsToolsCache::default(),
-            self.session_source.clone(),
+            SessionSource::Exec,
             Arc::clone(&environment_manager),
             Arc::clone(&self.extensions),
             user_instructions_provider,
@@ -725,7 +712,6 @@ impl TestCodexBuilder {
                         environments,
                         thread_extension_init: Default::default(),
                         supports_openai_form_elicitation: self.supports_openai_form_elicitation,
-                        sudo_once_broker: self.sudo_once_broker.take(),
                     }),
                 )
                 .await?
@@ -1264,8 +1250,6 @@ pub fn test_codex() -> TestCodexBuilder {
         external_time_provider: None,
         code_mode_host_program: None,
         history_mode: None,
-        session_source: SessionSource::Exec,
-        sudo_once_broker: None,
     }
 }
 

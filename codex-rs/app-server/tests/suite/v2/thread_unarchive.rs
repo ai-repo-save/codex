@@ -278,7 +278,6 @@ async fn thread_unarchive_preserves_pathless_store_metadata() -> Result<()> {
             }),
         },
         channel_capacity: in_process::DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
-        sudo_once_broker: None,
     })
     .await?;
 

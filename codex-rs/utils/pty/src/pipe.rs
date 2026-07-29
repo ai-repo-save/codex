@@ -169,8 +169,6 @@ async fn spawn_process_with_stdin_mode(
     let pid = child
         .id()
         .ok_or_else(|| io::Error::other("missing child pid"))?;
-    #[cfg(target_os = "linux")]
-    let linux_process_identity = crate::process::LinuxProcessIdentity::try_open(pid);
     #[cfg(unix)]
     let process_group_id = pid;
 
@@ -241,9 +239,6 @@ async fn spawn_process_with_stdin_mode(
 
     let handle = ProcessHandle::new(
         writer_tx,
-        Some(pid),
-        #[cfg(target_os = "linux")]
-        linux_process_identity,
         Box::new(PipeChildTerminator {
             #[cfg(windows)]
             pid,

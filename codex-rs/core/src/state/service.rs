@@ -39,7 +39,6 @@ use codex_otel::SessionTelemetry;
 use codex_protocol::capabilities::SelectedCapabilityRoot;
 use codex_rollout::state_db::StateDbHandle;
 use codex_rollout_trace::ThreadTraceContext;
-use codex_sudo_once::LocalSudoOnceBroker;
 use codex_thread_store::LiveThread;
 use codex_thread_store::ThreadStore;
 use std::path::PathBuf;
@@ -56,9 +55,6 @@ pub(crate) struct SessionServices {
     pub(crate) mcp_projection_lock: Mutex<()>,
     pub(crate) mcp_startup_cancellation_token: Mutex<CancellationToken>,
     pub(crate) unified_exec_manager: UnifiedExecProcessManager,
-    /// Local typed capability for one-shot sudo prompts. It is absent for all
-    /// remote and agent-created sessions.
-    pub(crate) sudo_once_broker: Option<LocalSudoOnceBroker>,
     pub(crate) elicitations: ElicitationService,
     #[cfg_attr(not(unix), allow(dead_code))]
     pub(crate) shell_zsh_path: Option<PathBuf>,

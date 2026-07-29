@@ -35,20 +35,10 @@ impl App {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct AppServerRequestResolution {
     pub(super) request_id: AppServerRequestId,
     pub(super) result: serde_json::Value,
-}
-
-impl std::fmt::Debug for AppServerRequestResolution {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("AppServerRequestResolution")
-            .field("request_id", &self.request_id)
-            .field("result", &"[REDACTED]")
-            .finish()
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,8 +183,8 @@ impl PendingAppServerRequests {
     where
         T: Into<AppCommand>,
     {
-        let mut op: AppCommand = op.into();
-        let resolution = match &mut op {
+        let op: AppCommand = op.into();
+        let resolution = match &op {
             AppCommand::ExecApproval { id, decision, .. } => self
                 .exec_approvals
                 .remove(id)

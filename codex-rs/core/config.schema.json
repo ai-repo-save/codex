@@ -768,9 +768,6 @@
             "steer": {
               "type": "boolean"
             },
-            "sudo_once": {
-              "type": "boolean"
-            },
             "telepathy": {
               "type": "boolean"
             },
@@ -5440,9 +5437,6 @@
           "type": "boolean"
         },
         "steer": {
-          "type": "boolean"
-        },
-        "sudo_once": {
           "type": "boolean"
         },
         "telepathy": {

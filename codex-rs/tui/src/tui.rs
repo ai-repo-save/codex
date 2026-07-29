@@ -98,7 +98,6 @@ impl Drop for Tui {
 mod tests {
     use std::io::Write as _;
 
-    use super::TuiEvent;
     use super::clear_for_viewport_change;
     use super::should_emit_notification;
     use crate::custom_terminal::Terminal as CustomTerminal;
@@ -107,17 +106,6 @@ mod tests {
     use ratatui::layout::Position;
     use ratatui::layout::Rect;
     use ratatui::text::Line;
-
-    #[test]
-    fn sudo_once_tui_event_debug_redacts_input_payloads() {
-        let pasted = TuiEvent::Paste("terminal credential".to_string());
-        assert_eq!(format!("{pasted:?}"), "TuiEvent::Paste([REDACTED])");
-
-        let key = TuiEvent::Key(crossterm::event::KeyEvent::from(
-            crossterm::event::KeyCode::Char('s'),
-        ));
-        assert_eq!(format!("{key:?}"), "TuiEvent::Key([REDACTED])");
-    }
 
     #[test]
     fn unfocused_notification_condition_is_suppressed_when_focused() {
@@ -536,6 +524,7 @@ fn set_panic_hook() {
     }));
 }
 
+#[derive(Clone, Debug)]
 pub enum TuiEvent {
     /// A terminal key event after focus, paste, and protocol bookkeeping has been handled.
     Key(KeyEvent),
@@ -548,17 +537,6 @@ pub enum TuiEvent {
     Resize,
     /// A scheduled repaint that does not necessarily correspond to a terminal size change.
     Draw,
-}
-
-impl std::fmt::Debug for TuiEvent {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Key(_) => formatter.write_str("TuiEvent::Key([REDACTED])"),
-            Self::Paste(_) => formatter.write_str("TuiEvent::Paste([REDACTED])"),
-            Self::Resize => formatter.write_str("TuiEvent::Resize"),
-            Self::Draw => formatter.write_str("TuiEvent::Draw"),
-        }
-    }
 }
 
 pub struct Tui {
