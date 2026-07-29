@@ -348,7 +348,7 @@ impl TurnContext {
         additional_permissions: Option<AdditionalPermissionProfile>,
         environment: &TurnEnvironment,
     ) -> FileSystemSandboxContext {
-        let permission_profile = self.permission_profile();
+        let permission_profile = self.config.permissions.permission_profile();
         let (base_file_system_sandbox_policy, base_network_sandbox_policy) =
             permission_profile.to_runtime_permissions();
         let file_system_sandbox_policy = effective_file_system_sandbox_policy(
