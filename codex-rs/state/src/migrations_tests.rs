@@ -508,20 +508,18 @@ async fn repairs_agent_mailbox_migrations_that_were_applied_as_versions_43_and_4
         .await
         .expect("current migrations should apply after repair");
 
-    let applied = sqlx::query(
-        "SELECT version, checksum FROM _sqlx_migrations ORDER BY version",
-    )
-    .fetch_all(&pool)
-    .await
-    .expect("applied migrations should load")
-    .into_iter()
-    .map(|row| {
-        (
-            row.get::<i64, _>("version"),
-            row.get::<Vec<u8>, _>("checksum"),
-        )
-    })
-    .collect::<Vec<_>>();
+    let applied = sqlx::query("SELECT version, checksum FROM _sqlx_migrations ORDER BY version")
+        .fetch_all(&pool)
+        .await
+        .expect("applied migrations should load")
+        .into_iter()
+        .map(|row| {
+            (
+                row.get::<i64, _>("version"),
+                row.get::<Vec<u8>, _>("checksum"),
+            )
+        })
+        .collect::<Vec<_>>();
     let expected = STATE_MIGRATOR
         .migrations
         .iter()
