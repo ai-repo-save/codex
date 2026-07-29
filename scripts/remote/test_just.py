@@ -74,6 +74,7 @@ class RemoteJustTest(unittest.TestCase):
         self.assertEqual(workflow.branch, just.DEFAULT_BRANCH)
         self.assertEqual(workflow.remote_path, just.DEFAULT_REMOTE_PATH)
         shell_command = workflow.command[2]
+        self.assertTrue(shell_command.startswith("set -euo pipefail; "))
         self.assertIn('export TMPDIR="$remote_test_tmpdir"', shell_command)
         self.assertIn("just test --test-threads=4 -E", shell_command)
         self.assertIn(

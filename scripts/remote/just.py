@@ -157,6 +157,7 @@ def remote_full_command() -> tuple[str, ...]:
     command = remote_codex_rs_just_command(remote_full_recipe_args())
     shell_command = command[2]
     isolated_tmp = (
+        "set -euo pipefail; "
         'mkdir -p "$HOME/.cache"; '
         'remote_test_tmpdir="$(mktemp -d "$HOME/.cache/codex-remote-tests.XXXXXX")"; '
         "trap 'rm -rf -- \"$remote_test_tmpdir\"' EXIT; "

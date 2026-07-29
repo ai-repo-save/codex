@@ -47,6 +47,9 @@ When a task requires building, running, testing, or generating files from reposi
   Do not change production code or upstream-identical tests solely to make an excluded test pass
   on `192.168.50.8`. Validate an excluded contract in a compatible unprivileged or controlled-DNS
   environment when that contract is relevant to the task.
+- Add an exclusion only after an isolated rerun proves the host prerequisite is unavailable and
+  the relevant implementation and test still match the upstream baseline. Revalidate and remove
+  stale exclusions whenever the upstream baseline or remote host changes.
 - `uv run --project scripts python scripts/remote/build_sync.py` performs only the remote
   compile-and-execute smoke test. `uv run --project scripts python
   scripts/remote/install_local_standalone.py` builds a standalone package remotely and installs
