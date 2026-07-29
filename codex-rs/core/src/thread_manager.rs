@@ -48,6 +48,7 @@ use codex_models_manager::collaboration_mode_presets::builtin_collaboration_mode
 use codex_models_manager::manager::RefreshStrategy;
 use codex_models_manager::manager::SharedModelsManager;
 use codex_protocol::ThreadId;
+use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::CollaborationModeMask;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
@@ -830,6 +831,7 @@ impl ThreadManager {
             options.config,
             options.initial_history,
             options.history_mode,
+            /*initial_collaboration_mode*/ None,
             options.allow_provider_model_fallback,
             Arc::clone(&self.state.auth_manager),
             agent_control,
@@ -937,6 +939,7 @@ impl ThreadManager {
             config,
             initial_history,
             /*history_mode*/ None,
+            /*initial_collaboration_mode*/ None,
             /*allow_provider_model_fallback*/ false,
             auth_manager,
             agent_control,
@@ -1012,6 +1015,7 @@ impl ThreadManager {
             config,
             initial_history,
             /*history_mode*/ None,
+            /*initial_collaboration_mode*/ None,
             /*allow_provider_model_fallback*/ false,
             auth_manager,
             agent_control,
@@ -1549,6 +1553,7 @@ impl ThreadManagerState {
             agent_control,
             self.session_source.clone(),
             /*history_mode*/ None,
+            /*initial_collaboration_mode*/ None,
             /*parent_thread_id*/ None,
             /*forked_from_thread_id*/ None,
             /*thread_source*/ None,
@@ -1567,6 +1572,7 @@ impl ThreadManagerState {
         agent_control: AgentControl,
         session_source: SessionSource,
         history_mode: Option<ThreadHistoryMode>,
+        initial_collaboration_mode: Option<CollaborationMode>,
         parent_thread_id: Option<ThreadId>,
         forked_from_thread_id: Option<ThreadId>,
         thread_source: Option<ThreadSource>,
@@ -1586,6 +1592,7 @@ impl ThreadManagerState {
             config,
             InitialHistory::New,
             history_mode,
+            initial_collaboration_mode,
             /*allow_provider_model_fallback*/ false,
             Arc::clone(&self.auth_manager),
             agent_control,
@@ -1630,6 +1637,7 @@ impl ThreadManagerState {
             config,
             initial_history,
             /*history_mode*/ None,
+            /*initial_collaboration_mode*/ None,
             /*allow_provider_model_fallback*/ false,
             Arc::clone(&self.auth_manager),
             agent_control,
@@ -1660,6 +1668,7 @@ impl ThreadManagerState {
         agent_control: AgentControl,
         session_source: SessionSource,
         thread_source: Option<ThreadSource>,
+        initial_collaboration_mode: Option<CollaborationMode>,
         parent_thread_id: Option<ThreadId>,
         forked_from_thread_id: Option<ThreadId>,
         inherited_environments: Option<TurnEnvironmentSnapshot>,
@@ -1678,6 +1687,7 @@ impl ThreadManagerState {
             config,
             initial_history,
             history_mode,
+            initial_collaboration_mode,
             /*allow_provider_model_fallback*/ false,
             Arc::clone(&self.auth_manager),
             agent_control,
@@ -1723,6 +1733,7 @@ impl ThreadManagerState {
             config,
             initial_history,
             /*history_mode*/ None,
+            /*initial_collaboration_mode*/ None,
             /*allow_provider_model_fallback*/ false,
             auth_manager,
             agent_control,
@@ -1750,6 +1761,7 @@ impl ThreadManagerState {
         config: Config,
         initial_history: InitialHistory,
         history_mode: Option<ThreadHistoryMode>,
+        initial_collaboration_mode: Option<CollaborationMode>,
         allow_provider_model_fallback: bool,
         auth_manager: Arc<AuthManager>,
         agent_control: AgentControl,
@@ -1825,6 +1837,7 @@ impl ThreadManagerState {
             .await;
         let (session, io) = Box::pin(Session::spawn(SessionSpawnArgs {
             config,
+            initial_collaboration_mode,
             tool_execution_mode: ToolExecutionMode::Normal,
             allow_provider_model_fallback,
             user_instructions,

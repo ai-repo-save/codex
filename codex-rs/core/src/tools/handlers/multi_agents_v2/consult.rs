@@ -155,6 +155,7 @@ pub(super) async fn consult_parent(
     let spawned = wait_for_consult_stage(
         Session::spawn(SessionSpawnArgs {
             config: snapshot.config,
+            initial_collaboration_mode: None,
             tool_execution_mode: ToolExecutionMode::ConsultNoLocalTools,
             allow_provider_model_fallback: false,
             user_instructions,
