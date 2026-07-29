@@ -44,6 +44,7 @@ use core_test_support::test_codex::TestCodex;
 use core_test_support::test_codex::local_selections;
 use core_test_support::test_codex::test_codex;
 use core_test_support::test_codex::turn_permission_fields;
+use core_test_support::wait_for_event;
 use core_test_support::wait_for_event_match;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
@@ -78,6 +79,9 @@ const ROLE_MODEL: &str = "gpt-5.4";
 const ROLE_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::High;
 const RESEARCH_INSTRUCTIONS: &str = "spawned child research mode instructions";
 const SUBAGENT_START_CONTEXT: &str = "subagent start context reaches child";
+const CHILD_COMPACT_PROMPT: &str = "summarize the encrypted child history";
+const CHILD_COMPACT_SUMMARY: &str = "encrypted child compact summary";
+const CHILD_POST_COMPACT_PROMPT: &str = "continue after encrypted child compaction";
 const SUBAGENT_STOP_CONTINUATION: &str = "continue only the child";
 const INTERNAL_SUBAGENT_PROMPT: &str = "internal subagent: review";
 const CHILD_CONTEXT_REMINDER_MESSAGE: &str = "child context threshold reached";
@@ -1846,6 +1850,208 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
                 && log_field(line, "communication_id") == Some(communication_id)
         })
         .expect("correlated receive event");
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn encrypted_spawn_agent_message_survives_local_child_compaction() -> Result<()> {
+    let server = start_mock_server().await;
+    let encrypted_message = "opaque-encrypted-message";
+    let spawn_args = serde_json::to_string(&json!({
+        "message": encrypted_message,
+        "task_name": "worker",
+        "collaboration_mode": "research",
+    }))?;
+    mount_sse_once_match(
+        &server,
+        |request: &wiremock::Request| body_contains(request, TURN_1_PROMPT),
+        sse(vec![
+            ev_response_created("resp-parent-1"),
+            ev_function_call_with_namespace(
+                SPAWN_CALL_ID,
+                MULTI_AGENT_V2_NAMESPACE,
+                "spawn_agent",
+                &spawn_args,
+            ),
+            ev_completed("resp-parent-1"),
+        ]),
+    )
+    .await;
+    let initial_child_request = mount_sse_once_match(
+        &server,
+        |request: &wiremock::Request| {
+            request_has_input_type(request, "agent_message")
+                && request
+                    .headers
+                    .get("x-openai-subagent")
+                    .and_then(|value| value.to_str().ok())
+                    == Some("collab_spawn")
+        },
+        sse(vec![
+            ev_response_created("resp-child-1"),
+            ev_completed("resp-child-1"),
+        ]),
+    )
+    .await;
+    mount_sse_once_match(
+        &server,
+        |request: &wiremock::Request| body_contains(request, SPAWN_CALL_ID),
+        sse(vec![
+            ev_response_created("resp-parent-2"),
+            ev_assistant_message("msg-parent-2", "done"),
+            ev_completed("resp-parent-2"),
+        ]),
+    )
+    .await;
+    mount_sse_once_match(
+        &server,
+        |request: &wiremock::Request| {
+            body_contains(request, CHILD_COMPACT_PROMPT)
+                && request
+                    .headers
+                    .get("x-openai-subagent")
+                    .and_then(|value| value.to_str().ok())
+                    == Some("collab_spawn")
+        },
+        sse(vec![
+            ev_response_created("resp-child-compact"),
+            ev_assistant_message("msg-child-compact", CHILD_COMPACT_SUMMARY),
+            ev_completed("resp-child-compact"),
+        ]),
+    )
+    .await;
+    let post_compact_request = mount_sse_once_match(
+        &server,
+        |request: &wiremock::Request| {
+            body_contains(request, CHILD_POST_COMPACT_PROMPT)
+                && body_contains(request, CHILD_COMPACT_SUMMARY)
+                && request
+                    .headers
+                    .get("x-openai-subagent")
+                    .and_then(|value| value.to_str().ok())
+                    == Some("collab_spawn")
+        },
+        sse(vec![
+            ev_response_created("resp-child-2"),
+            ev_completed("resp-child-2"),
+        ]),
+    )
+    .await;
+
+    let mut builder = test_codex().with_model("koffing").with_config(|config| {
+        config
+            .features
+            .enable(Feature::Collab)
+            .expect("test config should allow feature update");
+        config
+            .features
+            .enable(Feature::MultiAgentV2)
+            .expect("test config should allow feature update");
+        config.multi_agent_v2.encrypt_messages = true;
+        config.compact_prompt = Some(CHILD_COMPACT_PROMPT.to_string());
+        config.model_provider.name = "Local test provider".to_string();
+        let research = config
+            .collaboration_mode_presets
+            .iter_mut()
+            .find(|preset| preset.mode == Some(codex_protocol::config_types::ModeKind::Research))
+            .expect("research collaboration mode preset");
+        research.developer_instructions = Some(Some(RESEARCH_INSTRUCTIONS.to_string()));
+    });
+    let test = builder.build(&server).await?;
+    let root_thread_id = test.session_configured.thread_id;
+
+    test.submit_turn(TURN_1_PROMPT).await?;
+    let child_thread_id = test
+        .thread_manager
+        .list_thread_ids()
+        .await
+        .into_iter()
+        .find(|thread_id| *thread_id != root_thread_id)
+        .expect("child thread ID");
+    let child_thread = test.thread_manager.get_thread(child_thread_id).await?;
+    wait_for_event(child_thread.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+
+    child_thread.submit(Op::Compact).await?;
+    wait_for_event(child_thread.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+    child_thread
+        .submit(
+            vec![UserInput::Text {
+                text: CHILD_POST_COMPACT_PROMPT.to_string(),
+                text_elements: Vec::new(),
+            }]
+            .into(),
+        )
+        .await?;
+    wait_for_event(child_thread.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+
+    let initial_request = wait_for_matching_request(
+        &initial_child_request,
+        "initial encrypted child request",
+        |request| {
+            request.header("x-openai-subagent").as_deref() == Some("collab_spawn")
+                && !request.inputs_of_type("agent_message").is_empty()
+        },
+    )
+    .await?;
+    let post_request = wait_for_matching_request(
+        &post_compact_request,
+        "post-compaction encrypted child request",
+        |request| {
+            request.body_contains_text(CHILD_POST_COMPACT_PROMPT)
+                && request.body_contains_text(CHILD_COMPACT_SUMMARY)
+                && request.header("x-openai-subagent").as_deref() == Some("collab_spawn")
+        },
+    )
+    .await?;
+    assert_eq!(
+        post_request.body_json()["client_metadata"]["thread_id"],
+        json!(child_thread_id.to_string())
+    );
+    assert_eq!(
+        strip_response_item_ids_from_json(Value::Array(
+            post_request.inputs_of_type("agent_message")
+        )),
+        strip_response_item_ids_from_json(Value::Array(
+            initial_request.inputs_of_type("agent_message")
+        ))
+    );
+
+    let input = post_request.input();
+    let developer_index = input
+        .iter()
+        .position(|item| {
+            item.get("role").and_then(Value::as_str) == Some("developer")
+                && item.to_string().contains(RESEARCH_INSTRUCTIONS)
+        })
+        .expect("research developer instructions");
+    let agent_message_index = input
+        .iter()
+        .position(|item| item.get("type").and_then(Value::as_str) == Some("agent_message"))
+        .expect("preserved agent message");
+    let summary_index = input
+        .iter()
+        .position(|item| item.to_string().contains(CHILD_COMPACT_SUMMARY))
+        .expect("compaction summary");
+    let follow_up_index = input
+        .iter()
+        .position(|item| item.to_string().contains(CHILD_POST_COMPACT_PROMPT))
+        .expect("post-compaction follow-up");
+    assert!(
+        developer_index < agent_message_index
+            && agent_message_index < summary_index
+            && summary_index < follow_up_index,
+        "post-compaction input: {input:#?}"
+    );
 
     Ok(())
 }
