@@ -38,6 +38,15 @@ When a task requires building, running, testing, or generating files from reposi
 - `uv run --project scripts python scripts/remote/just.py <recipe> [args...]` runs `codex-rs`
   `just` recipes remotely with the shared sync, sccache, and fast-linker setup. For example:
   `uv run --project scripts python scripts/remote/just.py test -p codex-app-server`.
+- The configured remote host runs as `root`, has DNS that may rewrite public test domains to local
+  addresses, and may have ambient state under `/tmp`. Run full-workspace validation with
+  `uv run --project scripts python scripts/remote/just.py --remote-full test`. This mode uses an
+  isolated temporary directory, limits nextest to four threads, and prints every test excluded
+  because its contract cannot be exercised on that host.
+- Treat the `--remote-full` exclusion list as the authority for remote-host incompatibilities.
+  Do not change production code or upstream-identical tests solely to make an excluded test pass
+  on `192.168.50.8`. Validate an excluded contract in a compatible unprivileged or controlled-DNS
+  environment when that contract is relevant to the task.
 - `uv run --project scripts python scripts/remote/build_sync.py` performs only the remote
   compile-and-execute smoke test. `uv run --project scripts python
   scripts/remote/install_local_standalone.py` builds a standalone package remotely and installs
@@ -132,7 +141,7 @@ Run `uv run --project scripts python scripts/remote/just.py fmt` automatically a
 2. Run a test filter that matches the behavior changed. For example, for a TUI slash-command change, run a focused `codex-tui` filter such as `uv run --project scripts python scripts/remote/just.py test -p codex-tui chatwidget::tests::slash_commands`.
 3. For TUI compile/RPC smoke only, use `uv run --project scripts python scripts/remote/tui_smoke.py`. This is not a substitute for behavior-specific tests; it only verifies that the remote TUI test graph still builds and one app-server/TUI RPC path runs.
 4. Do not use unfiltered `uv run --project scripts python scripts/remote/just.py test -p codex-tui` as a routine development check. It runs the entire `codex-tui` crate, including platform-sensitive snapshots, and is substantially broader than a behavior-specific test. Version-bearing snapshots use stable fixtures.
-5. Once focused tests pass, run the complete test suite with `uv run --project scripts python scripts/remote/just.py test` only when the change is broad enough that focused coverage does not bound the risk, when a shared common/core/protocol change affects many independent call paths, or when the user/PR explicitly requires full validation. The full workspace suite includes all snapshot tests. Do not use full-workspace tests as routine finalization for a narrow behavior change that already has focused coverage. Avoid `--all-features` for routine local runs because it expands the build matrix and can significantly increase `target/` disk usage; use it only when you specifically need full feature coverage.
+5. Once focused tests pass, run the complete test suite with `uv run --project scripts python scripts/remote/just.py --remote-full test` only when the change is broad enough that focused coverage does not bound the risk, when a shared common/core/protocol change affects many independent call paths, or when the user/PR explicitly requires full validation. This configured-host suite reports and excludes only the tests whose root, DNS, or temporary-directory prerequisites are unavailable there. The remaining workspace suite includes all snapshot tests. Do not use full-workspace tests as routine finalization for a narrow behavior change that already has focused coverage. Avoid `--all-features` for routine local runs because it expands the build matrix and can significantly increase `target/` disk usage; use it only when you specifically need full feature coverage.
 
 Before finalizing a large change to `codex-rs`, run `uv run --project scripts python scripts/remote/just.py fix -p <project>` for changed crates where the scoped Clippy fix is expected to finish quickly. Prefer scoping with `-p` to avoid slow workspace-wide Clippy builds; only run `fix` without `-p` if you changed shared crates. Do not run `uv run --project scripts python scripts/remote/just.py fix -p codex-core` as a routine finalization step: it expands to `cargo clippy --fix --tests --allow-dirty -p codex-core`, often spends many minutes in a single `clippy-driver` process, and has poor signal-to-cost for ordinary `codex-core` changes. For `codex-core`, rely on focused remote tests, formatting, schema/codegen checks when relevant, and CI for full Clippy coverage unless the user explicitly asks to run the slow fix. Do not re-run tests after running `fix` or `fmt`.
 

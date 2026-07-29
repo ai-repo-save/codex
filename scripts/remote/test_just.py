@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import contextlib
+import io
 import sys
 import unittest
 from unittest import mock
@@ -57,6 +59,54 @@ class RemoteJustTest(unittest.TestCase):
                 command=just.remote_codex_rs_just_command(recipe_args),
             )
         )
+
+    def test_remote_full_uses_bounded_isolated_policy(self) -> None:
+        stderr = io.StringIO()
+        with (
+            contextlib.redirect_stderr(stderr),
+            mock.patch.object(just, "run_remote_workflow", return_value=0) as run,
+        ):
+            exit_code = just.main(("--remote-full", "test"))
+
+        self.assertEqual(exit_code, 0)
+        workflow = run.call_args.args[0]
+        self.assertEqual(workflow.host, just.DEFAULT_HOST)
+        self.assertEqual(workflow.branch, just.DEFAULT_BRANCH)
+        self.assertEqual(workflow.remote_path, just.DEFAULT_REMOTE_PATH)
+        shell_command = workflow.command[2]
+        self.assertIn('export TMPDIR="$remote_test_tmpdir"', shell_command)
+        self.assertIn("just test --test-threads=4 -E", shell_command)
+        self.assertIn(
+            "package(codex-apply-patch)",
+            shell_command,
+        )
+        self.assertIn(
+            "test(test_apply_patch_fails_on_write_error)",
+            shell_command,
+        )
+        self.assertIn(
+            "test(host_blocked_requires_allowlist_match)",
+            shell_command,
+        )
+        output = stderr.getvalue()
+        self.assertIn("isolated TMPDIR", output)
+        self.assertIn(
+            "codex-apply-patch::test_apply_patch_fails_on_write_error",
+            output,
+        )
+        self.assertIn(
+            "codex-network-proxy::host_blocked_requires_allowlist_match",
+            output,
+        )
+
+    def test_remote_full_rejects_additional_recipe_arguments(self) -> None:
+        with (
+            contextlib.redirect_stderr(io.StringIO()),
+            self.assertRaises(SystemExit) as error,
+        ):
+            just.main(("--remote-full", "test", "-p", "codex-core"))
+
+        self.assertEqual(error.exception.code, 2)
 
 
 if __name__ == "__main__":
