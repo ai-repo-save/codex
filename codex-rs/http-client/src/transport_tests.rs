@@ -189,7 +189,7 @@ async fn capture_transport_logs(client: HttpClient) -> String {
     let _guard = tracing::subscriber::set_default(subscriber);
     tracing::trace!(target: "codex_http_client::transport", "log capture sentinel");
     let mut request = Request::new(
-        Method::POST,
+        http::Method::POST,
         format!("http://{server_addr}/request?token=url-secret"),
     )
     .with_json(&json!({"token": "body-secret"}));
