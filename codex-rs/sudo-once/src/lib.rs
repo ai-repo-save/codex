@@ -16,6 +16,19 @@ use zeroize::Zeroizing;
 
 const PROMPT_CHANNEL_CAPACITY: usize = 16;
 
+#[cfg(target_os = "linux")]
+mod linux;
+
+#[cfg(target_os = "linux")]
+pub use linux::SealedSudoExecutable;
+#[cfg(target_os = "linux")]
+pub use linux::sudo_once_available;
+
+#[cfg(not(target_os = "linux"))]
+pub fn sudo_once_available() -> bool {
+    false
+}
+
 /// Immutable execution details the user authorizes for exactly one sudo run.
 #[derive(Debug)]
 pub struct SudoOnceCommand {

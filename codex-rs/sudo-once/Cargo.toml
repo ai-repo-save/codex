@@ -10,7 +10,8 @@ workspace = true
 [dependencies]
 codex-protocol = { workspace = true }
 codex-utils-absolute-path = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }
+libc = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "sync"] }
 zeroize = { workspace = true }
 
 [dev-dependencies]
