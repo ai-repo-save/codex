@@ -932,11 +932,7 @@ impl ModelClient {
         } else {
             (
                 prompt.base_instructions.text.clone(),
-                if has_tools {
-                    Some(create_tools_raw_json_for_responses_api(&prompt.tools)?.into())
-                } else {
-                    None
-                },
+                Some(create_tools_raw_json_for_responses_api(&prompt.tools)?.into()),
             )
         };
         let reasoning = Self::build_reasoning(model_info, effort, summary, session_mode);

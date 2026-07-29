@@ -347,8 +347,7 @@ impl FileSystemSandboxContext {
         };
         let file_system_policy = permissions.file_system_sandbox_policy();
         matches!(file_system_policy.kind, FileSystemSandboxKind::Restricted)
-            && (!file_system_policy.has_full_disk_read_access()
-                || !file_system_policy.has_full_disk_write_access())
+            && !file_system_policy.has_full_disk_write_access()
     }
 
     pub fn has_cwd_dependent_permissions(&self) -> bool {

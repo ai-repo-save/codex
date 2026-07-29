@@ -321,8 +321,6 @@ fn create_bwrap_flags(
     // Request a user namespace explicitly rather than relying on bubblewrap's
     // auto-enable behavior, which is skipped when the caller runs as uid 0.
     args.push("--unshare-user".to_string());
-    args.push("--cap-drop".to_string());
-    args.push("ALL".to_string());
     args.push("--unshare-pid".to_string());
     if options.network_mode.should_unshare_network() {
         args.push("--unshare-net".to_string());

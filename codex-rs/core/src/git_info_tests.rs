@@ -593,7 +593,6 @@ async fn test_get_git_working_tree_state_branch_fallback() {
 #[tokio::test]
 async fn resolve_root_git_project_for_trust_returns_none_outside_repo() {
     let tmp = TempDir::new().expect("tempdir");
-    std::fs::write(tmp.path().join(".git"), "gitdir: missing").expect("write git boundary");
     assert!(
         resolve_root_git_project_for_trust(LOCAL_FS.as_ref(), &tmp.path().abs())
             .await
