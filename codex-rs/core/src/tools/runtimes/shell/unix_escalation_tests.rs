@@ -712,7 +712,7 @@ async fn execve_approval_review_route_hook_routes_to_auto_review() -> anyhow::Re
             },
         }))
         .context("build trusted hook state")?,
-    );
+    )?;
 
     let mut hook_shell_argv = session
         .user_shell()
@@ -899,7 +899,7 @@ async fn execve_approval_review_route_hook_can_route_strict_auto_review_to_user(
             },
         }))
         .context("build trusted hook state")?,
-    );
+    )?;
 
     let mut hook_shell_argv = session
         .user_shell()

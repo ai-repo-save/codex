@@ -502,7 +502,7 @@ async fn multi_agent_v2_spawn_accepts_available_model_with_different_backend_met
     );
     let manager = thread_manager();
     let root = manager
-        .start_thread((*turn.config).clone())
+        .start_thread(StartThreadOptions::new((*turn.config).clone()))
         .await
         .expect("root thread should start");
     {
@@ -1804,7 +1804,7 @@ async fn multi_agent_v2_parent_reply_failure_emits_resolved_target_activity() {
         config,
     );
     let root = manager
-        .start_thread((*turn.config).clone())
+        .start_thread(StartThreadOptions::new((*turn.config).clone()))
         .await
         .expect("root thread should start");
     Arc::get_mut(&mut session)
@@ -1979,7 +1979,7 @@ async fn multi_agent_v2_list_agents_marks_calling_child_agent_as_self() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
-        .start_thread((*turn.config).clone())
+        .start_thread(StartThreadOptions::new((*turn.config).clone()))
         .await
         .expect("root thread should start");
     session.services.agent_control = manager.agent_control();
@@ -2052,7 +2052,7 @@ async fn multi_agent_v2_inspect_agent_returns_bounded_transcript_tail_from_histo
     let (mut session, mut turn, receiver) = make_session_and_context_with_rx().await;
     let manager = thread_manager();
     let root = manager
-        .start_thread((*turn.config).clone())
+        .start_thread(StartThreadOptions::new((*turn.config).clone()))
         .await
         .expect("root thread should start");
     Arc::get_mut(&mut session)
@@ -4256,7 +4256,7 @@ async fn multi_agent_v2_wait_agent_consumes_agent_mailbox_activity_once() {
 
     let manager = thread_manager();
     let root = manager
-        .start_thread(config)
+        .start_thread(StartThreadOptions::new(config))
         .await
         .expect("root thread should start");
     let session = Arc::clone(&root.thread.session);

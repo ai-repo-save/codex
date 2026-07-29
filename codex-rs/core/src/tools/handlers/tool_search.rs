@@ -392,11 +392,14 @@ mod tests {
 
     #[test]
     fn mcp_prefix_expansion_returns_matching_tools_without_query() {
-        let handler = ToolSearchHandler::new(search_infos_for_mcp_tools(&[
-            tool_info("calendar", "create_event", "Create events"),
-            tool_info("calendar", "list_events", "List events"),
-            tool_info("github", "create_issue", "Create issues"),
-        ]));
+        let handler = ToolSearchHandler::new(
+            search_infos_for_mcp_tools(&[
+                tool_info("calendar", "create_event", "Create events"),
+                tool_info("calendar", "list_events", "List events"),
+                tool_info("github", "create_issue", "Create issues"),
+            ]),
+            ToolSearchSourceListing::Include,
+        );
 
         let tools = handler
             .tools_for_args(&SearchToolCallParams {
@@ -443,10 +446,13 @@ mod tests {
 
     #[test]
     fn mcp_prefix_expansion_respects_limit_and_allows_tool_prefixes() {
-        let handler = ToolSearchHandler::new(search_infos_for_mcp_tools(&[
-            tool_info("calendar", "create_event", "Create events"),
-            tool_info("calendar", "list_events", "List events"),
-        ]));
+        let handler = ToolSearchHandler::new(
+            search_infos_for_mcp_tools(&[
+                tool_info("calendar", "create_event", "Create events"),
+                tool_info("calendar", "list_events", "List events"),
+            ]),
+            ToolSearchSourceListing::Include,
+        );
 
         let tools = handler
             .tools_for_args(&SearchToolCallParams {
@@ -479,11 +485,14 @@ mod tests {
 
     #[test]
     fn mcp_prefix_expansion_returns_empty_for_unknown_prefix() {
-        let handler = ToolSearchHandler::new(search_infos_for_mcp_tools(&[tool_info(
-            "calendar",
-            "create_event",
-            "Create events",
-        )]));
+        let handler = ToolSearchHandler::new(
+            search_infos_for_mcp_tools(&[tool_info(
+                "calendar",
+                "create_event",
+                "Create events",
+            )]),
+            ToolSearchSourceListing::Include,
+        );
 
         let tools = handler
             .tools_for_args(&SearchToolCallParams {
@@ -498,11 +507,14 @@ mod tests {
 
     #[test]
     fn tool_search_requires_query_or_mcp_prefix() {
-        let handler = ToolSearchHandler::new(search_infos_for_mcp_tools(&[tool_info(
-            "calendar",
-            "create_event",
-            "Create events",
-        )]));
+        let handler = ToolSearchHandler::new(
+            search_infos_for_mcp_tools(&[tool_info(
+                "calendar",
+                "create_event",
+                "Create events",
+            )]),
+            ToolSearchSourceListing::Include,
+        );
 
         let result = handler.tools_for_args(&SearchToolCallParams {
             query: Some(" ".to_string()),

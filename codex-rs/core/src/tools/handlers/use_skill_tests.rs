@@ -29,6 +29,7 @@ fn skill_metadata(name: &str, path: AbsolutePathBuf) -> codex_core_skills::Skill
         path_to_skills_md: path,
         scope: SkillScope::Repo,
         plugin_id: None,
+        remote_plugin_id: None,
     }
 }
 

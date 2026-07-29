@@ -232,6 +232,7 @@ fn test_skill(name: &str) -> SkillMetadata {
         .abs(),
         scope: SkillScope::Repo,
         plugin_id: None,
+        remote_plugin_id: None,
     }
 }
 

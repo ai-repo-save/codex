@@ -2,6 +2,7 @@ use super::*;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::Settings;
+use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AskForApproval;
@@ -244,7 +245,10 @@ fn count_user_turns_since_anchor_forgets_pre_compaction_anchor() {
 
     let result = count_user_turns_since_anchor(&items, ANCHOR_ID);
 
-    assert!(matches!(result, Err(CodexErr::InvalidRequest(_))));
+    assert!(matches!(
+        result,
+        Err(err) if matches!(err.details(), CodexErrorDetails::InvalidRequest(_))
+    ));
 }
 
 #[test]
@@ -364,7 +368,10 @@ fn count_user_turns_since_anchor_forgets_rewound_anchor() {
 
     let result = count_user_turns_since_anchor(&items, ANCHOR_ID);
 
-    assert!(matches!(result, Err(CodexErr::InvalidRequest(_))));
+    assert!(matches!(
+        result,
+        Err(err) if matches!(err.details(), CodexErrorDetails::InvalidRequest(_))
+    ));
 }
 
 #[test]
