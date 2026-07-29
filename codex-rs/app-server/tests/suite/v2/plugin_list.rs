@@ -54,7 +54,7 @@ const TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS: &str =
 #[cfg(target_os = "linux")]
 const TEST_USER_CONFIG_FILE: &str = "CODEX_APP_SERVER_TEST_USER_CONFIG_FILE";
 #[cfg(target_os = "linux")]
-const UNWRITABLE_USER_CONFIG_FILE: &str = "/proc/interrupts";
+const UNWRITABLE_USER_CONFIG_FILE: &str = "/proc/thread-self/children";
 const ALTERNATE_MARKETPLACE_RELATIVE_PATH: &str = ".claude-plugin/marketplace.json";
 const ALTERNATE_PLUGIN_MANIFEST_RELATIVE_PATH: &str = ".claude-plugin/plugin.json";
 
@@ -3512,12 +3512,6 @@ async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<(
     #[cfg(not(target_os = "linux"))]
     write_remote_plugin_hook_config(
         config_target_dir.path(),
-        &format!("{}/backend-api/", server.uri()),
-        "",
-    )?;
-    #[cfg(target_os = "linux")]
-    write_remote_plugin_hook_config(
-        codex_home.path(),
         &format!("{}/backend-api/", server.uri()),
         "",
     )?;
