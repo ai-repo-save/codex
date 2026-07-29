@@ -212,8 +212,8 @@ impl ProcessHandle {
 
     /// Returns the PID of the directly spawned process when the local backend provides one.
     ///
-    /// This is captured synchronously during spawn. Callers that need a Linux pidfd must open it
-    /// before allowing a privilege-sensitive child to proceed.
+    /// This is captured synchronously during spawn. Linux callers that need a stable process
+    /// identity must use `linux_process_identity` rather than reopening a pidfd by PID.
     pub fn process_id(&self) -> Option<u32> {
         self.process_id
     }
