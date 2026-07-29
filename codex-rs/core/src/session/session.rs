@@ -1272,8 +1272,13 @@ impl Session {
             )
             .await?;
             sess.start_mcp_prewarm_worker(mcp_prewarm_rx, mcp_auth_changes);
-            sess.schedule_startup_prewarm(session_configuration.base_instructions.clone())
-                .await;
+            if !matches!(
+                &session_configuration.session_source,
+                SessionSource::SubAgent(SubAgentSource::ThreadSpawn { .. })
+            ) {
+                sess.schedule_startup_prewarm(session_configuration.base_instructions.clone())
+                    .await;
+            }
             let session_start_source = match &initial_history {
                 InitialHistory::Resumed(_) => codex_hooks::SessionStartSource::Resume,
                 InitialHistory::New | InitialHistory::Forked(_) => {
