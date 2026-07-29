@@ -70,7 +70,11 @@ async fn sqlite_sink_honors_configured_default_filter_level() {
     let layer = start_with_config(runtime.clone(), LogSinkQueueConfig::default());
 
     let guard = tracing_subscriber::registry()
-        .with(layer.clone().with_filter(default_filter_with_level(LevelFilter::WARN)))
+        .with(
+            layer
+                .clone()
+                .with_filter(default_filter_with_level(LevelFilter::WARN)),
+        )
         .set_default();
 
     tracing::info!("retained-info");
@@ -84,7 +88,9 @@ async fn sqlite_sink_honors_configured_default_filter_level() {
         .await
         .expect("query logs after flush");
     assert_eq!(
-        logs.iter().map(|row| row.message.as_deref()).collect::<Vec<_>>(),
+        logs.iter()
+            .map(|row| row.message.as_deref())
+            .collect::<Vec<_>>(),
         vec![Some("retained-warn")]
     );
 
