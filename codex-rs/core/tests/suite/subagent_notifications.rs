@@ -1211,25 +1211,30 @@ async fn assert_v2_spawn_collaboration_mode(
         research.developer_instructions = Some(Some(RESEARCH_INSTRUCTIONS.to_string()));
     });
     let test = builder.build_with_auto_env(&server).await?;
-    if set_parent_research_mode {
-        core_test_support::submit_thread_settings(
-            &test.codex,
-            codex_protocol::protocol::ThreadSettingsOverrides {
-                collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
-                    mode: codex_protocol::config_types::ModeKind::Research,
-                    settings: codex_protocol::config_types::Settings {
-                        model: test.session_configured.model.clone(),
-                        reasoning_effort: test.session_configured.reasoning_effort.clone(),
-                        developer_instructions: Some(RESEARCH_INSTRUCTIONS.to_string()),
-                    },
-                }),
+    let collaboration_mode =
+        set_parent_research_mode.then(|| codex_protocol::config_types::CollaborationMode {
+            mode: codex_protocol::config_types::ModeKind::Research,
+            settings: codex_protocol::config_types::Settings {
+                model: test.session_configured.model.clone(),
+                reasoning_effort: test.session_configured.reasoning_effort.clone(),
+                developer_instructions: Some(RESEARCH_INSTRUCTIONS.to_string()),
+            },
+        });
+    test.codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: TURN_1_PROMPT.to_string(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
+                collaboration_mode,
                 ..Default::default()
             },
-        )
+        })
         .await?;
-    }
-
-    test.submit_turn(TURN_1_PROMPT).await?;
     let _ = spawn_turn.single_request();
     let child_request =
         wait_for_matching_request(&child_request_log, "child turn request", |request| {
