@@ -231,8 +231,12 @@ async fn explicit_proactive_config_wins_over_resumed_explicit_mode_history() -> 
         .collect::<serde_json::Result<Vec<_>>>()?;
     let recorded_modes = rollout_values
         .iter()
-        .filter(|value| value.get("type").and_then(Value::as_str) == Some("turn_context"))
-        .filter_map(|value| value.pointer("/payload/multi_agent_mode").cloned())
+        .filter(|value| value.get("type").and_then(Value::as_str) == Some("world_state"))
+        .filter_map(|value| {
+            value
+                .pointer("/payload/state/multi_agent_mode/mode")
+                .cloned()
+        })
         .collect::<Vec<_>>();
     assert_eq!(
         recorded_modes,
