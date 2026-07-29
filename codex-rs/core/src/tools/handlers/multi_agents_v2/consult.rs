@@ -2,6 +2,8 @@ use super::*;
 use crate::agent::control::LoadedAgentConsult;
 use crate::context::ConsultParentContext;
 use crate::context::ContextualUserFragment;
+use crate::session::ForkPersistence;
+use crate::session::GitEnrichmentPolicy;
 use crate::session::SessionIo;
 use crate::session::SessionSpawnArgs;
 use crate::session::session::Session;
@@ -173,6 +175,7 @@ pub(super) async fn consult_parent(
             extensions: Arc::clone(&parent_session.services.extensions),
             conversation_history: InitialHistory::Forked(snapshot.history),
             requested_history_mode: None,
+            fork_persistence: ForkPersistence::Copied,
             session_source: SessionSource::SubAgent(SubAgentSource::Other(
                 CONSULT_RESPONDER_SOURCE.to_string(),
             )),
@@ -204,6 +207,9 @@ pub(super) async fn consult_parent(
             external_time_provider: Some(Arc::clone(&parent_session.services.time_provider)),
             inherited_multi_agent_version: snapshot.multi_agent_version,
             prompt_cache_key_override: Some(snapshot.prompt_cache_key),
+            git_enrichment_policy: GitEnrichmentPolicy::Skip,
+            windows_sandbox_proxy_settings_mode:
+                codex_sandboxing::WindowsSandboxProxySettingsMode::Preserve,
         }),
         cancellation_token,
         deadline,

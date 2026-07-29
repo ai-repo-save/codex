@@ -908,6 +908,7 @@ impl ModelClient {
                 .iter_mut()
                 .for_each(ResponseItem::clear_internal_chat_message_metadata_passthrough);
         }
+        let has_tools = !prompt.tools.is_empty();
         let (instructions, tools) = if model_info.use_responses_lite {
             let tools = create_tools_json_for_responses_api(&prompt.tools)?;
             let mut prefix = vec![ResponseItem::AdditionalTools {

@@ -21,7 +21,6 @@ use codex_tools::ToolSpec;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 
-const CLIENT_ERROR_MESSAGE: &str = "failed to construct account rate limits client";
 const FETCH_ERROR_MESSAGE: &str = "failed to fetch account rate limits";
 const SERIALIZATION_ERROR_MESSAGE: &str = "failed to serialize account rate limits response";
 
@@ -227,11 +226,11 @@ impl AccountRateLimitsHandler {
             ));
         }
 
-        let client = BackendClient::from_auth(turn.config.chatgpt_base_url.clone(), &auth)
-            .map_err(|err| {
-                tracing::warn!(%err, "failed to construct account rate limits client");
-                FunctionCallError::RespondToModel(CLIENT_ERROR_MESSAGE.to_string())
-            })?;
+        let client = BackendClient::from_auth(
+            turn.config.chatgpt_base_url.clone(),
+            &auth,
+            turn.config.http_client_factory(),
+        );
         let rate_limits = client.get_rate_limits_many().await.map_err(|err| {
             tracing::warn!(%err, "failed to fetch account rate limits");
             FunctionCallError::RespondToModel(FETCH_ERROR_MESSAGE.to_string())

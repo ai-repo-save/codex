@@ -2098,9 +2098,12 @@ async fn drain_in_flight(
                     Arc::clone(&step_context),
                     /*fallback_step_context*/ None,
                     client_session,
-                    InitialContextInjection::BeforeLastUserMessage(Arc::new(
-                        sess.build_world_state_for_step(&step_context).await,
-                    )),
+                    InitialContextInjection::BeforeLastUserMessage {
+                        world_state: Arc::new(
+                            sess.build_world_state_for_step(&step_context).await,
+                        ),
+                        step_context: Arc::clone(&step_context),
+                    },
                     CompactionReason::UserRequested,
                     CompactionPhase::MidTurn,
                     retained_response_items,

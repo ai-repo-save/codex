@@ -9,6 +9,7 @@ use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use crate::state::TaskKind;
 use codex_features::Feature;
+use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::user_input::UserInput;
@@ -35,7 +36,9 @@ impl SessionTask for CompactTask {
     ) -> SessionTaskResult {
         let session = session.clone_session();
         let result = run_manual_compact_task(session, ctx, cancellation_token).await;
-        if let Err(err @ CodexErr::TurnAborted) = result {
+        if let Err(err) = result
+            && matches!(err.details(), CodexErrorDetails::TurnAborted)
+        {
             return Err(err);
         }
         Ok(None)

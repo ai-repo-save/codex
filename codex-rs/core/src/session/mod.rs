@@ -542,7 +542,7 @@ impl Session {
 
     async fn spawn_internal(args: SessionSpawnArgs) -> CodexResult<(Arc<Self>, SessionIo)> {
         let SessionSpawnArgs {
-            mut config,
+            config,
             tool_execution_mode,
             allow_provider_model_fallback,
             user_instructions,
@@ -625,12 +625,6 @@ impl Session {
             )
         };
 
-        if !config.multi_agent_v2.multi_agent_mode_explicitly_configured
-            && let Some(multi_agent_mode) =
-                conversation_history.get_latest_effective_multi_agent_mode()
-        {
-            config.multi_agent_v2.multi_agent_mode = multi_agent_mode;
-        }
         let config = Arc::new(config);
         let refresh_strategy = if session_source.is_non_root_agent() {
             codex_models_manager::manager::RefreshStrategy::Offline
@@ -3853,11 +3847,6 @@ impl Session {
                 ])
         {
             items.push(subagent_identity_message);
-        }
-        if let Some(multi_agent_mode) = multi_agents::effective_multi_agent_mode(turn_context)
-            && let Some(instructions) = MultiAgentModeInstructions::from_mode(multi_agent_mode)
-        {
-            items.push(ContextualUserFragment::into(instructions));
         }
         if let Some(initial_multi_agent_mode) = initial_multi_agent_mode {
             items.push(initial_multi_agent_mode.into_boxed_response_item());
