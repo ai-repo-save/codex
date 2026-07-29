@@ -568,6 +568,7 @@ async fn spawned_process_exposes_direct_child_pid() -> anyhow::Result<()> {
         .session
         .process_id()
         .ok_or_else(|| anyhow::anyhow!("pipe spawn did not expose its child PID"))?;
+    assert_ne!(process_id, 0, "pipe spawn returned an invalid child PID");
 
     #[cfg(unix)]
     assert_eq!(
