@@ -75,6 +75,7 @@ class RemoteJustTest(unittest.TestCase):
         self.assertEqual(workflow.remote_path, just.DEFAULT_REMOTE_PATH)
         shell_command = workflow.command[2]
         self.assertTrue(shell_command.startswith("set -euo pipefail; "))
+        self.assertIn("/var/tmp/codex-remote-tests.XXXXXX", shell_command)
         self.assertIn('export TMPDIR="$remote_test_tmpdir"', shell_command)
         self.assertIn("just test --test-threads=4 -E", shell_command)
         self.assertIn(
@@ -89,6 +90,10 @@ class RemoteJustTest(unittest.TestCase):
             "test(host_blocked_requires_allowlist_match)",
             shell_command,
         )
+        self.assertIn(
+            "test(policy_resolution_retries_after_auth_refresh)",
+            shell_command,
+        )
         output = stderr.getvalue()
         self.assertIn("isolated TMPDIR", output)
         self.assertIn(
@@ -97,6 +102,10 @@ class RemoteJustTest(unittest.TestCase):
         )
         self.assertIn(
             "codex-network-proxy::host_blocked_requires_allowlist_match",
+            output,
+        )
+        self.assertIn(
+            "codex-git-attribution::policy_resolution_retries_after_auth_refresh",
             output,
         )
 

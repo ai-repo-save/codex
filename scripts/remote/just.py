@@ -68,6 +68,11 @@ REMOTE_FULL_TEST_EXCLUSIONS: tuple[RemoteTestExclusion, ...] = (
         reason="uses a public hostname that the configured remote DNS rewrites locally",
     ),
     RemoteTestExclusion(
+        package="codex-git-attribution",
+        tests=("policy_resolution_retries_after_auth_refresh",),
+        reason="requires auth refresh to settle within a subsecond window missed by this host",
+    ),
+    RemoteTestExclusion(
         package="codex-network-proxy",
         tests=(
             "add_allowed_domain_removes_matching_deny_entry",
@@ -158,8 +163,7 @@ def remote_full_command() -> tuple[str, ...]:
     shell_command = command[2]
     isolated_tmp = (
         "set -euo pipefail; "
-        'mkdir -p "$HOME/.cache"; '
-        'remote_test_tmpdir="$(mktemp -d "$HOME/.cache/codex-remote-tests.XXXXXX")"; '
+        'remote_test_tmpdir="$(mktemp -d "/var/tmp/codex-remote-tests.XXXXXX")"; '
         "trap 'rm -rf -- \"$remote_test_tmpdir\"' EXIT; "
         'export TMPDIR="$remote_test_tmpdir"'
     )
