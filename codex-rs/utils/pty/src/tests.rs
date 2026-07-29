@@ -559,11 +559,9 @@ async fn pipe_and_pty_share_interface() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn spawned_process_exposes_direct_child_pid() -> anyhow::Result<()> {
-    let env_map: HashMap<String, String> = std::env::vars().collect();
-    let (program, args) = shell_command(&echo_sleep_command("pid-test"));
-    let spawned = spawn_pipe_process(&program, &args, Path::new("."), &env_map, &None, &[]).await?;
+async fn assert_spawned_process_exposes_direct_child_pid(
+    spawned: SpawnedProcess,
+) -> anyhow::Result<()> {
     let process_id = spawned
         .session
         .process_id()
@@ -603,6 +601,26 @@ async fn spawned_process_exposes_direct_child_pid() -> anyhow::Result<()> {
     );
 
     Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn spawned_processes_expose_direct_child_pid() -> anyhow::Result<()> {
+    let env_map: HashMap<String, String> = std::env::vars().collect();
+    let (program, args) = shell_command(&echo_sleep_command("pid-test"));
+    let pipe = spawn_pipe_process(&program, &args, Path::new("."), &env_map, &None, &[]).await?;
+    assert_spawned_process_exposes_direct_child_pid(pipe).await?;
+
+    let pty = spawn_pty_process(
+        &program,
+        &args,
+        Path::new("."),
+        &env_map,
+        &None,
+        TerminalSize::default(),
+        &[],
+    )
+    .await?;
+    assert_spawned_process_exposes_direct_child_pid(pty).await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
