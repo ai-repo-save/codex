@@ -161,10 +161,7 @@ async fn subagent_usage_draws_from_the_shared_budget() -> Result<()> {
     .await;
     mount_sse_once_match(
         &server,
-        |request: &wiremock::Request| {
-            wire_request_contains(request, SPAWN_CALL_ID)
-                && !wire_request_contains(request, "\"type\":\"agent_message\"")
-        },
+        |request: &wiremock::Request| wire_request_contains(request, SPAWN_CALL_ID),
         sse(vec![
             ev_response_created("root-2"),
             ev_completed_with_tokens("root-2", /*total_tokens*/ 10),
