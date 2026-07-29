@@ -16,6 +16,7 @@ use codex_protocol::protocol::TurnEnvironmentSelections;
 use codex_protocol::user_input::UserInput;
 use codex_utils_path_uri::PathUri;
 use core_test_support::responses::ev_assistant_message;
+use core_test_support::responses::ev_apply_patch_custom_tool_call;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_response_created;
@@ -40,6 +41,7 @@ const FIRST_ENVIRONMENT_ID: &str = "first";
 const SECOND_ENVIRONMENT_ID: &str = "second";
 const FIRST_CALL_ID: &str = "write-from-first";
 const SECOND_CALL_ID: &str = "write-from-second";
+const SECOND_FILE_CALL_ID: &str = "file-write-from-second";
 const EXEC_SERVER_START_TIMEOUT: Duration = Duration::from_secs(30);
 const TURN_COMPLETE_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -176,8 +178,18 @@ async fn two_exec_servers_isolate_workspace_write_roots() -> Result<()> {
             ]),
             sse(vec![
                 ev_response_created("resp-2"),
-                ev_assistant_message("msg-1", "done"),
+                ev_apply_patch_custom_tool_call(
+                    SECOND_FILE_CALL_ID,
+                    &format!(
+                        "*** Begin Patch\n*** Environment ID: {SECOND_ENVIRONMENT_ID}\n*** Add File: file-tool-second.txt\n+second file tool\n*** End Patch"
+                    ),
+                ),
                 ev_completed("resp-2"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-3"),
+                ev_assistant_message("msg-1", "done"),
+                ev_completed("resp-3"),
             ]),
         ],
     )
@@ -256,6 +268,10 @@ async fn two_exec_servers_isolate_workspace_write_roots() -> Result<()> {
     assert_eq!(
         std::fs::read_to_string(second_workspace.path().join("own-second.txt"))?,
         "second"
+    );
+    assert_eq!(
+        std::fs::read_to_string(second_workspace.path().join("file-tool-second.txt"))?,
+        "second file tool\n"
     );
     assert!(!first_cross_write.exists());
     assert!(!second_cross_write.exists());

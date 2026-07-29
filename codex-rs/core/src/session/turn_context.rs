@@ -154,6 +154,7 @@ pub struct TurnContext {
     pub(crate) multi_agent_version: MultiAgentVersion,
     pub(crate) personality: Option<Personality>,
     pub(crate) approval_policy: Constrained<AskForApproval>,
+    pub(crate) canonical_permission_profile: PermissionProfile,
     pub(crate) permission_profile: PermissionProfile,
     pub(crate) network: Option<NetworkProxy>,
     pub(crate) windows_sandbox_level: WindowsSandboxLevel,
@@ -322,6 +323,7 @@ impl TurnContext {
             multi_agent_version: self.multi_agent_version,
             personality: self.personality,
             approval_policy: self.approval_policy.clone(),
+            canonical_permission_profile: self.canonical_permission_profile.clone(),
             permission_profile: self.permission_profile.clone(),
             network: self.network.clone(),
             windows_sandbox_level: self.windows_sandbox_level,
@@ -348,7 +350,7 @@ impl TurnContext {
         additional_permissions: Option<AdditionalPermissionProfile>,
         environment: &TurnEnvironment,
     ) -> FileSystemSandboxContext {
-        let permission_profile = self.permission_profile();
+        let permission_profile = self.canonical_permission_profile.clone();
         let (base_file_system_sandbox_policy, base_network_sandbox_policy) =
             permission_profile.to_runtime_permissions();
         let file_system_sandbox_policy = effective_file_system_sandbox_policy(
@@ -554,6 +556,8 @@ impl Session {
             per_turn_config.features.enabled(Feature::FastMode),
             &model_info,
         );
+        let canonical_permission_profile =
+            per_turn_config.permissions.permission_profile().clone();
         let permission_profile = per_turn_config.permissions.effective_permission_profile();
         let per_turn_config = Arc::new(per_turn_config);
         let turn_metadata_state = Arc::new(TurnMetadataState::new(
@@ -603,6 +607,7 @@ impl Session {
             multi_agent_version,
             personality: session_configuration.personality,
             approval_policy: session_configuration.approval_policy.clone(),
+            canonical_permission_profile,
             permission_profile,
             network,
             windows_sandbox_level: session_configuration.windows_sandbox_level,
