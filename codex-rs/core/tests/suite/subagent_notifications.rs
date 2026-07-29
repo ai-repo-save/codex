@@ -1892,7 +1892,15 @@ async fn plaintext_multi_agent_v2_completion_sends_agent_message(
     };
     let child_request = mount_response_once_match(
         &server,
-        |req: &wiremock::Request| request_has_input_type(req, "agent_message"),
+        |req: &wiremock::Request| {
+            request_has_input_type(req, "message")
+                && body_contains(req, "opaque-encrypted-message")
+                && req
+                    .headers
+                    .get("x-openai-subagent")
+                    .and_then(|value| value.to_str().ok())
+                    == Some("collab_spawn")
+        },
         sse_response(sse(child_events)).set_delay(Duration::from_secs(1)),
     )
     .await;
@@ -1974,13 +1982,22 @@ async fn plaintext_multi_agent_v2_completion_sends_agent_message(
         .await?;
 
     test.submit_turn(TURN_1_PROMPT).await?;
-    let _ = wait_for_requests(&child_request).await?;
+    let _ = wait_for_matching_request(&child_request, "plaintext child request", |request| {
+        request.header("x-openai-subagent").as_deref() == Some("collab_spawn")
+            && message_texts_by_role_and_type(request, "user", "input_text")
+                .iter()
+                .any(|text| text == "opaque-encrypted-message")
+    })
+    .await?;
     test.submit_turn(TURN_2_NO_WAIT_PROMPT).await?;
 
-    let request = wait_for_requests(&agent_request)
-        .await?
-        .pop()
-        .expect("agent message request");
+    let request =
+        wait_for_matching_request(&agent_request, "parent agent message request", |request| {
+            request.body_contains_text(TURN_2_NO_WAIT_PROMPT)
+                && request.body_contains_text("Message Type: FINAL_ANSWER")
+                && request.body_contains_text(expected_text)
+        })
+        .await?;
     assert!(request.body_contains_text(&notification));
     assert_eq!(
         strip_response_item_ids_from_json(strip_metadata_from_json(Value::Array(

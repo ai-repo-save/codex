@@ -122,7 +122,13 @@ async fn cold_root_resume_restores_agent_identity_and_role_on_followup() -> Resu
     let initial_child_request = mount_sse_once_match(
         &server,
         |request: &wiremock::Request| {
-            request_has_input_type(request, "agent_message") && body_contains(request, INITIAL_TASK)
+            request_has_input_type(request, "message")
+                && body_contains(request, INITIAL_TASK)
+                && request
+                    .headers
+                    .get("x-openai-subagent")
+                    .and_then(|value| value.to_str().ok())
+                    == Some("collab_spawn")
         },
         sse(vec![
             ev_response_created("resp-worker-1"),
