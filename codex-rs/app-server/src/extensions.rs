@@ -344,8 +344,6 @@ pub(crate) fn guardian_agent_spawner(
 mod tests {
     use std::time::Duration;
 
-    use crate::outgoing_message::OutgoingEnvelope;
-    use crate::outgoing_message::OutgoingMessage;
     use codex_analytics::AnalyticsEventsClient;
     use codex_protocol::protocol::ThreadGoal as CoreThreadGoal;
     use codex_protocol::protocol::ThreadGoalClearedEvent;
