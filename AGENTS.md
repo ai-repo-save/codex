@@ -28,6 +28,9 @@ When a task requires building, running, testing, or generating files from reposi
   `just test`, `just write-config-schema`, `just bazel-lock-update`, `just bazel-lock-check`,
   `just argument-comment-lint`, and every other `just` recipe. All `just` invocations must run on
   `192.168.50.8`.
+- Never run repository Cargo commands that compile or execute code on the local machine. This
+  includes `cargo check`, `cargo build`, `cargo test`, `cargo run`, `cargo clippy`, `cargo bench`,
+  and `cargo install`. Run them only through the project remote scripts on `192.168.50.8`.
 - Treat code generation as remote execution. Commands such as `just write-config-schema` compile
   and run repository code and therefore must be executed on `192.168.50.8`, not locally.
 - Commit local source changes before remote execution, then push `main` to `origin`.
