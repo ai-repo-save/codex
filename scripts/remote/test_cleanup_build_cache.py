@@ -1,4 +1,3 @@
-import fcntl
 import os
 import subprocess
 import sys
@@ -15,6 +14,11 @@ sys.path.insert(0, str(SCRIPT_DIR))
 import cleanup_build_cache  # noqa: E402
 
 
+if sys.platform == "linux":
+    import fcntl
+
+
+@unittest.skipUnless(sys.platform == "linux", "requires Linux shell utilities")
 class CleanupBuildCacheTest(unittest.TestCase):
     def create_generation(
         self,
@@ -176,6 +180,8 @@ class CleanupBuildCacheTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("removed 1 stale incremental generation(s)", result.stdout)
 
+
+class CleanupBuildCacheCliTest(unittest.TestCase):
     def test_help_exits_before_checking_ssh_availability(self) -> None:
         with mock.patch.object(
             cleanup_build_cache,
