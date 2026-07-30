@@ -7,6 +7,8 @@
 - The local checkout remains the source of truth. If remote commands produce tracked changes, copy them back, inspect the local diff, and commit locally.
 - Remote Rust commands disable Cargo incremental compilation and report sccache statistics before
   and after execution.
+- `scripts/remote/sccache_probe.py` measures compiler-cache reuse by building one selected library
+  twice in isolated temporary target directories.
 - `scripts/remote/cleanup_build_cache.py` previews or removes stale incremental generations while
   retaining recent entries and coordinating with remote Rust commands through a shared lock.
 

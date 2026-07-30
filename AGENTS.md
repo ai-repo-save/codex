@@ -40,7 +40,9 @@ When a task requires building, running, testing, or generating files from reposi
   `uv run --project scripts python scripts/remote/just.py test -p codex-app-server`.
 - Remote Rust workflows set `CARGO_INCREMENTAL=0` and print sccache statistics before and after
   the command. Use those statistics to verify compiler-cache requests and hits instead of assuming
-  that the configured `RUSTC_WRAPPER` is effective.
+  that the configured `RUSTC_WRAPPER` is effective. Run
+  `uv run --project scripts python scripts/remote/sccache_probe.py` when an isolated two-build
+  cache-reuse measurement is required.
 - Use `uv run --project scripts python scripts/remote/cleanup_build_cache.py --dry-run` to inspect
   stale incremental generations when the remote target cache exceeds its configured size limit.
   Use `--execute` only after reviewing the reclaimable count and size. The cleanup retains recent
