@@ -52,6 +52,11 @@ class RemoteSyncTest(unittest.TestCase):
 
         self.assertEqual(command[0:2], ("bash", "-lc"))
         shell_command = command[2]
+        self.assertIn("export CARGO_INCREMENTAL=0", shell_command)
+        self.assertIn("remote build: sccache stats before", shell_command)
+        self.assertIn("remote build: sccache stats after", shell_command)
+        self.assertIn("compiler-cache metrics unavailable", shell_command)
+        self.assertIn("flock -s 9", shell_command)
         self.assertIn("export RUSTC_WRAPPER=", shell_command)
         self.assertIn(
             "export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang",

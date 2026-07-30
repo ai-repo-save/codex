@@ -16,6 +16,7 @@ DEFAULT_HOST = "192.168.50.8"
 DEFAULT_BRANCH = "main"
 DEFAULT_REMOTE_PATH = "/root/codex"
 DEFAULT_TARGET = "x86_64-unknown-linux-gnu"
+REMOTE_TARGET_LOCK_PATH = "/var/tmp/codex-remote-target.lock"
 DEFAULT_REMOTE_COMMAND_HEARTBEAT_SECONDS = 60.0
 REMOTE_COMMAND_HEARTBEAT_SECONDS = float(
     os.environ.get(
@@ -399,10 +400,27 @@ def remote_codex_rs_just_command(args: Sequence[str]) -> tuple[str, ...]:
 def remote_build_env_command(target: str) -> str:
     linker_env = cargo_target_linker_env_key(target)
     return (
+        "export CARGO_INCREMENTAL=0; "
+        'echo "remote build: CARGO_INCREMENTAL=$CARGO_INCREMENTAL"; '
+        "if command -v flock >/dev/null 2>&1; then "
+        f"exec 9>{shell_quote(REMOTE_TARGET_LOCK_PATH)}; "
+        "flock -s 9; "
+        'echo "remote build: acquired shared target cache lock"; '
+        "else "
+        'echo "remote build: flock not found; target cleanup cannot coordinate" >&2; '
+        "fi; "
         "if command -v sccache >/dev/null 2>&1; then "
         'export RUSTC_WRAPPER="$(command -v sccache)"; '
         'echo "remote build: using RUSTC_WRAPPER=$RUSTC_WRAPPER"; '
-        'else echo "remote build: sccache not found"; fi; '
+        'printf "%s\\n" "remote build: sccache stats before"; '
+        '"$RUSTC_WRAPPER" --show-stats || '
+        'echo "remote build: unable to read sccache stats before" >&2; '
+        "trap 'build_status=$?; "
+        'printf "%s\\n" "remote build: sccache stats after"; '
+        '"$RUSTC_WRAPPER" --show-stats || '
+        'echo "remote build: unable to read sccache stats after" >&2; '
+        'exit "$build_status"\' EXIT; '
+        'else echo "remote build: sccache not found; compiler-cache metrics unavailable"; fi; '
         "if command -v clang >/dev/null 2>&1 && command -v mold >/dev/null 2>&1; then "
         f"export {linker_env}=clang; "
         'export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=$(command -v mold)"; '

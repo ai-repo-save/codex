@@ -27,7 +27,9 @@ class RemoteBuildSyncTest(unittest.TestCase):
                 host=build_sync.DEFAULT_HOST,
                 branch=build_sync.DEFAULT_BRANCH,
                 remote_path=build_sync.DEFAULT_REMOTE_PATH,
-                command=build_sync.SMOKE_COMMAND,
+                command=build_sync.remote_codex_rs_just_command(
+                    build_sync.SMOKE_JUST_ARGS
+                ),
             )
         )
 

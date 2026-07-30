@@ -12,16 +12,18 @@ if __package__ in (None, ""):
     from _sync import DEFAULT_HOST
     from _sync import DEFAULT_REMOTE_PATH
     from _sync import RemoteWorkflow
+    from _sync import remote_codex_rs_just_command
     from _sync import run_remote_workflow
 else:
     from ._sync import DEFAULT_BRANCH
     from ._sync import DEFAULT_HOST
     from ._sync import DEFAULT_REMOTE_PATH
     from ._sync import RemoteWorkflow
+    from ._sync import remote_codex_rs_just_command
     from ._sync import run_remote_workflow
 
 
-SMOKE_COMMAND = ("just", "codex", "--version")
+SMOKE_JUST_ARGS = ("codex", "--version")
 
 
 def argument_parser() -> argparse.ArgumentParser:
@@ -54,7 +56,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             host=DEFAULT_HOST,
             branch=args.branch,
             remote_path=DEFAULT_REMOTE_PATH,
-            command=SMOKE_COMMAND,
+            command=remote_codex_rs_just_command(SMOKE_JUST_ARGS),
         )
     )
 
