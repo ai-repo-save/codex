@@ -33,14 +33,14 @@ DEFAULT_PACKAGE = "codex-utils-fuzzy-match"
 def argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Verify remote Rust compiler-cache reuse with two isolated builds "
+            "Verify remote Rust compiler-cache reuse with two clean builds "
             "of the same library."
         ),
         epilog=(
             "The probe resets sccache counters, creates two temporary Cargo target "
-            "directories, builds the selected library once in each directory, "
-            "prints statistics after both builds, and removes the temporary "
-            "directories.\n\n"
+            "states at the same path, builds the selected library once in each "
+            "state, prints statistics after both builds, and removes the temporary "
+            "directory.\n\n"
             "Example:\n"
             "  uv run --project scripts python scripts/remote/sccache_probe.py "
             "--package codex-utils-fuzzy-match"
@@ -71,12 +71,13 @@ def probe_command(package: str) -> str:
         "trap 'rm -rf -- \"$probe_root\"' EXIT; "
         "sccache --zero-stats >/dev/null; "
         "cd codex-rs; "
-        'echo "sccache probe: first isolated build"; '
-        f'CARGO_TARGET_DIR="$probe_root/first" cargo build --locked -p {quoted_package} --lib; '
+        'echo "sccache probe: first clean build"; '
+        f'CARGO_TARGET_DIR="$probe_root/target" cargo build --locked -p {quoted_package} --lib; '
         'echo "sccache probe: stats after first build"; '
         "sccache --show-stats; "
-        'echo "sccache probe: second isolated build"; '
-        f'CARGO_TARGET_DIR="$probe_root/second" cargo build --locked -p {quoted_package} --lib'
+        'rm -rf -- "$probe_root/target"; '
+        'echo "sccache probe: second clean build at the same path"; '
+        f'CARGO_TARGET_DIR="$probe_root/target" cargo build --locked -p {quoted_package} --lib'
     )
 
 

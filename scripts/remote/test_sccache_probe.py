@@ -15,8 +15,10 @@ import sccache_probe  # noqa: E402
 class SccacheProbeTest(unittest.TestCase):
     def test_runs_two_isolated_library_builds_and_cleans_them(self) -> None:
         probe_command = sccache_probe.probe_command("codex-utils-fuzzy-match")
-        self.assertIn('CARGO_TARGET_DIR="$probe_root/first"', probe_command)
-        self.assertIn('CARGO_TARGET_DIR="$probe_root/second"', probe_command)
+        self.assertEqual(
+            probe_command.count('CARGO_TARGET_DIR="$probe_root/target"'), 2
+        )
+        self.assertIn('rm -rf -- "$probe_root/target"', probe_command)
         self.assertEqual(probe_command.count("cargo build --locked"), 2)
         self.assertIn(
             "cargo build --locked -p 'codex-utils-fuzzy-match' --lib", probe_command
