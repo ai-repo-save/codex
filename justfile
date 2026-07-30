@@ -49,9 +49,16 @@ fmt-check:
     @{{ python }} ../scripts/format.py --check
 
 # Lint Cargo's default production targets. Pass --lib, --bins, or --tests to
-# scope the check to the Rust targets that changed.
+# scope the check to the Rust targets that changed. `cargo clippy --fix`
+# otherwise implies --all-targets, so fix adds --lib --bins when no target
+# selector is supplied.
+[unix]
 fix *args:
-    cargo clippy --fix --allow-dirty {args}
+    has_target_selector=false; for arg in "$@"; do case "$arg" in --lib|--bin|--bin=*|--bins|--example|--example=*|--examples|--test|--test=*|--tests|--bench|--bench=*|--benches|--all-targets) has_target_selector=true ;; esac; done; if [ "$has_target_selector" = false ]; then set -- --lib --bins "$@"; fi; cargo clippy --fix --allow-dirty "$@"
+
+[windows]
+fix *args:
+    $clippy_args = @($args | Select-Object -Skip 1); $target_selectors = @("--lib", "--bin", "--bins", "--example", "--examples", "--test", "--tests", "--bench", "--benches", "--all-targets"); $has_target_selector = @($clippy_args | Where-Object { $_ -in $target_selectors -or $_ -like "--bin=*" -or $_ -like "--example=*" -or $_ -like "--test=*" -or $_ -like "--bench=*" }).Count -gt 0; if (-not $has_target_selector) { $clippy_args = @("--lib", "--bins") + $clippy_args }; cargo clippy --fix --allow-dirty @clippy_args
 
 clippy *args:
     cargo clippy {args}
