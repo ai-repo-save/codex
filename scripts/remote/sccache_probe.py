@@ -12,6 +12,7 @@ if __package__ in (None, ""):
     from _sync import DEFAULT_HOST
     from _sync import DEFAULT_REMOTE_PATH
     from _sync import DEFAULT_TARGET
+    from _sync import RemoteTargetLockMode
     from _sync import RemoteWorkflow
     from _sync import remote_build_shell_command
     from _sync import run_remote_workflow
@@ -21,6 +22,7 @@ else:
     from ._sync import DEFAULT_HOST
     from ._sync import DEFAULT_REMOTE_PATH
     from ._sync import DEFAULT_TARGET
+    from ._sync import RemoteTargetLockMode
     from ._sync import RemoteWorkflow
     from ._sync import remote_build_shell_command
     from ._sync import run_remote_workflow
@@ -37,10 +39,14 @@ def argument_parser() -> argparse.ArgumentParser:
             "of the same library."
         ),
         epilog=(
-            "The probe resets sccache counters, creates two temporary Cargo target "
-            "states at the same path, builds the selected library once in each "
-            "state, prints statistics after both builds, and removes the temporary "
-            "directory.\n\n"
+            "The probe resets sccache counters under an exclusive remote target "
+            "cache lock, creates two temporary Cargo target states at the same "
+            "path, builds the selected library once in each state, prints "
+            "statistics after both builds, and removes the temporary directory.\n\n"
+            "Remote workflow side effects: pushes the current --branch commit "
+            "(main by default) to origin; fetches, resets, and cleans the shared "
+            "remote checkout; then copies Git-visible remote changes back to the "
+            "unchanged local checkout.\n\n"
             "Example:\n"
             "  uv run --project scripts python scripts/remote/sccache_probe.py "
             "--package codex-utils-fuzzy-match"
@@ -83,7 +89,11 @@ def probe_command(package: str) -> str:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = argument_parser().parse_args(argv)
-    command = remote_build_shell_command(DEFAULT_TARGET, probe_command(args.package))
+    command = remote_build_shell_command(
+        DEFAULT_TARGET,
+        probe_command(args.package),
+        lock_mode=RemoteTargetLockMode.EXCLUSIVE,
+    )
     return run_remote_workflow(
         RemoteWorkflow(
             host=DEFAULT_HOST,

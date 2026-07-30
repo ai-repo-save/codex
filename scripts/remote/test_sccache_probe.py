@@ -34,8 +34,20 @@ class SccacheProbeTest(unittest.TestCase):
         workflow = run.call_args.args[0]
         self.assertEqual(workflow.branch, sccache_probe.DEFAULT_BRANCH)
         shell_command = workflow.command[2]
+        self.assertIn("flock --exclusive --close", shell_command)
         self.assertIn("sccache --zero-stats", shell_command)
         self.assertIn("remote build: sccache stats after", shell_command)
+        self.assertLess(
+            shell_command.index("flock --exclusive --close"),
+            shell_command.index("sccache --zero-stats"),
+        )
+
+    def test_help_describes_remote_workflow_side_effects(self) -> None:
+        help_text = sccache_probe.argument_parser().format_help()
+
+        self.assertIn("pushes the current --branch commit", help_text)
+        self.assertIn("fetches, resets, and cleans", help_text)
+        self.assertIn("copies Git-visible remote changes back", help_text)
 
 
 if __name__ == "__main__":

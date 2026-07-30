@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Sequence
 
@@ -40,6 +41,11 @@ class RemoteWorkflow:
     branch: str
     remote_path: str
     command: tuple[str, ...]
+
+
+class RemoteTargetLockMode(str, Enum):
+    SHARED = "shared"
+    EXCLUSIVE = "exclusive"
 
 
 def run_remote_workflow(config: RemoteWorkflow) -> int:
@@ -429,7 +435,11 @@ def remote_build_env_command(target: str) -> str:
     )
 
 
-def remote_build_shell_command(target: str, command: str) -> str:
+def remote_build_shell_command(
+    target: str,
+    command: str,
+    lock_mode: RemoteTargetLockMode = RemoteTargetLockMode.SHARED,
+) -> str:
     build_body = (
         f"{remote_build_env_command(target)} && (set +e; (set -e; {command}); "
         "build_status=$?; "
@@ -441,7 +451,7 @@ def remote_build_shell_command(target: str, command: str) -> str:
     )
     return (
         "if command -v flock >/dev/null 2>&1; then "
-        f"flock --shared --close {shell_quote(REMOTE_TARGET_LOCK_PATH)} "
+        f"flock --{lock_mode.value} --close {shell_quote(REMOTE_TARGET_LOCK_PATH)} "
         f"bash -c {shell_quote(locked_build_body)}; "
         "else "
         'echo "remote build: flock not found; target cleanup cannot coordinate" >&2; '

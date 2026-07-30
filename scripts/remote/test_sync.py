@@ -125,6 +125,15 @@ class RemoteSyncTest(unittest.TestCase):
         self.assertEqual(result.stdout.count("remote build: sccache stats"), 2)
         self.assertEqual(lock_result.returncode, 0)
 
+    def test_remote_build_shell_command_supports_an_exclusive_lock(self) -> None:
+        command = _sync.remote_build_shell_command(
+            _sync.DEFAULT_TARGET,
+            "true",
+            lock_mode=_sync.RemoteTargetLockMode.EXCLUSIVE,
+        )
+
+        self.assertIn("flock --exclusive --close", command)
+
     def test_ssh_command_builds_plain_remote_command(self) -> None:
         config = _sync.RemoteWorkflow(
             host="builder",
