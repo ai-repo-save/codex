@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-import sys
+import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -73,6 +74,34 @@ class RemoteSyncTest(unittest.TestCase):
 
         self.assertEqual(command[0:2], ("bash", "-lc"))
         self.assertIn("cd codex-rs && just fmt", command[2])
+
+    def test_remote_build_shell_command_stops_before_followup_after_failure(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="/tmp") as temp_dir:
+            root = Path(temp_dir)
+            sccache = root / "sccache"
+            sccache.write_text("#!/bin/sh\nprintf 'fake sccache stats\\n'\n")
+            sccache.chmod(0o755)
+            marker = root / "unexpected-followup"
+            command = _sync.remote_build_shell_command(
+                _sync.DEFAULT_TARGET,
+                f"false; touch {_sync.shell_quote(str(marker))}",
+            )
+            environment = os.environ | {
+                "PATH": f"{root}{os.pathsep}{os.environ['PATH']}"
+            }
+            result = subprocess.run(
+                ("bash", "-lc", command),
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            self.assertFalse(marker.exists())
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout.count("remote build: sccache stats"), 2)
 
     def test_ssh_command_builds_plain_remote_command(self) -> None:
         config = _sync.RemoteWorkflow(
