@@ -45,7 +45,8 @@ class CleanupBuildCacheTest(unittest.TestCase):
         self.assertIn("max_age_days=21", command)
         self.assertIn("max_size_kib=104857600", command)
         self.assertIn('rm -rf -- "$candidate_path"', command)
-        self.assertIn("removed stale incremental generation", command)
+        self.assertIn("cleanup progress:", command)
+        self.assertIn("reclaimed %s KiB", command)
         self.assertIn('if [ "$target_size_kib" -lt "$max_size_kib" ]', command)
 
     def test_main_runs_the_dry_run_over_ssh_without_git_sync(self) -> None:

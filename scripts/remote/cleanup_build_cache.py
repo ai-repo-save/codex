@@ -119,9 +119,12 @@ def cleanup_command(config: CleanupConfig) -> str:
     remove_command = (
         'rm -rf -- "$candidate_path"; '
         'removed_generations="$((removed_generations + 1))"; '
+        'removed_size_kib="$((removed_size_kib + candidate_size_kib))"; '
         'target_size_kib="$((target_size_kib - candidate_size_kib))"; '
-        'printf "removed stale incremental generation: %s (%s KiB remaining target: %s KiB)\\n" '
-        '"$candidate_path" "$candidate_size_kib" "$target_size_kib"; '
+        'if [ "$((removed_generations % 100))" -eq 0 ]; then '
+        'printf "cleanup progress: %s generations, %s KiB reclaimed\\n" '
+        '"$removed_generations" "$removed_size_kib"; '
+        "fi; "
         'if [ "$target_size_kib" -lt "$max_size_kib" ]; then break 2; fi'
         if config.execute
         else ":"
@@ -168,6 +171,7 @@ def cleanup_command(config: CleanupConfig) -> str:
         'age_seconds="$((max_age_days * 24 * 60 * 60))"; '
         'now_epoch="$(date +%s)"; '
         "removed_generations=0; "
+        "removed_size_kib=0; "
         "eligible_generations=0; "
         "eligible_size_kib=0; "
         'while IFS= read -r -d "" incremental_path; do '
@@ -191,8 +195,9 @@ def cleanup_command(config: CleanupConfig) -> str:
         'printf "dry run: %s stale incremental generation(s), %s KiB reclaimable, are eligible\\n" '
         '"$eligible_generations" "$eligible_size_kib"; '
         "else "
-        'printf "removed %s stale incremental generation(s); target cache now uses %s KiB\\n" '
-        '"$removed_generations" "$target_size_kib"; '
+        'printf "removed %s stale incremental generation(s), reclaimed %s KiB; '
+        'target cache now uses %s KiB\\n" '
+        '"$removed_generations" "$removed_size_kib" "$target_size_kib"; '
         "fi"
     )
 
