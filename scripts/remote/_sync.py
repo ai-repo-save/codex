@@ -447,7 +447,8 @@ def remote_build_shell_command(
         'exit "$build_status")'
     )
     locked_build_body = (
-        f'echo "remote build: acquired shared target cache lock"; {build_body}'
+        f'echo "remote build: acquired {lock_mode.value} target cache lock"; '
+        f"{build_body}"
     )
     return (
         "if command -v flock >/dev/null 2>&1; then "

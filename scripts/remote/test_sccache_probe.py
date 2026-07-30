@@ -35,6 +35,7 @@ class SccacheProbeTest(unittest.TestCase):
         self.assertEqual(workflow.branch, sccache_probe.DEFAULT_BRANCH)
         shell_command = workflow.command[2]
         self.assertIn("flock --exclusive --close", shell_command)
+        self.assertIn("acquired exclusive target cache lock", shell_command)
         self.assertIn("sccache --zero-stats", shell_command)
         self.assertIn("remote build: sccache stats after", shell_command)
         self.assertLess(

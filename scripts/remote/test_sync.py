@@ -133,6 +133,7 @@ class RemoteSyncTest(unittest.TestCase):
         )
 
         self.assertIn("flock --exclusive --close", command)
+        self.assertIn("acquired exclusive target cache lock", command)
 
     def test_ssh_command_builds_plain_remote_command(self) -> None:
         config = _sync.RemoteWorkflow(
