@@ -438,10 +438,10 @@ def remote_build_env_command(target: str) -> str:
 
 def remote_build_shell_command(target: str, command: str) -> str:
     return (
-        f"{remote_build_env_command(target)}; {command}; "
+        f"{remote_build_env_command(target)} && ({command}; "
         "build_status=$?; "
         "codex_remote_sccache_stats_after; "
-        'exit "$build_status"'
+        'exit "$build_status")'
     )
 
 
