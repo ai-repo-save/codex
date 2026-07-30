@@ -48,11 +48,13 @@ fmt:
 fmt-check:
     @{{ python }} ../scripts/format.py --check
 
+# Lint Cargo's default production targets. Pass --lib, --bins, or --tests to
+# scope the check to the Rust targets that changed.
 fix *args:
-    cargo clippy --fix --tests --allow-dirty {args}
+    cargo clippy --fix --allow-dirty {args}
 
 clippy *args:
-    cargo clippy --tests {args}
+    cargo clippy {args}
 
 [unix]
 install:
@@ -84,6 +86,15 @@ test *args:
 [windows]
 test *args:
     $env:RUST_MIN_STACK = "{{ rust_min_stack }}"; $env:NEXTEST_PROFILE = "local"; cargo nextest run --no-fail-fast @($args | Select-Object -Skip 1)
+
+# Run selected tests without retrying failures, for deterministic diagnostics.
+[unix]
+test-diagnostic *args:
+    RUST_MIN_STACK={{ rust_min_stack }} NEXTEST_PROFILE=diagnostic cargo nextest run --no-fail-fast "$@"
+
+[windows]
+test-diagnostic *args:
+    $env:RUST_MIN_STACK = "{{ rust_min_stack }}"; $env:NEXTEST_PROFILE = "diagnostic"; cargo nextest run --no-fail-fast @($args | Select-Object -Skip 1)
 
 # Run from the repository root so scripts that resolve paths from `cwd` see
 # the same layout they use in GitHub Actions.
