@@ -38,6 +38,13 @@ When a task requires building, running, testing, or generating files from reposi
 - `uv run --project scripts python scripts/remote/just.py <recipe> [args...]` runs `codex-rs`
   `just` recipes remotely with the shared sync, sccache, and fast-linker setup. For example:
   `uv run --project scripts python scripts/remote/just.py test -p codex-app-server`.
+- Remote Rust workflows set `CARGO_INCREMENTAL=0` and print sccache statistics before and after
+  the command. Use those statistics to verify compiler-cache requests and hits instead of assuming
+  that the configured `RUSTC_WRAPPER` is effective.
+- Use `uv run --project scripts python scripts/remote/cleanup_build_cache.py --dry-run` to inspect
+  stale incremental generations when the remote target cache exceeds its configured size limit.
+  Use `--execute` only after reviewing the reclaimable count and size. The cleanup retains recent
+  generations and refuses to run while the shared target lock or a Cargo process is active.
 - The configured remote host runs as `root`, has DNS that may rewrite public test domains to local
   addresses, and may have ambient state under `/tmp`. Run full-workspace validation with
   `uv run --project scripts python scripts/remote/just.py --remote-full test`. This mode uses an
@@ -142,11 +149,13 @@ Run `uv run --project scripts python scripts/remote/just.py fmt` automatically a
 
 1. Do not run `cargo test` directly. Use `uv run --project scripts python scripts/remote/just.py test` so test execution follows the repo defaults.
 2. Run a test filter that matches the behavior changed. For example, for a TUI slash-command change, run a focused `codex-tui` filter such as `uv run --project scripts python scripts/remote/just.py test -p codex-tui chatwidget::tests::slash_commands`.
+   Use the `test-diagnostic` recipe instead of `test` when reproducing a deterministic failure
+   where retrying would only duplicate the result. Normal validation keeps the configured retry.
 3. For TUI compile/RPC smoke only, use `uv run --project scripts python scripts/remote/tui_smoke.py`. This is not a substitute for behavior-specific tests; it only verifies that the remote TUI test graph still builds and one app-server/TUI RPC path runs.
 4. Do not use unfiltered `uv run --project scripts python scripts/remote/just.py test -p codex-tui` as a routine development check. It runs the entire `codex-tui` crate, including platform-sensitive snapshots, and is substantially broader than a behavior-specific test. Version-bearing snapshots use stable fixtures.
 5. Once focused tests pass, run the complete test suite with `uv run --project scripts python scripts/remote/just.py --remote-full test` only when the change is broad enough that focused coverage does not bound the risk, when a shared common/core/protocol change affects many independent call paths, or when the user/PR explicitly requires full validation. This configured-host suite reports and excludes only the tests whose root, DNS, or temporary-directory prerequisites are unavailable there. The remaining workspace suite includes all snapshot tests. Do not use full-workspace tests as routine finalization for a narrow behavior change that already has focused coverage. Avoid `--all-features` for routine local runs because it expands the build matrix and can significantly increase `target/` disk usage; use it only when you specifically need full feature coverage.
 
-Before finalizing a large change to `codex-rs`, run `uv run --project scripts python scripts/remote/just.py fix -p <project>` for changed crates where the scoped Clippy fix is expected to finish quickly. Prefer scoping with `-p` to avoid slow workspace-wide Clippy builds; only run `fix` without `-p` if you changed shared crates. Do not run `uv run --project scripts python scripts/remote/just.py fix -p codex-core` as a routine finalization step: it expands to `cargo clippy --fix --tests --allow-dirty -p codex-core`, often spends many minutes in a single `clippy-driver` process, and has poor signal-to-cost for ordinary `codex-core` changes. For `codex-core`, rely on focused remote tests, formatting, schema/codegen checks when relevant, and CI for full Clippy coverage unless the user explicitly asks to run the slow fix. Do not re-run tests after running `fix` or `fmt`.
+Before finalizing a large change to `codex-rs`, run `uv run --project scripts python scripts/remote/just.py fix -p <project>` only for crates whose handwritten Rust source changed. Do not include crates merely because they are transitively affected. The default `fix` scope is production library and binary targets; pass `--tests`, `--test <name>`, or another Cargo target selector only when that target's source changed. Do not run `uv run --project scripts python scripts/remote/just.py fix -p codex-core` as a routine finalization step: the crate's production graph alone can spend many minutes in a single `clippy-driver` process and has poor signal-to-cost for ordinary changes. For `codex-core`, rely on focused remote tests, formatting, schema/codegen checks when relevant, and CI for full Clippy coverage unless the user explicitly asks to run the slow fix. Do not re-run tests after running `fix` or `fmt`.
 
 ## The `codex-core` crate
 

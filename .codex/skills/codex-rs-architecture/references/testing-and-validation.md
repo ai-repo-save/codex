@@ -5,12 +5,21 @@
 - Local performance is insufficient for routine compile/test/codegen in this repository.
 - Commit local source changes, push `main`, update `/root/codex` on `192.168.50.8`, then run build/test/fix commands remotely.
 - The local checkout remains the source of truth. If remote commands produce tracked changes, copy them back, inspect the local diff, and commit locally.
+- Remote Rust commands disable Cargo incremental compilation and report sccache statistics before
+  and after execution.
+- `scripts/remote/cleanup_build_cache.py` previews or removes stale incremental generations while
+  retaining recent entries and coordinating with remote Rust commands through a shared lock.
 
 ## Rust validation
 
 - Run `just fmt` in `codex-rs` after Rust changes.
 - Run focused tests with `just test -p <crate>`.
-- Run `just fix -p <crate>` before finalizing large or Rust code changes; do not rerun tests after `fix` or `fmt` unless a new code edit follows.
+- Use `just test-diagnostic -p <crate> <filter>` for deterministic failure diagnosis without
+  nextest retries. Normal `just test` retains the configured retry.
+- Run `just fix -p <crate>` only for crates with handwritten Rust source changes. Its default target
+  scope is `--lib --bins`; select test targets explicitly only when test source changed. Do not
+  include transitively affected crates. Do not rerun tests after `fix` or `fmt` unless a new code
+  edit follows.
 - For core/common/protocol changes, ask before running the complete `just test` suite.
 
 ## Special validation
