@@ -124,8 +124,7 @@ def cleanup_command(config: CleanupConfig) -> str:
         '"$candidate_path" "$candidate_size_kib" "$target_size_kib"; '
         'if [ "$target_size_kib" -lt "$max_size_kib" ]; then break 2; fi'
         if config.execute
-        else 'printf "dry run: would remove stale incremental generation: %s (%s KiB)\\n" '
-        '"$candidate_path" "$candidate_size_kib"'
+        else ":"
     )
     return (
         "set -euo pipefail; "
@@ -156,8 +155,8 @@ def cleanup_command(config: CleanupConfig) -> str:
         "exit 1; "
         "fi; "
         'cargo_lock="$(find "$target_path" -name .cargo-lock -print -quit)"; '
-        'if [ -n "$cargo_lock" ]; then '
-        'printf "%s\\n" "refusing cleanup: Cargo lock detected at $cargo_lock" >&2; '
+        'if [ -n "$cargo_lock" ] && ! (exec 8>>"$cargo_lock"; flock -n -x 8); then '
+        'printf "%s\\n" "refusing cleanup: Cargo lock is held at $cargo_lock" >&2; '
         "exit 1; "
         "fi; "
         'target_size_kib="$(du -sk -- "$target_path" | cut -f1)"; '
@@ -170,9 +169,11 @@ def cleanup_command(config: CleanupConfig) -> str:
         'now_epoch="$(date +%s)"; '
         "removed_generations=0; "
         "eligible_generations=0; "
+        "eligible_size_kib=0; "
         'while IFS= read -r -d "" incremental_path; do '
         'while IFS= read -r -d "" candidate_path; do '
-        'newest_epoch="$(find "$candidate_path" -type f -printf "%T@\\n" | sort -nr | head -n 1)"; '
+        'newest_epoch="$(find "$candidate_path" -type f -printf "%T@\\n" | '
+        'awk \'($1 > newest) { newest = $1 } END { if (newest != "") print newest }\')"; '
         'if [ -z "$newest_epoch" ]; then newest_epoch="$(stat -c %Y -- "$candidate_path")"; fi; '
         'if ! awk -v now="$now_epoch" -v newest="$newest_epoch" -v age="$age_seconds" '
         "'BEGIN { exit (now - newest >= age) ? 0 : 1 }'; then "
@@ -180,13 +181,15 @@ def cleanup_command(config: CleanupConfig) -> str:
         "fi; "
         'candidate_size_kib="$(du -sk -- "$candidate_path" | cut -f1)"; '
         'eligible_generations="$((eligible_generations + 1))"; '
+        'eligible_size_kib="$((eligible_size_kib + candidate_size_kib))"; '
         f"{remove_command}; "
         'done < <(find "$incremental_path" -mindepth 1 -maxdepth 1 -type d -print0); '
         'done < <(find "$target_path" -type d -name incremental -print0); '
         'if [ "$eligible_generations" -eq 0 ]; then '
         'printf "%s\\n" "no stale incremental generation exceeds the configured age threshold"; '
         'elif [ "$mode" = dry-run ]; then '
-        'printf "dry run: %s stale incremental generation(s) are eligible\\n" "$eligible_generations"; '
+        'printf "dry run: %s stale incremental generation(s), %s KiB reclaimable, are eligible\\n" '
+        '"$eligible_generations" "$eligible_size_kib"; '
         "else "
         'printf "removed %s stale incremental generation(s); target cache now uses %s KiB\\n" '
         '"$removed_generations" "$target_size_kib"; '

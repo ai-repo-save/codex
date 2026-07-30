@@ -21,7 +21,8 @@ class CleanupBuildCacheTest(unittest.TestCase):
         self.assertIn("mode='dry-run'", command)
         self.assertIn("active Cargo or rustc process", command)
         self.assertIn("remote build holds the target cache lock", command)
-        self.assertIn("Cargo lock detected", command)
+        self.assertIn("Cargo lock is held", command)
+        self.assertIn('exec 8>>"$cargo_lock"; flock -n -x 8', command)
         self.assertIn(
             "target cache is below the configured capacity threshold", command
         )
