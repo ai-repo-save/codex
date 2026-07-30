@@ -393,7 +393,7 @@ def remote_codex_rs_just_command(args: Sequence[str]) -> tuple[str, ...]:
     return (
         "bash",
         "-lc",
-        f"{remote_build_env_command(DEFAULT_TARGET)} && {command}",
+        remote_build_shell_command(DEFAULT_TARGET, command),
     )
 
 
@@ -415,12 +415,15 @@ def remote_build_env_command(target: str) -> str:
         'printf "%s\\n" "remote build: sccache stats before"; '
         '"$RUSTC_WRAPPER" --show-stats || '
         'echo "remote build: unable to read sccache stats before" >&2; '
-        "trap 'build_status=$?; "
+        "codex_remote_sccache_stats_after() { "
         'printf "%s\\n" "remote build: sccache stats after"; '
         '"$RUSTC_WRAPPER" --show-stats || '
         'echo "remote build: unable to read sccache stats after" >&2; '
-        'exit "$build_status"\' EXIT; '
-        'else echo "remote build: sccache not found; compiler-cache metrics unavailable"; fi; '
+        "}; "
+        "else "
+        'echo "remote build: sccache not found; compiler-cache metrics unavailable"; '
+        "codex_remote_sccache_stats_after() { :; }; "
+        "fi; "
         "if command -v clang >/dev/null 2>&1 && command -v mold >/dev/null 2>&1; then "
         f"export {linker_env}=clang; "
         'export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=$(command -v mold)"; '
@@ -430,6 +433,15 @@ def remote_build_env_command(target: str) -> str:
         'export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=lld"; '
         'echo "remote build: using clang with lld"; '
         'else echo "remote build: no fast linker configured"; fi'
+    )
+
+
+def remote_build_shell_command(target: str, command: str) -> str:
+    return (
+        f"{remote_build_env_command(target)}; {command}; "
+        "build_status=$?; "
+        "codex_remote_sccache_stats_after; "
+        'exit "$build_status"'
     )
 
 

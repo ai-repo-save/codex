@@ -77,6 +77,8 @@ class RemoteJustTest(unittest.TestCase):
         self.assertTrue(shell_command.startswith("set -euo pipefail; "))
         self.assertIn("/var/tmp/codex-remote-tests.XXXXXX", shell_command)
         self.assertIn('export TMPDIR="$remote_test_tmpdir"', shell_command)
+        self.assertIn("remote build: sccache stats after", shell_command)
+        self.assertEqual(shell_command.count("trap "), 1)
         self.assertIn("just test --test-threads=4 -E", shell_command)
         self.assertIn(
             "package(codex-apply-patch)",

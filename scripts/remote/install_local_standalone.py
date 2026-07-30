@@ -24,7 +24,7 @@ if __package__ in (None, ""):
     from _sync import RemoteWorkflow
     from _sync import git_output
     from _sync import require_command
-    from _sync import remote_build_env_command
+    from _sync import remote_build_shell_command
     from _sync import run
     from _sync import run_remote_workflow
     from _sync import shell_quote
@@ -35,7 +35,7 @@ else:
     from ._sync import RemoteWorkflow
     from ._sync import git_output
     from ._sync import require_command
-    from ._sync import remote_build_env_command
+    from ._sync import remote_build_shell_command
     from ._sync import run
     from ._sync import run_remote_workflow
     from ._sync import shell_quote
@@ -192,10 +192,9 @@ def remote_build_command(
     remote_package_dir: PurePosixPath,
     remote_archive: PurePosixPath,
 ) -> tuple[str, ...]:
-    command = (
+    build_command = (
         f"rm -rf {shell_quote(str(remote_package_dir))} "
         f"{shell_quote(str(remote_archive))} && "
-        f"{remote_build_env_command(config.target)} && "
         "uv run --project scripts python scripts/build_codex_package.py "
         f"--target {shell_quote(config.target)} "
         f"--variant {shell_quote(config.variant)} "
@@ -206,7 +205,7 @@ def remote_build_command(
         f"-C {shell_quote(str(remote_package_dir))} . && "
         f"du -h {shell_quote(str(remote_archive))}"
     )
-    return ("bash", "-lc", command)
+    return ("bash", "-lc", remote_build_shell_command(config.target, build_command))
 
 
 def install_remote_package(

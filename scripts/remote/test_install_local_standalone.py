@@ -125,9 +125,9 @@ class RemoteInstallLocalStandaloneTest(unittest.TestCase):
 
         with mock.patch.object(
             install_local_standalone,
-            "remote_build_env_command",
-            return_value=REMOTE_BUILD_ENV,
-        ) as build_env:
+            "remote_build_shell_command",
+            side_effect=lambda target, command: f"{REMOTE_BUILD_ENV} {command}",
+        ) as build_shell:
             command = install_local_standalone.remote_build_command(
                 config,
                 REMOTE_PACKAGE_DIR,
@@ -139,8 +139,7 @@ class RemoteInstallLocalStandaloneTest(unittest.TestCase):
             (
                 "bash",
                 "-lc",
-                f"rm -rf {quoted_package_dir} {quoted_archive} && "
-                f"{REMOTE_BUILD_ENV} && "
+                f"{REMOTE_BUILD_ENV} rm -rf {quoted_package_dir} {quoted_archive} && "
                 "uv run --project scripts python scripts/build_codex_package.py "
                 f"--target {quoted_target} --variant {quoted_variant} "
                 f"--cargo-profile {quoted_cargo_profile} "
@@ -149,7 +148,8 @@ class RemoteInstallLocalStandaloneTest(unittest.TestCase):
                 f"-C {quoted_package_dir} . && du -h {quoted_archive}",
             ),
         )
-        build_env.assert_called_once_with(TARGET)
+        build_shell.assert_called_once()
+        self.assertEqual(build_shell.call_args.args[0], TARGET)
 
     def test_activate_release_backs_up_previous_release(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
