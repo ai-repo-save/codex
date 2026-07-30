@@ -125,7 +125,7 @@ def cleanup_command(config: CleanupConfig) -> str:
         'printf "cleanup progress: %s generations, %s KiB reclaimed\\n" '
         '"$removed_generations" "$removed_size_kib"; '
         "fi; "
-        'if [ "$target_size_kib" -lt "$max_size_kib" ]; then break 2; fi'
+        'if [ "$target_size_kib" -le "$max_size_kib" ]; then break 2; fi'
         if config.execute
         else ":"
     )
@@ -164,8 +164,8 @@ def cleanup_command(config: CleanupConfig) -> str:
         "fi; "
         'target_size_kib="$(du -sk -- "$target_path" | cut -f1)"; '
         'printf "target cache size: %s KiB (threshold: %s KiB)\\n" "$target_size_kib" "$max_size_kib"; '
-        'if [ "$target_size_kib" -lt "$max_size_kib" ]; then '
-        'printf "%s\\n" "target cache is below the configured capacity threshold"; '
+        'if [ "$target_size_kib" -le "$max_size_kib" ]; then '
+        'printf "%s\\n" "target cache is at or below the configured capacity threshold"; '
         "exit 0; "
         "fi; "
         'age_seconds="$((max_age_days * 24 * 60 * 60))"; '
@@ -203,8 +203,8 @@ def cleanup_command(config: CleanupConfig) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    require_command("ssh")
     config = parse_args(tuple(argv if argv is not None else sys.argv[1:]))
+    require_command("ssh")
     workflow = RemoteWorkflow(
         host=config.host,
         branch="main",
