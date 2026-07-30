@@ -402,13 +402,6 @@ def remote_build_env_command(target: str) -> str:
     return (
         "export CARGO_INCREMENTAL=0; "
         'echo "remote build: CARGO_INCREMENTAL=$CARGO_INCREMENTAL"; '
-        "if command -v flock >/dev/null 2>&1; then "
-        f"exec 9>{shell_quote(REMOTE_TARGET_LOCK_PATH)}; "
-        "flock -s 9; "
-        'echo "remote build: acquired shared target cache lock"; '
-        "else "
-        'echo "remote build: flock not found; target cleanup cannot coordinate" >&2; '
-        "fi; "
         "if command -v sccache >/dev/null 2>&1; then "
         'export RUSTC_WRAPPER="$(command -v sccache)"; '
         'echo "remote build: using RUSTC_WRAPPER=$RUSTC_WRAPPER"; '
@@ -437,11 +430,23 @@ def remote_build_env_command(target: str) -> str:
 
 
 def remote_build_shell_command(target: str, command: str) -> str:
-    return (
+    build_body = (
         f"{remote_build_env_command(target)} && (set +e; (set -e; {command}); "
         "build_status=$?; "
         "codex_remote_sccache_stats_after; "
         'exit "$build_status")'
+    )
+    locked_build_body = (
+        f'echo "remote build: acquired shared target cache lock"; {build_body}'
+    )
+    return (
+        "if command -v flock >/dev/null 2>&1; then "
+        f"flock --shared --close {shell_quote(REMOTE_TARGET_LOCK_PATH)} "
+        f"bash -c {shell_quote(locked_build_body)}; "
+        "else "
+        'echo "remote build: flock not found; target cleanup cannot coordinate" >&2; '
+        f"bash -c {shell_quote(build_body)}; "
+        "fi"
     )
 
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -57,7 +58,7 @@ class RemoteSyncTest(unittest.TestCase):
         self.assertIn("remote build: sccache stats before", shell_command)
         self.assertIn("remote build: sccache stats after", shell_command)
         self.assertIn("compiler-cache metrics unavailable", shell_command)
-        self.assertIn("flock -s 9", shell_command)
+        self.assertIn("flock --shared --close", shell_command)
         self.assertIn("export RUSTC_WRAPPER=", shell_command)
         self.assertIn(
             "export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang",
@@ -81,27 +82,48 @@ class RemoteSyncTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="/tmp") as temp_dir:
             root = Path(temp_dir)
             sccache = root / "sccache"
-            sccache.write_text("#!/bin/sh\nprintf 'fake sccache stats\\n'\n")
+            daemon_pids = root / "daemon-pids"
+            lock_path = root / "target.lock"
+            sccache.write_text(
+                "#!/bin/sh\n"
+                "printf 'fake sccache stats\\n'\n"
+                'sleep 30 >/dev/null 2>&1 & echo "$!" >> "$SCCACHE_DAEMON_PIDS"\n'
+            )
             sccache.chmod(0o755)
             marker = root / "unexpected-followup"
-            command = _sync.remote_build_shell_command(
-                _sync.DEFAULT_TARGET,
-                f"false; touch {_sync.shell_quote(str(marker))}",
-            )
             environment = os.environ | {
-                "PATH": f"{root}{os.pathsep}{os.environ['PATH']}"
+                "PATH": f"{root}{os.pathsep}{os.environ['PATH']}",
+                "SCCACHE_DAEMON_PIDS": str(daemon_pids),
             }
-            result = subprocess.run(
-                ("bash", "-lc", command),
-                env=environment,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
+            try:
+                with patch.object(_sync, "REMOTE_TARGET_LOCK_PATH", str(lock_path)):
+                    command = _sync.remote_build_shell_command(
+                        _sync.DEFAULT_TARGET,
+                        f"false; touch {_sync.shell_quote(str(marker))}",
+                    )
+                    result = subprocess.run(
+                        ("bash", "-lc", command),
+                        env=environment,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                    )
+                lock_result = subprocess.run(
+                    ("flock", "--exclusive", "--nonblock", str(lock_path), "true"),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+            finally:
+                if daemon_pids.exists():
+                    for pid in daemon_pids.read_text().splitlines():
+                        os.kill(int(pid), signal.SIGTERM)
+
             self.assertFalse(marker.exists())
 
         self.assertEqual(result.returncode, 1)
         self.assertEqual(result.stdout.count("remote build: sccache stats"), 2)
+        self.assertEqual(lock_result.returncode, 0)
 
     def test_ssh_command_builds_plain_remote_command(self) -> None:
         config = _sync.RemoteWorkflow(
