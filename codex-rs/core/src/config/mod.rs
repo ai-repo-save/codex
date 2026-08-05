@@ -2802,12 +2802,8 @@ async fn resolve_collaboration_mode_presets(
             ));
         };
 
-        let developer_instructions = resolve_collaboration_mode_developer_instructions(
-            fs,
-            mode_key,
-            mode_config,
-        )
-        .await?;
+        let developer_instructions =
+            resolve_collaboration_mode_developer_instructions(fs, mode_key, mode_config).await?;
         let Some(developer_instructions) = developer_instructions else {
             continue;
         };
@@ -2833,9 +2829,7 @@ async fn resolve_collaboration_mode_developer_instructions(
         if developer_instructions.is_empty() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!(
-                    "collaboration_modes.{mode_key}.developer_instructions cannot be blank"
-                ),
+                format!("collaboration_modes.{mode_key}.developer_instructions cannot be blank"),
             ));
         }
         return Ok(Some(developer_instructions.to_string()));

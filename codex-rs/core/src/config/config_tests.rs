@@ -11084,7 +11084,10 @@ developer_instructions_file = "./research-instructions.md"
 async fn collaboration_mode_inline_developer_instructions_take_precedence_over_file()
 -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
-    std::fs::write(codex_home.path().join("research-instructions.md"), "from file")?;
+    std::fs::write(
+        codex_home.path().join("research-instructions.md"),
+        "from file",
+    )?;
     std::fs::write(
         codex_home.path().join(CONFIG_TOML_FILE),
         r#"[collaboration_modes.research]
@@ -11129,9 +11132,10 @@ developer_instructions_file = "./empty-research.md"
         .await
         .expect_err("empty collaboration mode instructions file should fail");
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
-    assert!(err.to_string().contains(
-        "collaboration_modes.research.developer_instructions_file is empty"
-    ));
+    assert!(
+        err.to_string()
+            .contains("collaboration_modes.research.developer_instructions_file is empty")
+    );
     Ok(())
 }
 
