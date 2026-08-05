@@ -151,7 +151,14 @@ pub struct OrchestratorFeatureToml {
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct CollaborationModeToml {
+    /// Inline developer instructions override for this collaboration mode.
     pub developer_instructions: Option<String>,
+
+    /// File containing developer instructions for this collaboration mode.
+    ///
+    /// When both this and `developer_instructions` are set, the inline value
+    /// takes precedence.
+    pub developer_instructions_file: Option<AbsolutePathBuf>,
 }
 
 /// Base config deserialized from ~/.codex/config.toml.

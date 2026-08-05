@@ -11048,6 +11048,94 @@ developer_instructions = "Typo should not be accepted"
 }
 
 #[tokio::test]
+async fn collaboration_mode_developer_instructions_file_can_be_overridden_from_config()
+-> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join("research-instructions.md"),
+        "  Research instructions loaded from file  \n",
+    )?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[collaboration_modes.research]
+developer_instructions_file = "./research-instructions.md"
+"#,
+    )?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+
+    let research = config
+        .collaboration_mode_presets
+        .iter()
+        .find(|preset| preset.mode == Some(ModeKind::Research))
+        .expect("research preset should exist");
+    assert_eq!(
+        research.developer_instructions.as_ref(),
+        Some(&Some("Research instructions loaded from file".to_string()))
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn collaboration_mode_inline_developer_instructions_take_precedence_over_file()
+-> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(codex_home.path().join("research-instructions.md"), "from file")?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[collaboration_modes.research]
+developer_instructions = "from inline"
+developer_instructions_file = "./research-instructions.md"
+"#,
+    )?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+
+    let research = config
+        .collaboration_mode_presets
+        .iter()
+        .find(|preset| preset.mode == Some(ModeKind::Research))
+        .expect("research preset should exist");
+    assert_eq!(
+        research.developer_instructions.as_ref(),
+        Some(&Some("from inline".to_string()))
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn collaboration_mode_developer_instructions_file_cannot_be_empty() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(codex_home.path().join("empty-research.md"), "   \n")?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[collaboration_modes.research]
+developer_instructions_file = "./empty-research.md"
+"#,
+    )?;
+
+    let err = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await
+        .expect_err("empty collaboration mode instructions file should fail");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    assert!(err.to_string().contains(
+        "collaboration_modes.research.developer_instructions_file is empty"
+    ));
+    Ok(())
+}
+
+#[tokio::test]
 async fn approvals_reviewer_stays_manual_only_when_guardian_feature_is_enabled()
 -> std::io::Result<()> {
     let codex_home = TempDir::new()?;

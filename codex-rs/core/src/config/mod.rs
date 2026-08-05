@@ -2789,7 +2789,8 @@ fn resolve_context_rewind_config(config_toml: &ConfigToml) -> ContextRewindConfi
     }
 }
 
-fn resolve_collaboration_mode_presets(
+async fn resolve_collaboration_mode_presets(
+    fs: &dyn ExecutorFileSystem,
     collaboration_modes: &BTreeMap<String, CollaborationModeToml>,
 ) -> std::io::Result<Vec<CollaborationModeMask>> {
     let mut presets = builtin_collaboration_mode_presets();
@@ -2800,25 +2801,52 @@ fn resolve_collaboration_mode_presets(
                 format!("collaboration mode `{mode_key}` is not configurable"),
             ));
         };
-        let Some(developer_instructions) = mode_config.developer_instructions.as_ref() else {
+
+        let developer_instructions = resolve_collaboration_mode_developer_instructions(
+            fs,
+            mode_key,
+            mode_config,
+        )
+        .await?;
+        let Some(developer_instructions) = developer_instructions else {
             continue;
         };
-        let developer_instructions = developer_instructions.trim();
-        if developer_instructions.is_empty() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("collaboration_modes.{mode_key}.developer_instructions cannot be blank"),
-            ));
-        }
+
         let Some(preset) = presets.iter_mut().find(|preset| preset.mode == Some(mode)) else {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 format!("collaboration mode `{mode_key}` is not configurable"),
             ));
         };
-        preset.developer_instructions = Some(Some(developer_instructions.to_string()));
+        preset.developer_instructions = Some(Some(developer_instructions));
     }
     Ok(presets)
+}
+
+async fn resolve_collaboration_mode_developer_instructions(
+    fs: &dyn ExecutorFileSystem,
+    mode_key: &str,
+    mode_config: &CollaborationModeToml,
+) -> std::io::Result<Option<String>> {
+    if let Some(developer_instructions) = mode_config.developer_instructions.as_ref() {
+        let developer_instructions = developer_instructions.trim();
+        if developer_instructions.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "collaboration_modes.{mode_key}.developer_instructions cannot be blank"
+                ),
+            ));
+        }
+        return Ok(Some(developer_instructions.to_string()));
+    }
+
+    Config::try_read_non_empty_file(
+        fs,
+        mode_config.developer_instructions_file.as_ref(),
+        &format!("collaboration_modes.{mode_key}.developer_instructions_file"),
+    )
+    .await
 }
 
 fn collaboration_mode_from_config_key(mode_key: &str) -> Option<ModeKind> {
@@ -4091,7 +4119,7 @@ impl Config {
 
         let use_experimental_unified_exec_tool = features.enabled(Feature::UnifiedExec);
         let collaboration_mode_presets =
-            resolve_collaboration_mode_presets(&cfg.collaboration_modes)?;
+            resolve_collaboration_mode_presets(fs, &cfg.collaboration_modes).await?;
 
         let forced_chatgpt_workspace_id = cfg
             .forced_chatgpt_workspace_id
