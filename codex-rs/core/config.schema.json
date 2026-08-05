@@ -478,7 +478,16 @@
       "description": "Per-mode collaboration prompt overrides.",
       "properties": {
         "developer_instructions": {
+          "description": "Inline developer instructions override for this collaboration mode.",
           "type": "string"
+        },
+        "developer_instructions_file": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AbsolutePathBuf"
+            }
+          ],
+          "description": "File containing developer instructions for this collaboration mode.\n\nWhen both this and `developer_instructions` are set, the inline value takes precedence."
         }
       },
       "type": "object"
