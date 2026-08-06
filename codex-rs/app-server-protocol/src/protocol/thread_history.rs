@@ -1,4 +1,11 @@
 use crate::protocol::collaboration_items::collaboration_item_from_event;
+use crate::protocol::context_anchor_items::context_anchor_rewound_item;
+use crate::protocol::context_anchor_items::context_anchor_saved_item;
+use crate::protocol::context_anchor_items::is_duplicate_context_anchor_rewound;
+use crate::protocol::context_anchor_items::is_duplicate_context_anchor_saved;
+use crate::protocol::hook_prompt_items::hook_prompt_item_from_response_item;
+use crate::protocol::image_generation_items::image_generation_item_from_begin;
+use crate::protocol::image_generation_items::image_generation_item_from_end;
 use crate::protocol::item_builders::build_command_execution_begin_item;
 use crate::protocol::item_builders::build_command_execution_end_item;
 use crate::protocol::item_builders::build_file_change_approval_request_item;
@@ -30,9 +37,7 @@ use crate::protocol::v2::UserInput;
 use crate::protocol::v2::WebSearchAction;
 use crate::protocol::v2::WebSearchItem;
 use crate::protocol::v2::web_search_action_from_core;
-use codex_extension_items::image_generation::ImageGenerationItem;
 use codex_protocol::items::MaterializedItemHandling;
-use codex_protocol::items::parse_hook_prompt_message;
 use codex_protocol::models::MessagePhase;
 use codex_protocol::protocol::AgentReasoningEvent;
 use codex_protocol::protocol::AgentReasoningRawContentEvent;
@@ -457,29 +462,9 @@ impl ThreadHistoryBuilder {
     }
 
     fn handle_response_item(&mut self, item: &codex_protocol::models::ResponseItem) {
-        let codex_protocol::models::ResponseItem::Message {
-            role, content, id, ..
-        } = item
-        else {
-            return;
-        };
-
-        if role != "user" {
-            return;
+        if let Some(item) = hook_prompt_item_from_response_item(item) {
+            self.push_item_in_current_turn(item);
         }
-
-        let Some(hook_prompt) = parse_hook_prompt_message(id.as_deref(), content) else {
-            return;
-        };
-
-        self.push_item_in_current_turn(ThreadItem::HookPrompt {
-            id: hook_prompt.id,
-            fragments: hook_prompt
-                .fragments
-                .into_iter()
-                .map(crate::protocol::v2::HookPromptFragment::from)
-                .collect(),
-        });
     }
 
     fn handle_user_message(&mut self, payload: &UserMessageEvent) {
@@ -853,25 +838,11 @@ impl ThreadHistoryBuilder {
     }
 
     fn handle_image_generation_begin(&mut self, payload: &ImageGenerationBeginEvent) {
-        let item = ThreadItem::ImageGeneration(ImageGenerationItem {
-            id: payload.call_id.clone(),
-            status: String::new(),
-            revised_prompt: None,
-            result: String::new(),
-            saved_path: None,
-        });
-        self.upsert_item_in_current_turn(item);
+        self.upsert_item_in_current_turn(image_generation_item_from_begin(payload));
     }
 
     fn handle_image_generation_end(&mut self, payload: &ImageGenerationEndEvent) {
-        let item = ThreadItem::ImageGeneration(ImageGenerationItem {
-            id: payload.call_id.clone(),
-            status: payload.status.clone(),
-            revised_prompt: payload.revised_prompt.clone(),
-            result: payload.result.clone(),
-            saved_path: payload.saved_path.clone(),
-        });
-        self.upsert_item_in_current_turn(item);
+        self.upsert_item_in_current_turn(image_generation_item_from_end(payload));
     }
 
     fn handle_context_compacted(&mut self, _payload: &ContextCompactedEvent) {
@@ -880,84 +851,29 @@ impl ThreadHistoryBuilder {
     }
 
     fn handle_context_anchor_saved(&mut self, payload: &ContextAnchorSavedEvent) {
-        if self.context_anchor_saved_is_duplicate(payload) {
+        let last = self
+            .current_turn
+            .as_ref()
+            .and_then(|turn| turn.items.last());
+        if is_duplicate_context_anchor_saved(last, payload) {
             return;
         }
 
         let id = self.next_item_id();
-        self.push_item_in_current_turn(ThreadItem::ContextAnchorSaved {
-            id,
-            anchor_id: payload.anchor_id.clone(),
-            label: payload.label.clone(),
-            history_boundary: payload.history_boundary,
-            created_at: payload.created_at,
-        });
+        self.push_item_in_current_turn(context_anchor_saved_item(id, payload));
     }
 
     fn handle_context_rewound_to_anchor(&mut self, payload: &ContextRewoundToAnchorEvent) {
-        if self.context_anchor_rewound_is_duplicate(payload) {
+        let last = self
+            .current_turn
+            .as_ref()
+            .and_then(|turn| turn.items.last());
+        if is_duplicate_context_anchor_rewound(last, payload) {
             return;
         }
 
         let id = self.next_item_id();
-        self.push_item_in_current_turn(ThreadItem::ContextAnchorRewound {
-            id,
-            anchor_id: payload.anchor_id.clone(),
-            dropped_turns: payload.dropped_turns,
-            response_items_reclaimed: payload.response_items_reclaimed,
-            approx_tokens_reclaimed: payload.approx_tokens_reclaimed,
-            reclaim_threshold_percent: payload.reclaim_threshold_percent,
-            reclaim_threshold_tokens: payload.reclaim_threshold_tokens,
-            reclaim_threshold_met: payload.reclaim_threshold_met,
-        });
-    }
-
-    fn context_anchor_saved_is_duplicate(&self, payload: &ContextAnchorSavedEvent) -> bool {
-        self.current_turn
-            .as_ref()
-            .and_then(|turn| turn.items.last())
-            .is_some_and(|last| {
-                matches!(
-                    last,
-                    ThreadItem::ContextAnchorSaved {
-                        anchor_id,
-                        label,
-                        history_boundary,
-                        created_at,
-                        ..
-                    } if anchor_id == &payload.anchor_id
-                        && label == &payload.label
-                        && history_boundary == &payload.history_boundary
-                        && created_at == &payload.created_at
-                )
-            })
-    }
-
-    fn context_anchor_rewound_is_duplicate(&self, payload: &ContextRewoundToAnchorEvent) -> bool {
-        self.current_turn
-            .as_ref()
-            .and_then(|turn| turn.items.last())
-            .is_some_and(|last| {
-                matches!(
-                    last,
-                    ThreadItem::ContextAnchorRewound {
-                        anchor_id,
-                        dropped_turns,
-                        response_items_reclaimed,
-                        approx_tokens_reclaimed,
-                        reclaim_threshold_percent,
-                        reclaim_threshold_tokens,
-                        reclaim_threshold_met,
-                        ..
-                    } if anchor_id == &payload.anchor_id
-                        && dropped_turns == &payload.dropped_turns
-                        && response_items_reclaimed == &payload.response_items_reclaimed
-                        && approx_tokens_reclaimed == &payload.approx_tokens_reclaimed
-                        && reclaim_threshold_percent == &payload.reclaim_threshold_percent
-                        && reclaim_threshold_tokens == &payload.reclaim_threshold_tokens
-                        && reclaim_threshold_met == &payload.reclaim_threshold_met
-                )
-            })
+        self.push_item_in_current_turn(context_anchor_rewound_item(id, payload));
     }
 
     fn handle_entered_review_mode(
@@ -1455,6 +1371,7 @@ mod tests {
     use crate::protocol::v2::SubAgentActivityOperation;
     use crate::protocol::v2::SubAgentActivityOutcome;
     use codex_extension_items::ExtensionItem as CoreExtensionItem;
+    use codex_extension_items::image_generation::ImageGenerationItem;
     use codex_extension_items::sleep::SleepItem as CoreSleepItem;
     use codex_protocol::ThreadId;
     use codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem as CoreDynamicToolCallOutputContentItem;

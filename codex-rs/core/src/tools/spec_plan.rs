@@ -14,18 +14,14 @@ use crate::tools::handlers::ExecCommandHandler;
 use crate::tools::handlers::ExecCommandHandlerOptions;
 use crate::tools::handlers::GetContextRemainingHandler;
 use crate::tools::handlers::ListAvailablePluginsToInstallHandler;
-use crate::tools::handlers::ListContextAnchorsHandler;
 use crate::tools::handlers::ListMcpResourceTemplatesHandler;
 use crate::tools::handlers::ListMcpResourcesHandler;
 use crate::tools::handlers::NewContextWindowHandler;
 use crate::tools::handlers::PlanHandler;
 use crate::tools::handlers::ReadMcpResourceHandler;
-use crate::tools::handlers::RequestContextCompactionHandler;
 use crate::tools::handlers::RequestPermissionsHandler;
 use crate::tools::handlers::RequestPluginInstallHandler;
 use crate::tools::handlers::RequestUserInputHandler;
-use crate::tools::handlers::RewindContextToAnchorHandler;
-use crate::tools::handlers::SaveContextAnchorHandler;
 use crate::tools::handlers::ShellCommandHandler;
 use crate::tools::handlers::ShellCommandHandlerOptions;
 use crate::tools::handlers::SleepHandler;
@@ -673,13 +669,10 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
     let environment_mode = tool_environment_mode(context.environments);
 
     planned_tools.add(ContextUsageHandler);
-    planned_tools.add_with_exposure(
-        RequestContextCompactionHandler,
-        ToolExposure::DirectModelOnly,
-    );
-    planned_tools.add_with_exposure(SaveContextAnchorHandler, ToolExposure::DirectModelOnly);
-    planned_tools.add_with_exposure(ListContextAnchorsHandler, ToolExposure::DirectModelOnly);
-    planned_tools.add_with_exposure(RewindContextToAnchorHandler, ToolExposure::DirectModelOnly);
+    // Keep immediately after get_context_usage so model-visible tool order stays stable.
+    planned_tools
+        .runtimes
+        .extend(crate::tools::context_tools_plan::build());
     if turn_context.config.update_plan_enabled {
         planned_tools.add(PlanHandler);
     }

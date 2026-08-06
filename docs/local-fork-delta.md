@@ -195,6 +195,12 @@ enabled; dedicated tools also require `memories.dedicated_tools`.
 - PostToolUse hooks can rewrite tool output. Blocking hook results remain blocking in both direct
   and code-mode execution.
 - Hook discovery and schemas preserve configured trust behavior and supported metadata.
+- Prompt/filter hook engine code owns `codex-rs/hooks/src/engine/{prompt_runner,filter_runner}.rs`
+  and related additive modules. `core/src/hook_prompt.rs` is the ModelClient adapter. Shared
+  `discovery.rs` / `events/*` may only keep minimal handler-kind wiring.
+- Mid-turn context-anchor application owns `core/src/session/context_lifecycle.rs`; reminder
+  evaluation owns `core/src/session/context_reminder.rs`. `session/turn.rs` only calls those
+  entry points.
 
 ## Tool Search and MCP
 
@@ -286,11 +292,12 @@ uv run --project scripts python scripts/remote/just.py test -p codex-memories-ex
 uv run --project scripts python scripts/remote/just.py test -p codex-app-server thread_reset_context
 ```
 
-Validate hooks, approvals, review, tool search, and MCP:
+Validate hooks, approvals, tool search, and MCP:
 
 ```bash
 uv run --project scripts python scripts/remote/just.py test -p codex-core approvals
-uv run --project scripts python scripts/remote/just.py test -p codex-core auto_review
+uv run --project scripts python scripts/remote/just.py test -p codex-core hooks
+uv run --project scripts python scripts/remote/just.py test -p codex-core prompt_lifecycle_hooks
 uv run --project scripts python scripts/remote/just.py test -p codex-core tool_search
 uv run --project scripts python scripts/remote/just.py test -p codex-core mcp_turn_metadata
 uv run --project scripts python scripts/remote/just.py test -p codex-core mcp_tool_exposure
@@ -321,20 +328,40 @@ uv run --project scripts python scripts/remote/just.py write-app-server-schema -
    `sync/rust-vX.Y.Z` and merge the tag into that branch with a merge commit.
 2. Configure the checkout with `rerere.enabled=true`, `rerere.autoupdate=false`, and
    `merge.conflictstyle=zdiff3`. Recorded resolutions remain subject to review before staging.
-3. Resolve source conflicts against the capability contracts and focused tests. Keep repair
+3. Resolve conflicts in this order (see also `docs/plans/fork-conflict-budget.md`):
+   - skip / regenerate generated schemas and snapshots (never hand-merge JSON)
+   - `codex-rs/hooks/` additive modules, then remaining shared hooks files
+   - `codex-rs/ext/*` and other additive modules
+   - hand-written `app-server-protocol` feature modules, then center dispatch files
+   - `core` hot files last (`turn` / `mod` / `config` / `spec_plan` / `agent/control`)
+4. Resolve source conflicts against the capability contracts and focused tests. Keep repair
    commits separated by capability so rewind, multi-agent, mailbox, and unrelated behavior remain
    independently reviewable.
-4. After source behavior is stable, update manifests and regenerate lockfiles, regular and
+5. After source behavior is stable, update manifests and regenerate lockfiles, regular and
    experimental schemas, and snapshots in that order. Generated artifacts derive from the resolved
    source and are not manually merged.
-5. Run formatting after generated outputs have been reviewed. Use `--branch sync/rust-vX.Y.Z` for
+6. Run formatting after generated outputs have been reviewed. Use `--branch sync/rust-vX.Y.Z` for
    `just.py`, `build_sync.py`, `tui_smoke.py`, and `doctor.py` throughout validation.
-6. Run focused remote validation for every touched capability group. Use the complete remote test
+7. Run focused remote validation for every touched capability group. Use the complete remote test
    suite when the merge crosses shared core or protocol boundaries broadly enough that focused
    coverage cannot bound the risk.
-7. Review model-visible tool schemas and runtime gates with at least one supported current model,
+8. Review model-visible tool schemas and runtime gates with at least one supported current model,
    including `CodeModeOnly` planning when session-control tools are affected.
-8. Merge the accepted sync branch into `main`, update this document's integration baseline, and
+9. Run `uv run --project scripts python scripts/fork/conflict_budget.py` and refresh
+   `docs/plans/fork-conflict-baseline.tsv` when the hot-file budget intentionally changes.
+10. Merge the accepted sync branch into `main`, update this document's integration baseline, and
    push the reviewed result.
-9. Run `install_local_standalone.py` from clean `main`; installation intentionally does not accept
+11. Run `install_local_standalone.py` from clean `main`; installation intentionally does not accept
    a branch override. Smoke the installed CLI before declaring the stable sync complete.
+
+## Code ownership for conflict isolation
+
+| Capability | Primary paths | Hot-file wiring only |
+|---|---|---|
+| Context anchors / rewind | `core/src/session/context_anchor*`, `context_lifecycle.rs` | `session/turn.rs` drain call |
+| Context reminder | `core/src/session/context_reminder.rs` | token-usage call in session |
+| Multi-agent / collaboration tools | `tools/handlers/multi_agents_v2/`, `tools/collaboration_plan.rs`, `agent-control` | `spec_plan` apply, `agent/control` facade |
+| Prompt / filter hooks | `hooks/src/engine/prompt_*`, `filter_*`, `core/src/hook_prompt.rs` | discovery / event match arms |
+| Scoped memories / mailbox / goals | `codex-rs/ext/*`, extension-api capability hosts | registration edges |
+| Remote build | `scripts/remote/`, `scripts/install/` | none |
+| Conflict budget tooling | `scripts/fork/conflict_budget.py`, `docs/plans/fork-conflict-budget.md` | none |

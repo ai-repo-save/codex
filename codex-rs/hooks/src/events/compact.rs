@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::HookCompletedEvent;
 use codex_protocol::protocol::HookEventName;
-use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookOutputEntry;
 use codex_protocol::protocol::HookOutputEntryKind;
 use codex_protocol::protocol::HookRunStatus;
@@ -11,6 +10,7 @@ use codex_protocol::protocol::HookRunSummary;
 use codex_utils_absolute_path::AbsolutePathBuf;
 
 use super::common;
+use super::prompt_output;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
 use crate::engine::HandlerRunResult;
@@ -272,50 +272,48 @@ fn parse_pre_completed(
             });
         }
         None => match run_result.exit_code {
-            Some(0) => {
-                let trimmed_stdout = run_result.stdout.trim();
-                if trimmed_stdout.is_empty() {
-                    if handler.handler_type() == HookHandlerType::Prompt {
-                        status = HookRunStatus::Failed;
-                        entries.push(HookOutputEntry {
-                            kind: HookOutputEntryKind::Error,
-                            text: "prompt hook returned empty output".to_string(),
-                        });
+            Some(0) => match prompt_output::classify_exit_zero_stdout(handler, &run_result.stdout)
+            {
+                prompt_output::ExitZeroStdout::EmptyCommandNoop => {}
+                prompt_output::ExitZeroStdout::EmptyPromptFailed => {
+                    prompt_output::push_empty_prompt_output_error(&mut status, &mut entries);
+                }
+                prompt_output::ExitZeroStdout::NonEmpty(_) => {
+                    if let Some(parsed) = output_parser::parse_pre_compact(&run_result.stdout) {
+                        if let Some(system_message) = parsed.universal.system_message {
+                            entries.push(HookOutputEntry {
+                                kind: HookOutputEntryKind::Warning,
+                                text: system_message,
+                            });
+                        }
+                        let _ = parsed.universal.suppress_output;
+                        if !parsed.universal.continue_processing {
+                            status = HookRunStatus::Stopped;
+                            should_stop = true;
+                            stop_reason = parsed.universal.stop_reason.clone();
+                            entries.push(HookOutputEntry {
+                                kind: HookOutputEntryKind::Stop,
+                                text: parsed.universal.stop_reason.unwrap_or_else(|| {
+                                    "PreCompact hook stopped execution".to_string()
+                                }),
+                            });
+                        } else if let Some(invalid_reason) = parsed.invalid_reason {
+                            status = HookRunStatus::Failed;
+                            entries.push(HookOutputEntry {
+                                kind: HookOutputEntryKind::Error,
+                                text: invalid_reason,
+                            });
+                        }
+                    } else if prompt_output::should_fail_unparsed_stdout(
+                        handler,
+                        &run_result.stdout,
+                    ) {
+                        prompt_output::push_invalid_json_output_error(
+                            &mut status,
+                            &mut entries,
+                            "hook returned invalid PreCompact hook JSON output",
+                        );
                     }
-                } else if let Some(parsed) = output_parser::parse_pre_compact(&run_result.stdout) {
-                    if let Some(system_message) = parsed.universal.system_message {
-                        entries.push(HookOutputEntry {
-                            kind: HookOutputEntryKind::Warning,
-                            text: system_message,
-                        });
-                    }
-                    let _ = parsed.universal.suppress_output;
-                    if !parsed.universal.continue_processing {
-                        status = HookRunStatus::Stopped;
-                        should_stop = true;
-                        stop_reason = parsed.universal.stop_reason.clone();
-                        entries.push(HookOutputEntry {
-                            kind: HookOutputEntryKind::Stop,
-                            text: parsed
-                                .universal
-                                .stop_reason
-                                .unwrap_or_else(|| "PreCompact hook stopped execution".to_string()),
-                        });
-                    } else if let Some(invalid_reason) = parsed.invalid_reason {
-                        status = HookRunStatus::Failed;
-                        entries.push(HookOutputEntry {
-                            kind: HookOutputEntryKind::Error,
-                            text: invalid_reason,
-                        });
-                    }
-                } else if handler.handler_type() == HookHandlerType::Prompt
-                    || output_parser::looks_like_json(&run_result.stdout)
-                {
-                    status = HookRunStatus::Failed;
-                    entries.push(HookOutputEntry {
-                        kind: HookOutputEntryKind::Error,
-                        text: "hook returned invalid PreCompact hook JSON output".to_string(),
-                    });
                 }
             }
             Some(code) => {
@@ -635,7 +633,7 @@ mod tests {
     #[test]
     fn prompt_pre_compact_invalid_output_honors_failure_policy() {
         for (stdout, expected_error) in [
-            ("", "prompt hook returned empty output"),
+            ("", crate::events::prompt_output::EMPTY_PROMPT_OUTPUT_ERROR),
             (
                 "not json",
                 "hook returned invalid PreCompact hook JSON output",

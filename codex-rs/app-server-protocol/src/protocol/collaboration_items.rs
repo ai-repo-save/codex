@@ -429,3 +429,7 @@ pub(crate) fn sub_agent_activity_from_core(activity: SubAgentActivityItem) -> Th
     }
     .into_thread_item()
 }
+
+#[cfg(test)]
+#[path = "collaboration_items_tests.rs"]
+mod tests;

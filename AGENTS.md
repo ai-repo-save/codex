@@ -1,5 +1,21 @@
 # Rust/codex-rs
 
+## Fork conflict budget (local fork)
+
+This checkout tracks upstream OpenAI Codex and carries local capabilities documented in
+`docs/local-fork-delta.md`. Structural rules for reducing stable-sync merge cost live in
+`docs/plans/fork-conflict-budget.md`.
+
+- Prefer additive modules under `codex-rs/ext/*`, dedicated session/tool modules, or protocol
+  feature modules. Do not grow business logic inside hot files listed in the conflict budget.
+- A change that edits a hot file must keep that edit to thin wiring (target: fewer than about
+  20 new logic lines per capability) and must explain why an existing extension point is
+  insufficient.
+- Never hand-merge generated app-server or config JSON schemas; regenerate with remote `just.py`.
+- After a `sync/rust-v*` merge, run
+  `uv run --project scripts python scripts/fork/conflict_budget.py` and refresh the baseline when
+  the budget intentionally moves.
+
 ## Context anchor rewind notes
 
 When using `rewind_context_to_anchor`, the note must start by naming the current task that should
@@ -38,9 +54,9 @@ When a task requires building, running, testing, or generating files from reposi
 - `uv run --project scripts python scripts/remote/just.py <recipe> [args...]` runs `codex-rs`
   `just` recipes remotely with the shared sync, sccache, and fast-linker setup. For example:
   `uv run --project scripts python scripts/remote/just.py test -p codex-app-server`.
-- Remote Rust workflows set `CARGO_INCREMENTAL=0` and print sccache statistics before and after
-  the command. Use those statistics to verify compiler-cache requests and hits instead of assuming
-  that the configured `RUSTC_WRAPPER` is effective. Run
+- Remote Rust workflows print sccache statistics before and after the command. Use those
+  statistics to verify compiler-cache requests and hits instead of assuming that the configured
+  `RUSTC_WRAPPER` is effective. Run
   `uv run --project scripts python scripts/remote/sccache_probe.py` when an isolated two-build
   cache-reuse measurement is required.
 - Use `uv run --project scripts python scripts/remote/cleanup_build_cache.py --dry-run` to inspect

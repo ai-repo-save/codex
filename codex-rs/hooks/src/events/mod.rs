@@ -3,6 +3,7 @@ pub mod compact;
 pub mod permission_request;
 pub mod post_tool_use;
 pub mod pre_tool_use;
+pub(crate) mod prompt_output;
 pub mod session_end;
 pub mod session_start;
 pub mod stop;

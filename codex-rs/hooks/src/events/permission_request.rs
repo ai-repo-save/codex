@@ -16,6 +16,7 @@
 use std::path::PathBuf;
 
 use super::common;
+use super::prompt_output;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
 use crate::engine::HandlerRunResult;
@@ -27,7 +28,6 @@ use crate::schema::SubagentCommandInputFields;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::HookCompletedEvent;
 use codex_protocol::protocol::HookEventName;
-use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookOutputEntry;
 use codex_protocol::protocol::HookOutputEntryKind;
 use codex_protocol::protocol::HookRunStatus;
@@ -214,54 +214,53 @@ fn parse_completed(
             });
         }
         None => match run_result.exit_code {
-            Some(0) => {
-                let trimmed_stdout = run_result.stdout.trim();
-                if trimmed_stdout.is_empty() {
-                    if handler.handler_type() == HookHandlerType::Prompt {
-                        status = HookRunStatus::Failed;
-                        entries.push(HookOutputEntry {
-                            kind: HookOutputEntryKind::Error,
-                            text: "prompt hook returned empty output".to_string(),
-                        });
-                    }
-                } else if let Some(parsed) =
-                    output_parser::parse_permission_request(&run_result.stdout)
-                {
-                    if let Some(system_message) = parsed.universal.system_message {
-                        entries.push(HookOutputEntry {
-                            kind: HookOutputEntryKind::Warning,
-                            text: system_message,
-                        });
-                    }
-                    if let Some(invalid_reason) = parsed.invalid_reason {
-                        status = HookRunStatus::Failed;
-                        entries.push(HookOutputEntry {
-                            kind: HookOutputEntryKind::Error,
-                            text: invalid_reason,
-                        });
-                    } else if let Some(parsed_decision) = parsed.decision {
-                        match parsed_decision {
-                            output_parser::PermissionRequestDecision::Allow => {
-                                decision = Some(PermissionRequestDecision::Allow);
-                            }
-                            output_parser::PermissionRequestDecision::Deny { message } => {
-                                status = HookRunStatus::Blocked;
-                                entries.push(HookOutputEntry {
-                                    kind: HookOutputEntryKind::Feedback,
-                                    text: message.clone(),
-                                });
-                                decision = Some(PermissionRequestDecision::Deny { message });
+            Some(0) => match prompt_output::classify_exit_zero_stdout(handler, &run_result.stdout)
+            {
+                prompt_output::ExitZeroStdout::EmptyCommandNoop => {}
+                prompt_output::ExitZeroStdout::EmptyPromptFailed => {
+                    prompt_output::push_empty_prompt_output_error(&mut status, &mut entries);
+                }
+                prompt_output::ExitZeroStdout::NonEmpty(_) => {
+                    if let Some(parsed) =
+                        output_parser::parse_permission_request(&run_result.stdout)
+                    {
+                        if let Some(system_message) = parsed.universal.system_message {
+                            entries.push(HookOutputEntry {
+                                kind: HookOutputEntryKind::Warning,
+                                text: system_message,
+                            });
+                        }
+                        if let Some(invalid_reason) = parsed.invalid_reason {
+                            status = HookRunStatus::Failed;
+                            entries.push(HookOutputEntry {
+                                kind: HookOutputEntryKind::Error,
+                                text: invalid_reason,
+                            });
+                        } else if let Some(parsed_decision) = parsed.decision {
+                            match parsed_decision {
+                                output_parser::PermissionRequestDecision::Allow => {
+                                    decision = Some(PermissionRequestDecision::Allow);
+                                }
+                                output_parser::PermissionRequestDecision::Deny { message } => {
+                                    status = HookRunStatus::Blocked;
+                                    entries.push(HookOutputEntry {
+                                        kind: HookOutputEntryKind::Feedback,
+                                        text: message.clone(),
+                                    });
+                                    decision = Some(PermissionRequestDecision::Deny { message });
+                                }
                             }
                         }
+                    } else if prompt_output::should_fail_unparsed_stdout(
+                        handler,
+                        &run_result.stdout,
+                    ) {
+                        prompt_output::push_invalid_json_output_error(
+                            &mut status,
+                            &mut entries,
+                            "hook returned invalid permission-request JSON output",
+                        );
                     }
-                } else if handler.handler_type() == HookHandlerType::Prompt
-                    || output_parser::looks_like_json(&run_result.stdout)
-                {
-                    status = HookRunStatus::Failed;
-                    entries.push(HookOutputEntry {
-                        kind: HookOutputEntryKind::Error,
-                        text: "hook returned invalid permission-request JSON output".to_string(),
-                    });
                 }
             }
             Some(2) => {
