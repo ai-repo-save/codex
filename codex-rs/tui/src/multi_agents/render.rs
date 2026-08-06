@@ -19,6 +19,7 @@ pub(super) const COLLAB_PROMPT_PREVIEW_GRAPHEMES: usize = 160;
 pub(super) const COLLAB_AGENT_ERROR_PREVIEW_GRAPHEMES: usize = 160;
 pub(super) const COLLAB_AGENT_RESPONSE_PREVIEW_GRAPHEMES: usize = 240;
 
+#[derive(Clone, Copy)]
 pub(super) struct AgentLabel<'a> {
     thread_id: Option<ThreadId>,
     nickname: Option<&'a str>,

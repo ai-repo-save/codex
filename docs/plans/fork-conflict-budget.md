@@ -62,7 +62,9 @@ Baseline snapshot: [`fork-conflict-baseline.tsv`](fork-conflict-baseline.tsv)
 3. Resolve `codex-rs/ext/*` and other A modules.
 4. Resolve hand-written `app-server-protocol` feature modules, then center dispatch files.
 5. Resolve `core` hot files last (`turn` / `mod` / `config` / `spec_plan` / `agent/control`).
-6. Run focused remote validation per [`docs/local-fork-delta.md`](../local-fork-delta.md).
+6. Run focused remote validation from the capability filter menu in
+   [`docs/local-fork-delta.md`](../local-fork-delta.md) — only filters for touched capabilities,
+   not the whole menu.
 7. Refresh conflict budget report and update this document's baseline when the budget changes.
 
 ## New capability template

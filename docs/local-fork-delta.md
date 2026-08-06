@@ -255,13 +255,30 @@ re-enabling it permits normal update-loop operation.
 
 ## Focused Remote Validation
 
+These command lists are a **menu of capability filters**, not a mandatory checklist.
+Pick only the filters that cover the capabilities you changed. Do **not** run every
+block, and do **not** treat listing order as “must execute all of these before done.”
+
+Default acceptance for an ordinary change:
+
+1. `just.py fmt` after source edits
+2. One or a few focused `just.py test -p <crate> <filter>` invocations for the touched
+   behavior (combine related filters in one invocation when useful)
+3. `install_local_standalone.py` when the change affects the local CLI/agent runtime
+
+Widen only when the change crosses shared core/protocol boundaries broadly enough that
+focused coverage cannot bound the risk, or when a stable sync / user request requires it.
+`doctor.py`, `build_sync.py`, and unfiltered crate or workspace suites are not routine
+finalization for a narrow capability edit.
+
 Run formatting after source changes:
 
 ```bash
 uv run --project scripts python scripts/remote/just.py fmt
 ```
 
-Validate remote tooling and standalone installation:
+Optional remote tooling / smoke (use when validating the remote host or packaging path,
+not as a default after every capability edit):
 
 ```bash
 uv run --project scripts python scripts/remote/doctor.py
@@ -269,7 +286,15 @@ uv run --project scripts python scripts/remote/build_sync.py
 uv run --project scripts python scripts/remote/install_local_standalone.py
 ```
 
-Validate skills, multi-agent behavior, goals, and collaboration modes:
+### Capability filter menu
+
+Choose from the groups below. Example of selecting two related filters in one run:
+
+```bash
+uv run --project scripts python scripts/remote/just.py test -p codex-core context_anchor context_reminder
+```
+
+Skills, multi-agent, goals, collaboration:
 
 ```bash
 uv run --project scripts python scripts/remote/just.py test -p codex-core skills
@@ -280,7 +305,7 @@ uv run --project scripts python scripts/remote/just.py test -p codex-goal-extens
 uv run --project scripts python scripts/remote/just.py test -p codex-core collaboration_instructions
 ```
 
-Validate context lifecycle and scoped memories:
+Context lifecycle and scoped memories:
 
 ```bash
 uv run --project scripts python scripts/remote/just.py test -p codex-core context_anchor
@@ -292,7 +317,7 @@ uv run --project scripts python scripts/remote/just.py test -p codex-memories-ex
 uv run --project scripts python scripts/remote/just.py test -p codex-app-server thread_reset_context
 ```
 
-Validate hooks, approvals, tool search, and MCP:
+Hooks, approvals, tool search, MCP:
 
 ```bash
 uv run --project scripts python scripts/remote/just.py test -p codex-core approvals
@@ -303,7 +328,7 @@ uv run --project scripts python scripts/remote/just.py test -p codex-core mcp_tu
 uv run --project scripts python scripts/remote/just.py test -p codex-core mcp_tool_exposure
 ```
 
-Validate provider/tool planning, app-server protocol, daemon updates, and TUI integration:
+Provider / tool planning, app-server, daemon, TUI smoke:
 
 ```bash
 uv run --project scripts python scripts/remote/just.py test -p codex-core model_runtime_selectors
@@ -314,7 +339,7 @@ uv run --project scripts python scripts/remote/just.py test -p codex-app-server-
 uv run --project scripts python scripts/remote/tui_smoke.py
 ```
 
-Regenerate affected schemas through the remote scripts:
+Regenerate schemas only when the corresponding Rust types or wire shapes changed:
 
 ```bash
 uv run --project scripts python scripts/remote/just.py write-config-schema
@@ -342,9 +367,10 @@ uv run --project scripts python scripts/remote/just.py write-app-server-schema -
    source and are not manually merged.
 6. Run formatting after generated outputs have been reviewed. Use `--branch sync/rust-vX.Y.Z` for
    `just.py`, `build_sync.py`, `tui_smoke.py`, and `doctor.py` throughout validation.
-7. Run focused remote validation for every touched capability group. Use the complete remote test
-   suite when the merge crosses shared core or protocol boundaries broadly enough that focused
-   coverage cannot bound the risk.
+7. Run focused remote validation only for capability groups the sync actually touched (see the
+   filter menu above; not the entire menu). Use the complete remote test suite when the merge
+   crosses shared core or protocol boundaries broadly enough that focused coverage cannot bound
+   the risk.
 8. Review model-visible tool schemas and runtime gates with at least one supported current model,
    including `CodeModeOnly` planning when session-control tools are affected.
 9. Run `uv run --project scripts python scripts/fork/conflict_budget.py` and refresh
