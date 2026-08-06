@@ -14,15 +14,19 @@
 
 ## Rust validation
 
-- Run `just fmt` in `codex-rs` after Rust changes.
-- Run focused tests with `just test -p <crate>`.
-- Use `just test-diagnostic -p <crate> <filter>` for deterministic failure diagnosis without
-  nextest retries. Normal `just test` retains the configured retry.
-- Run `just fix -p <crate>` only for crates with handwritten Rust source changes. Its default target
-  scope is `--lib --bins`; select test targets explicitly only when test source changed. Do not
-  include transitively affected crates. Do not rerun tests after `fix` or `fmt` unless a new code
-  edit follows.
-- For core/common/protocol changes, ask before running the complete `just test` suite.
+- Run local `just fmt` / `just fmt-check` after source changes (requires `dotslash` on `PATH`).
+- Before commit/push, run focused local typecheck with
+  `uv run --project scripts python scripts/local/rust_check.py -p <crate>` (or `cargo check -p`)
+  so missing imports and obvious type errors are caught without a remote round-trip. Artifacts use
+  an out-of-tree `CARGO_TARGET_DIR`. This does not replace remote tests.
+- Run focused tests remotely with `scripts/remote/just.py test -p <crate>`.
+- Use `just.py test-diagnostic -p <crate> <filter>` for deterministic failure diagnosis without
+  nextest retries. Normal `just.py test` retains the configured retry.
+- Run `just.py fix -p <crate>` only for crates with handwritten Rust source changes. Its default
+  target scope is `--lib --bins`; select test targets explicitly only when test source changed. Do
+  not include transitively affected crates. Do not rerun tests after `fix` or `fmt` unless a new
+  code edit follows.
+- For core/common/protocol changes, ask before running the complete remote `just.py test` suite.
 
 ## Special validation
 
