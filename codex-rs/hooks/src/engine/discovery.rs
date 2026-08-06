@@ -1068,8 +1068,8 @@ mod tests {
         }
 
         assert_eq!(warnings, Vec::<String>::new());
-        assert_eq!(handlers.len(), 7);
-        assert_eq!(hook_entries.len(), 7);
+        assert_eq!(handlers.len(), 6);
+        assert_eq!(hook_entries.len(), 6);
         for (handler, hook_entry) in handlers.iter().zip(&hook_entries) {
             assert_eq!(handler.event_name, hook_entry.event_name);
             assert_eq!(
