@@ -1,5 +1,6 @@
 use super::*;
 use crate::history_cell::HistoryCell;
+use crate::history_cell::PlainHistoryCell;
 use codex_app_server_protocol::AskParentMode;
 use codex_app_server_protocol::CollabAgentState;
 use codex_app_server_protocol::CollabAgentStatus;
@@ -19,6 +20,7 @@ use insta::assert_snapshot;
 use pretty_assertions::assert_eq;
 use ratatui::style::Color;
 use ratatui::style::Modifier;
+use ratatui::text::Line;
 use std::collections::HashMap;
 
 #[test]
