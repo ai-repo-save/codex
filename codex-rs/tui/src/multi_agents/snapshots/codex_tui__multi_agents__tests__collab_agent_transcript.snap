@@ -1,6 +1,6 @@
 ---
-source: tui/src/multi_agents.rs
-assertion_line: 1095
+source: tui/src/multi_agents/tests.rs
+assertion_line: 353
 expression: snapshot
 ---
 • Spawned Robie [explorer] (fast) · context: all
