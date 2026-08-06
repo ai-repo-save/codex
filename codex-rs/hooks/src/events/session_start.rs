@@ -251,31 +251,73 @@ fn parse_completed(
             });
         }
         None => match run_result.exit_code {
-            Some(0) => match prompt_output::classify_exit_zero_stdout(handler, &run_result.stdout)
-            {
-                prompt_output::ExitZeroStdout::EmptyCommandNoop => {}
-                prompt_output::ExitZeroStdout::EmptyPromptFailed => {
-                    prompt_output::push_empty_prompt_output_error(&mut status, &mut entries);
-                }
-                prompt_output::ExitZeroStdout::NonEmpty(trimmed_stdout) => {
-                    if let Some(parsed) = match handler.event_name {
-                        HookEventName::SessionStart => {
-                            output_parser::parse_session_start(&run_result.stdout)
-                        }
-                        HookEventName::SubagentStart => {
-                            output_parser::parse_subagent_start(&run_result.stdout)
-                        }
-                        event_name => {
-                            panic!("expected start hook event, got {event_name:?}")
-                        }
-                    } {
-                        if let Some(system_message) = parsed.universal.system_message {
-                            entries.push(HookOutputEntry {
-                                kind: HookOutputEntryKind::Warning,
-                                text: system_message,
-                            });
-                        }
-                        if let Some(additional_context) = parsed.additional_context {
+            Some(0) => {
+                match prompt_output::classify_exit_zero_stdout(handler, &run_result.stdout) {
+                    prompt_output::ExitZeroStdout::EmptyCommandNoop => {}
+                    prompt_output::ExitZeroStdout::EmptyPromptFailed => {
+                        prompt_output::push_empty_prompt_output_error(&mut status, &mut entries);
+                    }
+                    prompt_output::ExitZeroStdout::NonEmpty(trimmed_stdout) => {
+                        if let Some(parsed) = match handler.event_name {
+                            HookEventName::SessionStart => {
+                                output_parser::parse_session_start(&run_result.stdout)
+                            }
+                            HookEventName::SubagentStart => {
+                                output_parser::parse_subagent_start(&run_result.stdout)
+                            }
+                            event_name => {
+                                panic!("expected start hook event, got {event_name:?}")
+                            }
+                        } {
+                            if let Some(system_message) = parsed.universal.system_message {
+                                entries.push(HookOutputEntry {
+                                    kind: HookOutputEntryKind::Warning,
+                                    text: system_message,
+                                });
+                            }
+                            if let Some(additional_context) = parsed.additional_context {
+                                common::append_additional_context(
+                                    &mut entries,
+                                    &mut additional_contexts_for_model,
+                                    handler,
+                                    additional_context,
+                                );
+                            }
+                            let _ = parsed.universal.suppress_output;
+                            if handler.event_name == HookEventName::SessionStart
+                                && !parsed.universal.continue_processing
+                            {
+                                status = HookRunStatus::Stopped;
+                                should_stop = true;
+                                stop_reason = parsed.universal.stop_reason.clone();
+                                if let Some(stop_reason_text) = parsed.universal.stop_reason {
+                                    entries.push(HookOutputEntry {
+                                        kind: HookOutputEntryKind::Stop,
+                                        text: stop_reason_text,
+                                    });
+                                }
+                            }
+                        } else if prompt_output::should_fail_unparsed_stdout(
+                            handler,
+                            &run_result.stdout,
+                        ) {
+                            prompt_output::push_invalid_json_output_error(
+                                &mut status,
+                                &mut entries,
+                                match handler.event_name {
+                                    HookEventName::SessionStart => {
+                                        "hook returned invalid session start JSON output"
+                                    }
+                                    HookEventName::SubagentStart => {
+                                        "hook returned invalid subagent start JSON output"
+                                    }
+                                    event_name => {
+                                        panic!("expected start hook event, got {event_name:?}")
+                                    }
+                                },
+                            );
+                        } else {
+                            let additional_context = trimmed_stdout.to_string();
                             common::append_additional_context(
                                 &mut entries,
                                 &mut additional_contexts_for_model,
@@ -283,47 +325,6 @@ fn parse_completed(
                                 additional_context,
                             );
                         }
-                        let _ = parsed.universal.suppress_output;
-                        if handler.event_name == HookEventName::SessionStart
-                            && !parsed.universal.continue_processing
-                        {
-                            status = HookRunStatus::Stopped;
-                            should_stop = true;
-                            stop_reason = parsed.universal.stop_reason.clone();
-                            if let Some(stop_reason_text) = parsed.universal.stop_reason {
-                                entries.push(HookOutputEntry {
-                                    kind: HookOutputEntryKind::Stop,
-                                    text: stop_reason_text,
-                                });
-                            }
-                        }
-                    } else if prompt_output::should_fail_unparsed_stdout(
-                        handler,
-                        &run_result.stdout,
-                    ) {
-                        prompt_output::push_invalid_json_output_error(
-                            &mut status,
-                            &mut entries,
-                            match handler.event_name {
-                                HookEventName::SessionStart => {
-                                    "hook returned invalid session start JSON output"
-                                }
-                                HookEventName::SubagentStart => {
-                                    "hook returned invalid subagent start JSON output"
-                                }
-                                event_name => {
-                                    panic!("expected start hook event, got {event_name:?}")
-                                }
-                            },
-                        );
-                    } else {
-                        let additional_context = trimmed_stdout.to_string();
-                        common::append_additional_context(
-                            &mut entries,
-                            &mut additional_contexts_for_model,
-                            handler,
-                            additional_context,
-                        );
                     }
                 }
             }

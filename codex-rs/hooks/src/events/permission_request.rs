@@ -214,52 +214,54 @@ fn parse_completed(
             });
         }
         None => match run_result.exit_code {
-            Some(0) => match prompt_output::classify_exit_zero_stdout(handler, &run_result.stdout)
-            {
-                prompt_output::ExitZeroStdout::EmptyCommandNoop => {}
-                prompt_output::ExitZeroStdout::EmptyPromptFailed => {
-                    prompt_output::push_empty_prompt_output_error(&mut status, &mut entries);
-                }
-                prompt_output::ExitZeroStdout::NonEmpty(_) => {
-                    if let Some(parsed) =
-                        output_parser::parse_permission_request(&run_result.stdout)
-                    {
-                        if let Some(system_message) = parsed.universal.system_message {
-                            entries.push(HookOutputEntry {
-                                kind: HookOutputEntryKind::Warning,
-                                text: system_message,
-                            });
-                        }
-                        if let Some(invalid_reason) = parsed.invalid_reason {
-                            status = HookRunStatus::Failed;
-                            entries.push(HookOutputEntry {
-                                kind: HookOutputEntryKind::Error,
-                                text: invalid_reason,
-                            });
-                        } else if let Some(parsed_decision) = parsed.decision {
-                            match parsed_decision {
-                                output_parser::PermissionRequestDecision::Allow => {
-                                    decision = Some(PermissionRequestDecision::Allow);
-                                }
-                                output_parser::PermissionRequestDecision::Deny { message } => {
-                                    status = HookRunStatus::Blocked;
-                                    entries.push(HookOutputEntry {
-                                        kind: HookOutputEntryKind::Feedback,
-                                        text: message.clone(),
-                                    });
-                                    decision = Some(PermissionRequestDecision::Deny { message });
+            Some(0) => {
+                match prompt_output::classify_exit_zero_stdout(handler, &run_result.stdout) {
+                    prompt_output::ExitZeroStdout::EmptyCommandNoop => {}
+                    prompt_output::ExitZeroStdout::EmptyPromptFailed => {
+                        prompt_output::push_empty_prompt_output_error(&mut status, &mut entries);
+                    }
+                    prompt_output::ExitZeroStdout::NonEmpty(_) => {
+                        if let Some(parsed) =
+                            output_parser::parse_permission_request(&run_result.stdout)
+                        {
+                            if let Some(system_message) = parsed.universal.system_message {
+                                entries.push(HookOutputEntry {
+                                    kind: HookOutputEntryKind::Warning,
+                                    text: system_message,
+                                });
+                            }
+                            if let Some(invalid_reason) = parsed.invalid_reason {
+                                status = HookRunStatus::Failed;
+                                entries.push(HookOutputEntry {
+                                    kind: HookOutputEntryKind::Error,
+                                    text: invalid_reason,
+                                });
+                            } else if let Some(parsed_decision) = parsed.decision {
+                                match parsed_decision {
+                                    output_parser::PermissionRequestDecision::Allow => {
+                                        decision = Some(PermissionRequestDecision::Allow);
+                                    }
+                                    output_parser::PermissionRequestDecision::Deny { message } => {
+                                        status = HookRunStatus::Blocked;
+                                        entries.push(HookOutputEntry {
+                                            kind: HookOutputEntryKind::Feedback,
+                                            text: message.clone(),
+                                        });
+                                        decision =
+                                            Some(PermissionRequestDecision::Deny { message });
+                                    }
                                 }
                             }
+                        } else if prompt_output::should_fail_unparsed_stdout(
+                            handler,
+                            &run_result.stdout,
+                        ) {
+                            prompt_output::push_invalid_json_output_error(
+                                &mut status,
+                                &mut entries,
+                                "hook returned invalid permission-request JSON output",
+                            );
                         }
-                    } else if prompt_output::should_fail_unparsed_stdout(
-                        handler,
-                        &run_result.stdout,
-                    ) {
-                        prompt_output::push_invalid_json_output_error(
-                            &mut status,
-                            &mut entries,
-                            "hook returned invalid permission-request JSON output",
-                        );
                     }
                 }
             }

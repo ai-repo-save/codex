@@ -28,9 +28,9 @@ use super::render::first_agent_state;
 use super::render::is_fast_service_tier;
 use super::render::parse_thread_id;
 use super::render::status_summary_line;
+use super::render::title_spans_line;
 use super::render::title_text;
 use super::render::title_with_agent;
-use super::render::title_spans_line;
 use super::render::wait_complete_lines;
 
 pub(crate) fn tool_call_history_cell(
@@ -191,7 +191,6 @@ pub(crate) fn collab_tool_summary(item: &ThreadItem) -> Option<String> {
     Some(summary)
 }
 
-
 fn spawn_end(
     new_thread_id: Option<ThreadId>,
     prompt: &str,
@@ -245,7 +244,6 @@ fn spawn_end(
     };
     collab_event(title, details)
 }
-
 
 fn interaction_end(
     receiver_thread_id: ThreadId,

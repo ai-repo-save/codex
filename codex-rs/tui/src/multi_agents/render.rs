@@ -25,7 +25,6 @@ pub(super) struct AgentLabel<'a> {
     role: Option<&'a str>,
 }
 
-
 pub(super) fn context_inheritance_detail(
     context_inheritance: Option<&SpawnContextInheritance>,
 ) -> Option<String> {
@@ -39,14 +38,12 @@ pub(super) fn context_inheritance_detail(
     }
 }
 
-
 pub(super) fn is_fast_service_tier(service_tier: Option<&str>) -> bool {
     matches!(
         service_tier.and_then(ServiceTier::from_request_value),
         Some(ServiceTier::Fast)
     )
 }
-
 
 pub(super) fn collab_event(title: Line<'static>, details: Vec<Line<'static>>) -> PlainHistoryCell {
     let mut lines: Vec<Line<'static>> = vec![title];

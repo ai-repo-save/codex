@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use codex_config::HookHandlerConfig;
+use codex_config::HookStateToml;
 use codex_config::MatcherGroup;
 use codex_config::PromptHookFilterConfig;
-use codex_config::HookStateToml;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::HookEventName;
 use codex_protocol::protocol::HookHandlerType;
@@ -14,12 +14,12 @@ use codex_utils_absolute_path::test_support::PathBufExt;
 use codex_utils_absolute_path::test_support::test_path_buf;
 use pretty_assertions::assert_eq;
 
-use super::super::HookHandlerSource;
-use super::super::append_matcher_groups;
 use super::super::super::ConfiguredHandler;
 use super::super::super::ConfiguredHandlerKind;
 use super::super::super::ConfiguredPromptFilter;
 use super::super::super::HookListEntry;
+use super::super::HookHandlerSource;
+use super::super::append_matcher_groups;
 
 fn source_path() -> AbsolutePathBuf {
     test_path_buf("/tmp/hooks.json").abs()
@@ -478,4 +478,3 @@ fn unsupported_events_skip_each_prompt_handler_without_lifecycle_or_metadata() {
         );
     }
 }
-

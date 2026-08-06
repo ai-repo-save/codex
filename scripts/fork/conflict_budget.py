@@ -90,7 +90,9 @@ def collect_churn(base: str, head: str) -> list[FileChurn]:
             rows.extend(parsed)
         else:
             rows.append(FileChurn(path=path, added=0, deleted=0))
-    events_out = _run_git(["diff", "--numstat", f"{base}...{head}", "--", HOOKS_EVENTS_GLOB])
+    events_out = _run_git(
+        ["diff", "--numstat", f"{base}...{head}", "--", HOOKS_EVENTS_GLOB]
+    )
     rows.extend(_parse_numstat(events_out))
     rows.sort(key=lambda row: (-row.total, row.path))
     return rows
@@ -157,7 +159,9 @@ def main(argv: list[str]) -> int:
     if args.tsv is not None:
         tsv_path = args.tsv if args.tsv.is_absolute() else REPO_ROOT / args.tsv
         lines = ["path\tadded\tdeleted\tsum"]
-        lines.extend(f"{row.path}\t{row.added}\t{row.deleted}\t{row.total}" for row in rows)
+        lines.extend(
+            f"{row.path}\t{row.added}\t{row.deleted}\t{row.total}" for row in rows
+        )
         tsv_path.parent.mkdir(parents=True, exist_ok=True)
         tsv_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         print(f"wrote {tsv_path}", file=sys.stderr)

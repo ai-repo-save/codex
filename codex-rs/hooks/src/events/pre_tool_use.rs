@@ -223,57 +223,59 @@ fn parse_completed(
             });
         }
         None => match run_result.exit_code {
-            Some(0) => match prompt_output::classify_exit_zero_stdout(handler, &run_result.stdout)
-            {
-                prompt_output::ExitZeroStdout::EmptyCommandNoop => {}
-                prompt_output::ExitZeroStdout::EmptyPromptFailed => {
-                    prompt_output::push_empty_prompt_output_error(&mut status, &mut entries);
-                }
-                prompt_output::ExitZeroStdout::NonEmpty(_) => {
-                    if let Some(parsed) = output_parser::parse_pre_tool_use(&run_result.stdout) {
-                        if let Some(system_message) = parsed.universal.system_message {
-                            entries.push(HookOutputEntry {
-                                kind: HookOutputEntryKind::Warning,
-                                text: system_message,
-                            });
-                        }
-                        if let Some(invalid_reason) = parsed.invalid_reason {
-                            status = HookRunStatus::Failed;
-                            entries.push(HookOutputEntry {
-                                kind: HookOutputEntryKind::Error,
-                                text: invalid_reason,
-                            });
-                        } else {
-                            if let Some(additional_context) = parsed.additional_context {
-                                common::append_additional_context(
-                                    &mut entries,
-                                    &mut additional_contexts_for_model,
-                                    handler,
-                                    additional_context,
-                                );
-                            }
-                            if let Some(reason) = parsed.block_reason {
-                                status = HookRunStatus::Blocked;
-                                should_block = true;
-                                block_reason = Some(reason.clone());
+            Some(0) => {
+                match prompt_output::classify_exit_zero_stdout(handler, &run_result.stdout) {
+                    prompt_output::ExitZeroStdout::EmptyCommandNoop => {}
+                    prompt_output::ExitZeroStdout::EmptyPromptFailed => {
+                        prompt_output::push_empty_prompt_output_error(&mut status, &mut entries);
+                    }
+                    prompt_output::ExitZeroStdout::NonEmpty(_) => {
+                        if let Some(parsed) = output_parser::parse_pre_tool_use(&run_result.stdout)
+                        {
+                            if let Some(system_message) = parsed.universal.system_message {
                                 entries.push(HookOutputEntry {
-                                    kind: HookOutputEntryKind::Feedback,
-                                    text: reason,
+                                    kind: HookOutputEntryKind::Warning,
+                                    text: system_message,
                                 });
                             }
-                            if !should_block {
-                                updated_input = parsed.updated_input;
+                            if let Some(invalid_reason) = parsed.invalid_reason {
+                                status = HookRunStatus::Failed;
+                                entries.push(HookOutputEntry {
+                                    kind: HookOutputEntryKind::Error,
+                                    text: invalid_reason,
+                                });
+                            } else {
+                                if let Some(additional_context) = parsed.additional_context {
+                                    common::append_additional_context(
+                                        &mut entries,
+                                        &mut additional_contexts_for_model,
+                                        handler,
+                                        additional_context,
+                                    );
+                                }
+                                if let Some(reason) = parsed.block_reason {
+                                    status = HookRunStatus::Blocked;
+                                    should_block = true;
+                                    block_reason = Some(reason.clone());
+                                    entries.push(HookOutputEntry {
+                                        kind: HookOutputEntryKind::Feedback,
+                                        text: reason,
+                                    });
+                                }
+                                if !should_block {
+                                    updated_input = parsed.updated_input;
+                                }
                             }
+                        } else if prompt_output::should_fail_unparsed_stdout(
+                            handler,
+                            &run_result.stdout,
+                        ) {
+                            prompt_output::push_invalid_json_output_error(
+                                &mut status,
+                                &mut entries,
+                                "hook returned invalid pre-tool-use JSON output",
+                            );
                         }
-                    } else if prompt_output::should_fail_unparsed_stdout(
-                        handler,
-                        &run_result.stdout,
-                    ) {
-                        prompt_output::push_invalid_json_output_error(
-                            &mut status,
-                            &mut entries,
-                            "hook returned invalid pre-tool-use JSON output",
-                        );
                     }
                 }
             }

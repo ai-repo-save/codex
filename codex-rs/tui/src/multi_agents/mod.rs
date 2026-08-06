@@ -68,7 +68,6 @@ pub(crate) struct SpawnRequestSummary {
     pub(crate) context_inheritance: Option<SpawnContextInheritance>,
 }
 
-
 pub(crate) fn agent_picker_status_dot_spans(is_closed: bool) -> Vec<Span<'static>> {
     let dot = if is_closed {
         "•".into()
@@ -181,7 +180,6 @@ fn next_agent_word_motion_fallback(
 ) -> bool {
     false
 }
-
 
 #[cfg(test)]
 mod tests;

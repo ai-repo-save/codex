@@ -176,25 +176,71 @@ fn parse_completed(
             });
         }
         None => match run_result.exit_code {
-            Some(0) => match prompt_output::classify_exit_zero_stdout(handler, &run_result.stdout)
-            {
-                prompt_output::ExitZeroStdout::EmptyCommandNoop => {}
-                prompt_output::ExitZeroStdout::EmptyPromptFailed => {
-                    prompt_output::push_empty_prompt_output_error(&mut status, &mut entries);
-                }
-                prompt_output::ExitZeroStdout::NonEmpty(trimmed_stdout) => {
-                    if let Some(parsed) =
-                        output_parser::parse_user_prompt_submit(&run_result.stdout)
-                    {
-                        if let Some(system_message) = parsed.universal.system_message {
-                            entries.push(HookOutputEntry {
-                                kind: HookOutputEntryKind::Warning,
-                                text: system_message,
-                            });
-                        }
-                        if parsed.invalid_block_reason.is_none()
-                            && let Some(additional_context) = parsed.additional_context
+            Some(0) => {
+                match prompt_output::classify_exit_zero_stdout(handler, &run_result.stdout) {
+                    prompt_output::ExitZeroStdout::EmptyCommandNoop => {}
+                    prompt_output::ExitZeroStdout::EmptyPromptFailed => {
+                        prompt_output::push_empty_prompt_output_error(&mut status, &mut entries);
+                    }
+                    prompt_output::ExitZeroStdout::NonEmpty(trimmed_stdout) => {
+                        if let Some(parsed) =
+                            output_parser::parse_user_prompt_submit(&run_result.stdout)
                         {
+                            if let Some(system_message) = parsed.universal.system_message {
+                                entries.push(HookOutputEntry {
+                                    kind: HookOutputEntryKind::Warning,
+                                    text: system_message,
+                                });
+                            }
+                            if parsed.invalid_block_reason.is_none()
+                                && let Some(additional_context) = parsed.additional_context
+                            {
+                                common::append_additional_context(
+                                    &mut entries,
+                                    &mut additional_contexts_for_model,
+                                    handler,
+                                    additional_context,
+                                );
+                            }
+                            let _ = parsed.universal.suppress_output;
+                            if !parsed.universal.continue_processing {
+                                status = HookRunStatus::Stopped;
+                                should_stop = true;
+                                stop_reason = parsed.universal.stop_reason.clone();
+                                if let Some(stop_reason_text) = parsed.universal.stop_reason {
+                                    entries.push(HookOutputEntry {
+                                        kind: HookOutputEntryKind::Stop,
+                                        text: stop_reason_text,
+                                    });
+                                }
+                            } else if let Some(invalid_block_reason) = parsed.invalid_block_reason {
+                                status = HookRunStatus::Failed;
+                                entries.push(HookOutputEntry {
+                                    kind: HookOutputEntryKind::Error,
+                                    text: invalid_block_reason,
+                                });
+                            } else if parsed.should_block {
+                                status = HookRunStatus::Blocked;
+                                should_stop = true;
+                                stop_reason = parsed.reason.clone();
+                                if let Some(reason) = parsed.reason {
+                                    entries.push(HookOutputEntry {
+                                        kind: HookOutputEntryKind::Feedback,
+                                        text: reason,
+                                    });
+                                }
+                            }
+                        } else if prompt_output::should_fail_unparsed_stdout(
+                            handler,
+                            &run_result.stdout,
+                        ) {
+                            prompt_output::push_invalid_json_output_error(
+                                &mut status,
+                                &mut entries,
+                                "hook returned invalid user prompt submit JSON output",
+                            );
+                        } else {
+                            let additional_context = trimmed_stdout.to_string();
                             common::append_additional_context(
                                 &mut entries,
                                 &mut additional_contexts_for_model,
@@ -202,51 +248,6 @@ fn parse_completed(
                                 additional_context,
                             );
                         }
-                        let _ = parsed.universal.suppress_output;
-                        if !parsed.universal.continue_processing {
-                            status = HookRunStatus::Stopped;
-                            should_stop = true;
-                            stop_reason = parsed.universal.stop_reason.clone();
-                            if let Some(stop_reason_text) = parsed.universal.stop_reason {
-                                entries.push(HookOutputEntry {
-                                    kind: HookOutputEntryKind::Stop,
-                                    text: stop_reason_text,
-                                });
-                            }
-                        } else if let Some(invalid_block_reason) = parsed.invalid_block_reason {
-                            status = HookRunStatus::Failed;
-                            entries.push(HookOutputEntry {
-                                kind: HookOutputEntryKind::Error,
-                                text: invalid_block_reason,
-                            });
-                        } else if parsed.should_block {
-                            status = HookRunStatus::Blocked;
-                            should_stop = true;
-                            stop_reason = parsed.reason.clone();
-                            if let Some(reason) = parsed.reason {
-                                entries.push(HookOutputEntry {
-                                    kind: HookOutputEntryKind::Feedback,
-                                    text: reason,
-                                });
-                            }
-                        }
-                    } else if prompt_output::should_fail_unparsed_stdout(
-                        handler,
-                        &run_result.stdout,
-                    ) {
-                        prompt_output::push_invalid_json_output_error(
-                            &mut status,
-                            &mut entries,
-                            "hook returned invalid user prompt submit JSON output",
-                        );
-                    } else {
-                        let additional_context = trimmed_stdout.to_string();
-                        common::append_additional_context(
-                            &mut entries,
-                            &mut additional_contexts_for_model,
-                            handler,
-                            additional_context,
-                        );
                     }
                 }
             }

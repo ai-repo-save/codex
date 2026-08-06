@@ -48,8 +48,8 @@ fn collab_events_snapshot() {
         .expect("valid sender thread id");
     let robie_id = ThreadId::from_string("00000000-0000-0000-0000-000000000002")
         .expect("valid robie thread id");
-    let bob_id = ThreadId::from_string("00000000-0000-0000-0000-000000000003")
-        .expect("valid bob thread id");
+    let bob_id =
+        ThreadId::from_string("00000000-0000-0000-0000-000000000003").expect("valid bob thread id");
 
     let spawn = tool_call_history_cell(
         &ThreadItem::CollabAgentToolCall {

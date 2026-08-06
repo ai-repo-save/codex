@@ -11,8 +11,6 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::EventMsg;
 use tracing::instrument;
 
-use codex_protocol::error::CodexErr;
-use codex_protocol::error::Result as CodexResult;
 use crate::session::context_anchor::ContextRewindRejectionReason as SessionContextRewindRejectionReason;
 use crate::session::context_anchor::RewindContextToAnchorResult;
 use crate::session::session::Session;
@@ -28,6 +26,8 @@ use crate::tools::handlers::context_anchor::SaveContextAnchorResponse;
 use crate::tools::handlers::context_anchor_spec::LIST_CONTEXT_ANCHORS_TOOL_NAME;
 use crate::tools::handlers::context_anchor_spec::REWIND_CONTEXT_TO_ANCHOR_TOOL_NAME;
 use crate::tools::handlers::context_anchor_spec::SAVE_CONTEXT_ANCHOR_TOOL_NAME;
+use codex_protocol::error::CodexErr;
+use codex_protocol::error::Result as CodexResult;
 
 async fn retained_response_items_for_context_rewind(
     sess: &Session,
@@ -154,9 +154,9 @@ async fn apply_rewind_context_to_anchor(
             .await;
             let response = RewindContextToAnchorResponse::Rewound {
                 anchor_id: rewind_event.anchor_id,
-                replacement_anchor_id: rewind_event.replacement_anchor_id.expect(
-                    "successful context rewind should create replacement anchor",
-                ),
+                replacement_anchor_id: rewind_event
+                    .replacement_anchor_id
+                    .expect("successful context rewind should create replacement anchor"),
                 dropped_turns: rewind_event.dropped_turns,
                 response_items_reclaimed: rewind_event.response_items_reclaimed,
                 approx_tokens_reclaimed: rewind_event.approx_tokens_reclaimed,

@@ -272,47 +272,48 @@ fn parse_pre_completed(
             });
         }
         None => match run_result.exit_code {
-            Some(0) => match prompt_output::classify_exit_zero_stdout(handler, &run_result.stdout)
-            {
-                prompt_output::ExitZeroStdout::EmptyCommandNoop => {}
-                prompt_output::ExitZeroStdout::EmptyPromptFailed => {
-                    prompt_output::push_empty_prompt_output_error(&mut status, &mut entries);
-                }
-                prompt_output::ExitZeroStdout::NonEmpty(_) => {
-                    if let Some(parsed) = output_parser::parse_pre_compact(&run_result.stdout) {
-                        if let Some(system_message) = parsed.universal.system_message {
-                            entries.push(HookOutputEntry {
-                                kind: HookOutputEntryKind::Warning,
-                                text: system_message,
-                            });
+            Some(0) => {
+                match prompt_output::classify_exit_zero_stdout(handler, &run_result.stdout) {
+                    prompt_output::ExitZeroStdout::EmptyCommandNoop => {}
+                    prompt_output::ExitZeroStdout::EmptyPromptFailed => {
+                        prompt_output::push_empty_prompt_output_error(&mut status, &mut entries);
+                    }
+                    prompt_output::ExitZeroStdout::NonEmpty(_) => {
+                        if let Some(parsed) = output_parser::parse_pre_compact(&run_result.stdout) {
+                            if let Some(system_message) = parsed.universal.system_message {
+                                entries.push(HookOutputEntry {
+                                    kind: HookOutputEntryKind::Warning,
+                                    text: system_message,
+                                });
+                            }
+                            let _ = parsed.universal.suppress_output;
+                            if !parsed.universal.continue_processing {
+                                status = HookRunStatus::Stopped;
+                                should_stop = true;
+                                stop_reason = parsed.universal.stop_reason.clone();
+                                entries.push(HookOutputEntry {
+                                    kind: HookOutputEntryKind::Stop,
+                                    text: parsed.universal.stop_reason.unwrap_or_else(|| {
+                                        "PreCompact hook stopped execution".to_string()
+                                    }),
+                                });
+                            } else if let Some(invalid_reason) = parsed.invalid_reason {
+                                status = HookRunStatus::Failed;
+                                entries.push(HookOutputEntry {
+                                    kind: HookOutputEntryKind::Error,
+                                    text: invalid_reason,
+                                });
+                            }
+                        } else if prompt_output::should_fail_unparsed_stdout(
+                            handler,
+                            &run_result.stdout,
+                        ) {
+                            prompt_output::push_invalid_json_output_error(
+                                &mut status,
+                                &mut entries,
+                                "hook returned invalid PreCompact hook JSON output",
+                            );
                         }
-                        let _ = parsed.universal.suppress_output;
-                        if !parsed.universal.continue_processing {
-                            status = HookRunStatus::Stopped;
-                            should_stop = true;
-                            stop_reason = parsed.universal.stop_reason.clone();
-                            entries.push(HookOutputEntry {
-                                kind: HookOutputEntryKind::Stop,
-                                text: parsed.universal.stop_reason.unwrap_or_else(|| {
-                                    "PreCompact hook stopped execution".to_string()
-                                }),
-                            });
-                        } else if let Some(invalid_reason) = parsed.invalid_reason {
-                            status = HookRunStatus::Failed;
-                            entries.push(HookOutputEntry {
-                                kind: HookOutputEntryKind::Error,
-                                text: invalid_reason,
-                            });
-                        }
-                    } else if prompt_output::should_fail_unparsed_stdout(
-                        handler,
-                        &run_result.stdout,
-                    ) {
-                        prompt_output::push_invalid_json_output_error(
-                            &mut status,
-                            &mut entries,
-                            "hook returned invalid PreCompact hook JSON output",
-                        );
                     }
                 }
             }
