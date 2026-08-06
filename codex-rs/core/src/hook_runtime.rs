@@ -286,16 +286,6 @@ pub(crate) async fn run_permission_request_hooks(
     decision
 }
 
-fn approval_policy_for_hook(approval_policy: AskForApproval) -> String {
-    match approval_policy {
-        AskForApproval::Never => "never",
-        AskForApproval::OnRequest => "on_request",
-        AskForApproval::UnlessTrusted => "unless_trusted",
-        AskForApproval::Granular(_) => "granular",
-    }
-    .to_string()
-}
-
 /// Runs matching `PostToolUse` hooks after a tool has produced a successful output.
 ///
 /// The `tool_name`, matcher aliases, `tool_input`, and `tool_response` values are
