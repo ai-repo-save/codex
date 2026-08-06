@@ -1,5 +1,4 @@
 use super::*;
-use crate::config::AutoReviewReviewConfig;
 use crate::config::Config;
 use crate::config::ConfigOverrides;
 use crate::config::Constrained;
@@ -33,7 +32,6 @@ use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::OPENAI_PROVIDER_ID;
 use codex_models_manager::manager::StaticModelsManager;
 use codex_network_proxy::NetworkProxyConfig;
-use codex_prompts::parse_auto_review_prompt_template;
 use codex_protocol::ThreadId;
 use codex_protocol::approvals::NetworkApprovalProtocol;
 use codex_protocol::config_types::ApprovalsReviewer;
@@ -1214,33 +1212,25 @@ async fn routes_approval_to_guardian_requires_guardian_reviewer() {
     config.approvals_reviewer = ApprovalsReviewer::User;
     turn.config = Arc::new(config.clone());
 
-    assert!(!routes_approval_action_to_guardian(
-        &turn,
-        GuardianReviewAction::Shell
-    ));
+    assert!(!routes_approval_to_guardian(&turn));
 
     config.approvals_reviewer = ApprovalsReviewer::AutoReview;
     turn.config = Arc::new(config);
 
-    assert!(routes_approval_action_to_guardian(
-        &turn,
-        GuardianReviewAction::Shell
-    ));
+    assert!(routes_approval_to_guardian(&turn));
 }
 
 #[tokio::test]
 async fn routes_approval_to_guardian_can_use_app_reviewer_override() {
     let (_session, turn) = crate::session::tests::make_session_and_context().await;
 
-    assert!(!routes_approval_action_to_guardian_with_reviewer(
+    assert!(!routes_approval_to_guardian_with_reviewer(
         &turn,
-        ApprovalsReviewer::User,
-        GuardianReviewAction::McpToolCall,
+        ApprovalsReviewer::User
     ));
-    assert!(routes_approval_action_to_guardian_with_reviewer(
+    assert!(routes_approval_to_guardian_with_reviewer(
         &turn,
-        ApprovalsReviewer::AutoReview,
-        GuardianReviewAction::McpToolCall,
+        ApprovalsReviewer::AutoReview
     ));
 }
 
@@ -1260,56 +1250,7 @@ async fn routes_approval_to_guardian_allows_granular_review_policy() {
         }))
         .expect("test setup should allow updating approval policy");
 
-    assert!(routes_approval_action_to_guardian(
-        &turn,
-        GuardianReviewAction::Shell
-    ));
-}
-
-#[tokio::test]
-async fn routes_approval_to_guardian_honors_explicit_review_scope() {
-    let (_session, mut turn) = crate::session::tests::make_session_and_context().await;
-    let mut config = (*turn.config).clone();
-    config.approvals_reviewer = ApprovalsReviewer::AutoReview;
-    config.auto_review.review = AutoReviewReviewConfig {
-        shell: false,
-        apply_patch: true,
-        ..AutoReviewReviewConfig::default()
-    };
-    turn.config = Arc::new(config);
-
-    assert!(!routes_approval_action_to_guardian(
-        &turn,
-        GuardianReviewAction::Shell
-    ));
-    assert!(routes_approval_action_to_guardian(
-        &turn,
-        GuardianReviewAction::ApplyPatch
-    ));
-}
-
-#[tokio::test]
-async fn routes_approval_to_guardian_requires_explicit_never_policy_review() {
-    let (_session, mut turn) = crate::session::tests::make_session_and_context().await;
-    let mut config = (*turn.config).clone();
-    config.approvals_reviewer = ApprovalsReviewer::AutoReview;
-    turn.config = Arc::new(config.clone());
-    turn.approval_policy
-        .set(AskForApproval::Never)
-        .expect("test setup should allow updating approval policy");
-
-    assert!(!routes_approval_action_to_guardian(
-        &turn,
-        GuardianReviewAction::Shell
-    ));
-
-    config.auto_review.review.review_when_approval_policy_never = true;
-    turn.config = Arc::new(config);
-
-    assert!(routes_approval_action_to_guardian(
-        &turn,
-        GuardianReviewAction::Shell
-    ));
+    assert!(routes_approval_to_guardian(&turn));
 }
 
 #[test]
@@ -3312,35 +3253,6 @@ async fn guardian_review_session_config_uses_requirements_guardian_policy_config
     );
 }
 
-#[tokio::test]
-async fn guardian_review_session_config_uses_full_auto_review_prompt_override() {
-    let prompt = "Review the exact requested action using the local developer policy.";
-    let template = parse_auto_review_prompt_template(prompt).expect("test prompt parses");
-    let mut parent_config = test_config().await;
-    parent_config.guardian_policy_config =
-        Some("This policy fragment should not appear.".to_string());
-    parent_config.auto_review.prompt_template = Some(template.clone());
-
-    let guardian_config = build_guardian_review_session_config_for_test(
-        &parent_config,
-        /*live_network_config*/ None,
-        "active-model",
-        /*reasoning_effort*/ None,
-        /*model_messages*/ None,
-    )
-    .expect("guardian config");
-
-    assert_eq!(
-        guardian_config.base_instructions,
-        Some(guardian_policy_prompt_with_template(&template))
-    );
-    assert!(
-        guardian_config
-            .base_instructions
-            .as_deref()
-            .is_some_and(|instructions| instructions.contains("final message must be strict JSON"))
-    );
-}
 
 #[tokio::test]
 async fn guardian_review_session_config_uses_default_guardian_policy_without_requirements_override()

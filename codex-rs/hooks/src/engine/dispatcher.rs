@@ -51,7 +51,6 @@ pub(crate) fn select_handlers_for_matcher_inputs(
         .filter(|handler| match event_name {
             HookEventName::PreToolUse
             | HookEventName::PermissionRequest
-            | HookEventName::ApprovalReviewRoute
             | HookEventName::PostToolUse
             | HookEventName::SessionStart
             | HookEventName::SessionEnd
@@ -192,7 +191,6 @@ pub(crate) fn scope_for_event(event_name: HookEventName) -> HookScope {
         }
         HookEventName::PreToolUse
         | HookEventName::PermissionRequest
-        | HookEventName::ApprovalReviewRoute
         | HookEventName::PostToolUse
         | HookEventName::PreCompact
         | HookEventName::PostCompact
@@ -206,7 +204,6 @@ pub(crate) fn hook_event_name_label(event_name: HookEventName) -> &'static str {
     match event_name {
         HookEventName::PreToolUse => "PreToolUse",
         HookEventName::PermissionRequest => "PermissionRequest",
-        HookEventName::ApprovalReviewRoute => "ApprovalReviewRoute",
         HookEventName::PostToolUse => "PostToolUse",
         HookEventName::PreCompact => "PreCompact",
         HookEventName::PostCompact => "PostCompact",

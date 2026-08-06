@@ -21,7 +21,6 @@ use codex_config::ResidencyRequirement;
 use codex_config::SandboxModeRequirement;
 use codex_config::Sourced;
 use codex_config::ThreadConfigLoader;
-use codex_config::config_toml::AutoReviewToml;
 use codex_config::config_toml::CollaborationModeToml;
 use codex_config::config_toml::ConfigLockfileToml;
 use codex_config::config_toml::ConfigToml;
@@ -153,10 +152,8 @@ use crate::config_lock::config_without_lock_controls;
 use crate::config_lock::lock_layer_from_config;
 use crate::config_lock::read_config_lock_from_path;
 use codex_network_proxy::NetworkProxyConfig;
-use codex_prompts::AutoReviewPromptTemplate;
 use codex_prompts::GoalPromptTemplate;
 pub use codex_prompts::GoalPromptTemplates;
-use codex_prompts::parse_auto_review_prompt_template;
 use codex_prompts::parse_goal_prompt_template;
 use toml::Value as TomlValue;
 use toml_edit::DocumentMut;
@@ -197,7 +194,6 @@ pub(crate) use resolved_permission_profile::PermissionProfileState;
 const DEFAULT_IGNORE_LARGE_UNTRACKED_DIRS: i64 = 200;
 const DEFAULT_IGNORE_LARGE_UNTRACKED_FILES: i64 = 10 * 1024 * 1024;
 const MAX_GOAL_PROMPT_OVERRIDE_BYTES: usize = 16 * 1024;
-const MAX_AUTO_REVIEW_PROMPT_OVERRIDE_BYTES: usize = 16 * 1024;
 pub(crate) const DEFAULT_CONTEXT_REMINDER_MESSAGE: &str = "Context usage has reached a configured reminder threshold (about {used_tokens} tokens used, {remaining_percent}% remaining). Before continuing substantial work, call `rewind_context_to_anchor` with a suitable saved anchor when it would reclaim useful context. If no suitable anchor is available, call `request_context_compaction`. Preserve the goal, verified state, current changes, and next step.";
 
 /// Compatibility-only config retained so legacy `ghost_snapshot` settings
@@ -627,63 +623,6 @@ pub enum ThreadStoreConfig {
     InMemory { id: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct AutoReviewConfig {
-    pub prompt_template: Option<AutoReviewPromptTemplate>,
-    pub review: AutoReviewReviewConfig,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AutoReviewReviewConfig {
-    pub shell: bool,
-    pub exec_command: bool,
-    pub execve: bool,
-    pub apply_patch: bool,
-    pub mcp_tool_call: bool,
-    pub network_access: bool,
-    pub request_permissions: bool,
-    pub review_skipped_exec: bool,
-    pub review_when_approval_policy_never: bool,
-}
-
-impl Default for AutoReviewReviewConfig {
-    fn default() -> Self {
-        Self {
-            shell: true,
-            exec_command: true,
-            execve: true,
-            apply_patch: true,
-            mcp_tool_call: true,
-            network_access: true,
-            request_permissions: true,
-            review_skipped_exec: false,
-            review_when_approval_policy_never: false,
-        }
-    }
-}
-
-impl AutoReviewReviewConfig {
-    fn from_toml(review: Option<&codex_config::config_toml::AutoReviewReviewToml>) -> Self {
-        let Some(review) = review else {
-            return Self::default();
-        };
-
-        Self {
-            shell: review.shell.unwrap_or(false),
-            exec_command: review.exec_command.unwrap_or(false),
-            execve: review.execve.unwrap_or(false),
-            apply_patch: review.apply_patch.unwrap_or(false),
-            mcp_tool_call: review.mcp_tool_call.unwrap_or(false),
-            network_access: review.network_access.unwrap_or(false),
-            request_permissions: review.request_permissions.unwrap_or(false),
-            review_skipped_exec: review.review_skipped_exec.unwrap_or(false),
-            review_when_approval_policy_never: review
-                .review_when_approval_policy_never
-                .unwrap_or(false),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LogDbConfig {
     pub level: LevelFilter,
@@ -790,9 +729,6 @@ pub struct Config {
     /// `# Policy Configuration` section rather than replacing the whole
     /// guardian developer prompt.
     pub guardian_policy_config: Option<String>,
-
-    /// Auto-review prompt and routing configuration.
-    pub auto_review: AutoReviewConfig,
 
     /// Whether to inject the `<permissions instructions>` developer block.
     pub include_permissions_instructions: bool,
@@ -4180,7 +4116,6 @@ impl Config {
             .and_then(|skills| skills.include_instructions)
             .unwrap_or(true);
         let include_environment_context = cfg.include_environment_context.unwrap_or(true);
-        let auto_review = Self::resolve_auto_review_config(fs, cfg.auto_review.as_ref()).await?;
         let guardian_policy_config =
             guardian_policy_config_from_requirements(config_layer_stack.requirements_toml())
                 .or_else(|| {
@@ -4471,7 +4406,6 @@ impl Config {
                 .or(show_raw_agent_reasoning)
                 .unwrap_or(false),
             guardian_policy_config,
-            auto_review,
             model_reasoning_effort: cfg.model_reasoning_effort,
             plan_mode_reasoning_effort: cfg.plan_mode_reasoning_effort,
             model_reasoning_summary: cfg.model_reasoning_summary,
@@ -4633,63 +4567,6 @@ impl Config {
                 "goals.budget_limit_prompt_file",
             )
             .await?,
-        })
-    }
-
-    async fn resolve_auto_review_config(
-        fs: &dyn ExecutorFileSystem,
-        auto_review: Option<&AutoReviewToml>,
-    ) -> std::io::Result<AutoReviewConfig> {
-        let Some(auto_review) = auto_review else {
-            return Ok(AutoReviewConfig::default());
-        };
-
-        Ok(AutoReviewConfig {
-            prompt_template: Self::resolve_auto_review_prompt_template(
-                fs,
-                auto_review.prompt.as_ref(),
-                auto_review.prompt_file.as_ref(),
-            )
-            .await?,
-            review: AutoReviewReviewConfig::from_toml(auto_review.review.as_ref()),
-        })
-    }
-
-    async fn resolve_auto_review_prompt_template(
-        fs: &dyn ExecutorFileSystem,
-        inline: Option<&String>,
-        file: Option<&AbsolutePathBuf>,
-    ) -> std::io::Result<Option<AutoReviewPromptTemplate>> {
-        if let Some(value) = inline
-            .map(|value| value.trim())
-            .filter(|value| !value.is_empty())
-        {
-            return Self::parse_auto_review_prompt_override(value, "auto_review.prompt").map(Some);
-        }
-
-        let Some(value) =
-            Self::try_read_non_empty_file(fs, file, "auto_review.prompt_file").await?
-        else {
-            return Ok(None);
-        };
-        Self::parse_auto_review_prompt_override(&value, "auto_review.prompt_file").map(Some)
-    }
-
-    fn parse_auto_review_prompt_override(
-        value: &str,
-        context: &str,
-    ) -> std::io::Result<AutoReviewPromptTemplate> {
-        if value.len() > MAX_AUTO_REVIEW_PROMPT_OVERRIDE_BYTES {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("{context} exceeds the {MAX_AUTO_REVIEW_PROMPT_OVERRIDE_BYTES}-byte limit"),
-            ));
-        }
-        parse_auto_review_prompt_template(value).map_err(|err| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("{context} is invalid: {err}"),
-            )
         })
     }
 

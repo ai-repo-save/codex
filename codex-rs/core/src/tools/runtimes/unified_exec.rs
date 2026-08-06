@@ -8,7 +8,6 @@ use crate::command_canonicalization::canonicalize_command_for_approval;
 use crate::exec::ExecCapturePolicy;
 use crate::exec::ExecExpiration;
 use crate::guardian::GuardianNetworkAccessTrigger;
-use crate::guardian::GuardianReviewAction;
 use crate::sandboxing::ExecOptions;
 use crate::sandboxing::ExecServerEnvConfig;
 use crate::sandboxing::SandboxPermissions;
@@ -250,10 +249,6 @@ impl Approvable<UnifiedExecRequest> for UnifiedExecRuntime<'_> {
             req.hook_command.clone(),
             req.justification.clone(),
         ))
-    }
-
-    fn guardian_review_action(&self, _req: &UnifiedExecRequest) -> Option<GuardianReviewAction> {
-        Some(GuardianReviewAction::ExecCommand)
     }
 
     fn sandbox_permissions(&self, req: &UnifiedExecRequest) -> SandboxPermissions {

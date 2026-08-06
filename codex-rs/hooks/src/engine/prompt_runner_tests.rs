@@ -89,7 +89,6 @@ async fn prompt_runner_receives_raw_event_and_event_output_schema() {
     for event_name in [
         HookEventName::PreToolUse,
         HookEventName::PermissionRequest,
-        HookEventName::ApprovalReviewRoute,
         HookEventName::PreCompact,
         HookEventName::SessionStart,
         HookEventName::UserPromptSubmit,
@@ -113,10 +112,6 @@ async fn prompt_runner_receives_raw_event_and_event_output_schema() {
             prompt_request(
                 HookEventName::PermissionRequest,
                 schemas.permission_request_command_output.clone(),
-            ),
-            prompt_request(
-                HookEventName::ApprovalReviewRoute,
-                schemas.approval_review_route_command_output.clone(),
             ),
             prompt_request(
                 HookEventName::PreCompact,
@@ -149,7 +144,6 @@ async fn prompt_filter_skip_is_an_explicit_noop_for_all_supported_events() {
     for event_name in [
         HookEventName::PreToolUse,
         HookEventName::PermissionRequest,
-        HookEventName::ApprovalReviewRoute,
         HookEventName::PreCompact,
         HookEventName::SessionStart,
         HookEventName::UserPromptSubmit,

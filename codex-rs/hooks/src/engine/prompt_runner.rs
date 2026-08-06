@@ -45,7 +45,6 @@ pub(crate) fn supports_event(event_name: HookEventName) -> bool {
         event_name,
         HookEventName::PreToolUse
             | HookEventName::PermissionRequest
-            | HookEventName::ApprovalReviewRoute
             | HookEventName::PreCompact
             | HookEventName::SessionStart
             | HookEventName::UserPromptSubmit
@@ -102,7 +101,6 @@ pub(crate) async fn run_prompt(
     let output_schema = match handler.event_name {
         HookEventName::PreToolUse => schemas.pre_tool_use_prompt_output.clone(),
         HookEventName::PermissionRequest => schemas.permission_request_command_output.clone(),
-        HookEventName::ApprovalReviewRoute => schemas.approval_review_route_command_output.clone(),
         HookEventName::PreCompact => schemas.pre_compact_command_output.clone(),
         HookEventName::SessionStart => schemas.session_start_command_output.clone(),
         HookEventName::UserPromptSubmit => schemas.user_prompt_submit_command_output.clone(),

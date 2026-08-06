@@ -16,15 +16,11 @@ pub use declarations::plugin_hook_declarations;
 pub use engine::HookListEntry;
 pub use engine::PromptHookRequest;
 pub use engine::PromptHookRunner;
-pub use events::approval_review_route::ApprovalReviewRouteDecision;
-pub use events::approval_review_route::ApprovalReviewRouteOutcome;
-pub use events::approval_review_route::ApprovalReviewRouteRequest;
 pub use events::common::SubagentHookContext;
 /// Hook event names as they appear in hooks JSON and config files.
-pub const HOOK_EVENT_NAMES: [&str; 12] = [
+pub const HOOK_EVENT_NAMES: [&str; 11] = [
     "PreToolUse",
     "PermissionRequest",
-    "ApprovalReviewRoute",
     "PostToolUse",
     "PreCompact",
     "PostCompact",
@@ -41,10 +37,9 @@ pub const HOOK_EVENT_NAMES: [&str; 12] = [
 /// Other events can appear in hooks JSON, but Codex ignores their matcher
 /// fields because those events do not dispatch against a tool, compaction
 /// trigger, session-start source, or session-end reason.
-pub const HOOK_EVENT_NAMES_WITH_MATCHERS: [&str; 10] = [
+pub const HOOK_EVENT_NAMES_WITH_MATCHERS: [&str; 9] = [
     "PreToolUse",
     "PermissionRequest",
-    "ApprovalReviewRoute",
     "PostToolUse",
     "PreCompact",
     "PostCompact",
@@ -96,7 +91,6 @@ pub fn hook_event_key_label(event_name: HookEventName) -> &'static str {
     match event_name {
         HookEventName::PreToolUse => "pre_tool_use",
         HookEventName::PermissionRequest => "permission_request",
-        HookEventName::ApprovalReviewRoute => "approval_review_route",
         HookEventName::PostToolUse => "post_tool_use",
         HookEventName::PreCompact => "pre_compact",
         HookEventName::PostCompact => "post_compact",

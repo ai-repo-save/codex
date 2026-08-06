@@ -620,11 +620,7 @@ async fn review_guardian_mcp_elicitation(
         request.server_name.as_str(),
         elicitation_connector_id(&request.elicitation),
     );
-    if !crate::guardian::routes_approval_action_to_guardian_with_reviewer(
-        turn_context.as_ref(),
-        approvals_reviewer,
-        crate::guardian::GuardianReviewAction::McpToolCall,
-    ) {
+    if !crate::guardian::routes_approval_policy_to_guardian(approval_policy, approvals_reviewer) {
         return Ok(None);
     }
 

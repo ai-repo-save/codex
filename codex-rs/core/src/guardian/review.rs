@@ -167,52 +167,30 @@ fn guardian_risk_level_str(level: GuardianRiskLevel) -> &'static str {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum GuardianReviewAction {
-    Shell,
-    ExecCommand,
-    Execve,
-    ApplyPatch,
-    McpToolCall,
-    NetworkAccess,
-    RequestPermissions,
+/// Whether this turn should route allowed approval prompts through the guardian
+/// reviewer instead of surfacing them to the user. ARC may still block actions
+/// earlier in the flow.
+pub(crate) fn routes_approval_to_guardian(turn: &TurnContext) -> bool {
+    routes_approval_to_guardian_with_reviewer(turn, turn.config.approvals_reviewer)
 }
 
-pub(crate) fn routes_approval_action_to_guardian(
-    turn: &TurnContext,
-    action: GuardianReviewAction,
-) -> bool {
-    routes_approval_action_to_guardian_with_reviewer(turn, turn.config.approvals_reviewer, action)
-}
-
-pub(crate) fn routes_approval_action_to_guardian_with_reviewer(
+/// Whether an approval with its own reviewer selection should be routed through guardian.
+pub(crate) fn routes_approval_to_guardian_with_reviewer(
     turn: &TurnContext,
     approvals_reviewer: ApprovalsReviewer,
-    action: GuardianReviewAction,
 ) -> bool {
-    if approvals_reviewer != ApprovalsReviewer::AutoReview {
-        return false;
-    }
+    routes_approval_policy_to_guardian(turn.approval_policy(), approvals_reviewer)
+}
 
-    let review = turn.config.auto_review.review;
-    let approval_policy_allows_review = match turn.approval_policy.value() {
-        AskForApproval::OnRequest | AskForApproval::Granular(_) => true,
-        AskForApproval::Never => review.review_when_approval_policy_never,
-        AskForApproval::UnlessTrusted => false,
-    };
-    if !approval_policy_allows_review {
-        return false;
-    }
-
-    match action {
-        GuardianReviewAction::Shell => review.shell,
-        GuardianReviewAction::ExecCommand => review.exec_command,
-        GuardianReviewAction::Execve => review.execve,
-        GuardianReviewAction::ApplyPatch => review.apply_patch,
-        GuardianReviewAction::McpToolCall => review.mcp_tool_call,
-        GuardianReviewAction::NetworkAccess => review.network_access,
-        GuardianReviewAction::RequestPermissions => review.request_permissions,
-    }
+/// Whether an exact approval policy and reviewer should route through Guardian.
+pub(crate) fn routes_approval_policy_to_guardian(
+    approval_policy: AskForApproval,
+    approvals_reviewer: ApprovalsReviewer,
+) -> bool {
+    matches!(
+        approval_policy,
+        AskForApproval::OnRequest | AskForApproval::Granular(_)
+    ) && approvals_reviewer == ApprovalsReviewer::AutoReview
 }
 
 pub(crate) fn is_guardian_reviewer_source(

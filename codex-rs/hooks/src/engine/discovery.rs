@@ -1048,7 +1048,6 @@ mod tests {
         for event_name in [
             HookEventName::PreToolUse,
             HookEventName::PermissionRequest,
-            HookEventName::ApprovalReviewRoute,
             HookEventName::PreCompact,
             HookEventName::SessionStart,
             HookEventName::UserPromptSubmit,

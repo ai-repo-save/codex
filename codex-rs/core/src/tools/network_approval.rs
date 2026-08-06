@@ -1,12 +1,9 @@
 use crate::guardian::GuardianApprovalRequest;
 use crate::guardian::GuardianNetworkAccessTrigger;
-use crate::guardian::GuardianReviewAction;
 use crate::guardian::GuardianReviewOptions;
 use crate::guardian::new_guardian_review_id;
 use crate::guardian::review_approval_request_with_cancel;
-use crate::guardian::routes_approval_action_to_guardian;
-use crate::hook_runtime::ApprovalReviewRouteHookRequest;
-use crate::hook_runtime::run_approval_review_route_hooks;
+use crate::guardian::routes_approval_to_guardian;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::network_policy_decision::denied_network_policy_message;
 use crate::session::session::Session;
@@ -14,7 +11,6 @@ use crate::tools::events::truncate_rejection_message;
 use crate::tools::sandboxing::PermissionRequestPayload;
 use crate::tools::sandboxing::ToolError;
 use codex_analytics::GuardianApprovalRequestSource;
-use codex_hooks::ApprovalReviewRouteDecision;
 use codex_hooks::PermissionRequestDecision;
 use codex_network_proxy::BlockedRequest;
 use codex_network_proxy::BlockedRequestObserver;
@@ -752,25 +748,6 @@ impl NetworkApprovalService {
             .map_or_else(|| prompt_command.join(" "), |call| call.command.clone());
         let permission_request_payload =
             PermissionRequestPayload::bash(command, Some(format!("network-access {target}")));
-        let strict_auto_review = session.strict_auto_review_enabled_for_turn().await;
-        let static_auto_review_enabled = strict_auto_review
-            || routes_approval_action_to_guardian(
-                &turn_context,
-                GuardianReviewAction::NetworkAccess,
-            );
-        let route = run_approval_review_route_hooks(
-            &session,
-            &turn_context,
-            ApprovalReviewRouteHookRequest {
-                run_id_suffix: guardian_approval_id.clone(),
-                payload: permission_request_payload.clone(),
-                approval_kind: "network_access",
-                strict_auto_review,
-                static_auto_review_enabled,
-                retry_reason: Some(policy_denial_message.clone()),
-            },
-        )
-        .await;
         let hook_approval_decision = match run_permission_request_hooks(
             &session,
             &turn_context,
@@ -793,11 +770,7 @@ impl NetworkApprovalService {
             }
             None => None,
         };
-        let use_guardian = match route {
-            Some(ApprovalReviewRouteDecision::AutoReview) => true,
-            Some(ApprovalReviewRouteDecision::User) => false,
-            None => static_auto_review_enabled,
-        };
+        let use_guardian = routes_approval_to_guardian(&turn_context);
         let guardian_review_id = use_guardian.then(new_guardian_review_id);
         let approval_decision = if let Some(hook_approval_decision) = hook_approval_decision {
             hook_approval_decision

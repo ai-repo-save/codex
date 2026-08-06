@@ -60,7 +60,6 @@ use super::prompt::GuardianPromptMode;
 use super::prompt::GuardianTranscriptCursor;
 use super::prompt::build_guardian_prompt_items_with_parent_turn;
 use super::prompt::guardian_policy_prompt_with_config_and_template;
-use super::prompt::guardian_policy_prompt_with_template;
 use super::review::guardian_review_session_config;
 
 const GUARDIAN_INTERRUPT_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1009,29 +1008,19 @@ pub(crate) fn build_guardian_review_session_config(
     guardian_config.include_skill_instructions = false;
     guardian_config.memories.use_memories = false;
     guardian_config.memories.dedicated_tools = false;
-    guardian_config.base_instructions = Some(
-        parent_config
-            .auto_review
-            .prompt_template
-            .as_ref()
-            .map(guardian_policy_prompt_with_template)
-            .unwrap_or_else(|| {
-                let catalog_auto_review =
-                    model_messages.and_then(|messages| messages.auto_review.as_ref());
-                let tenant_policy_config = parent_config
-                    .guardian_policy_config
-                    .as_deref()
-                    .or_else(|| catalog_auto_review.and_then(|messages| messages.policy.as_deref()))
-                    .unwrap_or(BUNDLED_GUARDIAN_POLICY);
-                let policy_template = catalog_auto_review
-                    .and_then(|messages| messages.policy_template.as_deref())
-                    .unwrap_or(BUNDLED_GUARDIAN_POLICY_TEMPLATE);
-                guardian_policy_prompt_with_config_and_template(
-                    tenant_policy_config,
-                    policy_template,
-                )
-            }),
-    );
+    let catalog_auto_review = model_messages.and_then(|messages| messages.auto_review.as_ref());
+    let tenant_policy_config = parent_config
+        .guardian_policy_config
+        .as_deref()
+        .or_else(|| catalog_auto_review.and_then(|messages| messages.policy.as_deref()))
+        .unwrap_or(BUNDLED_GUARDIAN_POLICY);
+    let policy_template = catalog_auto_review
+        .and_then(|messages| messages.policy_template.as_deref())
+        .unwrap_or(BUNDLED_GUARDIAN_POLICY_TEMPLATE);
+    guardian_config.base_instructions = Some(guardian_policy_prompt_with_config_and_template(
+        tenant_policy_config,
+        policy_template,
+    ));
     guardian_config.notify = None;
     guardian_config.developer_instructions = None;
     guardian_config.permissions.approval_policy = Constrained::allow_only(AskForApproval::Never);

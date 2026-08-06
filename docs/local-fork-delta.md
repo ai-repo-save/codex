@@ -190,17 +190,11 @@ enabled; dedicated tools also require `memories.dedicated_tools`.
   result. Unlike session-control tools, their filesystem side effects are not deferred to turn
   post-processing.
 
-## Hooks, Approval Routing, and Auto-Review
+## Hooks
 
 - PostToolUse hooks can rewrite tool output. Blocking hook results remain blocking in both direct
   and code-mode execution.
 - Hook discovery and schemas preserve configured trust behavior and supported metadata.
-- Shell and command approvals carry the selected approval-review route through hook input,
-  analytics, and approval handling.
-- Auto-review prompt, scope, model selection, and configured approval behavior remain fork-owned
-  runtime policy.
-- Review sessions isolate the context they should not inherit, including skills and memories, while
-  preserving the explicit review inputs.
 
 ## Tool Search and MCP
 

@@ -39,8 +39,6 @@ pub struct HookEventsToml {
     pub pre_tool_use: Vec<MatcherGroup>,
     #[serde(rename = "PermissionRequest", default)]
     pub permission_request: Vec<MatcherGroup>,
-    #[serde(rename = "ApprovalReviewRoute", default)]
-    pub approval_review_route: Vec<MatcherGroup>,
     #[serde(rename = "PostToolUse", default)]
     pub post_tool_use: Vec<MatcherGroup>,
     #[serde(rename = "PreCompact", default)]
@@ -66,7 +64,6 @@ impl HookEventsToml {
         let Self {
             pre_tool_use,
             permission_request,
-            approval_review_route,
             post_tool_use,
             pre_compact,
             post_compact,
@@ -79,7 +76,6 @@ impl HookEventsToml {
         } = self;
         pre_tool_use.is_empty()
             && permission_request.is_empty()
-            && approval_review_route.is_empty()
             && post_tool_use.is_empty()
             && pre_compact.is_empty()
             && post_compact.is_empty()
@@ -95,7 +91,6 @@ impl HookEventsToml {
         let Self {
             pre_tool_use,
             permission_request,
-            approval_review_route,
             post_tool_use,
             pre_compact,
             post_compact,
@@ -109,7 +104,6 @@ impl HookEventsToml {
         [
             pre_tool_use,
             permission_request,
-            approval_review_route,
             post_tool_use,
             pre_compact,
             post_compact,
@@ -126,14 +120,10 @@ impl HookEventsToml {
         .sum()
     }
 
-    pub fn into_matcher_groups(self) -> [(HookEventName, Vec<MatcherGroup>); 12] {
+    pub fn into_matcher_groups(self) -> [(HookEventName, Vec<MatcherGroup>); 11] {
         [
             (HookEventName::PreToolUse, self.pre_tool_use),
             (HookEventName::PermissionRequest, self.permission_request),
-            (
-                HookEventName::ApprovalReviewRoute,
-                self.approval_review_route,
-            ),
             (HookEventName::PostToolUse, self.post_tool_use),
             (HookEventName::PreCompact, self.pre_compact),
             (HookEventName::PostCompact, self.post_compact),

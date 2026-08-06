@@ -37,11 +37,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::Config;
 use crate::guardian::GuardianApprovalRequest;
-use crate::guardian::GuardianReviewAction;
 use crate::guardian::GuardianReviewOptions;
 use crate::guardian::new_guardian_review_id;
-use crate::guardian::routes_approval_action_to_guardian;
-use crate::guardian::routes_approval_action_to_guardian_with_reviewer;
+use crate::guardian::routes_approval_to_guardian;
+use crate::guardian::routes_approval_to_guardian_with_reviewer;
 use crate::guardian::spawn_approval_request_review;
 use crate::mcp_tool_call::MCP_TOOL_APPROVAL_ACCEPT;
 use crate::mcp_tool_call::MCP_TOOL_APPROVAL_ACCEPT_FOR_SESSION;
@@ -527,7 +526,7 @@ async fn handle_exec_approval(
                 normalized_relative_path: script_path,
             })
         });
-    let decision = if routes_approval_action_to_guardian(parent_ctx, GuardianReviewAction::Shell) {
+    let decision = if routes_approval_to_guardian(parent_ctx) {
         let review_cancel = cancel_token.child_token();
         let review_rx = spawn_approval_request_review(
             Arc::clone(parent_session),
@@ -611,7 +610,7 @@ async fn handle_patch_approval(
     } = event;
     let approval_id = call_id.clone();
     let guardian_decision =
-        if routes_approval_action_to_guardian(parent_ctx, GuardianReviewAction::ApplyPatch) {
+        if routes_approval_to_guardian(parent_ctx) {
             let files = changes
                 .keys()
                 .map(|path| {
@@ -768,11 +767,7 @@ async fn maybe_auto_review_mcp_request_user_input(
     let metadata = pending.metadata;
     let approvals_reviewer =
         mcp_approvals_reviewer(parent_ctx, &invocation.server, metadata.as_ref());
-    if !routes_approval_action_to_guardian_with_reviewer(
-        parent_ctx,
-        approvals_reviewer,
-        GuardianReviewAction::McpToolCall,
-    ) {
+    if !routes_approval_to_guardian_with_reviewer(parent_ctx, approvals_reviewer) {
         return None;
     }
     let review_cancel = cancel_token.child_token();

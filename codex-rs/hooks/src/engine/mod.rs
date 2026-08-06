@@ -7,8 +7,6 @@ pub(crate) mod prompt_runner;
 pub(crate) mod schema_loader;
 
 use self::command_runner::CommandRunResult;
-use crate::events::approval_review_route::ApprovalReviewRouteOutcome;
-use crate::events::approval_review_route::ApprovalReviewRouteRequest;
 use crate::events::compact::PostCompactRequest;
 use crate::events::compact::PreCompactOutcome;
 use crate::events::compact::PreCompactRequest;
@@ -145,7 +143,6 @@ impl ConfiguredHandler {
         match self.event_name {
             codex_protocol::protocol::HookEventName::PreToolUse => "pre-tool-use",
             codex_protocol::protocol::HookEventName::PermissionRequest => "permission-request",
-            codex_protocol::protocol::HookEventName::ApprovalReviewRoute => "approval-review-route",
             codex_protocol::protocol::HookEventName::PostToolUse => "post-tool-use",
             codex_protocol::protocol::HookEventName::PreCompact => "pre-compact",
             codex_protocol::protocol::HookEventName::PostCompact => "post-compact",
@@ -300,13 +297,6 @@ impl ClaudeHooksEngine {
         crate::events::permission_request::preview(&self.handlers, request)
     }
 
-    pub(crate) fn preview_approval_review_route(
-        &self,
-        request: &ApprovalReviewRouteRequest,
-    ) -> Vec<HookRunSummary> {
-        crate::events::approval_review_route::preview(&self.handlers, request)
-    }
-
     pub(crate) fn preview_post_tool_use(
         &self,
         request: &PostToolUseRequest,
@@ -346,19 +336,6 @@ impl ClaudeHooksEngine {
         request: PermissionRequestRequest,
     ) -> PermissionRequestOutcome {
         crate::events::permission_request::run(
-            &self.handlers,
-            &self.shell,
-            self.prompt_hook_runner.as_deref(),
-            request,
-        )
-        .await
-    }
-
-    pub(crate) async fn run_approval_review_route(
-        &self,
-        request: ApprovalReviewRouteRequest,
-    ) -> ApprovalReviewRouteOutcome {
-        crate::events::approval_review_route::run(
             &self.handlers,
             &self.shell,
             self.prompt_hook_runner.as_deref(),

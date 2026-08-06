@@ -8,8 +8,6 @@ pub(crate) struct GeneratedHookSchemas {
     pub post_tool_use_command_output: Value,
     pub permission_request_command_input: Value,
     pub permission_request_command_output: Value,
-    pub approval_review_route_command_input: Value,
-    pub approval_review_route_command_output: Value,
     pub post_compact_command_input: Value,
     pub post_compact_command_output: Value,
     pub pre_tool_use_command_input: Value,
@@ -48,14 +46,6 @@ pub(crate) fn generated_hook_schemas() -> &'static GeneratedHookSchemas {
         permission_request_command_output: parse_json_schema(
             "permission-request.command.output",
             include_str!("../../schema/generated/permission-request.command.output.schema.json"),
-        ),
-        approval_review_route_command_input: parse_json_schema(
-            "approval-review-route.command.input",
-            include_str!("../../schema/generated/approval-review-route.command.input.schema.json"),
-        ),
-        approval_review_route_command_output: parse_json_schema(
-            "approval-review-route.command.output",
-            include_str!("../../schema/generated/approval-review-route.command.output.schema.json"),
         ),
         post_compact_command_input: parse_json_schema(
             "post-compact.command.input",
@@ -150,14 +140,6 @@ mod tests {
         assert_eq!(schemas.post_tool_use_command_output["type"], "object");
         assert_eq!(schemas.permission_request_command_input["type"], "object");
         assert_eq!(schemas.permission_request_command_output["type"], "object");
-        assert_eq!(
-            schemas.approval_review_route_command_input["type"],
-            "object"
-        );
-        assert_eq!(
-            schemas.approval_review_route_command_output["type"],
-            "object"
-        );
         assert_eq!(schemas.post_compact_command_input["type"], "object");
         assert_eq!(schemas.post_compact_command_output["type"], "object");
         assert_eq!(schemas.pre_tool_use_command_input["type"], "object");

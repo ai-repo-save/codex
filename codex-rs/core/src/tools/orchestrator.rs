@@ -215,7 +215,7 @@ impl ToolOrchestrator {
                     if strict_auto_review {
                         ApprovalReviewer::Guardian
                     } else {
-                        ApprovalReviewer::for_turn(turn_ctx, tool.guardian_review_action(req))
+                        ApprovalReviewer::for_turn(turn_ctx)
                     },
                     &otel,
                 )
@@ -414,7 +414,7 @@ impl ToolOrchestrator {
                         if strict_auto_review {
                             ApprovalReviewer::Guardian
                         } else {
-                            ApprovalReviewer::for_turn(turn_ctx, tool.guardian_review_action(req))
+                            ApprovalReviewer::for_turn(turn_ctx)
                         },
                         &otel,
                     )

@@ -4,7 +4,6 @@
 //! selected turn environment filesystem for both local and remote turns, with
 //! sandboxing enforced by the explicit filesystem sandbox context.
 use crate::exec::is_likely_sandbox_denied;
-use crate::guardian::GuardianReviewAction;
 use crate::session::turn_context::TurnEnvironment;
 use crate::tools::hook_names::HookToolName;
 use crate::tools::sandboxing::Approvable;
@@ -208,10 +207,6 @@ impl Approvable<ApplyPatchRequest> for ApplyPatchRuntime {
             tool_name: HookToolName::apply_patch(),
             tool_input: serde_json::json!({ "command": req.action.patch }),
         })
-    }
-
-    fn guardian_review_action(&self, _req: &ApplyPatchRequest) -> Option<GuardianReviewAction> {
-        Some(GuardianReviewAction::ApplyPatch)
     }
 }
 

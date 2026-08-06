@@ -16,7 +16,6 @@ use codex_core_api::AskForApproval;
 use codex_core_api::AuthCredentialsStoreMode;
 use codex_core_api::AuthManager;
 use codex_core_api::AutoCompactTokenLimitScope;
-use codex_core_api::AutoReviewConfig;
 use codex_core_api::CodexAppsToolsCache;
 use codex_core_api::CodexHomeUserInstructionsProvider;
 use codex_core_api::CodexThread;
@@ -214,7 +213,6 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         developer_instructions: None,
         collaboration_mode_presets: builtin_collaboration_mode_presets(),
         guardian_policy_config: None,
-        auto_review: AutoReviewConfig::default(),
         include_permissions_instructions: false,
         include_apps_instructions: false,
         include_collaboration_mode_instructions: false,
