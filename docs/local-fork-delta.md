@@ -29,7 +29,8 @@ sccache, fast-linker configuration, diagnostics, artifact transfer, and local in
 - `scripts/remote/install_local_standalone.py` builds remotely, transfers a compressed standalone
   package, installs it locally, and reports timing and diagnostic information.
 - `scripts/remote/doctor.py` checks the remote Git, network, toolchain, and selected origin branch.
-- Repository hooks guard against accidental local Rust build, test, and code-generation commands.
+- Repository hooks allow local `just fmt` / `just fmt-check` and focused `cargo check -p` /
+  `scripts/local/rust_check.py`, and still block local Rust build, test, clippy, and codegen.
 - The local checkout remains the source of truth. Generated files retained from a remote workflow
   are copied back before review and commit.
 
@@ -261,20 +262,23 @@ block, and do **not** treat listing order as “must execute all of these before
 
 Default acceptance for an ordinary change:
 
-1. `just.py fmt` after source edits
-2. One or a few focused `just.py test -p <crate> <filter>` invocations for the touched
+1. Local `just fmt` after source edits
+2. Local focused Rust typecheck for touched crates (`scripts/local/rust_check.py -p <crate>`),
+   to catch missing imports and other obvious compile errors before push
+3. One or a few focused remote `just.py test -p <crate> <filter>` invocations for the touched
    behavior (combine related filters in one invocation when useful)
-3. `install_local_standalone.py` when the change affects the local CLI/agent runtime
+4. `install_local_standalone.py` when the change affects the local CLI/agent runtime
 
 Widen only when the change crosses shared core/protocol boundaries broadly enough that
 focused coverage cannot bound the risk, or when a stable sync / user request requires it.
 `doctor.py`, `build_sync.py`, and unfiltered crate or workspace suites are not routine
 finalization for a narrow capability edit.
 
-Run formatting after source changes:
+Run formatting and optional typecheck locally after source changes:
 
 ```bash
-uv run --project scripts python scripts/remote/just.py fmt
+just fmt
+uv run --project scripts python scripts/local/rust_check.py -p codex-hooks
 ```
 
 Optional remote tooling / smoke (use when validating the remote host or packaging path,

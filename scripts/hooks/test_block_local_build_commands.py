@@ -76,6 +76,44 @@ class BlockLocalBuildCommandsTest(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertFalse(block_local_build_commands.is_blocked_command(command))
 
+    def test_allows_local_fmt_and_focused_cargo_check(self) -> None:
+        commands = (
+            "just fmt",
+            "just fmt-check",
+            "just --unstable --fmt",
+            "just --unstable --fmt --check",
+            "python scripts/format.py",
+            "python3 scripts/format.py --check",
+            "uv run --project scripts python scripts/format.py --check",
+            "cargo fmt",
+            "cargo fmt -- --check",
+            "rustfmt codex-rs/hooks/src/lib.rs",
+            "cargo check -p codex-hooks",
+            "cargo check -p codex-hooks --message-format=short",
+            "uv run --project scripts python scripts/local/rust_check.py -p codex-hooks",
+            "python scripts/local/rust_check.py --from-git",
+        )
+
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertFalse(block_local_build_commands.is_blocked_command(command))
+
+    def test_still_blocks_local_build_and_broad_cargo_check(self) -> None:
+        commands = (
+            "just test",
+            "just fix -p codex-hooks",
+            "cargo test -p codex-hooks",
+            "cargo build -p codex-hooks",
+            "cargo check",
+            "cargo check --workspace",
+            "cargo check -p codex-hooks --all-targets",
+            "cargo clippy -p codex-hooks",
+        )
+
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertTrue(block_local_build_commands.is_blocked_command(command))
+
 
 if __name__ == "__main__":
     unittest.main()

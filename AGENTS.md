@@ -37,10 +37,15 @@ When a task requires building, running, testing, or generating files from reposi
   `192.168.50.8` is unreachable or SSH times out, check whether `wg0` is active before treating the
   remote host as down. Use `nmcli connection up wg0` to start it when the NetworkManager connection
   exists, then retry the project remote script.
-- Never run `just` on the local machine for this repository. This includes `just fmt`, `just fix`,
-  `just test`, `just write-config-schema`, `just bazel-lock-update`, `just bazel-lock-check`,
-  `just argument-comment-lint`, and every other `just` recipe. All `just` invocations must run on
-  `192.168.50.8`.
+- Local preflight only: `just fmt`, `just fmt-check` (or `python scripts/format.py` /
+  `python scripts/format.py --check`), and focused typecheck via
+  `uv run --project scripts python scripts/local/rust_check.py -p <crate>` or
+  `cargo check -p <crate>` (artifacts go to an out-of-tree `CARGO_TARGET_DIR`). Local `just fmt`
+  needs `dotslash` on `PATH` (`cargo install --locked dotslash`) so buildifier can run. Do not run
+  other `just` recipes, `cargo test` / `cargo build` / `cargo clippy`, or codegen locally.
+- Never run local `just fix`, `just test`, `just write-config-schema`, `just bazel-lock-update`,
+  `just bazel-lock-check`, `just argument-comment-lint`, or any other non-fmt `just` recipe. Those
+  must run on `192.168.50.8` through the remote scripts.
 - Treat code generation as remote execution. Commands such as `just write-config-schema` compile
   and run repository code and therefore must be executed on `192.168.50.8`, not locally.
 - Commit local source changes before remote execution, then push `main` to `origin`.
@@ -160,7 +165,20 @@ In the codex-rs folder where the rust code lives:
   blocking newer work, or has left stale remote processes. After cleanup, check for residual
   `cargo`/`rustc`/`nextest` processes and `.git/index.lock` before starting another remote workflow.
 
-Run `uv run --project scripts python scripts/remote/just.py fmt` automatically after you have finished making code changes anywhere in this repository; do not ask for approval to run it. Additionally, run the tests on the remote execution host through the remote scripts:
+After you finish making code changes, run local formatting automatically; do not ask for approval:
+
+```bash
+just fmt
+```
+
+For Rust edits, also run a focused local typecheck before commit/push so missing imports and
+obvious type errors are caught without a remote round-trip. Prefer
+`uv run --project scripts python scripts/local/rust_check.py -p <crate>` for each handwritten crate
+you changed. Auto-discovery skips `codex-core` unless you pass `-p codex-core` or `--allow-core`
+because that graph is slow on this machine. Also use IDE/`ReadLints` diagnostics on edited files
+when available. Local check is not a substitute for remote tests.
+
+Then run behavior validation on the remote execution host through the remote scripts:
 
 1. Do not run `cargo test` directly. Use `uv run --project scripts python scripts/remote/just.py test` so test execution follows the repo defaults.
 2. Run a test filter that matches the behavior changed. For example, for a TUI slash-command change, run a focused `codex-tui` filter such as `uv run --project scripts python scripts/remote/just.py test -p codex-tui chatwidget::tests::slash_commands`.

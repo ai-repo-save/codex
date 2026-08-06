@@ -40,12 +40,36 @@ BLOCKED_EXECUTABLE_NAMES = frozenset(
     }
 )
 
-BLOCKED_SCRIPT_PATHS = frozenset(
+# Formatting and focused local typecheck are allowed; build/test/codegen stay remote.
+ALLOWED_JUST_RECIPES = frozenset({"fmt", "fmt-check"})
+ALLOWED_SCRIPT_PATHS = frozenset(
     {
         "scripts/format.py",
+        "scripts/local/rust_check.py",
+    }
+)
+
+BLOCKED_SCRIPT_PATHS = frozenset(
+    {
         "scripts/build_codex_package.py",
         "scripts/install-local-standalone.sh",
         "scripts/install/install_local_standalone.py",
+    }
+)
+CARGO_CHECK_FORBIDDEN_FLAGS = frozenset(
+    {
+        "--workspace",
+        "--all",
+        "--all-targets",
+        "--all-features",
+        "--tests",
+        "--benches",
+        "--examples",
+        "--bins",
+        "--bench",
+        "--example",
+        "--test",
+        "--bin",
     }
 )
 SHELL_EXECUTABLES = frozenset({"bash", "sh", "zsh", "fish"})
@@ -153,10 +177,15 @@ def shell_words_are_blocked(words: list[str]) -> bool:
             continue
 
         if command_position:
+            segment = command_segment(words, index)
             executable = PurePath(word).name
             if executable in SHELL_EXECUTABLES:
                 script = shell_inline_script(words[index + 1 :])
                 return script is not None and is_blocked_command(script)
+            if local_command_is_allowed(segment):
+                command_position = False
+                index += len(segment)
+                continue
             if executable in BLOCKED_EXECUTABLE_NAMES:
                 return True
             if normalized_script_path(word) in BLOCKED_SCRIPT_PATHS:
@@ -164,6 +193,121 @@ def shell_words_are_blocked(words: list[str]) -> bool:
             command_position = False
         index += 1
     return False
+
+
+def command_segment(words: list[str], start: int) -> list[str]:
+    end = start
+    while end < len(words) and words[end] not in COMMAND_SEPARATORS:
+        end += 1
+    return words[start:end]
+
+
+def local_command_is_allowed(words: list[str]) -> bool:
+    if not words:
+        return False
+    executable = PurePath(words[0]).name
+    script_path = normalized_script_path(words[0])
+    if script_path in ALLOWED_SCRIPT_PATHS:
+        return True
+    if executable in {"python", "python3"}:
+        return python_local_preflight_is_allowed(words)
+    if executable == "uv":
+        return uv_local_preflight_is_allowed(words)
+    if executable == "just":
+        return just_command_is_allowed(words)
+    if executable == "cargo":
+        return cargo_command_is_allowed(words)
+    if executable == "rustfmt":
+        return True
+    return False
+
+
+def python_local_preflight_is_allowed(words: list[str]) -> bool:
+    for word in words[1:]:
+        if word.startswith("-"):
+            continue
+        return normalized_script_path(word) in ALLOWED_SCRIPT_PATHS
+    return False
+
+
+def uv_local_preflight_is_allowed(words: list[str]) -> bool:
+    if "run" not in words:
+        return False
+    for word in words:
+        if normalized_script_path(word) in ALLOWED_SCRIPT_PATHS:
+            return True
+    return False
+
+
+def just_command_is_allowed(words: list[str]) -> bool:
+    args = words[1:]
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "--unstable":
+            index += 1
+            continue
+        if arg == "--fmt":
+            rest = args[index + 1 :]
+            return all(item == "--check" for item in rest)
+        if arg.startswith("-"):
+            return False
+        return arg in ALLOWED_JUST_RECIPES and index == len(args) - 1
+    return False
+
+
+def cargo_command_is_allowed(words: list[str]) -> bool:
+    args = words[1:]
+    index = 0
+    if args and args[0].startswith("+"):
+        index = 1
+    if index >= len(args):
+        return False
+    subcommand = args[index]
+    if subcommand == "fmt":
+        return True
+    if subcommand == "check":
+        return cargo_check_is_allowed(args[index + 1 :])
+    return False
+
+
+def cargo_check_is_allowed(args: list[str]) -> bool:
+    has_package = False
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg in CARGO_CHECK_FORBIDDEN_FLAGS or arg.startswith(
+            ("--features=", "--all-features")
+        ):
+            return False
+        if arg in {"-p", "--package"}:
+            if index + 1 >= len(args):
+                return False
+            has_package = True
+            index += 2
+            continue
+        if arg.startswith("-p=") or arg.startswith("--package="):
+            has_package = True
+            index += 1
+            continue
+        if arg in {
+            "--lib",
+            "--message-format",
+            "--message-format=short",
+            "--quiet",
+            "-q",
+        }:
+            if arg == "--message-format":
+                index += 2
+                continue
+            index += 1
+            continue
+        if arg.startswith("--message-format="):
+            index += 1
+            continue
+        # Unknown flags or path args keep the allowlist narrow.
+        return False
+    return has_package
 
 
 def shell_words_switch_branch(words: list[str]) -> bool:

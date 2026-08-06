@@ -25,9 +25,9 @@ pub(crate) use activity::sub_agent_activity_history_cell;
 pub(crate) use activity::sub_agent_activity_summary;
 pub(crate) use history_cells::collab_tool_summary;
 pub(crate) use history_cells::spawn_request_summary;
-pub(crate) use history_cells::tool_call_history_cell_with_spawn_request;
 #[cfg(test)]
 pub(super) use history_cells::tool_call_history_cell;
+pub(crate) use history_cells::tool_call_history_cell_with_spawn_request;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AgentPickerThreadEntry {
