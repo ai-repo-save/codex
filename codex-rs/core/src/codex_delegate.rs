@@ -609,74 +609,73 @@ async fn handle_patch_approval(
         ..
     } = event;
     let approval_id = call_id.clone();
-    let guardian_decision =
-        if routes_approval_to_guardian(parent_ctx) {
-            let files = changes
-                .keys()
-                .map(|path| {
-                    #[allow(deprecated)]
-                    parent_ctx.cwd.join(path)
-                })
-                .collect::<Vec<_>>();
-            let review_cancel = cancel_token.child_token();
-            let patch = changes
-                .iter()
-                .map(|(path, change)| match change {
-                    codex_protocol::protocol::FileChange::Add { content } => {
-                        format!("*** Add File: {}\n{}", path.display(), content)
+    let guardian_decision = if routes_approval_to_guardian(parent_ctx) {
+        let files = changes
+            .keys()
+            .map(|path| {
+                #[allow(deprecated)]
+                parent_ctx.cwd.join(path)
+            })
+            .collect::<Vec<_>>();
+        let review_cancel = cancel_token.child_token();
+        let patch = changes
+            .iter()
+            .map(|(path, change)| match change {
+                codex_protocol::protocol::FileChange::Add { content } => {
+                    format!("*** Add File: {}\n{}", path.display(), content)
+                }
+                codex_protocol::protocol::FileChange::Delete { content } => {
+                    format!("*** Delete File: {}\n{}", path.display(), content)
+                }
+                codex_protocol::protocol::FileChange::Update {
+                    unified_diff,
+                    move_path,
+                } => {
+                    if let Some(move_path) = move_path {
+                        format!(
+                            "*** Update File: {}\n*** Move to: {}\n{}",
+                            path.display(),
+                            move_path.display(),
+                            unified_diff
+                        )
+                    } else {
+                        format!("*** Update File: {}\n{}", path.display(), unified_diff)
                     }
-                    codex_protocol::protocol::FileChange::Delete { content } => {
-                        format!("*** Delete File: {}\n{}", path.display(), content)
-                    }
-                    codex_protocol::protocol::FileChange::Update {
-                        unified_diff,
-                        move_path,
-                    } => {
-                        if let Some(move_path) = move_path {
-                            format!(
-                                "*** Update File: {}\n*** Move to: {}\n{}",
-                                path.display(),
-                                move_path.display(),
-                                unified_diff
-                            )
-                        } else {
-                            format!("*** Update File: {}\n{}", path.display(), unified_diff)
-                        }
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            let review_rx = spawn_approval_request_review(
-                Arc::clone(parent_session),
-                Arc::clone(parent_ctx),
-                new_guardian_review_id(),
-                GuardianApprovalRequest::ApplyPatch {
-                    id: approval_id.clone(),
-                    #[allow(deprecated)]
-                    cwd: parent_ctx.cwd.clone(),
-                    files,
-                    patch,
-                },
-                reason.clone(),
-                GuardianReviewOptions {
-                    plugin_attribution_override: None,
-                    approval_request_source: GuardianApprovalRequestSource::DelegatedSubagent,
-                    external_cancel: Some(review_cancel.clone()),
-                },
-            );
-            Some(
-                await_approval_with_cancel(
-                    receive_approval_review(review_rx),
-                    parent_session,
-                    &approval_id,
-                    cancel_token,
-                    Some(&review_cancel),
-                )
-                .await,
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let review_rx = spawn_approval_request_review(
+            Arc::clone(parent_session),
+            Arc::clone(parent_ctx),
+            new_guardian_review_id(),
+            GuardianApprovalRequest::ApplyPatch {
+                id: approval_id.clone(),
+                #[allow(deprecated)]
+                cwd: parent_ctx.cwd.clone(),
+                files,
+                patch,
+            },
+            reason.clone(),
+            GuardianReviewOptions {
+                plugin_attribution_override: None,
+                approval_request_source: GuardianApprovalRequestSource::DelegatedSubagent,
+                external_cancel: Some(review_cancel.clone()),
+            },
+        );
+        Some(
+            await_approval_with_cancel(
+                receive_approval_review(review_rx),
+                parent_session,
+                &approval_id,
+                cancel_token,
+                Some(&review_cancel),
             )
-        } else {
-            None
-        };
+            .await,
+        )
+    } else {
+        None
+    };
     let decision = if let Some(decision) = guardian_decision {
         decision
     } else {

@@ -3253,7 +3253,6 @@ async fn guardian_review_session_config_uses_requirements_guardian_policy_config
     );
 }
 
-
 #[tokio::test]
 async fn guardian_review_session_config_uses_default_guardian_policy_without_requirements_override()
 {
