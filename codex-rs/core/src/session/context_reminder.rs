@@ -3,6 +3,7 @@
 //! Kept out of `session/mod.rs` so fork-owned reminder policy does not expand the
 //! upstream session orchestration hot file.
 
+use codex_context_fragments::ContextualUserFragment;
 use codex_protocol::protocol::TokenUsageInfo;
 
 use crate::context::ContextReminder;

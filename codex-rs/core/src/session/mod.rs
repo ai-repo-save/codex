@@ -41,7 +41,6 @@ use crate::exec_policy::default_policy_path;
 use crate::image_preparation::prepare_response_items as prepare_image_response_items;
 use crate::parse_turn_item;
 use crate::realtime_conversation::RealtimeConversationManager;
-use crate::session::context_reminder::ContextReminderStatus;
 use crate::session::context_reminder::context_reminder_status;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnEnvironment;
