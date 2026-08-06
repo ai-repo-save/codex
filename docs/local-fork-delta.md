@@ -353,7 +353,7 @@ uv run --project scripts python scripts/remote/just.py write-app-server-schema -
    `sync/rust-vX.Y.Z` and merge the tag into that branch with a merge commit.
 2. Configure the checkout with `rerere.enabled=true`, `rerere.autoupdate=false`, and
    `merge.conflictstyle=zdiff3`. Recorded resolutions remain subject to review before staging.
-3. Resolve conflicts in this order (see also `docs/plans/fork-conflict-budget.md`):
+3. Resolve conflicts in this order:
    - skip / regenerate generated schemas and snapshots (never hand-merge JSON)
    - `codex-rs/hooks/` additive modules, then remaining shared hooks files
    - `codex-rs/ext/*` and other additive modules
@@ -373,11 +373,9 @@ uv run --project scripts python scripts/remote/just.py write-app-server-schema -
    the risk.
 8. Review model-visible tool schemas and runtime gates with at least one supported current model,
    including `CodeModeOnly` planning when session-control tools are affected.
-9. Run `uv run --project scripts python scripts/fork/conflict_budget.py` and refresh
-   `docs/plans/fork-conflict-baseline.tsv` when the hot-file budget intentionally changes.
-10. Merge the accepted sync branch into `main`, update this document's integration baseline, and
+9. Merge the accepted sync branch into `main`, update this document's integration baseline, and
    push the reviewed result.
-11. Run `install_local_standalone.py` from clean `main`; installation intentionally does not accept
+10. Run `install_local_standalone.py` from clean `main`; installation intentionally does not accept
    a branch override. Smoke the installed CLI before declaring the stable sync complete.
 
 ## Code ownership for conflict isolation
@@ -390,4 +388,3 @@ uv run --project scripts python scripts/remote/just.py write-app-server-schema -
 | Prompt / filter hooks | `hooks/src/engine/prompt_*`, `filter_*`, `core/src/hook_prompt.rs` | discovery / event match arms |
 | Scoped memories / mailbox / goals | `codex-rs/ext/*`, extension-api capability hosts | registration edges |
 | Remote build | `scripts/remote/`, `scripts/install/` | none |
-| Conflict budget tooling | `scripts/fork/conflict_budget.py`, `docs/plans/fork-conflict-budget.md` | none |

@@ -1,20 +1,17 @@
 # Rust/codex-rs
 
-## Fork conflict budget (local fork)
+## Local fork sync hygiene
 
 This checkout tracks upstream OpenAI Codex and carries local capabilities documented in
-`docs/local-fork-delta.md`. Structural rules for reducing stable-sync merge cost live in
-`docs/plans/fork-conflict-budget.md`.
+`docs/local-fork-delta.md`.
 
 - Prefer additive modules under `codex-rs/ext/*`, dedicated session/tool modules, or protocol
-  feature modules. Do not grow business logic inside hot files listed in the conflict budget.
-- A change that edits a hot file must keep that edit to thin wiring (target: fewer than about
-  20 new logic lines per capability) and must explain why an existing extension point is
-  insufficient.
+  feature modules instead of growing business logic in upstream-shared hot files such as
+  `session/turn.rs`, `session/mod.rs`, `config/mod.rs`, `tools/spec_plan.rs`,
+  `hooks/.../discovery.rs`, and `tui` orchestration modules.
+- When a hot file must change, keep the edit to thin wiring and prefer an existing extension
+  point or a new additive module.
 - Never hand-merge generated app-server or config JSON schemas; regenerate with remote `just.py`.
-- After a `sync/rust-v*` merge, run
-  `uv run --project scripts python scripts/fork/conflict_budget.py` and refresh the baseline when
-  the budget intentionally moves.
 
 ## Context anchor rewind notes
 
