@@ -326,6 +326,7 @@ mod tests {
 
     fn hook(key: &str, trust_status: HookTrustStatus) -> HookMetadata {
         HookMetadata {
+            id: None,
             key: key.to_string(),
             event_name: HookEventName::PreToolUse,
             handler_type: HookHandlerType::Command,

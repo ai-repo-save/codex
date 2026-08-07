@@ -58,6 +58,7 @@ fn command_hook_hash(
         group: codex_config::MatcherGroup {
             matcher: matcher.map(ToOwned::to_owned),
             hooks: vec![codex_config::HookHandlerConfig::Command {
+                id: None,
                 command: command.to_string(),
                 command_windows: None,
                 timeout_sec: Some(timeout_sec),
@@ -88,6 +89,7 @@ fn prompt_hook_hash(
         group: codex_config::MatcherGroup {
             matcher: matcher.map(ToOwned::to_owned),
             hooks: vec![codex_config::HookHandlerConfig::Prompt {
+                id: None,
                 prompt: prompt.to_string(),
                 model: model.map(ToOwned::to_owned),
                 filter: filter.map(
@@ -221,6 +223,7 @@ async fn hooks_list_shows_discovered_hook() -> Result<()> {
         vec![HooksListEntry {
             cwd: cwd.path().to_path_buf(),
             hooks: vec![HookMetadata {
+                id: None,
                 key: format!("{}:pre_tool_use:0:0", config_path.as_path().display()),
                 event_name: HookEventName::PreToolUse,
                 handler_type: HookHandlerType::Command,
@@ -289,6 +292,7 @@ async fn hooks_list_returns_prompt_hook_definition() -> Result<()> {
         vec![HooksListEntry {
             cwd: cwd.path().to_path_buf(),
             hooks: vec![HookMetadata {
+                id: None,
                 key: format!("{}:pre_tool_use:0:0", config_path.as_path().display()),
                 event_name: HookEventName::PreToolUse,
                 handler_type: HookHandlerType::Prompt,
@@ -379,6 +383,7 @@ async fn hooks_list_shows_discovered_plugin_hook() -> Result<()> {
         vec![HooksListEntry {
             cwd: cwd.path().to_path_buf(),
             hooks: vec![HookMetadata {
+                id: None,
                 key: "demo@test:hooks/hooks.json:pre_tool_use:0:0".to_string(),
                 event_name: HookEventName::PreToolUse,
                 handler_type: HookHandlerType::Command,
@@ -577,6 +582,7 @@ timeout = 5
             HooksListEntry {
                 cwd: workspace.path().to_path_buf(),
                 hooks: vec![HookMetadata {
+                    id: None,
                     key: format!(
                         "{}:pre_tool_use:0:0",
                         project_config_path.as_path().display()

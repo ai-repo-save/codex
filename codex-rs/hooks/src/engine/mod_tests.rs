@@ -62,6 +62,7 @@ fn pre_tool_use_hook_events(command: impl Into<String>) -> HookEventsToml {
         pre_tool_use: vec![MatcherGroup {
             matcher: Some("^Bash$".to_string()),
             hooks: vec![HookHandlerConfig::Command {
+                id: None,
                 command: command.into(),
                 command_windows: None,
                 timeout_sec: Some(10),
@@ -170,6 +171,7 @@ with Path(r"{log_path}").open("a", encoding="utf-8") as handle:
             pre_tool_use: vec![MatcherGroup {
                 matcher: Some("^Bash$".to_string()),
                 hooks: vec![HookHandlerConfig::Command {
+                    id: None,
                     command: format!("python3 {}", script_path.display()),
                     command_windows: None,
                     timeout_sec: Some(10),
@@ -278,6 +280,7 @@ async fn requirements_managed_hooks_execute_windows_command_override() {
             pre_tool_use: vec![MatcherGroup {
                 matcher: Some("^Bash$".to_string()),
                 hooks: vec![HookHandlerConfig::Command {
+                    id: None,
                     command: "exit 17".to_string(),
                     command_windows: Some("exit /B 19".to_string()),
                     timeout_sec: Some(10),
@@ -358,6 +361,7 @@ fn unknown_requirement_source_hooks_stay_managed() {
             pre_tool_use: vec![MatcherGroup {
                 matcher: Some("^Bash$".to_string()),
                 hooks: vec![HookHandlerConfig::Command {
+                    id: None,
                     command: "python3 /tmp/managed.py".to_string(),
                     command_windows: None,
                     timeout_sec: Some(10),
@@ -427,6 +431,7 @@ fn user_disablement_filters_non_managed_hooks_but_not_managed_hooks() {
             pre_tool_use: vec![MatcherGroup {
                 matcher: Some("^Bash$".to_string()),
                 hooks: vec![HookHandlerConfig::Command {
+                    id: None,
                     command: "python3 /tmp/managed.py".to_string(),
                     command_windows: None,
                     timeout_sec: Some(10),
@@ -669,6 +674,7 @@ fn requirements_managed_hooks_load_when_managed_dir_is_missing() {
             pre_tool_use: vec![MatcherGroup {
                 matcher: Some("^Bash$".to_string()),
                 hooks: vec![HookHandlerConfig::Command {
+                    id: None,
                     command: "echo hi".to_string(),
                     command_windows: None,
                     timeout_sec: Some(10),
@@ -1323,6 +1329,7 @@ print(json.dumps({
             pre_tool_use: vec![MatcherGroup {
                 matcher: Some("Bash".to_string()),
                 hooks: vec![HookHandlerConfig::Command {
+                    id: None,
                     command: format!("python3 {}", script_path.display()),
                     command_windows: None,
                     timeout_sec: Some(10),
@@ -1442,6 +1449,7 @@ fn plugin_hook_sources_expand_plugin_placeholders() {
             pre_tool_use: vec![MatcherGroup {
                 matcher: Some("Bash".to_string()),
                 hooks: vec![HookHandlerConfig::Command {
+                id: None,
                     command:
                         "run ${PLUGIN_ROOT} ${CLAUDE_PLUGIN_ROOT} ${PLUGIN_DATA} ${CLAUDE_PLUGIN_DATA}"
                             .to_string(),

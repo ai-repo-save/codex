@@ -4,6 +4,8 @@
 //! upstream-shared `discovery.rs` match loop so sync conflicts stay at a thin
 //! call site.
 
+use std::collections::HashSet;
+
 use codex_config::HookHandlerConfig;
 use codex_config::MatcherGroup;
 use codex_config::PromptHookFilterConfig;
@@ -39,6 +41,7 @@ pub(super) fn append_prompt_handler(
     group_index: usize,
     handler_index: usize,
     matcher: Option<&str>,
+    id: Option<String>,
     prompt: String,
     filter: Option<PromptHookFilterConfig>,
     model: Option<String>,
@@ -46,6 +49,7 @@ pub(super) fn append_prompt_handler(
     timeout_sec: Option<u64>,
     status_message: Option<String>,
     fail_closed: bool,
+    seen_ids: &mut HashSet<String>,
 ) -> bool {
     if !prompt_runner::supports_event(event_name) {
         warnings.push(format!(
@@ -90,7 +94,9 @@ pub(super) fn append_prompt_handler(
     }
     let timeout_sec = timeout_sec.unwrap_or(30);
     let status_message = status_message.filter(|status_message| !status_message.trim().is_empty());
+    // Keep `id` out of the trust hash so renaming/stable ids do not invalidate trust.
     let normalized_handler = HookHandlerConfig::Prompt {
+        id: None,
         prompt: prompt.clone(),
         filter: filter.as_ref().map(|filter| PromptHookFilterConfig {
             command: filter.command.clone(),
@@ -113,13 +119,42 @@ pub(super) fn append_prompt_handler(
             }),
         timeout_sec: filter.timeout_sec,
     });
-    let key = crate::hook_key(&source.key_source, event_name, group_index, handler_index);
-    let state = source.hook_states.get(&key);
+    let (resolved_key, durable_id) = match crate::resolve_hook_key(
+        &source.key_source,
+        event_name,
+        group_index,
+        handler_index,
+        id.as_deref(),
+        seen_ids,
+    ) {
+        Ok(resolved) => {
+            let durable_id = if resolved.key == resolved.legacy_key {
+                None
+            } else {
+                id
+            };
+            (resolved, durable_id)
+        }
+        Err(message) => {
+            warnings.push(format!("{message} in {}", source.path.display()));
+            let legacy =
+                crate::hook_key(&source.key_source, event_name, group_index, handler_index);
+            (
+                crate::ResolvedHookKey {
+                    key: legacy.clone(),
+                    legacy_key: legacy,
+                },
+                None,
+            )
+        }
+    };
+    let state = resolved_key.lookup(source.hook_states);
     let enabled = hook_enabled(source.is_managed, state);
     let trusted_hash = hook_trusted_hash(source.is_managed, state);
     let trust_status = hook_trust_status(source.is_managed, &current_hash, trusted_hash);
     hook_entries.push(HookListEntry {
-        key,
+        key: resolved_key.key,
+        id: durable_id,
         event_name,
         handler_type: HookHandlerType::Prompt,
         matcher: matcher.map(ToOwned::to_owned),

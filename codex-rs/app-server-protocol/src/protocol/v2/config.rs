@@ -511,6 +511,7 @@ pub enum ConfiguredHookHandler {
     #[serde(rename = "command")]
     #[ts(rename = "command")]
     Command {
+        id: Option<String>,
         command: String,
         #[serde(rename = "commandWindows")]
         #[ts(rename = "commandWindows")]
@@ -533,6 +534,7 @@ pub enum ConfiguredHookHandler {
     #[serde(rename = "prompt")]
     #[ts(rename = "prompt")]
     Prompt {
+        id: Option<String>,
         prompt: String,
         model: Option<String>,
         filter: Option<ConfiguredPromptHookFilter>,
@@ -551,7 +553,7 @@ pub enum ConfiguredHookHandler {
     },
     #[serde(rename = "agent")]
     #[ts(rename = "agent")]
-    Agent {},
+    Agent { id: Option<String> },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

@@ -511,6 +511,7 @@ fn map_hook_matcher_group_to_api(group: CoreMatcherGroup) -> ConfiguredHookMatch
 fn map_hook_handler_to_api(handler: CoreHookHandlerConfig) -> ConfiguredHookHandler {
     match handler {
         CoreHookHandlerConfig::Command {
+            id,
             command,
             command_windows,
             timeout_sec,
@@ -518,6 +519,7 @@ fn map_hook_handler_to_api(handler: CoreHookHandlerConfig) -> ConfiguredHookHand
             status_message,
             additional_context_limit,
         } => ConfiguredHookHandler::Command {
+            id,
             command,
             command_windows,
             timeout_sec,
@@ -526,6 +528,7 @@ fn map_hook_handler_to_api(handler: CoreHookHandlerConfig) -> ConfiguredHookHand
             additional_context_limit,
         },
         CoreHookHandlerConfig::Prompt {
+            id,
             prompt,
             model,
             filter,
@@ -534,6 +537,7 @@ fn map_hook_handler_to_api(handler: CoreHookHandlerConfig) -> ConfiguredHookHand
             fail_closed,
             status_message,
         } => ConfiguredHookHandler::Prompt {
+            id,
             prompt,
             model,
             filter: filter.map(|filter| ConfiguredPromptHookFilter {
@@ -546,7 +550,7 @@ fn map_hook_handler_to_api(handler: CoreHookHandlerConfig) -> ConfiguredHookHand
             fail_closed,
             status_message,
         },
-        CoreHookHandlerConfig::Agent {} => ConfiguredHookHandler::Agent {},
+        CoreHookHandlerConfig::Agent { id } => ConfiguredHookHandler::Agent { id },
     }
 }
 

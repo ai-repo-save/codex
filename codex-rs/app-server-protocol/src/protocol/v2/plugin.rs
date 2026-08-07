@@ -524,6 +524,7 @@ pub struct HooksListEntry {
 #[ts(export_to = "v2/")]
 pub struct HookMetadata {
     pub key: String,
+    pub id: Option<String>,
     pub event_name: HookEventName,
     pub handler_type: HookHandlerType,
     pub matcher: Option<String>,

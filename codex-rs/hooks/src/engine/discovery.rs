@@ -456,6 +456,7 @@ fn append_matcher_groups(
     event_name: HookEventName,
     groups: Vec<MatcherGroup>,
 ) {
+    let mut seen_ids = std::collections::HashSet::new();
     for (group_index, group) in groups.into_iter().enumerate() {
         let matcher = matcher_pattern_for_event(event_name, group.matcher.as_deref());
         if let Some(matcher) = matcher
@@ -470,6 +471,7 @@ fn append_matcher_groups(
         for (handler_index, handler) in group.hooks.iter().cloned().enumerate() {
             match handler {
                 HookHandlerConfig::Command {
+                    id,
                     command,
                     command_windows,
                     timeout_sec,
@@ -528,7 +530,9 @@ fn append_matcher_groups(
                     };
                     let normalized_additional_context_limit = additional_context_limit
                         .filter(|limit| *limit != DEFAULT_HOOK_OUTPUT_TOKEN_LIMIT);
+                    // Keep `id` out of the trust hash so renaming/stable ids do not invalidate trust.
                     let normalized_handler = HookHandlerConfig::Command {
+                        id: None,
                         command: command.clone(),
                         command_windows: None,
                         timeout_sec: Some(timeout_sec),
@@ -540,16 +544,47 @@ fn append_matcher_groups(
                     let command = source.env.iter().fold(command, |command, (key, value)| {
                         command.replace(&format!("${{{key}}}"), value)
                     });
-                    // TODO(abhinav): replace this positional suffix with a durable hook id.
-                    let key =
-                        crate::hook_key(&source.key_source, event_name, group_index, handler_index);
-                    let state = source.hook_states.get(&key);
+                    let (resolved_key, durable_id) = match crate::resolve_hook_key(
+                        &source.key_source,
+                        event_name,
+                        group_index,
+                        handler_index,
+                        id.as_deref(),
+                        &mut seen_ids,
+                    ) {
+                        Ok(resolved) => {
+                            let durable_id = if resolved.key == resolved.legacy_key {
+                                None
+                            } else {
+                                id
+                            };
+                            (resolved, durable_id)
+                        }
+                        Err(message) => {
+                            warnings.push(format!("{message} in {}", source.path.display()));
+                            let legacy = crate::hook_key(
+                                &source.key_source,
+                                event_name,
+                                group_index,
+                                handler_index,
+                            );
+                            (
+                                crate::ResolvedHookKey {
+                                    key: legacy.clone(),
+                                    legacy_key: legacy,
+                                },
+                                None,
+                            )
+                        }
+                    };
+                    let state = resolved_key.lookup(source.hook_states);
                     let enabled = hook_enabled(source.is_managed, state);
                     let trusted_hash = hook_trusted_hash(source.is_managed, state);
                     let trust_status =
                         hook_trust_status(source.is_managed, &current_hash, trusted_hash);
                     hook_entries.push(HookListEntry {
-                        key,
+                        key: resolved_key.key,
+                        id: durable_id,
                         event_name,
                         handler_type: HookHandlerType::Command,
                         matcher: matcher.map(ToOwned::to_owned),
@@ -598,6 +633,7 @@ fn append_matcher_groups(
                     *display_order += 1;
                 }
                 HookHandlerConfig::Prompt {
+                    id,
                     prompt,
                     filter,
                     model,
@@ -617,6 +653,7 @@ fn append_matcher_groups(
                         group_index,
                         handler_index,
                         matcher,
+                        id,
                         prompt,
                         filter,
                         model,
@@ -624,11 +661,12 @@ fn append_matcher_groups(
                         timeout_sec,
                         status_message,
                         fail_closed,
+                        &mut seen_ids,
                     ) {
                         continue;
                     }
                 }
-                HookHandlerConfig::Agent {} => warnings.push(format!(
+                HookHandlerConfig::Agent { id: _ } => warnings.push(format!(
                     "skipping agent hook in {}: agent hooks are not supported yet",
                     source.path.display()
                 )),
@@ -858,6 +896,7 @@ mod tests {
         MatcherGroup {
             matcher: matcher.map(str::to_string),
             hooks: vec![HookHandlerConfig::Command {
+                id: None,
                 command: "echo hello".to_string(),
                 command_windows: None,
                 timeout_sec: None,
@@ -886,7 +925,10 @@ mod tests {
             HookEventName::PreToolUse,
             vec![MatcherGroup {
                 matcher: None,
-                hooks: vec![HookHandlerConfig::Agent {}, HookHandlerConfig::Agent {}],
+                hooks: vec![
+                    HookHandlerConfig::Agent { id: None },
+                    HookHandlerConfig::Agent { id: None },
+                ],
             }],
         );
 
@@ -1044,6 +1086,169 @@ mod tests {
     }
 
     #[test]
+    fn durable_hook_id_dual_reads_current_positional_state() {
+        let mut handlers = Vec::new();
+        let mut hook_entries = Vec::new();
+        let mut warnings = Vec::new();
+        let mut display_order = 0;
+        let source_path = source_path();
+        let legacy_key = format!("{}:pre_tool_use:0:0", source_path.display());
+        let durable_key = format!("{}:pre_tool_use:grok-build-0.1", source_path.display());
+        let hook_states = std::collections::HashMap::from([(
+            legacy_key,
+            HookStateToml {
+                enabled: Some(false),
+                trusted_hash: None,
+            },
+        )]);
+
+        append_matcher_groups(
+            &mut handlers,
+            &mut hook_entries,
+            &mut warnings,
+            &mut display_order,
+            &unmanaged_hook_handler_source(
+                &source_path,
+                &hook_states,
+                /*bypass_hook_trust*/ true,
+            ),
+            HookEventName::PreToolUse,
+            vec![MatcherGroup {
+                matcher: Some("Bash".to_string()),
+                hooks: vec![HookHandlerConfig::Command {
+                    id: Some("grok-build-0.1".to_string()),
+                    command: "echo hello".to_string(),
+                    command_windows: None,
+                    timeout_sec: None,
+                    r#async: false,
+                    status_message: None,
+                    additional_context_limit: None,
+                }],
+            }],
+        );
+
+        assert_eq!(warnings, Vec::<String>::new());
+        assert_eq!(hook_entries.len(), 1);
+        assert_eq!(hook_entries[0].key, durable_key);
+        assert_eq!(hook_entries[0].id.as_deref(), Some("grok-build-0.1"));
+        assert_eq!(hook_entries[0].enabled, false);
+        assert_eq!(handlers, Vec::<ConfiguredHandler>::new());
+    }
+
+    #[test]
+    fn durable_hook_id_keeps_disabled_state_after_positional_shift() {
+        let mut handlers = Vec::new();
+        let mut hook_entries = Vec::new();
+        let mut warnings = Vec::new();
+        let mut display_order = 0;
+        let source_path = source_path();
+        let durable_key = format!("{}:pre_tool_use:grok-build-0.1", source_path.display());
+        let hook_states = std::collections::HashMap::from([(
+            durable_key.clone(),
+            HookStateToml {
+                enabled: Some(false),
+                trusted_hash: None,
+            },
+        )]);
+
+        append_matcher_groups(
+            &mut handlers,
+            &mut hook_entries,
+            &mut warnings,
+            &mut display_order,
+            &unmanaged_hook_handler_source(
+                &source_path,
+                &hook_states,
+                /*bypass_hook_trust*/ true,
+            ),
+            HookEventName::PreToolUse,
+            vec![
+                command_group(Some("Other")),
+                MatcherGroup {
+                    matcher: Some("Bash".to_string()),
+                    hooks: vec![HookHandlerConfig::Command {
+                        id: Some("grok-build-0.1".to_string()),
+                        command: "echo hello".to_string(),
+                        command_windows: None,
+                        timeout_sec: None,
+                        r#async: false,
+                        status_message: None,
+                        additional_context_limit: None,
+                    }],
+                },
+            ],
+        );
+
+        assert_eq!(warnings, Vec::<String>::new());
+        assert_eq!(hook_entries.len(), 2);
+        assert_eq!(hook_entries[1].key, durable_key);
+        assert_eq!(hook_entries[1].id.as_deref(), Some("grok-build-0.1"));
+        assert_eq!(hook_entries[1].enabled, false);
+        assert!(
+            handlers
+                .iter()
+                .all(|handler| handler.matcher.as_deref() != Some("Bash"))
+        );
+    }
+
+    #[test]
+    fn durable_hook_id_prefers_durable_state_key_over_legacy() {
+        let mut handlers = Vec::new();
+        let mut hook_entries = Vec::new();
+        let mut warnings = Vec::new();
+        let mut display_order = 0;
+        let source_path = source_path();
+        let durable_key = format!("{}:pre_tool_use:keep-disabled", source_path.display());
+        let hook_states = std::collections::HashMap::from([
+            (
+                format!("{}:pre_tool_use:0:0", source_path.display()),
+                HookStateToml {
+                    enabled: Some(true),
+                    trusted_hash: None,
+                },
+            ),
+            (
+                durable_key.clone(),
+                HookStateToml {
+                    enabled: Some(false),
+                    trusted_hash: None,
+                },
+            ),
+        ]);
+
+        append_matcher_groups(
+            &mut handlers,
+            &mut hook_entries,
+            &mut warnings,
+            &mut display_order,
+            &unmanaged_hook_handler_source(
+                &source_path,
+                &hook_states,
+                /*bypass_hook_trust*/ true,
+            ),
+            HookEventName::PreToolUse,
+            vec![MatcherGroup {
+                matcher: Some("Bash".to_string()),
+                hooks: vec![HookHandlerConfig::Command {
+                    id: Some("keep-disabled".to_string()),
+                    command: "echo hello".to_string(),
+                    command_windows: None,
+                    timeout_sec: None,
+                    r#async: false,
+                    status_message: None,
+                    additional_context_limit: None,
+                }],
+            }],
+        );
+
+        assert_eq!(warnings, Vec::<String>::new());
+        assert_eq!(hook_entries.len(), 1);
+        assert_eq!(hook_entries[0].key, durable_key);
+        assert_eq!(hook_entries[0].enabled, false);
+        assert_eq!(handlers, Vec::<ConfiguredHandler>::new());
+    }
+
+    #[test]
     fn pre_tool_use_treats_star_matcher_as_match_all() {
         let mut handlers = Vec::new();
         let mut warnings = Vec::new();
@@ -1111,6 +1316,7 @@ mod tests {
                 session_start: vec![MatcherGroup {
                     matcher: None,
                     hooks: vec![HookHandlerConfig::Command {
+                        id: None,
                         command: "echo hello".to_string(),
                         command_windows: None,
                         timeout_sec: None,
@@ -1142,6 +1348,7 @@ mod tests {
             vec![MatcherGroup {
                 matcher: Some("^Bash$".to_string()),
                 hooks: vec![HookHandlerConfig::Command {
+                    id: None,
                     command: "echo unix".to_string(),
                     command_windows: Some("echo windows".to_string()),
                     timeout_sec: None,

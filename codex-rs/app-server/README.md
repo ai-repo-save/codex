@@ -1855,7 +1855,7 @@ For linked Git worktrees, project hook declarations come from the matching `.cod
 
 Hooks are returned even when disabled so clients can render and re-enable them. User-controlled state lives under `hooks.state`. Managed hooks are non-configurable, and user entries for managed hook keys are ignored during loading. Handler definitions use flat metadata: command hooks set `command`, return `prompt`, `model`, `filter`, and `reasoningEffort` as `null`, and set `failClosed` to `false`; prompt hooks set `command` to `null`, return the configured `prompt`, raw optional `model`, raw nullable `reasoningEffort`, and a nullable `filter`, expose the effective `timeoutSec` (30 seconds when omitted), and return the configured `failClosed` and optional `statusMessage` values. A returned filter contains the command selected for the current platform, `commandWindows` set to `null`, and the effective `timeout` (5 seconds when omitted). An omitted Prompt `reasoningEffort` remains `null` rather than defaulting to `low`.
 
-For unmanaged hooks, `currentHash` and `trustStatus` describe whether the current definition is first-seen, approved, or changed since approval. Only trusted unmanaged hooks become runnable. Hook keys combine the source identity with a trailing event/group/handler selector that is currently positional.
+For unmanaged hooks, `currentHash` and `trustStatus` describe whether the current definition is first-seen, approved, or changed since approval. Only trusted unmanaged hooks become runnable. Hook keys combine the source identity with a trailing selector: when a handler declares a durable `id`, the key is `{source}:{event}:{id}`; otherwise it falls back to the positional `{source}:{event}:{groupIndex}:{handlerIndex}` form. Clients that persist `hooks.state` for long-lived disable/trust preferences should give those handlers an `id` so inserting or reordering `[[hooks.PreToolUse]]` groups does not retarget the state entry. When an `id` is present, Codex still dual-reads the current positional key so existing state continues to apply until it is rewritten under the durable key.
 
 ```json
 {
@@ -1874,7 +1874,8 @@ For unmanaged hooks, `currentHash` and `trustStatus` describe whether the curren
     "data": [{
       "cwd": "/Users/me/project",
       "hooks": [{
-        "key": "/Users/me/.codex/config.toml:pre_tool_use:0:0",
+        "key": "/Users/me/.codex/config.toml:pre_tool_use:search-safety",
+        "id": "search-safety",
         "eventName": "pre_tool_use",
         "handlerType": "prompt",
         "isManaged": false,
@@ -1917,7 +1918,7 @@ To disable a non-managed hook, upsert a state entry at `hooks.state` with `confi
     "edits": [{
       "keyPath": "hooks.state",
       "value": {
-        "/Users/me/.codex/config.toml:pre_tool_use:0:0": {
+        "/Users/me/.codex/config.toml:pre_tool_use:search-safety": {
           "enabled": false
         }
       },

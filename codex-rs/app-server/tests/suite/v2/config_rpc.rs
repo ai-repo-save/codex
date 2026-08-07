@@ -89,6 +89,7 @@ additionalContextLimit = 4096
             .session_start[0]
             .hooks,
         vec![ConfiguredHookHandler::Command {
+            id: None,
             command: "echo managed".to_string(),
             command_windows: None,
             timeout_sec: None,
@@ -248,6 +249,7 @@ statusMessage = "checking managed policy"
             pre_tool_use: vec![ConfiguredHookMatcherGroup {
                 matcher: Some("^Bash$".to_string()),
                 hooks: vec![ConfiguredHookHandler::Prompt {
+                    id: None,
                     prompt: "Evaluate $$ARGUMENTS against managed policy.".to_string(),
                     model: Some("gpt-managed-hook".to_string()),
                     filter: Some(ConfiguredPromptHookFilter {

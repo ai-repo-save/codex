@@ -390,5 +390,24 @@ uv run --project scripts python scripts/remote/just.py write-app-server-schema -
 | Context reminder | `core/src/session/context_reminder.rs` | token-usage call in session |
 | Multi-agent / collaboration tools | `tools/handlers/multi_agents_v2/`, `tools/collaboration_plan.rs`, `agent-control` | `spec_plan` apply, `agent/control` facade |
 | Prompt / filter hooks | `hooks/src/engine/prompt_*`, `filter_*`, `core/src/hook_prompt.rs` | discovery / event match arms |
+
+### Durable `hooks.state` ids
+
+Long-lived disable/trust entries under `hooks.state` should not use positional keys such as
+`…:pre_tool_use:0:0`. Give the handler an `id` and point state at the durable key:
+
+```toml
+[[hooks.PreToolUse.hooks]]
+type = "prompt"
+id = "grok-build-0.1"
+# ...
+
+[hooks.state."/home/bluebird/.codex/config.toml:pre_tool_use:grok-build-0.1"]
+enabled = false
+```
+
+Without `id`, inserting another `[[hooks.PreToolUse]]` earlier in the same file retargets the
+positional state entry. Codex dual-reads the current positional key when an `id` is present so an
+existing `…:0:0` entry still applies until rewritten under the durable key.
 | Scoped memories / mailbox / goals | `codex-rs/ext/*`, extension-api capability hosts | registration edges |
 | Remote build | `scripts/remote/`, `scripts/install/` | none |

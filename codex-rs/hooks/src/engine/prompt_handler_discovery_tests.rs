@@ -47,6 +47,7 @@ fn hook_handler_source<'a>(
 
 fn prompt_handler(fail_closed: bool) -> HookHandlerConfig {
     HookHandlerConfig::Prompt {
+        id: None,
         prompt: "Review $$ARGUMENTS".to_string(),
         filter: None,
         model: Some("gpt-test".to_string()),
@@ -59,6 +60,7 @@ fn prompt_handler(fail_closed: bool) -> HookHandlerConfig {
 
 fn prompt_handler_with_filter(filter: PromptHookFilterConfig) -> HookHandlerConfig {
     HookHandlerConfig::Prompt {
+        id: None,
         prompt: "Review $$ARGUMENTS".to_string(),
         filter: Some(filter),
         model: None,
@@ -352,6 +354,7 @@ fn invalid_prompt_handlers_are_skipped_without_dropping_valid_siblings() {
             matcher: None,
             hooks: vec![
                 HookHandlerConfig::Prompt {
+                    id: None,
                     prompt: String::new(),
                     filter: None,
                     model: None,
@@ -361,6 +364,7 @@ fn invalid_prompt_handlers_are_skipped_without_dropping_valid_siblings() {
                     fail_closed: false,
                 },
                 HookHandlerConfig::Prompt {
+                    id: None,
                     prompt: oversized_prompt,
                     filter: None,
                     model: None,
@@ -370,6 +374,7 @@ fn invalid_prompt_handlers_are_skipped_without_dropping_valid_siblings() {
                     fail_closed: false,
                 },
                 HookHandlerConfig::Prompt {
+                    id: None,
                     prompt: "Review $$ARGUMENTS".to_string(),
                     filter: None,
                     model: Some(" gpt-test".to_string()),
@@ -379,6 +384,7 @@ fn invalid_prompt_handlers_are_skipped_without_dropping_valid_siblings() {
                     fail_closed: false,
                 },
                 HookHandlerConfig::Prompt {
+                    id: None,
                     prompt: "Review $$ARGUMENTS".to_string(),
                     filter: None,
                     model: None,
@@ -388,6 +394,7 @@ fn invalid_prompt_handlers_are_skipped_without_dropping_valid_siblings() {
                     fail_closed: false,
                 },
                 HookHandlerConfig::Prompt {
+                    id: None,
                     prompt: "Review $$ARGUMENTS".to_string(),
                     filter: None,
                     model: Some("gpt-test".to_string()),

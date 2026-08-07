@@ -983,6 +983,7 @@ mod tests {
     ) -> HookMetadata {
         let current_hash = "sha256:current".to_string();
         HookMetadata {
+            id: None,
             key: key.to_string(),
             event_name,
             handler_type: HookHandlerType::Command,

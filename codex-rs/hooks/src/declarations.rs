@@ -63,6 +63,7 @@ mod tests {
                     matcher: None,
                     hooks: vec![
                         HookHandlerConfig::Prompt {
+                            id: None,
                             prompt: "check $$ARGUMENTS".to_string(),
                             filter: None,
                             model: None,
@@ -72,6 +73,7 @@ mod tests {
                             fail_closed: false,
                         },
                         HookHandlerConfig::Command {
+                            id: None,
                             command: "echo hi".to_string(),
                             command_windows: None,
                             timeout_sec: None,
@@ -83,7 +85,7 @@ mod tests {
                 }],
                 session_start: vec![MatcherGroup {
                     matcher: None,
-                    hooks: vec![HookHandlerConfig::Agent {}],
+                    hooks: vec![HookHandlerConfig::Agent { id: None }],
                 }],
                 ..Default::default()
             },

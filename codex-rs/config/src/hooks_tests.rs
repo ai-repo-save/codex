@@ -45,6 +45,7 @@ fn hooks_file_deserializes_existing_json_shape() {
                 pre_tool_use: vec![MatcherGroup {
                     matcher: Some("^Bash$".to_string()),
                     hooks: vec![HookHandlerConfig::Command {
+                        id: None,
                         command: "python3 /tmp/pre.py".to_string(),
                         command_windows: None,
                         timeout_sec: Some(10),
@@ -66,6 +67,7 @@ fn prompt_hook_deserializes_optional_reasoning_effort_from_toml_and_json() {
             matcher: None,
             hooks: vec![
                 HookHandlerConfig::Prompt {
+                    id: None,
                     prompt: "Review $$ARGUMENTS".to_string(),
                     filter: None,
                     model: Some("gpt-test".to_string()),
@@ -75,6 +77,7 @@ fn prompt_hook_deserializes_optional_reasoning_effort_from_toml_and_json() {
                     fail_closed: false,
                 },
                 HookHandlerConfig::Prompt {
+                    id: None,
                     prompt: "Review without override".to_string(),
                     filter: None,
                     model: None,
@@ -129,6 +132,7 @@ prompt = "Review without override"
 #[test]
 fn prompt_hook_deserializes_filter_from_toml_and_json() {
     let expected = HookHandlerConfig::Prompt {
+        id: None,
         prompt: "Review $$ARGUMENTS".to_string(),
         filter: Some(PromptHookFilterConfig {
             command: "uv run --script /tmp/filter.py".to_string(),
@@ -211,6 +215,7 @@ additionalContextLimit = 4096
             pre_tool_use: vec![MatcherGroup {
                 matcher: Some("^Bash$".to_string()),
                 hooks: vec![HookHandlerConfig::Command {
+                    id: None,
                     command: "python3 /tmp/pre.py".to_string(),
                     command_windows: None,
                     timeout_sec: Some(10),
@@ -249,6 +254,7 @@ command = "python3 /tmp/pre.py"
                 pre_tool_use: vec![MatcherGroup {
                     matcher: Some("^Bash$".to_string()),
                     hooks: vec![HookHandlerConfig::Command {
+                        id: None,
                         command: "python3 /tmp/pre.py".to_string(),
                         command_windows: None,
                         timeout_sec: None,
@@ -295,6 +301,7 @@ command = "python3 /enterprise/place/pre.py"
                 pre_tool_use: vec![MatcherGroup {
                     matcher: Some("^Bash$".to_string()),
                     hooks: vec![HookHandlerConfig::Command {
+                        id: None,
                         command: "python3 /enterprise/place/pre.py".to_string(),
                         command_windows: None,
                         timeout_sec: None,
@@ -330,6 +337,7 @@ command_windows = "powershell -File C:\\enterprise\\hooks\\pre.ps1"
             pre_tool_use: vec![MatcherGroup {
                 matcher: Some("^Bash$".to_string()),
                 hooks: vec![HookHandlerConfig::Command {
+                    id: None,
                     command: "bash /enterprise/hooks/pre.sh".to_string(),
                     command_windows: Some(
                         r"powershell -File C:\enterprise\hooks\pre.ps1".to_string(),
@@ -366,6 +374,7 @@ commandWindows = "powershell -File C:\\enterprise\\hooks\\pre.ps1"
             pre_tool_use: vec![MatcherGroup {
                 matcher: Some("^Bash$".to_string()),
                 hooks: vec![HookHandlerConfig::Command {
+                    id: None,
                     command: "bash /enterprise/hooks/pre.sh".to_string(),
                     command_windows: Some(
                         r"powershell -File C:\enterprise\hooks\pre.ps1".to_string(),
@@ -411,6 +420,7 @@ fn prompt_hook_semantic_errors_do_not_reject_the_config_layer() {
 #[test]
 fn hook_handler_omits_unset_additional_context_limit() {
     let handler = HookHandlerConfig::Command {
+        id: None,
         command: "python3 /tmp/pre.py".to_string(),
         command_windows: None,
         timeout_sec: None,
@@ -422,4 +432,54 @@ fn hook_handler_omits_unset_additional_context_limit() {
     let serialized = serde_json::to_value(handler).expect("hook handler should serialize");
 
     assert_eq!(serialized.get("additionalContextLimit"), None);
+}
+
+#[test]
+fn hook_handler_deserializes_optional_id_from_toml() {
+    let from_prompt: HookHandlerConfig = toml::from_str(
+        r#"
+type = "prompt"
+id = "grok-build-0.1"
+prompt = "Review $$ARGUMENTS"
+"#,
+    )
+    .expect("prompt hook with id should deserialize");
+
+    assert_eq!(
+        from_prompt,
+        HookHandlerConfig::Prompt {
+            id: Some("grok-build-0.1".to_string()),
+            prompt: "Review $$ARGUMENTS".to_string(),
+            filter: None,
+            model: None,
+            reasoning_effort: None,
+            timeout_sec: None,
+            status_message: None,
+            fail_closed: false,
+        }
+    );
+    assert_eq!(from_prompt.id(), Some("grok-build-0.1"));
+
+    let from_command: HookHandlerConfig = toml::from_str(
+        r#"
+type = "command"
+id = "grok-build-0.1"
+command = "python3 /tmp/pre.py"
+"#,
+    )
+    .expect("command hook with id should deserialize");
+
+    assert_eq!(
+        from_command,
+        HookHandlerConfig::Command {
+            id: Some("grok-build-0.1".to_string()),
+            command: "python3 /tmp/pre.py".to_string(),
+            command_windows: None,
+            timeout_sec: None,
+            r#async: false,
+            status_message: None,
+            additional_context_limit: None,
+        }
+    );
+    assert_eq!(from_command.id(), Some("grok-build-0.1"));
 }

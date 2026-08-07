@@ -150,6 +150,8 @@ pub struct MatcherGroup {
 pub enum HookHandlerConfig {
     #[serde(rename = "command")]
     Command {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
         command: String,
         #[serde(default, rename = "commandWindows", alias = "command_windows")]
         command_windows: Option<String>,
@@ -172,6 +174,8 @@ pub enum HookHandlerConfig {
     },
     #[serde(rename = "prompt")]
     Prompt {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
         prompt: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         filter: Option<PromptHookFilterConfig>,
@@ -187,7 +191,20 @@ pub enum HookHandlerConfig {
         fail_closed: bool,
     },
     #[serde(rename = "agent")]
-    Agent {},
+    Agent {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+    },
+}
+
+impl HookHandlerConfig {
+    pub fn id(&self) -> Option<&str> {
+        match self {
+            Self::Command { id, .. } | Self::Prompt { id, .. } | Self::Agent { id } => {
+                id.as_deref()
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
