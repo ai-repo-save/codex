@@ -9152,6 +9152,12 @@
                   "null"
                 ]
               },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "statusMessage": {
                 "type": [
                   "string",
@@ -9195,6 +9201,12 @@
                   {
                     "type": "null"
                   }
+                ]
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "model": {
@@ -9248,6 +9260,12 @@
           },
           {
             "properties": {
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "type": {
                 "enum": [
                   "agent"
@@ -11808,6 +11826,12 @@
           },
           "handlerType": {
             "$ref": "#/definitions/v2/HookHandlerType"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "isManaged": {
             "type": "boolean"
