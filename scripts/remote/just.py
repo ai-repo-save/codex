@@ -195,6 +195,24 @@ def print_remote_full_policy() -> None:
             )
 
 
+EXPERIMENTAL_SCHEMA_BLOCK_REASON = (
+    "write-app-server-schema --experimental is forbidden in this fork. "
+    "It regenerates a large experimental fixture tree that is not the local source of truth "
+    "and pollutes the working tree. Use write-app-server-schema without --experimental."
+)
+
+
+def rejects_experimental_app_server_schema(
+    recipe: str, recipe_args: Sequence[str]
+) -> bool:
+    if recipe != "write-app-server-schema":
+        return False
+    return any(
+        arg == "--experimental" or arg.startswith("--experimental=")
+        for arg in recipe_args
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argument_parser()
     args = parser.parse_args(argv)
@@ -205,6 +223,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         command = remote_full_command()
     else:
         recipe_args = (args.recipe, *args.recipe_args)
+        if rejects_experimental_app_server_schema(args.recipe, args.recipe_args):
+            print(EXPERIMENTAL_SCHEMA_BLOCK_REASON, file=sys.stderr)
+            return 2
         command = remote_codex_rs_just_command(recipe_args)
 
     return run_remote_workflow(

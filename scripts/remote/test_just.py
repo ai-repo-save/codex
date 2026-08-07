@@ -129,6 +129,24 @@ class RemoteJustTest(unittest.TestCase):
 
         self.assertEqual(error.exception.code, 2)
 
+    def test_rejects_experimental_app_server_schema_recipe(self) -> None:
+        stderr = io.StringIO()
+        with (
+            contextlib.redirect_stderr(stderr),
+            mock.patch.object(just, "run_remote_workflow") as run,
+        ):
+            exit_code = just.main(("write-app-server-schema", "--experimental"))
+
+        self.assertEqual(exit_code, 2)
+        run.assert_not_called()
+        self.assertIn("forbidden", stderr.getvalue())
+        self.assertTrue(
+            just.rejects_experimental_app_server_schema(
+                "write-app-server-schema",
+                ("--experimental",),
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

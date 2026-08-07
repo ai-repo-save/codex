@@ -428,12 +428,16 @@ These guidelines apply to app-server protocol work in `codex-rs`, especially:
 ### Development Workflow
 
 - Update app-server docs/examples when API behavior changes (at minimum `app-server/README.md`).
-- Regenerate schema fixtures when API shapes change:
+- Regenerate schema fixtures when API shapes change with only:
   `uv run --project scripts python scripts/remote/just.py write-app-server-schema`
-  (and `uv run --project scripts python scripts/remote/just.py write-app-server-schema --experimental` when experimental API fixtures are affected).
+- Never run `write-app-server-schema --experimental` in this fork. That recipe regenerates a large
+  experimental fixture tree that is not the local source of truth and repeatedly pollutes the
+  working tree with unrelated schema churn. `scripts/remote/just.py` rejects the flag. Leave
+  experimental fixture updates to upstream/CI; do not invent a local workaround.
 - Validate with `uv run --project scripts python scripts/remote/just.py test -p codex-app-server-protocol`.
 - Avoid boilerplate tests that only assert experimental field markers for individual
-  request fields in `common.rs`; rely on schema generation/tests and behavioral coverage instead.
+  request fields in `common.rs`; rely on regular schema generation/tests and behavioral coverage
+  instead.
 
 ## Python Development Best Practices
 

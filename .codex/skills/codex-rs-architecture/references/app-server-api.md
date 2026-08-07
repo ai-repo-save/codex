@@ -17,8 +17,9 @@
 
 ## Schema and docs
 
-- API shape changes require `just write-app-server-schema`; experimental fixture changes may require `--experimental`.
-- Validate with `just test -p codex-app-server-protocol`.
+- API shape changes require remote `just.py write-app-server-schema` only. Never use
+  `--experimental` in this fork; it pollutes the working tree with unrelated fixtures.
+- Validate with remote `just.py test -p codex-app-server-protocol`.
 - Update app-server docs/examples when behavior changes.
 - Keep Rust and generated TypeScript names aligned when using explicit serde/ts renames.
 

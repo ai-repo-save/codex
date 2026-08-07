@@ -222,8 +222,9 @@ enabled; dedicated tools also require `memories.dedicated_tools`.
 - Context anchors, reset-context, Research mode, multi-agent mode, goals, permissions, and tool
   items are represented in the generated regular or experimental schema according to their API
   gate.
-- Regular schema generation and experimental schema generation are separate workflows; generating
-  experimental fixtures must not replace regular fixtures.
+- Regular schema generation is the only local/remote agent workflow. Never run
+  `write-app-server-schema --experimental` here; it regenerates a large unrelated fixture tree and
+  pollutes the working tree.
 - TUI replay renders persisted fork items rather than reconstructing behavior from transient state.
 - User-visible anchor, collaboration, goal, approval, or reset-context changes carry focused
   snapshot coverage.
@@ -348,8 +349,9 @@ Regenerate schemas only when the corresponding Rust types or wire shapes changed
 ```bash
 uv run --project scripts python scripts/remote/just.py write-config-schema
 uv run --project scripts python scripts/remote/just.py write-app-server-schema
-uv run --project scripts python scripts/remote/just.py write-app-server-schema --experimental
 ```
+
+Do not run `write-app-server-schema --experimental`.
 
 ## Stable Sync Procedure
 
@@ -366,9 +368,9 @@ uv run --project scripts python scripts/remote/just.py write-app-server-schema -
 4. Resolve source conflicts against the capability contracts and focused tests. Keep repair
    commits separated by capability so rewind, multi-agent, mailbox, and unrelated behavior remain
    independently reviewable.
-5. After source behavior is stable, update manifests and regenerate lockfiles, regular and
-   experimental schemas, and snapshots in that order. Generated artifacts derive from the resolved
-   source and are not manually merged.
+5. After source behavior is stable, update manifests and regenerate lockfiles, regular schemas
+   (`write-app-server-schema` without `--experimental`), and snapshots in that order. Generated
+   artifacts derive from the resolved source and are not manually merged.
 6. Run formatting after generated outputs have been reviewed. Use `--branch sync/rust-vX.Y.Z` for
    `just.py`, `build_sync.py`, `tui_smoke.py`, and `doctor.py` throughout validation.
 7. Run focused remote validation only for capability groups the sync actually touched (see the
