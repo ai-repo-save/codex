@@ -92,11 +92,6 @@ configurable prompts, usage accounting, and app-server representation.
   state.
 - Collaboration instructions resolve from configured `collaboration_modes` entries before built-in
   presets.
-- Research is a first-class collaboration mode with wire value `research`, TUI selection and status
-  rendering, app-server listing and settings support, analytics classification, and a built-in
-  read-only investigation prompt.
-- `request_user_input` is available in Research mode. Goal idle turns are permitted there, while
-  Plan-only stream parsing and Default-only plan nudges keep their original mode boundaries.
 
 ## Context Lifecycle
 
@@ -219,7 +214,7 @@ enabled; dedicated tools also require `memories.dedicated_tools`.
 
 - Fork-owned protocol shapes live in app-server v2 and keep Rust, TypeScript, JSON schema, legacy
   event conversion, and thread-history reconstruction aligned.
-- Context anchors, reset-context, Research mode, multi-agent mode, goals, permissions, and tool
+- Context anchors, reset-context, multi-agent mode, goals, permissions, and tool
   items are represented in the generated regular or experimental schema according to their API
   gate.
 - Regular schema generation is the only local/remote agent workflow. Never run
