@@ -34,6 +34,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
 BUILD_PACKAGE_SCRIPT = REPO_ROOT / "scripts" / "build_codex_package.py"
 
+os.environ.setdefault("CODEX_REPO_ROOT", str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from codex_package.cargo import cargo_profile_output_dir  # noqa: E402
