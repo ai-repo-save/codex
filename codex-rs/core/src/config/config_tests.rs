@@ -10873,10 +10873,7 @@ developer_instructions_file = "./plan-instructions.md"
 async fn collaboration_mode_inline_developer_instructions_take_precedence_over_file()
 -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
-    std::fs::write(
-        codex_home.path().join("plan-instructions.md"),
-        "from file",
-    )?;
+    std::fs::write(codex_home.path().join("plan-instructions.md"), "from file")?;
     std::fs::write(
         codex_home.path().join(CONFIG_TOML_FILE),
         r#"[collaboration_modes.plan]

@@ -1639,7 +1639,7 @@ developer_instructions = "Configured plan mode prompt"
 
     let payload_text = response_mock.single_request().body_json().to_string();
     assert!(payload_text.contains("Configured plan mode prompt"));
-    assert!(!payload_text.contains("Plan mode prioritizes thorough planning"));
+    assert!(!payload_text.contains("You work in 3 phases"));
 
     Ok(())
 }

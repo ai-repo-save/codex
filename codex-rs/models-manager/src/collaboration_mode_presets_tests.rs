@@ -20,13 +20,7 @@ fn builtin_presets_follow_tui_cycle_order() {
         .into_iter()
         .map(|mask| mask.mode)
         .collect::<Vec<_>>();
-    assert_eq!(
-        modes,
-        vec![
-            Some(ModeKind::Default),
-            Some(ModeKind::Plan),
-        ]
-    );
+    assert_eq!(modes, vec![Some(ModeKind::Default), Some(ModeKind::Plan),]);
 }
 
 #[test]

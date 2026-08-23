@@ -594,7 +594,8 @@ impl ChatWidget {
             return None;
         }
         let active_mode = self.active_mode_kind();
-        matches!(active_mode, ModeKind::Default | ModeKind::Plan)
+        active_mode
+            .is_tui_visible()
             .then_some(active_mode.display_name())
     }
 
@@ -602,7 +603,10 @@ impl ChatWidget {
         if !self.collaboration_modes_enabled() {
             return None;
         }
-        (self.active_mode_kind() == ModeKind::Plan).then_some(CollaborationModeIndicator::Plan)
+        match self.active_mode_kind() {
+            ModeKind::Plan => Some(CollaborationModeIndicator::Plan),
+            ModeKind::Default | ModeKind::PairProgramming | ModeKind::Execute => None,
+        }
     }
 
     pub(super) fn update_collaboration_mode_indicator(&mut self) {
