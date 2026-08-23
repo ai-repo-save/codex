@@ -10,7 +10,7 @@ import sys
 # adding the script directory to sys.path. Add it explicitly so the local helper
 # package remains importable when this executable is launched from any cwd.
 SCRIPT_DIR = Path(__file__).resolve().parent
-os.environ.setdefault("CODEX_REPO_ROOT", str(SCRIPT_DIR.parent))
+os.environ["CODEX_REPO_ROOT"] = str(SCRIPT_DIR.parent)
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from codex_package.cli import main

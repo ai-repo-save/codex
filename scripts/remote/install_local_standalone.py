@@ -14,7 +14,7 @@ from typing import Sequence
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
 SCRIPTS_DIR = REPO_ROOT / "scripts"
-os.environ.setdefault("CODEX_REPO_ROOT", str(REPO_ROOT))
+os.environ["CODEX_REPO_ROOT"] = str(REPO_ROOT)
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 if __package__ in (None, ""):
