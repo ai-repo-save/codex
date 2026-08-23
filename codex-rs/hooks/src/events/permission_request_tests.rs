@@ -131,16 +131,17 @@ fn command_handler() -> ConfiguredHandler {
     ConfiguredHandler {
         event_name: HookEventName::PermissionRequest,
         matcher: Some("^Bash$".to_string()),
+        timeout_sec: 5,
         kind: ConfiguredHandlerKind::Command {
             command: "echo hook".to_string(),
-            timeout_sec: 5,
+            env: std::collections::HashMap::new(),
+            r#async: false,
         },
         status_message: None,
         additional_context_limit: Default::default(),
         source_path: test_path_buf("/tmp/hooks.json").abs(),
         source: codex_protocol::protocol::HookSource::User,
         display_order: 0,
-        env: std::collections::HashMap::new(),
     }
 }
 
@@ -148,20 +149,20 @@ fn prompt_handler(fail_closed: bool) -> ConfiguredHandler {
     ConfiguredHandler {
         event_name: HookEventName::PermissionRequest,
         matcher: Some("^Bash$".to_string()),
+        timeout_sec: 30,
         kind: ConfiguredHandlerKind::Prompt {
             prompt: "Review $$ARGUMENTS".to_string(),
             filter: None,
             model: None,
             reasoning_effort: None,
-            timeout_sec: 30,
             fail_closed,
+            env: std::collections::HashMap::new(),
         },
         status_message: None,
         additional_context_limit: Default::default(),
         source_path: test_path_buf("/tmp/hooks.json").abs(),
         source: codex_protocol::protocol::HookSource::User,
         display_order: 0,
-        env: std::collections::HashMap::new(),
     }
 }
 
