@@ -161,7 +161,6 @@ fn filter_handler(command: String, timeout_sec: u64) -> ConfiguredHandler {
     ConfiguredHandler {
         event_name: HookEventName::PreToolUse,
         matcher: None,
-        timeout_sec: 30,
         kind: ConfiguredHandlerKind::Prompt {
             prompt: FILTER_PROMPT.to_string(),
             env: std::collections::HashMap::new(),
@@ -171,6 +170,7 @@ fn filter_handler(command: String, timeout_sec: u64) -> ConfiguredHandler {
             }),
             model: None,
             reasoning_effort: None,
+            timeout_sec: 30,
             fail_closed: false,
         },
         status_message: None,

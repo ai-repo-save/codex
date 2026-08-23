@@ -347,7 +347,7 @@ fn required_managed_hooks_reject_unsupported_handler_types() {
     let events = HookEventsToml {
         pre_tool_use: vec![MatcherGroup {
             matcher: Some("^Bash$".to_string()),
-            hooks: vec![HookHandlerConfig::Agent { id: None }],
+            hooks: vec![HookHandlerConfig::Prompt {}],
         }],
         ..Default::default()
     };

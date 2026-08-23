@@ -398,7 +398,6 @@ async fn schedule(runtime: &CommandHookRuntime, handler: ConfiguredHandler, cwd:
         required_load_errors: Vec::new(),
         command_runtime: runtime.clone(),
         mcp_executor: mcp_executor(),
-        prompt_hook_runner: None,
     };
     engine
         .run_user_prompt_submit(UserPromptSubmitRequest {
