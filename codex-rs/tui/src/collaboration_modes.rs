@@ -7,7 +7,12 @@ fn filtered_presets(model_catalog: &ModelCatalog) -> Vec<CollaborationModeMask> 
     model_catalog
         .list_collaboration_modes()
         .into_iter()
-        .filter(|mask| mask.mode.is_some_and(ModeKind::is_tui_visible))
+        .filter(|mask| {
+            matches!(
+                mask.mode,
+                Some(ModeKind::Default) | Some(ModeKind::Plan)
+            )
+        })
         .collect()
 }
 
@@ -24,7 +29,7 @@ pub(crate) fn mask_for_kind(
     model_catalog: &ModelCatalog,
     kind: ModeKind,
 ) -> Option<CollaborationModeMask> {
-    if !kind.is_tui_visible() {
+    if !matches!(kind, ModeKind::Default | ModeKind::Plan) {
         return None;
     }
     filtered_presets(model_catalog)
@@ -55,8 +60,4 @@ pub(crate) fn default_mode_mask(model_catalog: &ModelCatalog) -> Option<Collabor
 
 pub(crate) fn plan_mask(model_catalog: &ModelCatalog) -> Option<CollaborationModeMask> {
     mask_for_kind(model_catalog, ModeKind::Plan)
-}
-
-pub(crate) fn research_mask(model_catalog: &ModelCatalog) -> Option<CollaborationModeMask> {
-    mask_for_kind(model_catalog, ModeKind::Research)
 }
