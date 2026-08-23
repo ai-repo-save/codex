@@ -2931,7 +2931,6 @@ fn context_reminder_test_usage(total_tokens: i64) -> TokenUsage {
         output_tokens: 0,
         reasoning_output_tokens: 0,
         total_tokens,
-        codex_rollout_budget_units: None,
     }
 }
 

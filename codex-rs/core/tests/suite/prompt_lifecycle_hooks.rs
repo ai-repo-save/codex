@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
-use codex_core::TurnInputRequest;
 use codex_core::compact::SUMMARIZATION_PROMPT;
 use codex_features::Feature;
 use codex_protocol::protocol::AgentStatus;
@@ -88,10 +87,16 @@ fn model_sse(id: &str, output: &str) -> String {
 
 async fn submit_turn_and_collect(test: &TestCodex, prompt: &str) -> Result<Vec<EventMsg>> {
     test.codex
-        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
-            text: prompt.to_string(),
-            text_elements: Vec::new(),
-        }]))
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: prompt.to_string(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
         .await?;
 
     let mut turn_id = None;

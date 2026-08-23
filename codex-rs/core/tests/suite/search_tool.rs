@@ -66,7 +66,6 @@ use core_test_support::responses::sse;
 use core_test_support::responses::start_mock_server;
 use core_test_support::skip_if_no_network;
 use core_test_support::skip_if_wine_exec;
-use core_test_support::stdio_server_bin;
 use core_test_support::test_codex::test_codex;
 use core_test_support::wait_for_event;
 use core_test_support::wait_for_mcp_server;
@@ -1455,7 +1454,6 @@ async fn tool_search_expands_non_app_mcp_tools_by_prefix_without_query() -> Resu
                     oauth: None,
                     oauth_resource: None,
                     supports_parallel_tool_calls: false,
-                    omit_tools_from: None,
                     tools: HashMap::new(),
                 },
             );

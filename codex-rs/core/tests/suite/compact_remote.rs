@@ -1405,7 +1405,6 @@ async fn remote_compact_v2_reuses_compaction_trigger_for_followups() -> Result<(
                     .to_string(),
                 /*trigger_turn*/ false,
             ),
-            thread_settings: Default::default(),
         })
         .await?;
     codex
@@ -1417,7 +1416,6 @@ async fn remote_compact_v2_reuses_compaction_trigger_for_followups() -> Result<(
                 "Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/child\nPayload:\nchild completion".to_string(),
                 /*trigger_turn*/ false,
             ),
-            thread_settings: Default::default(),
         })
         .await?;
     let delegated_task_ciphertext = format!("delegated compact task{}", "x".repeat(40_000));
@@ -1430,7 +1428,6 @@ async fn remote_compact_v2_reuses_compaction_trigger_for_followups() -> Result<(
                 delegated_task_ciphertext.clone(),
                 /*trigger_turn*/ true,
             ),
-            thread_settings: Default::default(),
         })
         .await?;
     wait_for_turn_complete(&codex).await;
@@ -1446,7 +1443,6 @@ async fn remote_compact_v2_reuses_compaction_trigger_for_followups() -> Result<(
                 descendant_followup_ciphertext.to_string(),
                 /*trigger_turn*/ true,
             ),
-            thread_settings: Default::default(),
         })
         .await?;
     wait_for_turn_complete(&codex).await;

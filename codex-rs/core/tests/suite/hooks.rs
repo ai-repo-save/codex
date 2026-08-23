@@ -299,20 +299,21 @@ async fn submit_turn_and_capture_prompt_hook_lifecycle(
     let (sandbox_policy, permission_profile) =
         turn_permission_fields(PermissionProfile::Disabled, test.config.cwd.as_path());
     test.codex
-        .start_or_steer_turn(
-            TurnInputRequest::user_input(vec![UserInput::Text {
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
                 text: prompt.to_string(),
                 text_elements: Vec::new(),
-            }])
-            .with_thread_settings(
-                codex_protocol::protocol::ThreadSettingsOverrides {
-                    approval_policy: Some(AskForApproval::Never),
-                    sandbox_policy: Some(sandbox_policy),
-                    permission_profile,
-                    ..Default::default()
-                },
-            ),
-        )
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
+                approval_policy: Some(AskForApproval::Never),
+                sandbox_policy: Some(sandbox_policy),
+                permission_profile,
+                ..Default::default()
+            },
+        })
         .await?;
 
     let mut started = None;

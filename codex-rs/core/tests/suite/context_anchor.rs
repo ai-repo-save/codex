@@ -9,7 +9,6 @@ use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionFuture;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::RewindContextContributionInput;
-use codex_history::RolloutItem;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::Settings;
@@ -18,10 +17,10 @@ use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
-use codex_protocol::protocol::ThreadSettingsOverrides;
-use codex_protocol::turn_input::TurnInputRequest;
+use codex_protocol::protocol::Op;
+use codex_protocol::protocol::RolloutItem;
+use codex_protocol::protocol::RolloutLine;
 use codex_protocol::user_input::UserInput;
-use codex_rollout::RolloutLine;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
@@ -143,12 +142,15 @@ async fn submit_turn_with_mode(test: &TestCodex, prompt: &str, mode: ModeKind) -
     let (sandbox_policy, permission_profile) =
         turn_permission_fields(PermissionProfile::Disabled, test.cwd.path());
     test.codex
-        .start_or_steer_turn(
-            TurnInputRequest::user_input(vec![UserInput::Text {
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
                 text: prompt.to_string(),
                 text_elements: Vec::new(),
-            }])
-            .with_thread_settings(ThreadSettingsOverrides {
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
                 approval_policy: Some(AskForApproval::Never),
                 sandbox_policy: Some(sandbox_policy),
                 permission_profile,
@@ -161,8 +163,8 @@ async fn submit_turn_with_mode(test: &TestCodex, prompt: &str, mode: ModeKind) -
                     },
                 }),
                 ..Default::default()
-            }),
-        )
+            },
+        })
         .await?;
     wait_for_event(&test.codex, |event| {
         matches!(event, EventMsg::TurnComplete(_))
@@ -452,10 +454,7 @@ async fn successful_context_rewind_replaces_visible_anchor_and_stale_id_is_soft_
         .collect::<std::result::Result<Vec<_>, _>>()?
         .into_iter()
         .filter_map(|line| match line.item {
-            RolloutItem::ResponseItem(envelope) => match envelope.item {
-                ResponseItem::Message { content, .. } => Some(content),
-                _ => None,
-            },
+            RolloutItem::ResponseItem(ResponseItem::Message { content, .. }) => Some(content),
             _ => None,
         })
         .map(|content| {

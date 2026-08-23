@@ -1,6 +1,5 @@
 use anyhow::Context;
 use anyhow::Result;
-use codex_core::TurnInputRequest;
 use codex_features::Feature;
 use codex_protocol::AgentPath;
 use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
@@ -14,7 +13,6 @@ use codex_protocol::protocol::Op;
 use codex_protocol::protocol::SubAgentActivityKind;
 use codex_protocol::protocol::SubAgentActivityOperation;
 use codex_protocol::protocol::SubAgentActivityOutcome;
-use codex_protocol::turn_input::TurnInputSubmission;
 use codex_protocol::user_input::UserInput;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
@@ -304,17 +302,19 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
         .build(&server)
         .await?;
 
-    let turn_id = match test
+    let turn_id = test
         .codex
-        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
-            text: ROOT_PROMPT.to_string(),
-            text_elements: Vec::new(),
-        }]))
-        .await?
-    {
-        TurnInputSubmission::Started { turn_id } => turn_id,
-        submission => anyhow::bail!("root prompt did not start a turn: {submission:?}"),
-    };
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: ROOT_PROMPT.to_string(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await?;
     let mut root_events = Vec::new();
     loop {
         let event = test.codex.next_event().await?;

@@ -414,7 +414,6 @@ async fn isolated_stream_uses_independent_telemetry_and_preserves_completed_usag
         output_tokens: 5,
         reasoning_output_tokens: 2,
         total_tokens: 9,
-        codex_rollout_budget_units: None,
     };
     let sse_body = format!(
         "event: response.completed\ndata: {}\n\n",
