@@ -363,6 +363,26 @@ async fn child_question_reaches_active_parent_and_correlated_reply_unblocks_chil
         .map(request_body)
         .find(|body| parent_request_id(body).is_some())
         .expect("active parent should receive the child request");
+    let request_id = parent_request_id(&parent_request)
+        .expect("active parent request should contain a correlated request id");
+    let parent_message = parent_request
+        .get("input")
+        .and_then(Value::as_array)
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|item| item.get("type").and_then(Value::as_str) == Some("agent_message"))
+        })
+        .expect("active parent request should contain an agent message");
+    assert_eq!(
+        parent_message.get("content"),
+        Some(&json!([{
+            "type": "input_text",
+            "text": format!(
+                "Message Type: NEW_TASK\nTask name: /root\nSender: {CHILD_PATH}\nPayload:\nParent decision request `{request_id}` from {CHILD_PATH}.\n\n{QUESTION}\n\nReply with `send_message` targeting `{CHILD_PATH}` and `in_reply_to: \"{request_id}\"`."
+            ),
+        }]))
+    );
     assert!(has_call_output(&parent_request, WAIT_CALL_ID));
     let child_thread_id = test
         .thread_manager
@@ -837,7 +857,9 @@ fn parent_request_id(body: &Value) -> Option<String> {
                 .iter()
                 .find_map(|content| content.get("text").and_then(Value::as_str))
         })?;
-    text.strip_prefix("Parent decision request `")
+    text.split_once("Payload:\n")?
+        .1
+        .strip_prefix("Parent decision request `")
         .and_then(|remainder| remainder.split('`').next())
         .map(str::to_string)
 }

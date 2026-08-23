@@ -108,6 +108,15 @@ fn communication_from_tool_message(
             trigger_turn,
         );
     }
+    communication_from_plaintext_message(author, recipient, message, trigger_turn)
+}
+
+fn communication_from_plaintext_message(
+    author: AgentPath,
+    recipient: AgentPath,
+    message: String,
+    trigger_turn: bool,
+) -> InterAgentCommunication {
     let message_type = if trigger_turn {
         InterAgentMessageType::NewTask
     } else {

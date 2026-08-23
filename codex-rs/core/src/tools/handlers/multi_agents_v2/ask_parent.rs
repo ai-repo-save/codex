@@ -46,7 +46,6 @@ impl Handler {
             payload,
             cancellation_token,
             call_id,
-            source,
             ..
         } = invocation;
         let args: AskParentArgs = parse_arguments(&function_arguments(payload)?)?;
@@ -136,11 +135,10 @@ impl Handler {
         let content = format!(
             "Parent decision request `{request_id}` from {child_path}.\n\n{question}\n\nReply with `send_message` targeting `{child_path}` and `in_reply_to: \"{request_id}\"`."
         );
-        let communication = communication_from_tool_message(
+        let communication = communication_from_plaintext_message(
             child_path,
             parent_path.clone(),
             content,
-            &source,
             /*trigger_turn*/ true,
         );
         let context = AgentCommunicationContext::new(
