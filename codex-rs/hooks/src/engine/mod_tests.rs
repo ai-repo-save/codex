@@ -371,7 +371,7 @@ fn required_managed_hooks_reject_unsupported_handler_types() {
     assert!(
         error
             .to_string()
-            .contains("agent hooks are not supported yet")
+            .contains("prompt hooks are not supported yet")
     );
 }
 
