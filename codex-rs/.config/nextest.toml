@@ -49,11 +49,6 @@ filter = 'package(codex-app-server-protocol) & (test(typescript_schema_fixtures_
 test-group = 'app_server_protocol_codegen'
 
 [[profile.default.overrides]]
-filter = 'package(codex-app-server-protocol) & test(experimental_precomputed_exports_match_generated)'
-test-group = 'app_server_protocol_codegen'
-slow-timeout = { period = "2m", terminate-after = 2 }
-
-[[profile.default.overrides]]
 # These integration tests spawn a fresh app-server subprocess per case.
 # Keep the library unit tests parallel.
 filter = 'package(codex-app-server) & kind(test)'
