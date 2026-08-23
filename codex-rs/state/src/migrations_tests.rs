@@ -203,7 +203,7 @@ async fn thread_section_order_migration_backfills_stably() {
         .open_read_write_pool(&sqlite.state_db_path())
         .await
         .expect("sqlite database should open");
-    migrator_through(/*version*/ 45)
+    migrator_through(/*version*/ 48)
         .run(&pool)
         .await
         .expect("pre-ordering migrations should apply");
