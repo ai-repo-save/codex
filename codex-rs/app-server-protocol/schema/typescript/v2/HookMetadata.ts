@@ -5,13 +5,12 @@ import type { AbsolutePathBuf } from "../AbsolutePathBuf";
 import type { ReasoningEffort } from "../ReasoningEffort";
 import type { ConfiguredPromptHookFilter } from "./ConfiguredPromptHookFilter";
 import type { HookEventName } from "./HookEventName";
-import type { HookHandlerType } from "./HookHandlerType";
 import type { HookSource } from "./HookSource";
 import type { HookTrustStatus } from "./HookTrustStatus";
 
-export type HookMetadata = { key: string, id: string | null, eventName: HookEventName, handlerType: HookHandlerType, matcher: string | null, command: string | null, prompt: string | null, model: string | null, filter: ConfiguredPromptHookFilter | null, reasoningEffort: ReasoningEffort | null, failClosed: boolean, timeoutSec: bigint, statusMessage: string | null,
+export type HookMetadata = { key: string, id: string | null, eventName: HookEventName, matcher: string | null, prompt: string | null, model: string | null, filter: ConfiguredPromptHookFilter | null, reasoningEffort: ReasoningEffort | null, failClosed: boolean, timeoutSec: bigint, statusMessage: string | null,
 /**
  * Configured `additionalContext` spill threshold.
  * `null` uses 2,500 tokens; `0` disables spilling.
  */
-additionalContextLimit: number | null, sourcePath: AbsolutePathBuf, source: HookSource, pluginId: string | null, displayOrder: bigint, enabled: boolean, isManaged: boolean, currentHash: string, trustStatus: HookTrustStatus, };
+additionalContextLimit: number | null, sourcePath: AbsolutePathBuf, source: HookSource, pluginId: string | null, displayOrder: bigint, enabled: boolean, isManaged: boolean, currentHash: string, trustStatus: HookTrustStatus, } & ({ "handlerType": "command", command: string, async: boolean, } | { "handlerType": "mcpTool", server: string, tool: string, } | { "handlerType": "prompt", } | { "handlerType": "agent", });
