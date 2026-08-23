@@ -142,12 +142,11 @@ fn compact_inspect_json(compaction: &LatestCompaction) -> CompactInspectJson<'_>
             .replacement_history
             .as_ref()
             .map_or(0, Vec::len),
-        replacement_history: compaction.compacted.replacement_history.as_ref().map(|items| {
-            items
-                .iter()
-                .map(|envelope| &envelope.item)
-                .collect()
-        }),
+        replacement_history: compaction
+            .compacted
+            .replacement_history
+            .as_ref()
+            .map(|items| items.iter().map(|envelope| &envelope.item).collect()),
     }
 }
 
