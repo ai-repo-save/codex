@@ -103,9 +103,11 @@ fn captured_op_matches(actual: &(ThreadId, Op), expected: &(ThreadId, Op)) -> bo
         (
             Op::InterAgentCommunication {
                 communication: actual,
+                ..
             },
             Op::InterAgentCommunication {
                 communication: expected,
+                ..
             },
         ) => actual == expected,
         _ => false,
@@ -597,7 +599,7 @@ async fn subscribe_status_updates_on_shutdown() {
     assert_eq!(status_rx.borrow().clone(), AgentStatus::PendingInit);
 
     let _ = thread
-        .submit(Op::Shutdown {})
+        .submit(Op::Shutdown)
         .await
         .expect("shutdown should submit");
 
@@ -999,6 +1001,8 @@ async fn encrypted_inter_agent_communication_clears_existing_last_task_message()
             spawned_agent.thread_id,
             communication,
             AgentCommunicationContext::new(AgentCommunicationKind::Followup, ThreadId::new()),
+            /*parent_turn_id*/ None,
+            /*root_turn_id*/ None,
         )
         .await
         .expect("send_inter_agent_communication should succeed");
@@ -1232,7 +1236,7 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix() {
         .await
         .expect("child shutdown should submit");
     let _ = parent_thread
-        .submit(Op::Shutdown {})
+        .submit(Op::Shutdown)
         .await
         .expect("parent shutdown should submit");
 }
@@ -1287,7 +1291,7 @@ async fn spawn_agent_without_fork_from_paginated_parent_stays_fresh_and_paginate
         .await
         .expect("child shutdown should submit");
     let _ = parent_thread
-        .submit(Op::Shutdown {})
+        .submit(Op::Shutdown)
         .await
         .expect("parent shutdown should submit");
 }
@@ -1364,7 +1368,7 @@ async fn spawn_agent_numeric_fork_from_compacted_paginated_parent_clamps_to_prov
         .await
         .expect("clamped child shutdown should submit");
     let _ = parent_thread
-        .submit(Op::Shutdown {})
+        .submit(Op::Shutdown)
         .await
         .expect("parent shutdown should submit");
 }
@@ -1659,7 +1663,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         .await
         .expect("no-hint child shutdown should submit");
     let _ = parent_thread
-        .submit(Op::Shutdown {})
+        .submit(Op::Shutdown)
         .await
         .expect("parent shutdown should submit");
 }
@@ -1858,7 +1862,7 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history() {
         .await
         .expect("child shutdown should submit");
     let _ = parent_thread
-        .submit(Op::Shutdown {})
+        .submit(Op::Shutdown)
         .await
         .expect("parent shutdown should submit");
 }
@@ -2001,7 +2005,7 @@ async fn spawn_agent_full_fork_restores_instructions_after_compaction_discards_p
         .await
         .expect("child shutdown should submit");
     let _ = parent_thread
-        .submit(Op::Shutdown {})
+        .submit(Op::Shutdown)
         .await
         .expect("parent shutdown should submit");
 }
@@ -2162,7 +2166,7 @@ async fn spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_onc
             .await
             .expect("child shutdown should submit");
         let _ = parent_thread
-            .submit(Op::Shutdown {})
+            .submit(Op::Shutdown)
             .await
             .expect("parent shutdown should submit");
     }
@@ -2224,7 +2228,7 @@ async fn spawn_agent_fork_flushes_parent_rollout_before_loading_history() {
         .await
         .expect("child shutdown should submit");
     let _ = parent_thread
-        .submit(Op::Shutdown {})
+        .submit(Op::Shutdown)
         .await
         .expect("parent shutdown should submit");
 }
@@ -2356,7 +2360,7 @@ async fn spawn_agent_fork_last_n_turns_keeps_only_recent_turns() {
         .await
         .expect("child shutdown should submit");
     let _ = parent_thread
-        .submit(Op::Shutdown {})
+        .submit(Op::Shutdown)
         .await
         .expect("parent shutdown should submit");
 }
@@ -2477,7 +2481,7 @@ async fn spawn_agent_fork_last_n_turns_drops_parent_startup_prefix_when_under_li
         .await
         .expect("child shutdown should submit");
     let _ = parent_thread
-        .submit(Op::Shutdown {})
+        .submit(Op::Shutdown)
         .await
         .expect("parent shutdown should submit");
 }
@@ -2606,7 +2610,7 @@ async fn spawn_agent_fork_last_n_turns_strips_parent_usage_hints() {
         .await
         .expect("child shutdown should submit");
     let _ = parent_thread
-        .submit(Op::Shutdown {})
+        .submit(Op::Shutdown)
         .await
         .expect("parent shutdown should submit");
 }
@@ -2865,7 +2869,7 @@ async fn spawn_child_completion_notifies_parent_history() {
         .await
         .expect("child thread should exist");
     let _ = child_thread
-        .submit(Op::Shutdown {})
+        .submit(Op::Shutdown)
         .await
         .expect("child shutdown should submit");
 
@@ -3533,7 +3537,7 @@ async fn resume_agent_from_paginated_rollout_loads_model_context() {
         .await
         .expect("resumed child shutdown should succeed");
     let _ = parent_thread
-        .submit(Op::Shutdown {})
+        .submit(Op::Shutdown)
         .await
         .expect("parent shutdown should submit");
 }

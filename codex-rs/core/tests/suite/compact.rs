@@ -915,16 +915,10 @@ async fn post_compact_hook_can_append_supplement_from_persisted_compaction() {
     let codex = test.codex.clone();
 
     codex
-        .submit(Op::UserInput {
-            items: vec![UserInput::Text {
-                text: "hello before supplement compact".to_string(),
-                text_elements: Vec::new(),
-            }],
-            final_output_json_schema: None,
-            responsesapi_client_metadata: None,
-            additional_context: Default::default(),
-            thread_settings: Default::default(),
-        })
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: "hello before supplement compact".to_string(),
+            text_elements: Vec::new(),
+        }]))
         .await
         .expect("submit first user turn");
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
@@ -945,16 +939,10 @@ async fn post_compact_hook_can_append_supplement_from_persisted_compaction() {
     assert_eq!(hook_logs[0]["saw_replacement_history"], true);
 
     codex
-        .submit(Op::UserInput {
-            items: vec![UserInput::Text {
-                text: "after supplement compact".to_string(),
-                text_elements: Vec::new(),
-            }],
-            final_output_json_schema: None,
-            responsesapi_client_metadata: None,
-            additional_context: Default::default(),
-            thread_settings: Default::default(),
-        })
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: "after supplement compact".to_string(),
+            text_elements: Vec::new(),
+        }]))
         .await
         .expect("submit followup user turn");
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
@@ -4218,16 +4206,10 @@ async fn request_context_compaction_preserves_matching_call_for_continuation() {
     let codex = builder.build(&server).await.unwrap().codex;
 
     codex
-        .submit(Op::UserInput {
-            items: vec![UserInput::Text {
-                text: "compact the active context".into(),
-                text_elements: Vec::new(),
-            }],
-            final_output_json_schema: None,
-            responsesapi_client_metadata: None,
-            additional_context: Default::default(),
-            thread_settings: Default::default(),
-        })
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: "compact the active context".into(),
+            text_elements: Vec::new(),
+        }]))
         .await
         .unwrap();
 

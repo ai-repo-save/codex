@@ -334,6 +334,7 @@ async fn reconstruct_history_context_rewind_does_not_cross_compaction() {
         RolloutItem::Compacted(CompactedItem {
             message: "future compaction summary".to_string(),
             replacement_history: Some(annotated(vec![assistant_message("compacted future state")])),
+            mcp_resource_origins: None,
             window_number: None,
             first_window_id: None,
             previous_window_id: None,
@@ -390,6 +391,7 @@ async fn reconstruct_history_context_rewind_uses_anchor_saved_after_compaction()
         RolloutItem::Compacted(CompactedItem {
             message: "summary".to_string(),
             replacement_history: Some(annotated(vec![compacted_state.clone()])),
+            mcp_resource_origins: None,
             window_number: None,
             first_window_id: None,
             previous_window_id: None,

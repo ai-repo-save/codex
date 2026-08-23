@@ -2430,13 +2430,10 @@ async fn encrypted_spawn_agent_message_survives_local_child_compaction() -> Resu
     })
     .await;
     child_thread
-        .submit(
-            vec![UserInput::Text {
-                text: CHILD_POST_COMPACT_PROMPT.to_string(),
-                text_elements: Vec::new(),
-            }]
-            .into(),
-        )
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: CHILD_POST_COMPACT_PROMPT.to_string(),
+            text_elements: Vec::new(),
+        }]))
         .await?;
     wait_for_event(child_thread.as_ref(), |event| {
         matches!(event, EventMsg::TurnComplete(_))

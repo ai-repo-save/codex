@@ -1,4 +1,6 @@
 use super::*;
+use codex_history::CompactedItem;
+use codex_history::ResponseItemEnvelope;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::Settings;
@@ -6,7 +8,6 @@ use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AskForApproval;
-use codex_protocol::protocol::CompactedItem;
 use codex_protocol::protocol::ContextAnchorSavedEvent;
 use codex_protocol::protocol::ContextRewoundToAnchorEvent;
 use codex_protocol::protocol::SandboxPolicy;
@@ -62,6 +63,7 @@ fn turn_context(mode: ModeKind) -> RolloutItem {
         approvals_reviewer: None,
         sandbox_policy: SandboxPolicy::DangerFullAccess,
         permission_profile: None,
+        active_permission_profile: None,
         network: None,
         file_system_sandbox_policy: None,
         model: "test-model".to_string(),
@@ -98,6 +100,7 @@ fn compaction() -> RolloutItem {
     RolloutItem::Compacted(CompactedItem {
         message: String::new(),
         replacement_history: Some(Vec::new()),
+        mcp_resource_origins: None,
         window_number: None,
         first_window_id: None,
         previous_window_id: None,
@@ -210,7 +213,7 @@ fn uncommitted_rewind_keeps_original_anchor_active() {
     );
 }
 
-fn history_item(text: &str) -> ResponseItem {
+fn history_item(text: &str) -> ResponseItemEnvelope {
     ResponseItem::Message {
         id: None,
         role: "user".to_string(),
@@ -220,17 +223,20 @@ fn history_item(text: &str) -> ResponseItem {
         phase: None,
         internal_chat_message_metadata_passthrough: None,
     }
+    .into()
 }
 
-fn function_call(call_id: &str) -> ResponseItem {
+fn function_call(call_id: &str) -> ResponseItemEnvelope {
     ResponseItem::FunctionCall {
         id: None,
         name: "rewind_context_to_anchor".to_string(),
         namespace: None,
         arguments: "{}".to_string(),
+        encrypted_function_args: None,
         call_id: call_id.to_string(),
         internal_chat_message_metadata_passthrough: None,
     }
+    .into()
 }
 
 #[test]
