@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build a canonical Codex package directory and optional archive."""
 
+import os
 from pathlib import Path
 import sys
 
@@ -8,7 +9,9 @@ import sys
 # Some developer environments set PYTHONSAFEPATH=1, which prevents Python from
 # adding the script directory to sys.path. Add it explicitly so the local helper
 # package remains importable when this executable is launched from any cwd.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+SCRIPT_DIR = Path(__file__).resolve().parent
+os.environ.setdefault("CODEX_REPO_ROOT", str(SCRIPT_DIR.parent))
+sys.path.insert(0, str(SCRIPT_DIR))
 
 from codex_package.cli import main
 
