@@ -77,7 +77,7 @@ const V2_REQUESTED_MODEL: &str = "gpt-5.6-sol";
 const V2_REQUESTED_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::Low;
 const ROLE_MODEL: &str = "gpt-5.4";
 const ROLE_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::High;
-const RESEARCH_INSTRUCTIONS: &str = "spawned child research mode instructions";
+const PLAN_INSTRUCTIONS: &str = "spawned child plan mode instructions";
 const SUBAGENT_START_CONTEXT: &str = "subagent start context reaches child";
 const CHILD_COMPACT_PROMPT: &str = "summarize the encrypted child history";
 const CHILD_COMPACT_SUMMARY: &str = "encrypted child compact summary";
@@ -1148,7 +1148,7 @@ async fn spawned_full_history_v2_child_uses_model_precedence_without_dropping_co
 
 async fn assert_v2_spawn_collaboration_mode(
     requested_mode: Option<&str>,
-    set_parent_research_mode: bool,
+    set_parent_plan_mode: bool,
 ) -> Result<()> {
     let server = start_mock_server().await;
     let mut spawn_args = json!({
@@ -1207,21 +1207,21 @@ async fn assert_v2_spawn_collaboration_mode(
             .features
             .enable(Feature::MultiAgentV2)
             .expect("test config should allow feature update");
-        let research = config
+        let plan = config
             .collaboration_mode_presets
             .iter_mut()
-            .find(|preset| preset.mode == Some(codex_protocol::config_types::ModeKind::Research))
-            .expect("research collaboration mode preset");
-        research.developer_instructions = Some(Some(RESEARCH_INSTRUCTIONS.to_string()));
+            .find(|preset| preset.mode == Some(codex_protocol::config_types::ModeKind::Plan))
+            .expect("plan collaboration mode preset");
+        plan.developer_instructions = Some(Some(PLAN_INSTRUCTIONS.to_string()));
     });
     let test = builder.build_with_auto_env(&server).await?;
     let collaboration_mode =
-        set_parent_research_mode.then(|| codex_protocol::config_types::CollaborationMode {
-            mode: codex_protocol::config_types::ModeKind::Research,
+        set_parent_plan_mode.then(|| codex_protocol::config_types::CollaborationMode {
+            mode: codex_protocol::config_types::ModeKind::Plan,
             settings: codex_protocol::config_types::Settings {
                 model: test.session_configured.model.clone(),
                 reasoning_effort: test.session_configured.reasoning_effort.clone(),
-                developer_instructions: Some(RESEARCH_INSTRUCTIONS.to_string()),
+                developer_instructions: Some(PLAN_INSTRUCTIONS.to_string()),
             },
         });
     test.codex
@@ -1276,7 +1276,7 @@ async fn assert_v2_spawn_collaboration_mode(
                         content.iter().any(|part| {
                             part.get("text")
                                 .and_then(Value::as_str)
-                                .is_some_and(|text| text.contains(RESEARCH_INSTRUCTIONS))
+                                .is_some_and(|text| text.contains(PLAN_INSTRUCTIONS))
                         })
                     })
         }),
@@ -1307,14 +1307,14 @@ async fn assert_v2_spawn_collaboration_mode(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn v2_spawn_uses_user_input_and_explicit_collaboration_mode() -> Result<()> {
     skip_if_no_network!(Ok(()));
-    assert_v2_spawn_collaboration_mode(Some("research"), /*set_parent_research_mode*/ false).await
+    assert_v2_spawn_collaboration_mode(Some("plan"), /*set_parent_plan_mode*/ false).await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn v2_spawn_inherits_parent_collaboration_mode_when_omitted() -> Result<()> {
     skip_if_no_network!(Ok(()));
     assert_v2_spawn_collaboration_mode(
-        /*requested_mode*/ None, /*set_parent_research_mode*/ true,
+        /*requested_mode*/ None, /*set_parent_plan_mode*/ true,
     )
     .await
 }
@@ -1727,7 +1727,7 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
     let spawn_args = serde_json::to_string(&json!({
         "message": encrypted_message,
         "task_name": "worker",
-        "collaboration_mode": "research",
+        "collaboration_mode": "plan",
     }))?;
     mount_sse_once_match(
         &server,
@@ -1776,12 +1776,12 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
             .enable(Feature::MultiAgentV2)
             .expect("test config should allow feature update");
         config.multi_agent_v2.encrypt_messages = true;
-        let research = config
+        let plan = config
             .collaboration_mode_presets
             .iter_mut()
-            .find(|preset| preset.mode == Some(codex_protocol::config_types::ModeKind::Research))
-            .expect("research collaboration mode preset");
-        research.developer_instructions = Some(Some(RESEARCH_INSTRUCTIONS.to_string()));
+            .find(|preset| preset.mode == Some(codex_protocol::config_types::ModeKind::Plan))
+            .expect("plan collaboration mode preset");
+        plan.developer_instructions = Some(Some(PLAN_INSTRUCTIONS.to_string()));
     });
     let test = builder.build(&server).await?;
     let root_thread_id = test.session_configured.thread_id;
@@ -1814,7 +1814,7 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
             ],
         })])
     );
-    assert!(child_request.body_contains_text(RESEARCH_INSTRUCTIONS));
+    assert!(child_request.body_contains_text(PLAN_INSTRUCTIONS));
 
     let child_thread_id = test
         .thread_manager
@@ -1861,7 +1861,7 @@ async fn encrypted_spawn_agent_message_survives_local_child_compaction() -> Resu
     let spawn_args = serde_json::to_string(&json!({
         "message": encrypted_message,
         "task_name": "worker",
-        "collaboration_mode": "research",
+        "collaboration_mode": "plan",
     }))?;
     mount_sse_once_match(
         &server,
@@ -1951,12 +1951,12 @@ async fn encrypted_spawn_agent_message_survives_local_child_compaction() -> Resu
         config.multi_agent_v2.encrypt_messages = true;
         config.compact_prompt = Some(CHILD_COMPACT_PROMPT.to_string());
         config.model_provider.name = "Local test provider".to_string();
-        let research = config
+        let plan = config
             .collaboration_mode_presets
             .iter_mut()
-            .find(|preset| preset.mode == Some(codex_protocol::config_types::ModeKind::Research))
-            .expect("research collaboration mode preset");
-        research.developer_instructions = Some(Some(RESEARCH_INSTRUCTIONS.to_string()));
+            .find(|preset| preset.mode == Some(codex_protocol::config_types::ModeKind::Plan))
+            .expect("plan collaboration mode preset");
+        plan.developer_instructions = Some(Some(PLAN_INSTRUCTIONS.to_string()));
     });
     let test = builder.build(&server).await?;
     let root_thread_id = test.session_configured.thread_id;
@@ -2031,9 +2031,9 @@ async fn encrypted_spawn_agent_message_survives_local_child_compaction() -> Resu
         .iter()
         .position(|item| {
             item.get("role").and_then(Value::as_str) == Some("developer")
-                && item.to_string().contains(RESEARCH_INSTRUCTIONS)
+                && item.to_string().contains(PLAN_INSTRUCTIONS)
         })
-        .expect("research developer instructions");
+        .expect("plan developer instructions");
     let agent_message_index = input
         .iter()
         .position(|item| item.get("type").and_then(Value::as_str) == Some("agent_message"))

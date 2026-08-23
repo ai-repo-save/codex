@@ -1562,7 +1562,7 @@ async fn turn_start_accepts_collaboration_mode_override_v2() -> Result<()> {
 }
 
 #[tokio::test]
-async fn turn_start_uses_configured_research_mode_instructions_v2() -> Result<()> {
+async fn turn_start_uses_configured_plan_mode_instructions_v2() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = responses::start_mock_server().await;
@@ -1580,8 +1580,8 @@ async fn turn_start_uses_configured_research_mode_instructions_v2() -> Result<()
         .open(codex_home.path().join("config.toml"))?
         .write_all(
             br#"
-[collaboration_modes.research]
-developer_instructions = "Configured research mode prompt"
+[collaboration_modes.plan]
+developer_instructions = "Configured plan mode prompt"
 "#,
         )?;
 
@@ -1610,11 +1610,11 @@ developer_instructions = "Configured research mode prompt"
             thread_id: thread.id.clone(),
             client_user_message_id: None,
             input: vec![V2UserInput::Text {
-                text: "research this".to_string(),
+                text: "plan this".to_string(),
                 text_elements: Vec::new(),
             }],
             collaboration_mode: Some(CollaborationMode {
-                mode: ModeKind::Research,
+                mode: ModeKind::Plan,
                 settings: Settings {
                     model: "mock-model".to_string(),
                     reasoning_effort: None,
@@ -1638,8 +1638,8 @@ developer_instructions = "Configured research mode prompt"
     .await??;
 
     let payload_text = response_mock.single_request().body_json().to_string();
-    assert!(payload_text.contains("Configured research mode prompt"));
-    assert!(!payload_text.contains("Research mode prioritizes deep investigation"));
+    assert!(payload_text.contains("Configured plan mode prompt"));
+    assert!(!payload_text.contains("Plan mode prioritizes thorough planning"));
 
     Ok(())
 }

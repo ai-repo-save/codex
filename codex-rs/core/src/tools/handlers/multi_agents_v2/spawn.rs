@@ -246,7 +246,6 @@ struct SpawnAgentArgs {
 #[serde(rename_all = "lowercase")]
 enum SpawnCollaborationMode {
     Default,
-    Research,
     Plan,
 }
 
@@ -254,7 +253,6 @@ impl From<SpawnCollaborationMode> for ModeKind {
     fn from(mode: SpawnCollaborationMode) -> Self {
         match mode {
             SpawnCollaborationMode::Default => Self::Default,
-            SpawnCollaborationMode::Research => Self::Research,
             SpawnCollaborationMode::Plan => Self::Plan,
         }
     }

@@ -863,7 +863,7 @@ fn spawn_agent_common_properties_v2(
         (
             "collaboration_mode".to_string(),
             JsonSchema::string_enum(
-                vec!["default".into(), "research".into(), "plan".into()],
+                vec!["default".into(), "plan".into()],
                 Some(
                     "Collaboration mode for the spawned agent. Omit to inherit the parent turn's current mode."
                         .to_string(),
