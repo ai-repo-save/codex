@@ -83,7 +83,7 @@ pub fn generate_typescript_schema_fixture_subtree_for_tests() -> Result<BTreeMap
         .collect())
 }
 
-/// Regenerates `schema/typescript/`, `schema/json/`, and the stable embedded exports.
+/// Regenerates `schema/typescript/`, `schema/json/`, and both embedded export sets.
 ///
 /// This is intended to be used by tooling (e.g., `just write-app-server-schema`).
 /// It deletes any previously generated files so stale artifacts are removed.
@@ -122,6 +122,7 @@ pub fn write_schema_fixtures_with_options(
         internal_json_schema: collect_export_files_recursive(internal_dir.path())?,
     };
     write_precomputed_exports(schema_root, "stable", &exports)?;
+    write_experimental_precomputed_exports(schema_root, prettier)?;
 
     Ok(())
 }
