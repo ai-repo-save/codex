@@ -10765,8 +10765,8 @@ async fn collaboration_mode_developer_instructions_can_be_overridden_from_config
     let codex_home = TempDir::new()?;
     std::fs::write(
         codex_home.path().join(CONFIG_TOML_FILE),
-        r#"[collaboration_modes.research]
-developer_instructions = "Research from local config"
+        r#"[collaboration_modes.plan]
+developer_instructions = "Plan from local config"
 "#,
     )?;
 
@@ -10776,14 +10776,14 @@ developer_instructions = "Research from local config"
         .build()
         .await?;
 
-    let research = config
+    let plan = config
         .collaboration_mode_presets
         .iter()
-        .find(|preset| preset.mode == Some(ModeKind::Research))
-        .expect("research preset should exist");
+        .find(|preset| preset.mode == Some(ModeKind::Plan))
+        .expect("plan preset should exist");
     assert_eq!(
-        research.developer_instructions.as_ref(),
-        Some(&Some("Research from local config".to_string()))
+        plan.developer_instructions.as_ref(),
+        Some(&Some("Plan from local config".to_string()))
     );
     Ok(())
 }
@@ -10793,7 +10793,7 @@ async fn collaboration_mode_developer_instructions_cannot_be_blank() -> std::io:
     let codex_home = TempDir::new()?;
     std::fs::write(
         codex_home.path().join(CONFIG_TOML_FILE),
-        r#"[collaboration_modes.research]
+        r#"[collaboration_modes.plan]
 developer_instructions = "   "
 "#,
     )?;
@@ -10807,7 +10807,7 @@ developer_instructions = "   "
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     assert!(
         err.to_string()
-            .contains("collaboration_modes.research.developer_instructions cannot be blank")
+            .contains("collaboration_modes.plan.developer_instructions cannot be blank")
     );
     Ok(())
 }
@@ -10817,7 +10817,7 @@ async fn collaboration_mode_keys_must_be_known_modes() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::write(
         codex_home.path().join(CONFIG_TOML_FILE),
-        r#"[collaboration_modes.reseach]
+        r#"[collaboration_modes.plna]
 developer_instructions = "Typo should not be accepted"
 "#,
     )?;
@@ -10831,7 +10831,7 @@ developer_instructions = "Typo should not be accepted"
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     assert!(
         err.to_string()
-            .contains("collaboration mode `reseach` is not configurable")
+            .contains("collaboration mode `plna` is not configurable")
     );
     Ok(())
 }
@@ -10841,13 +10841,13 @@ async fn collaboration_mode_developer_instructions_file_can_be_overridden_from_c
 -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::write(
-        codex_home.path().join("research-instructions.md"),
-        "  Research instructions loaded from file  \n",
+        codex_home.path().join("plan-instructions.md"),
+        "  Plan instructions loaded from file  \n",
     )?;
     std::fs::write(
         codex_home.path().join(CONFIG_TOML_FILE),
-        r#"[collaboration_modes.research]
-developer_instructions_file = "./research-instructions.md"
+        r#"[collaboration_modes.plan]
+developer_instructions_file = "./plan-instructions.md"
 "#,
     )?;
 
@@ -10857,14 +10857,14 @@ developer_instructions_file = "./research-instructions.md"
         .build()
         .await?;
 
-    let research = config
+    let plan = config
         .collaboration_mode_presets
         .iter()
-        .find(|preset| preset.mode == Some(ModeKind::Research))
-        .expect("research preset should exist");
+        .find(|preset| preset.mode == Some(ModeKind::Plan))
+        .expect("plan preset should exist");
     assert_eq!(
-        research.developer_instructions.as_ref(),
-        Some(&Some("Research instructions loaded from file".to_string()))
+        plan.developer_instructions.as_ref(),
+        Some(&Some("Plan instructions loaded from file".to_string()))
     );
     Ok(())
 }
@@ -10874,14 +10874,14 @@ async fn collaboration_mode_inline_developer_instructions_take_precedence_over_f
 -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::write(
-        codex_home.path().join("research-instructions.md"),
+        codex_home.path().join("plan-instructions.md"),
         "from file",
     )?;
     std::fs::write(
         codex_home.path().join(CONFIG_TOML_FILE),
-        r#"[collaboration_modes.research]
+        r#"[collaboration_modes.plan]
 developer_instructions = "from inline"
-developer_instructions_file = "./research-instructions.md"
+developer_instructions_file = "./plan-instructions.md"
 "#,
     )?;
 
@@ -10891,13 +10891,13 @@ developer_instructions_file = "./research-instructions.md"
         .build()
         .await?;
 
-    let research = config
+    let plan = config
         .collaboration_mode_presets
         .iter()
-        .find(|preset| preset.mode == Some(ModeKind::Research))
-        .expect("research preset should exist");
+        .find(|preset| preset.mode == Some(ModeKind::Plan))
+        .expect("plan preset should exist");
     assert_eq!(
-        research.developer_instructions.as_ref(),
+        plan.developer_instructions.as_ref(),
         Some(&Some("from inline".to_string()))
     );
     Ok(())
@@ -10906,11 +10906,11 @@ developer_instructions_file = "./research-instructions.md"
 #[tokio::test]
 async fn collaboration_mode_developer_instructions_file_cannot_be_empty() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
-    std::fs::write(codex_home.path().join("empty-research.md"), "   \n")?;
+    std::fs::write(codex_home.path().join("empty-plan.md"), "   \n")?;
     std::fs::write(
         codex_home.path().join(CONFIG_TOML_FILE),
-        r#"[collaboration_modes.research]
-developer_instructions_file = "./empty-research.md"
+        r#"[collaboration_modes.plan]
+developer_instructions_file = "./empty-plan.md"
 "#,
     )?;
 
@@ -10923,7 +10923,7 @@ developer_instructions_file = "./empty-research.md"
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     assert!(
         err.to_string()
-            .contains("collaboration_modes.research.developer_instructions_file is empty")
+            .contains("collaboration_modes.plan.developer_instructions_file is empty")
     );
     Ok(())
 }

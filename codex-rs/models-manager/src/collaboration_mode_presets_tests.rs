@@ -4,15 +4,12 @@ use pretty_assertions::assert_eq;
 #[test]
 fn preset_names_use_mode_display_names() {
     assert_eq!(plan_preset().name, ModeKind::Plan.display_name());
-    assert_eq!(research_preset().name, ModeKind::Research.display_name());
     assert_eq!(default_preset().name, ModeKind::Default.display_name());
     assert_eq!(plan_preset().model, None);
     assert_eq!(
         plan_preset().reasoning_effort,
         Some(Some(ReasoningEffort::Medium))
     );
-    assert_eq!(research_preset().model, None);
-    assert_eq!(research_preset().reasoning_effort, None);
     assert_eq!(default_preset().model, None);
     assert_eq!(default_preset().reasoning_effort, None);
 }
@@ -27,7 +24,6 @@ fn builtin_presets_follow_tui_cycle_order() {
         modes,
         vec![
             Some(ModeKind::Default),
-            Some(ModeKind::Research),
             Some(ModeKind::Plan),
         ]
     );

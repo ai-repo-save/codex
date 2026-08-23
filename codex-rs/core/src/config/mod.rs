@@ -2782,7 +2782,6 @@ async fn resolve_collaboration_mode_developer_instructions(
 fn collaboration_mode_from_config_key(mode_key: &str) -> Option<ModeKind> {
     match mode_key {
         "default" => Some(ModeKind::Default),
-        "research" => Some(ModeKind::Research),
         "plan" => Some(ModeKind::Plan),
         _ => None,
     }
