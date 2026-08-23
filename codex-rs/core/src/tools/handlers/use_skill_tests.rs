@@ -12,14 +12,15 @@ use codex_protocol::models::ResponseInputItem;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::SkillScope;
+use codex_skills::SkillMetadata;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 use std::collections::HashSet;
 use tokio::sync::Mutex;
 
-fn skill_metadata(name: &str, path: AbsolutePathBuf) -> codex_core_skills::SkillMetadata {
-    codex_core_skills::SkillMetadata {
+fn skill_metadata(name: &str, path: AbsolutePathBuf) -> SkillMetadata {
+    SkillMetadata {
         name: name.to_string(),
         description: format!("{name} description"),
         short_description: None,
@@ -34,7 +35,7 @@ fn skill_metadata(name: &str, path: AbsolutePathBuf) -> codex_core_skills::Skill
 }
 
 fn skill_outcome(
-    skills: Vec<codex_core_skills::SkillMetadata>,
+    skills: Vec<SkillMetadata>,
     disabled_paths: HashSet<AbsolutePathBuf>,
 ) -> Arc<SkillLoadOutcome> {
     let mut outcome = SkillLoadOutcome::default();

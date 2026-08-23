@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
-use codex_core_skills::SkillLoadOutcome;
-use codex_core_skills::injection::load_skill_injection;
+use codex_skills::SkillMetadata;
+use codex_skills_extension::HostSkillsSnapshot;
+use codex_skills_extension::SkillLoadOutcome;
 use codex_tools::ToolName;
 use codex_tools::ToolSpec;
 use serde::Deserialize;
 
-use crate::context::ContextualUserFragment;
-use crate::context::SkillInstructions;
 use crate::function_tool::FunctionCallError;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::ToolInvocation;
@@ -24,7 +23,7 @@ use codex_protocol::items::TurnItem;
 
 #[derive(Clone)]
 pub struct UseSkillHandler {
-    skills: Arc<SkillLoadOutcome>,
+    skills: HostSkillsSnapshot,
 }
 
 #[derive(Debug, Deserialize)]
@@ -33,8 +32,17 @@ struct UseSkillArgs {
 }
 
 impl UseSkillHandler {
+    #[cfg(test)]
     pub(crate) fn new(skills: Arc<SkillLoadOutcome>) -> Self {
-        Self { skills }
+        Self {
+            skills: HostSkillsSnapshot::new(skills),
+        }
+    }
+
+    pub(crate) fn from_snapshot(skills: Arc<HostSkillsSnapshot>) -> Self {
+        Self {
+            skills: (*skills).clone(),
+        }
     }
 }
 
@@ -64,21 +72,21 @@ impl UseSkillHandler {
             ));
         };
         let UseSkillArgs { name } = parse_arguments(arguments)?;
-        let skill = match enabled_skill_by_name(&self.skills, &name) {
+        let skill = match enabled_skill_by_name(self.skills.outcome(), &name) {
             Ok(skill) => skill,
             Err(err) => {
                 emit_skill_load_item(
                     &invocation,
                     &name,
-                    skill_path_for_name(&self.skills, &name),
+                    skill_path_for_name(self.skills.outcome(), &name),
                     Err(&err),
                 )
                 .await;
                 return Err(err);
             }
         };
-        let skill_injection = match load_skill_injection(skill, Some(&self.skills)).await {
-            Ok(skill_injection) => skill_injection,
+        let skill_prompt = match self.skills.load_skill_prompt(skill).await {
+            Ok(skill_prompt) => skill_prompt,
             Err(message) => {
                 let err = FunctionCallError::RespondToModel(message);
                 emit_skill_load_item(
@@ -98,7 +106,7 @@ impl UseSkillHandler {
             Ok(()),
         )
         .await;
-        let response = SkillInstructions::from(&skill_injection).body();
+        let response = skill_prompt.body();
         Ok(boxed_tool_output(FunctionToolOutput::from_text(
             response,
             Some(true),
@@ -111,7 +119,7 @@ impl CoreToolRuntime for UseSkillHandler {}
 fn enabled_skill_by_name<'a>(
     skills: &'a SkillLoadOutcome,
     name: &str,
-) -> Result<&'a codex_core_skills::SkillMetadata, FunctionCallError> {
+) -> Result<&'a SkillMetadata, FunctionCallError> {
     let enabled_matches = skills
         .skills
         .iter()

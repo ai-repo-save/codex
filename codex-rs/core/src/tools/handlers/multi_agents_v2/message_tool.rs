@@ -7,7 +7,6 @@ use super::*;
 use crate::agent_communication::AgentCommunicationContext;
 use crate::agent_communication::AgentCommunicationKind;
 use crate::tools::context::FunctionToolOutput;
-use codex_protocol::protocol::InterAgentCommunication;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MessageDeliveryMode {
@@ -16,17 +15,10 @@ pub(crate) enum MessageDeliveryMode {
 }
 
 impl MessageDeliveryMode {
-    /// Returns whether the produced communication should start a turn immediately.
-    fn apply(self, communication: InterAgentCommunication) -> InterAgentCommunication {
+    fn trigger_turn(self) -> bool {
         match self {
-            Self::QueueOnly => InterAgentCommunication {
-                trigger_turn: false,
-                ..communication
-            },
-            Self::TriggerTurn => InterAgentCommunication {
-                trigger_turn: true,
-                ..communication
-            },
+            Self::QueueOnly => false,
+            Self::TriggerTurn => true,
         }
     }
 }
@@ -70,6 +62,7 @@ pub(crate) async fn handle_message_string_tool(
         session,
         turn,
         call_id,
+        source,
         ..
     } = invocation;
     let receiver_thread_id = resolve_agent_target(&session, &turn, &target).await?;
@@ -106,7 +99,7 @@ pub(crate) async fn handle_message_string_tool(
         )
         .await;
         return Err(error);
-    };
+    }
 
     let result = if let Some(request_id) = in_reply_to {
         if mode != MessageDeliveryMode::QueueOnly {
@@ -152,20 +145,25 @@ pub(crate) async fn handle_message_string_tool(
                         author,
                         receiver_agent_path.clone(),
                         message,
-                        turn.config.multi_agent_v2.encrypt_messages,
+                        &source,
+                        mode.trigger_turn(),
                     );
                     let kind = match mode {
                         MessageDeliveryMode::QueueOnly => AgentCommunicationKind::Message,
                         MessageDeliveryMode::TriggerTurn => AgentCommunicationKind::Followup,
                     };
                     let context = AgentCommunicationContext::new(kind, session.thread_id);
+                    let parent_turn_id = matches!(mode, MessageDeliveryMode::TriggerTurn)
+                        .then(|| turn.sub_id.clone());
                     session
                         .services
                         .agent_control
                         .send_inter_agent_communication(
                             receiver_thread_id,
-                            mode.apply(communication),
+                            communication,
                             context,
+                            parent_turn_id,
+                            turn.turn_metadata_state.root_turn_id(),
                         )
                         .await
                         .map(|_| ())

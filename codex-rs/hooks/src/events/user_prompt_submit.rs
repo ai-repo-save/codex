@@ -11,14 +11,12 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 
 use super::common;
 use super::prompt_output;
-use crate::engine::CommandShell;
+use crate::engine::ClaudeHooksEngine;
 use crate::engine::ConfiguredHandler;
 use crate::engine::HandlerRunResult;
-use crate::engine::PromptHookRunner;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
 use crate::output_spill::AdditionalContext;
-use crate::output_spill::HookOutputSpiller;
 use crate::schema::NullableString;
 use crate::schema::SubagentCommandInputFields;
 use crate::schema::UserPromptSubmitCommandInput;
@@ -65,15 +63,11 @@ pub(crate) fn preview(
 }
 
 pub(crate) async fn run(
-    handlers: &[ConfiguredHandler],
-    shell: &CommandShell,
-    output_spiller: &HookOutputSpiller,
-    prompt_runner: Option<&dyn PromptHookRunner>,
+    engine: &ClaudeHooksEngine,
     request: UserPromptSubmitRequest,
 ) -> UserPromptSubmitOutcome {
-    let session_id = request.session_id;
     let matched = dispatcher::select_handlers(
-        handlers,
+        &engine.handlers,
         HookEventName::UserPromptSubmit,
         /*matcher_input*/ None,
     );
@@ -110,21 +104,20 @@ pub(crate) async fn run(
     };
 
     let results = dispatcher::execute_handlers(
+        engine,
         matched,
         input_json,
-        dispatcher::HandlerExecutionContext {
-            shell,
-            prompt_runner,
-            cwd: request.cwd.as_path(),
-            turn_id: Some(request.turn_id),
-        },
+        request.cwd.as_path(),
+        Some(request.turn_id),
         parse_completed,
     )
     .await;
 
     let (mut outcome, additional_contexts_for_model) = outcome_from_results(results);
-    outcome.additional_contexts = output_spiller
-        .maybe_spill_additional_contexts(session_id, additional_contexts_for_model)
+    outcome.additional_contexts = engine
+        .command_runtime
+        .output_spiller()
+        .maybe_spill_additional_contexts(additional_contexts_for_model)
         .await;
     outcome
 }
@@ -192,7 +185,8 @@ fn parse_completed(
                                     text: system_message,
                                 });
                             }
-                            if parsed.invalid_block_reason.is_none()
+                            if (!handler.can_apply_control_effects()
+                                || parsed.invalid_block_reason.is_none())
                                 && let Some(additional_context) = parsed.additional_context
                             {
                                 common::append_additional_context(
@@ -203,31 +197,35 @@ fn parse_completed(
                                 );
                             }
                             let _ = parsed.universal.suppress_output;
-                            if !parsed.universal.continue_processing {
-                                status = HookRunStatus::Stopped;
-                                should_stop = true;
-                                stop_reason = parsed.universal.stop_reason.clone();
-                                if let Some(stop_reason_text) = parsed.universal.stop_reason {
+                            if handler.can_apply_control_effects() {
+                                if !parsed.universal.continue_processing {
+                                    status = HookRunStatus::Stopped;
+                                    should_stop = true;
+                                    stop_reason = parsed.universal.stop_reason.clone();
+                                    if let Some(stop_reason_text) = parsed.universal.stop_reason {
+                                        entries.push(HookOutputEntry {
+                                            kind: HookOutputEntryKind::Stop,
+                                            text: stop_reason_text,
+                                        });
+                                    }
+                                } else if let Some(invalid_block_reason) =
+                                    parsed.invalid_block_reason
+                                {
+                                    status = HookRunStatus::Failed;
                                     entries.push(HookOutputEntry {
-                                        kind: HookOutputEntryKind::Stop,
-                                        text: stop_reason_text,
+                                        kind: HookOutputEntryKind::Error,
+                                        text: invalid_block_reason,
                                     });
-                                }
-                            } else if let Some(invalid_block_reason) = parsed.invalid_block_reason {
-                                status = HookRunStatus::Failed;
-                                entries.push(HookOutputEntry {
-                                    kind: HookOutputEntryKind::Error,
-                                    text: invalid_block_reason,
-                                });
-                            } else if parsed.should_block {
-                                status = HookRunStatus::Blocked;
-                                should_stop = true;
-                                stop_reason = parsed.reason.clone();
-                                if let Some(reason) = parsed.reason {
-                                    entries.push(HookOutputEntry {
-                                        kind: HookOutputEntryKind::Feedback,
-                                        text: reason,
-                                    });
+                                } else if parsed.should_block {
+                                    status = HookRunStatus::Blocked;
+                                    should_stop = true;
+                                    stop_reason = parsed.reason.clone();
+                                    if let Some(reason) = parsed.reason {
+                                        entries.push(HookOutputEntry {
+                                            kind: HookOutputEntryKind::Feedback,
+                                            text: reason,
+                                        });
+                                    }
                                 }
                             }
                         } else if prompt_output::should_fail_unparsed_stdout(
@@ -251,7 +249,7 @@ fn parse_completed(
                     }
                 }
             }
-            Some(2) => {
+            Some(2) if handler.can_apply_control_effects() => {
                 if let Some(reason) = common::trimmed_non_empty(&run_result.stderr) {
                     status = HookRunStatus::Blocked;
                     should_stop = true;
@@ -344,7 +342,6 @@ mod tests {
     use crate::engine::ConfiguredHandler;
     use crate::engine::ConfiguredHandlerKind;
     use crate::engine::HandlerRunResult;
-    use crate::engine::command_runner::CommandRunResult;
     use crate::output_spill::AdditionalContext;
 
     #[test]
@@ -427,13 +424,10 @@ mod tests {
 
     #[test]
     fn claude_block_decision_requires_reason() {
+        let stdout = r#"{"decision":"block","hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"do not inject"}}"#;
         let parsed = parse_completed(
             &handler(),
-            run_result(
-                Some(0),
-                r#"{"decision":"block","hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"do not inject"}}"#,
-                "",
-            ),
+            run_result(Some(0), stdout, ""),
             Some("turn-1".to_string()),
         );
 
@@ -453,6 +447,21 @@ mod tests {
                 text: "UserPromptSubmit hook returned decision:block without a non-empty reason"
                     .to_string(),
             }]
+        );
+
+        let async_handler = handler_with_async(/*async*/ true);
+        let parsed = parse_completed(
+            &async_handler,
+            run_result(Some(0), stdout, ""),
+            Some("turn-1".to_string()),
+        );
+        assert_eq!(parsed.completed.run.status, HookRunStatus::Completed);
+        assert_eq!(
+            parsed.completed.run.entries,
+            vec![HookOutputEntry {
+                kind: HookOutputEntryKind::Context,
+                text: "do not inject".to_string(),
+            }],
         );
     }
 
@@ -480,6 +489,15 @@ mod tests {
                 text: "blocked by policy".to_string(),
             }]
         );
+
+        let async_handler = handler_with_async(/*async*/ true);
+        let parsed = parse_completed(
+            &async_handler,
+            run_result(Some(2), "", "blocked by policy\n"),
+            Some("turn-1".to_string()),
+        );
+        assert_eq!(parsed.completed.run.status, HookRunStatus::Failed);
+        assert!(!parsed.data.should_stop);
     }
 
     #[test]
@@ -594,19 +612,24 @@ mod tests {
     }
 
     fn handler() -> ConfiguredHandler {
+        handler_with_async(/*async*/ false)
+    }
+
+    fn handler_with_async(r#async: bool) -> ConfiguredHandler {
         ConfiguredHandler {
             event_name: HookEventName::UserPromptSubmit,
             matcher: None,
-            kind: ConfiguredHandlerKind::Command {
-                command: "echo hook".to_string(),
-                timeout_sec: 5,
-            },
+            timeout_sec: 5,
             status_message: None,
             additional_context_limit: Default::default(),
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: codex_protocol::protocol::HookSource::User,
             display_order: 0,
-            env: std::collections::HashMap::new(),
+            kind: ConfiguredHandlerKind::Command {
+                command: "echo hook".to_string(),
+                r#async,
+                env: std::collections::HashMap::new(),
+            },
         }
     }
 
@@ -614,20 +637,20 @@ mod tests {
         ConfiguredHandler {
             event_name: HookEventName::UserPromptSubmit,
             matcher: None,
+            timeout_sec: 30,
             kind: ConfiguredHandlerKind::Prompt {
                 prompt: "Review $$ARGUMENTS".to_string(),
                 filter: None,
                 model: None,
                 reasoning_effort: None,
-                timeout_sec: 30,
                 fail_closed,
+                env: std::collections::HashMap::new(),
             },
             status_message: None,
             additional_context_limit: Default::default(),
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: codex_protocol::protocol::HookSource::User,
             display_order: 0,
-            env: std::collections::HashMap::new(),
         }
     }
 
@@ -638,7 +661,7 @@ mod tests {
     }
 
     fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> HandlerRunResult {
-        HandlerRunResult::completed(CommandRunResult {
+        HandlerRunResult {
             started_at: 1,
             completed_at: 2,
             duration_ms: 1,
@@ -646,6 +669,7 @@ mod tests {
             stdout: stdout.to_string(),
             stderr: stderr.to_string(),
             error: None,
-        })
+            prompt_filter_skipped: false,
+        }
     }
 }

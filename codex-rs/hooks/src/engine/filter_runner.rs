@@ -36,7 +36,7 @@ pub(crate) async fn run_prompt_filter(
     input_json: &str,
     cwd: &Path,
 ) -> PromptFilterOutcome {
-    let ConfiguredHandlerKind::Prompt { filter, .. } = &handler.kind else {
+    let ConfiguredHandlerKind::Prompt { env, filter, .. } = &handler.kind else {
         return PromptFilterOutcome::Run;
     };
     let Some(filter) = filter else {
@@ -45,7 +45,7 @@ pub(crate) async fn run_prompt_filter(
     let completion = run_shell_command(ShellCommandRequest {
         shell,
         command_text: &filter.command,
-        env: &handler.env,
+        env,
         input_json,
         cwd,
         timeout_sec: filter.timeout_sec,

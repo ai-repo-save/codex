@@ -136,6 +136,7 @@ async fn run_filter_command(
 ) -> super::super::command_runner::CommandRunCompletion {
     let handler = filter_handler(command, timeout_sec);
     let ConfiguredHandlerKind::Prompt {
+        env,
         filter: Some(filter),
         ..
     } = &handler.kind
@@ -146,7 +147,7 @@ async fn run_filter_command(
     run_shell_command(ShellCommandRequest {
         shell: &command_shell,
         command_text: &filter.command,
-        env: &handler.env,
+        env,
         input_json: FILTER_INPUT,
         cwd: Path::new("."),
         timeout_sec: filter.timeout_sec,
@@ -162,6 +163,7 @@ fn filter_handler(command: String, timeout_sec: u64) -> ConfiguredHandler {
         matcher: None,
         kind: ConfiguredHandlerKind::Prompt {
             prompt: FILTER_PROMPT.to_string(),
+            env: std::collections::HashMap::new(),
             filter: Some(ConfiguredPromptFilter {
                 command,
                 timeout_sec,
@@ -176,7 +178,6 @@ fn filter_handler(command: String, timeout_sec: u64) -> ConfiguredHandler {
         source_path: AbsolutePathBuf::current_dir().expect("current directory"),
         source: HookSource::User,
         display_order: 0,
-        env: std::collections::HashMap::new(),
     }
 }
 

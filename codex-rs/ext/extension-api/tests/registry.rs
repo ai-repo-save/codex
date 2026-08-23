@@ -8,10 +8,13 @@ use codex_extension_api::ConfigContributor;
 use codex_extension_api::ContextContributor;
 use codex_extension_api::ContextualUserFragment;
 use codex_extension_api::ExtensionData;
+use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::ExtensionEventSink;
 use codex_extension_api::ExtensionFuture;
+use codex_extension_api::ExtensionMetrics;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::ExtensionWarning;
+use codex_extension_api::McpServerContributionContext;
 use codex_extension_api::PromptFragment;
 use codex_extension_api::PromptSlot;
 use codex_extension_api::SkillInvocationContributor;
@@ -32,10 +35,36 @@ use codex_protocol::items::TurnItem;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::ReviewDecision;
+use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::protocol::WarningEvent;
 use pretty_assertions::assert_eq;
 
 struct AllContributors;
+
+#[test]
+fn mcp_contribution_context_identifies_the_running_thread() {
+    let config = ();
+    let thread_init = ExtensionDataInit::new();
+    let thread_store = ExtensionData::new("child-thread");
+    let session_source = SessionSource::SubAgent(SubAgentSource::Review);
+
+    let thread_context = McpServerContributionContext::for_step(
+        &config,
+        &thread_init,
+        &thread_store,
+        "codex_work_cca",
+        &[],
+        /*executor_capability_discovery*/ None,
+    )
+    .with_session_source(&session_source);
+
+    assert_eq!(thread_context.session_source(), Some(&session_source));
+    assert_eq!(
+        McpServerContributionContext::global(&config).session_source(),
+        None
+    );
+}
 
 impl ContextContributor for AllContributors {
     fn contribute_thread_context<'a>(
@@ -61,6 +90,7 @@ impl TurnInputContributor for AllContributors {
     fn contribute<'a>(
         &'a self,
         input: TurnInputContext,
+        _extension_metrics: Option<Arc<dyn ExtensionMetrics>>,
         _session_store: &'a ExtensionData,
         _thread_store: &'a ExtensionData,
         _turn_store: &'a ExtensionData,
@@ -105,6 +135,7 @@ impl ApprovalReviewContributor for AllContributors {
         _session_store: &'a ExtensionData,
         _thread_store: &'a ExtensionData,
         _prompt: &'a str,
+        _extension_metrics: Option<Arc<dyn ExtensionMetrics>>,
     ) -> ExtensionFuture<'a, Option<ReviewDecision>> {
         Box::pin(async move {
             let _self = self;
@@ -146,6 +177,7 @@ async fn build_round_trips_every_contributor_category() {
                 &ExtensionData::new("session"),
                 &ExtensionData::new("thread"),
                 "review this",
+                /*extension_metrics*/ None,
             )
             .await,
         Some(ReviewDecision::ApprovedForSession)
@@ -292,6 +324,7 @@ impl ApprovalReviewContributor for RecordingApprovalContributor {
         session_store: &'a ExtensionData,
         thread_store: &'a ExtensionData,
         prompt: &'a str,
+        _extension_metrics: Option<Arc<dyn ExtensionMetrics>>,
     ) -> ExtensionFuture<'a, Option<ReviewDecision>> {
         Box::pin(async move {
             self.calls
@@ -333,6 +366,7 @@ async fn approval_review_returns_first_claim_and_short_circuits() {
             &ExtensionData::new("session-1"),
             &ExtensionData::new("thread-1"),
             "allow command?",
+            /*extension_metrics*/ None,
         )
         .await;
 
@@ -421,6 +455,7 @@ async fn empty_registry_does_not_claim_approval_review() {
                 &ExtensionData::new("session"),
                 &ExtensionData::new("thread"),
                 "unclaimed",
+                /*extension_metrics*/ None,
             )
             .await,
         None

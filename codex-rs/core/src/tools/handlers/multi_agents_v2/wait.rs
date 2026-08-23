@@ -1,7 +1,7 @@
 use super::*;
 use crate::session::InputQueueActivity;
-use codex_agent_control::WaitAgentTimeoutOptions;
-use codex_agent_control::create_wait_agent_tool_v2;
+use crate::tools::handlers::multi_agents_spec::WaitAgentTimeoutOptions;
+use crate::tools::handlers::multi_agents_spec::create_wait_agent_tool_v2;
 use codex_tools::ToolSpec;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -10,20 +10,9 @@ use tokio::time::timeout_at;
 
 pub(crate) const AGENT_MAILBOX_ACTIVITY_MESSAGE: &str = "Agent mailbox activity is available.";
 
+#[derive(Default)]
 pub(crate) struct Handler {
     options: WaitAgentTimeoutOptions,
-}
-
-impl Default for Handler {
-    fn default() -> Self {
-        Self {
-            options: WaitAgentTimeoutOptions {
-                default_timeout_ms: DEFAULT_WAIT_TIMEOUT_MS,
-                min_timeout_ms: MIN_WAIT_TIMEOUT_MS,
-                max_timeout_ms: MAX_WAIT_TIMEOUT_MS,
-            },
-        }
-    }
 }
 
 impl Handler {
@@ -63,18 +52,14 @@ impl Handler {
         let min_timeout_ms = turn.config.multi_agent_v2.min_wait_timeout_ms;
         let max_timeout_ms = turn.config.multi_agent_v2.max_wait_timeout_ms;
         let default_timeout_ms = turn.config.multi_agent_v2.default_wait_timeout_ms;
-        let timeout_ms = match args.timeout_ms {
-            Some(ms) if ms < min_timeout_ms => {
-                return Err(FunctionCallError::RespondToModel(format!(
-                    "timeout_ms must be at least {min_timeout_ms}"
-                )));
-            }
+        let requested_timeout_ms = args.timeout_ms;
+        let timeout_ms = match requested_timeout_ms {
             Some(ms) if ms > max_timeout_ms => {
                 return Err(FunctionCallError::RespondToModel(format!(
                     "timeout_ms must be at most {max_timeout_ms}"
                 )));
             }
-            Some(ms) => ms,
+            Some(ms) => ms.max(min_timeout_ms),
             None => default_timeout_ms,
         };
 
@@ -123,7 +108,7 @@ impl Handler {
         if let WaitOutcome::AgentMailboxActivity(revision) = outcome {
             session.input_queue.consume_agent_mailbox_activity(revision);
         }
-        let result = WaitAgentResult::from_outcome(outcome);
+        let result = WaitAgentResult::from_outcome(outcome, requested_timeout_ms, timeout_ms);
 
         session
             .emit_turn_item_completed(
@@ -170,15 +155,25 @@ pub(crate) struct WaitAgentResult {
 }
 
 impl WaitAgentResult {
-    fn from_outcome(outcome: WaitOutcome) -> Self {
+    fn from_outcome(
+        outcome: WaitOutcome,
+        requested_timeout_ms: Option<i64>,
+        timeout_ms: i64,
+    ) -> Self {
         let message = match outcome {
             WaitOutcome::AgentMailboxActivity(_) => AGENT_MAILBOX_ACTIVITY_MESSAGE,
             WaitOutcome::MailboxActivity => "Wait completed.",
             WaitOutcome::Steered => "Wait interrupted by new input.",
             WaitOutcome::TimedOut => "Wait timed out.",
         };
+        let message = match requested_timeout_ms {
+            Some(requested_timeout_ms) if requested_timeout_ms < timeout_ms => format!(
+                "{message}\n\nRequested timeout of {requested_timeout_ms}ms was clamped to the minimum of {timeout_ms}ms."
+            ),
+            Some(_) | None => message.to_string(),
+        };
         Self {
-            message: message.to_string(),
+            message,
             timed_out: outcome == WaitOutcome::TimedOut,
         }
     }

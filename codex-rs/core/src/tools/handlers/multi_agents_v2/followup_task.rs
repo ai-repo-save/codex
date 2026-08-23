@@ -2,22 +2,10 @@ use super::message_tool::FollowupTaskArgs;
 use super::message_tool::MessageDeliveryMode;
 use super::message_tool::handle_message_string_tool;
 use super::*;
-use codex_agent_control::MessageToolOptions;
-use codex_agent_control::create_followup_task_tool;
+use crate::tools::handlers::multi_agents_spec::create_followup_task_tool;
 use codex_tools::ToolSpec;
 
-#[derive(Default)]
-pub(crate) struct Handler {
-    options: MessageToolOptions,
-}
-
-impl Handler {
-    pub(crate) fn new(encrypt_messages: bool) -> Self {
-        Self {
-            options: MessageToolOptions { encrypt_messages },
-        }
-    }
-}
+pub(crate) struct Handler;
 
 impl ToolExecutor<ToolInvocation> for Handler {
     fn tool_name(&self) -> ToolName {
@@ -25,7 +13,7 @@ impl ToolExecutor<ToolInvocation> for Handler {
     }
 
     fn spec(&self) -> ToolSpec {
-        create_followup_task_tool(self.options)
+        create_followup_task_tool()
     }
 
     fn handle(&self, invocation: ToolInvocation) -> codex_tools::ToolExecutorFuture<'_> {

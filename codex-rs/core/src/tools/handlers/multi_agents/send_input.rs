@@ -1,6 +1,6 @@
 use super::*;
 use crate::agent::control::render_input_preview;
-use codex_agent_control::create_send_input_tool_v1;
+use crate::tools::handlers::multi_agents_spec::create_send_input_tool_v1;
 use codex_tools::ToolSpec;
 
 pub(crate) struct Handler;
@@ -88,7 +88,12 @@ impl Handler {
             .await;
         let agent_control = session.services.agent_control.clone();
         let result = agent_control
-            .send_input(receiver_thread_id, input_items)
+            .send_input(
+                receiver_thread_id,
+                input_items,
+                Some(turn.sub_id.clone()),
+                turn.turn_metadata_state.root_turn_id(),
+            )
             .await
             .map_err(|err| collab_agent_error(receiver_thread_id, err));
         let status = session

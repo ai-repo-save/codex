@@ -5,14 +5,13 @@ use crate::agent::next_thread_spawn_depth;
 use crate::agent::role::DEFAULT_ROLE_NAME;
 use crate::agent_communication::AgentCommunicationContext;
 use crate::agent_communication::AgentCommunicationKind;
+use crate::session::multi_agents::resolve_usage_hints;
+use crate::tools::handlers::multi_agents_spec::SpawnAgentToolOptions;
+use crate::tools::handlers::multi_agents_spec::create_spawn_agent_tool_v2;
 use crate::tools::handlers::multi_agents_v2::message_tool::message_content;
-use codex_agent_control::SpawnAgentToolOptions;
-use codex_agent_control::create_spawn_agent_tool_v2;
 use codex_protocol::AgentPath;
-use codex_protocol::config_types::CollaborationMode;
-use codex_protocol::config_types::ModeKind;
+use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::SpawnContextInheritance;
-use codex_protocol::user_input::UserInput;
 use codex_tools::ToolSpec;
 
 #[derive(Default)]
@@ -45,11 +44,13 @@ async fn handle_spawn_agent(
 ) -> Result<SpawnAgentResult, FunctionCallError> {
     let ToolInvocation {
         session,
-        turn,
+        step_context,
         payload,
         call_id,
+        source,
         ..
     } = invocation;
+    let turn = &step_context.turn;
     let arguments = function_arguments(payload)?;
     let args: SpawnAgentArgs = parse_arguments(&arguments)?;
     let fork_mode = args.fork_mode()?;
@@ -65,13 +66,13 @@ async fn handle_spawn_agent(
             SpawnContextInheritance::LastNTurns { turns }
         }
     };
+    let message = message_content(args.message)?;
     let role_name = args
         .agent_type
         .as_deref()
         .map(str::trim)
         .filter(|role| !role.is_empty());
 
-    let message = message_content(args.message)?;
     let session_source = turn.session_source.clone();
     let child_depth = next_thread_spawn_depth(&session_source);
     let mut config =
@@ -80,9 +81,6 @@ async fn handle_spawn_agent(
         config.service_tier = Some(service_tier.clone());
     }
     let is_full_history_fork = matches!(fork_mode, Some(SpawnAgentForkMode::FullHistory));
-    if is_full_history_fork {
-        reject_full_fork_agent_type_override(role_name)?;
-    }
     apply_requested_spawn_agent_model_overrides(
         &session,
         turn.as_ref(),
@@ -91,8 +89,13 @@ async fn handle_spawn_agent(
         args.reasoning_effort.clone(),
     )
     .await?;
-    if !is_full_history_fork {
+    if !is_full_history_fork || role_name.is_some() {
         apply_spawn_agent_role(&session, &mut config, role_name).await?;
+        if is_full_history_fork && config.developer_instructions.is_none() {
+            config
+                .developer_instructions
+                .clone_from(&turn.developer_instructions);
+        }
     }
     apply_spawn_agent_service_tier(
         &session,
@@ -102,8 +105,6 @@ async fn handle_spawn_agent(
     )
     .await?;
     apply_spawn_agent_runtime_overrides(&mut config, turn.as_ref())?;
-    let collaboration_mode =
-        resolve_spawn_collaboration_mode(turn.as_ref(), &config, args.collaboration_mode)?;
     let configured_model = config.model.clone().ok_or_else(|| {
         FunctionCallError::RespondToModel(
             "spawn_agent could not resolve the effective child model".to_string(),
@@ -123,47 +124,63 @@ async fn handle_spawn_agent(
             "spawned agent is missing a canonical task name".to_string(),
         )
     })?;
-    let spawn_options = SpawnAgentOptions {
-        fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
-        fork_mode,
-        parent_thread_id: Some(session.thread_id),
-        environments: Some(turn.environments.to_selections()),
-        collaboration_mode: Some(collaboration_mode),
-    };
-    let spawned_agent = if turn.config.multi_agent_v2.encrypt_messages {
-        let author = turn
-            .session_source
-            .get_agent_path()
-            .unwrap_or_else(AgentPath::root);
-        let communication =
-            communication_from_tool_message(author, new_agent_path.clone(), message, true);
-        let context =
-            AgentCommunicationContext::new(AgentCommunicationKind::Spawn, session.thread_id);
-        Box::pin(
-            session
-                .services
-                .agent_control
-                .spawn_agent_with_communication(
-                    config,
-                    communication,
-                    context,
-                    Some(spawn_source),
-                    spawn_options,
+    let author = turn
+        .session_source
+        .get_agent_path()
+        .unwrap_or_else(AgentPath::root);
+    let communication = communication_from_tool_message(
+        author,
+        new_agent_path.clone(),
+        message,
+        &source,
+        /*trigger_turn*/ true,
+    );
+    let context = AgentCommunicationContext::new(AgentCommunicationKind::Spawn, session.thread_id);
+    let multi_agent_v2_usage_hints =
+        if is_full_history_fork && turn.multi_agent_version == MultiAgentVersion::V2 {
+            let child_model_info = match config.model.as_deref() {
+                Some(model) if model != turn.model_info.slug => Some(
+                    session
+                        .services
+                        .models_manager
+                        .get_model_info(model, &config.to_models_manager_config())
+                        .await,
                 ),
-        )
-        .await
-    } else {
-        Box::pin(session.services.agent_control.spawn_agent_with_metadata(
-            config,
-            vec![UserInput::Text {
-                text: message,
-                text_elements: Vec::new(),
-            }],
-            Some(spawn_source),
-            spawn_options,
-        ))
-        .await
-    }
+                _ => None,
+            };
+            let child_catalog = child_model_info
+                .as_ref()
+                .unwrap_or(&turn.model_info)
+                .model_messages
+                .as_ref()
+                .and_then(|messages| messages.multi_agent.as_ref())
+                .and_then(|messages| messages.role.as_ref());
+            Some(resolve_usage_hints(&config.multi_agent_v2, child_catalog))
+        } else {
+            None
+        };
+    let spawned_agent = Box::pin(
+        session
+            .services
+            .agent_control
+            .spawn_agent_with_communication(
+                config,
+                communication,
+                context,
+                Some(spawn_source),
+                SpawnAgentOptions {
+                    fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
+                    fork_mode,
+                    parent_thread_id: Some(session.thread_id),
+                    parent_turn_id: Some(turn.sub_id.clone()),
+                    root_turn_id: turn.turn_metadata_state.root_turn_id(),
+                    environments: Some(step_context.environments.to_selections()),
+                    collaboration_mode: Some(turn.collaboration_mode()),
+                    multi_agent_v2_usage_hints,
+                },
+            ),
+    )
+    .await
     .map_err(collab_spawn_error)?;
     let new_thread_id = spawned_agent.thread_id;
     let agent_snapshot = session
@@ -188,7 +205,7 @@ async fn handle_spawn_agent(
         .and_then(|snapshot| snapshot.service_tier.clone());
     emit_sub_agent_activity(
         &session,
-        &turn,
+        turn,
         SubAgentActivityItem {
             id: call_id,
             agent_thread_id: new_thread_id,
@@ -237,53 +254,8 @@ struct SpawnAgentArgs {
     model: Option<String>,
     reasoning_effort: Option<ReasoningEffort>,
     service_tier: Option<String>,
-    collaboration_mode: Option<SpawnCollaborationMode>,
     fork_turns: Option<String>,
     fork_context: Option<bool>,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum SpawnCollaborationMode {
-    Default,
-    Plan,
-}
-
-impl From<SpawnCollaborationMode> for ModeKind {
-    fn from(mode: SpawnCollaborationMode) -> Self {
-        match mode {
-            SpawnCollaborationMode::Default => Self::Default,
-            SpawnCollaborationMode::Plan => Self::Plan,
-        }
-    }
-}
-
-fn resolve_spawn_collaboration_mode(
-    turn: &crate::session::turn_context::TurnContext,
-    config: &crate::config::Config,
-    requested_mode: Option<SpawnCollaborationMode>,
-) -> Result<CollaborationMode, FunctionCallError> {
-    let mut collaboration_mode = turn.collaboration_mode();
-    if let Some(requested_mode) = requested_mode {
-        let requested_mode = ModeKind::from(requested_mode);
-        let preset = config
-            .collaboration_mode_presets
-            .iter()
-            .find(|preset| preset.mode == Some(requested_mode))
-            .ok_or_else(|| {
-                FunctionCallError::RespondToModel(format!(
-                    "collaboration mode `{}` is unavailable",
-                    requested_mode.display_name().to_lowercase()
-                ))
-            })?;
-        collaboration_mode = collaboration_mode.apply_mask(preset);
-    }
-
-    Ok(collaboration_mode.with_updates(
-        config.model.clone(),
-        Some(config.model_reasoning_effort.clone()),
-        /*developer_instructions*/ None,
-    ))
 }
 
 impl SpawnAgentArgs {

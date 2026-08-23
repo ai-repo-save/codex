@@ -10,7 +10,6 @@ use super::resolve_permission_request_decision;
 use crate::engine::ConfiguredHandler;
 use crate::engine::ConfiguredHandlerKind;
 use crate::engine::HandlerRunResult;
-use crate::engine::command_runner::CommandRunResult;
 
 const RUNTIME_FAILURE: &str = "model request failed";
 const TIMEOUT_FAILURE: &str = "prompt hook timed out after 30s";
@@ -173,7 +172,7 @@ fn failed_run(error: &str) -> HandlerRunResult {
 }
 
 fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> HandlerRunResult {
-    HandlerRunResult::completed(CommandRunResult {
+    HandlerRunResult {
         started_at: 1,
         completed_at: 2,
         duration_ms: 1,
@@ -181,5 +180,6 @@ fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> HandlerRunR
         stdout: stdout.to_string(),
         stderr: stderr.to_string(),
         error: None,
-    })
+        prompt_filter_skipped: false,
+    }
 }

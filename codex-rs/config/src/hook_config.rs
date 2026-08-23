@@ -172,6 +172,17 @@ pub enum HookHandlerConfig {
         )]
         additional_context_limit: Option<usize>,
     },
+    #[serde(rename = "mcp_tool")]
+    McpTool {
+        server: String,
+        tool: String,
+        #[serde(default, deserialize_with = "deserialize_mcp_tool_input")]
+        input: serde_json::Map<String, serde_json::Value>,
+        #[serde(default, rename = "timeout")]
+        timeout_sec: Option<u64>,
+        #[serde(default, rename = "statusMessage")]
+        status_message: Option<String>,
+    },
     #[serde(rename = "prompt")]
     Prompt {
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -203,6 +214,7 @@ impl HookHandlerConfig {
             Self::Command { id, .. } | Self::Prompt { id, .. } | Self::Agent { id } => {
                 id.as_deref()
             }
+            Self::McpTool { .. } => None,
         }
     }
 }
@@ -216,6 +228,22 @@ pub struct PromptHookFilterConfig {
     #[schemars(range(min = 1, max = 60))]
     #[serde(default, rename = "timeout")]
     pub timeout_sec: Option<u64>,
+}
+
+// Reject values such as null that cannot be represented in TOML for trust hashing.
+fn deserialize_mcp_tool_input<'de, D>(
+    deserializer: D,
+) -> Result<serde_json::Map<String, serde_json::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let input = serde_json::Map::deserialize(deserializer)?;
+    toml::Value::try_from(&input).map_err(|error| {
+        serde::de::Error::custom(format!(
+            "MCP hook input must be representable as TOML: {error}"
+        ))
+    })?;
+    Ok(input)
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -3,7 +3,7 @@ use crate::agent::AgentControl;
 use crate::agent::control::ParentRequestOutcome;
 use crate::agent_communication::AgentCommunicationContext;
 use crate::agent_communication::AgentCommunicationKind;
-use codex_agent_control::create_ask_parent_tool;
+use crate::tools::handlers::multi_agents_spec::create_ask_parent_tool;
 use codex_protocol::items::ASK_PARENT_REQUIRES_AUTHORITATIVE_MESSAGE;
 use codex_protocol::items::AskParentMode;
 use codex_tools::ToolSpec;
@@ -46,6 +46,7 @@ impl Handler {
             payload,
             cancellation_token,
             call_id,
+            source,
             ..
         } = invocation;
         let args: AskParentArgs = parse_arguments(&function_arguments(payload)?)?;
@@ -139,7 +140,8 @@ impl Handler {
             child_path,
             parent_path.clone(),
             content,
-            turn.config.multi_agent_v2.encrypt_messages,
+            &source,
+            /*trigger_turn*/ true,
         );
         let context = AgentCommunicationContext::new(
             AgentCommunicationKind::ParentRequest,
@@ -148,7 +150,13 @@ impl Handler {
         if let Err(err) = session
             .services
             .agent_control
-            .send_inter_agent_communication(parent_thread_id, communication, context)
+            .send_inter_agent_communication(
+                parent_thread_id,
+                communication,
+                context,
+                Some(turn.sub_id.clone()),
+                turn.turn_metadata_state.root_turn_id(),
+            )
             .await
         {
             emit_ask_parent_item(

@@ -10,6 +10,7 @@ use codex_tools::ToolCall;
 use codex_tools::ToolExecutor;
 
 use crate::ExtensionData;
+use crate::ExtensionMetrics;
 
 mod context;
 mod mcp;
@@ -26,6 +27,8 @@ mod world_state;
 pub use context::TurnContextContributionInput;
 pub use mcp::McpServerContribution;
 pub use mcp::McpServerContributionContext;
+pub use mcp::SelectedPluginIdentity;
+pub use mcp::SelectedPluginSnapshot;
 pub use prompt::PromptFragment;
 pub use prompt::PromptSlot;
 pub use rewind_context::RewindContextContributionInput;
@@ -33,6 +36,7 @@ pub use skill_invocation::SkillInvocationInput;
 pub use skill_invocation::SkillInvocationKind;
 pub use terminal_message::TerminalMessageDisposition;
 pub use terminal_message::TerminalMessageInput;
+pub use thread_lifecycle::ThreadIdleCause;
 pub use thread_lifecycle::ThreadIdleInput;
 pub use thread_lifecycle::ThreadOriginator;
 pub use thread_lifecycle::ThreadResumeInput;
@@ -259,10 +263,12 @@ pub trait TurnLifecycleContributor: Send + Sync {
 /// host-specific dependencies belong on the extension value installed by the
 /// host, not in this input.
 pub trait TurnInputContributor: Send + Sync {
-    /// Returns additional contextual fragments for one submitted turn.
+    /// Returns additional contextual fragments for one submitted turn. The optional metrics
+    /// capability is bound to the effective model for that turn.
     fn contribute<'a>(
         &'a self,
         input: TurnInputContext,
+        extension_metrics: Option<Arc<dyn ExtensionMetrics>>,
         session_store: &'a ExtensionData,
         thread_store: &'a ExtensionData,
         turn_store: &'a ExtensionData,
@@ -345,16 +351,22 @@ pub trait ToolContributor: Send + Sync {
 
 /// Contributor for host-owned tool lifecycle gates.
 ///
-/// Implementations should use these callbacks to observe tool execution without
-/// inspecting or rewriting tool input/output. Use `ToolContributor` for owning a
-/// tool implementation and hooks for policy that needs tool payloads.
+/// Implementations should use these callbacks to observe tool execution and its
+/// exposed input without rewriting the invocation. Use `ToolContributor` for
+/// owning a tool implementation and hooks for policy that changes tool payloads.
 pub trait ToolLifecycleContributor: Send + Sync {
-    /// Called once the host has accepted a tool call for execution.
+    /// Called after pre-tool hooks finalize an invocation and before execution.
+    ///
+    /// Calls blocked by hooks, or whose hook-provided input cannot be applied,
+    /// do not reach this callback.
     fn on_tool_start<'a>(&'a self, _input: ToolStartInput<'a>) -> ToolLifecycleFuture<'a> {
         Box::pin(std::future::ready(()))
     }
 
     /// Called after the tool call returns, is blocked, fails, or is cancelled.
+    ///
+    /// A matching start callback does not exist when execution is blocked,
+    /// hook-provided input cannot be applied, or cancellation wins first.
     fn on_tool_finish<'a>(&'a self, _input: ToolFinishInput<'a>) -> ToolLifecycleFuture<'a> {
         Box::pin(std::future::ready(()))
     }
@@ -362,11 +374,13 @@ pub trait ToolLifecycleContributor: Send + Sync {
 
 /// Extension contribution that can claim rendered approval-review prompts.
 pub trait ApprovalReviewContributor: Send + Sync {
+    /// Reviews one action using metrics bound to the active turn's model.
     fn contribute<'a>(
         &'a self,
         session_store: &'a ExtensionData,
         thread_store: &'a ExtensionData,
         prompt: &'a str,
+        extension_metrics: Option<Arc<dyn ExtensionMetrics>>,
     ) -> ExtensionFuture<'a, Option<ReviewDecision>>;
 }
 

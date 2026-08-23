@@ -3,10 +3,11 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
+use codex_history::CompactedItem;
+use codex_history::ResponseItemEnvelope;
+use codex_history::RolloutItem;
 use codex_protocol::ThreadId;
 use codex_protocol::models::ResponseItem;
-use codex_protocol::protocol::CompactedItem;
-use codex_protocol::protocol::RolloutItem;
 use serde::Serialize;
 
 pub(crate) const COMPACT_INSPECT_MISSING_ROLLOUT: &str = "Rollout path is not available yet.";
@@ -57,7 +58,7 @@ struct CompactInspectJson<'a> {
     remote_response_note: &'static str,
     message: &'a str,
     replacement_history_item_count: usize,
-    replacement_history: &'a Option<Vec<ResponseItem>>,
+    replacement_history: Option<Vec<&'a ResponseItem>>,
 }
 
 pub(crate) fn read_latest_compaction(
@@ -141,12 +142,21 @@ fn compact_inspect_json(compaction: &LatestCompaction) -> CompactInspectJson<'_>
             .replacement_history
             .as_ref()
             .map_or(0, Vec::len),
-        replacement_history: &compaction.compacted.replacement_history,
+        replacement_history: compaction.compacted.replacement_history.as_ref().map(|items| {
+            items
+                .iter()
+                .map(|envelope| &envelope.item)
+                .collect()
+        }),
     }
 }
 
-fn preview_json(items: &[ResponseItem]) -> String {
-    let json = serde_json::to_string_pretty(items)
+fn preview_json(items: &[ResponseItemEnvelope]) -> String {
+    let items = items
+        .iter()
+        .map(|envelope| &envelope.item)
+        .collect::<Vec<_>>();
+    let json = serde_json::to_string_pretty(&items)
         .unwrap_or_else(|err| format!("Failed to serialize replacement history preview: {err}"));
     truncate_chars(&json, PREVIEW_CHAR_LIMIT)
 }

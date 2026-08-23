@@ -125,13 +125,28 @@ fn config_lock_for_comparison(
 ) -> ConfigLockfileToml {
     let mut lockfile = lockfile.clone();
     clear_config_lock_debug_controls(&mut lockfile.config);
-    if let Some(features) = lockfile.config.features.as_mut() {
-        features.clear_removed_compatibility_entries();
-    }
+    clear_legacy_feature_keys(&mut lockfile.config);
     if options.allow_codex_version_mismatch {
         lockfile.codex_version.clear();
     }
     lockfile
+}
+
+fn clear_legacy_feature_keys(config: &mut ConfigToml) {
+    let Some(features) = config.features.as_ref() else {
+        return;
+    };
+    let original = features.clone();
+    let Ok(mut value) = toml::Value::try_from(original.clone()) else {
+        return;
+    };
+    let Some(table) = value.as_table_mut() else {
+        return;
+    };
+    for key in codex_features::legacy_feature_keys() {
+        table.remove(key);
+    }
+    config.features = value.try_into().ok().or(Some(original));
 }
 
 fn config_lock_error(message: impl Into<String>) -> io::Error {

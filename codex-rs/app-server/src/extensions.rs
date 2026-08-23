@@ -8,6 +8,7 @@ use codex_app_server_protocol::ThreadAgentMailboxUpdatedNotification;
 use codex_app_server_protocol::ThreadGoal;
 use codex_app_server_protocol::ThreadGoalClearedNotification;
 use codex_app_server_protocol::ThreadGoalUpdatedNotification;
+use codex_app_server_protocol::ThreadQueueChangedNotification;
 use codex_app_server_protocol::WarningNotification;
 use codex_core::AgentMailboxHostAdapter;
 use codex_core::GoalTurnHostAdapter;
@@ -22,6 +23,7 @@ use codex_extension_api::ExtensionEventSink;
 use codex_extension_api::ExtensionRegistry;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::ExtensionWarning;
+use codex_goal_extension::GoalExtensionConfig;
 use codex_goal_extension::GoalService;
 use codex_http_client::HttpClientFactory;
 use codex_login::AuthManager;
@@ -29,9 +31,9 @@ use codex_protocol::ThreadId;
 use codex_protocol::error::CodexErr;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
+use codex_queue_extension::QueuedItemService;
 use codex_rollout::state_db::StateDbHandle;
 use codex_state::AgentMailboxUnreadSnapshot;
-use codex_thread_store::ThreadStore;
 
 use crate::outgoing_message::OutgoingMessageSender;
 use crate::outgoing_message::ThreadScopedOutgoingMessageSender;
@@ -52,8 +54,8 @@ pub(crate) struct ThreadExtensionDependencies {
         Arc<dyn codex_agent_mailbox_extension::AgentMailboxStatusNotifier>,
     pub(crate) git_attribution_base_url: String,
     pub(crate) http_client_factory: HttpClientFactory,
-    /// Process-scoped persistence backend for extensions that need stored thread history.
-    pub(crate) thread_store: Arc<dyn ThreadStore>,
+    /// Process-scoped queue shared by idle dispatch and app-server requests.
+    pub(crate) queue_service: Option<Arc<QueuedItemService>>,
 }
 
 pub(crate) fn thread_extensions<S>(
@@ -75,9 +77,12 @@ where
         agent_mailbox_status_notifier,
         git_attribution_base_url,
         http_client_factory,
-        thread_store: _thread_store,
+        queue_service,
     } = dependencies;
-    let mut builder = ExtensionRegistryBuilder::<Config>::with_event_sink(event_sink);
+    let mut builder = ExtensionRegistryBuilder::<Config>::with_event_sink(Arc::clone(&event_sink));
+    if let Some(queue_service) = queue_service {
+        codex_queue_extension::install(&mut builder, queue_service);
+    }
     if let Some(state_db) = state_db {
         codex_agent_mailbox_extension::install_with_backend(
             &mut builder,
@@ -95,9 +100,12 @@ where
             state_db,
             analytics_events_client,
             codex_otel::global(),
-            GoalTurnHostAdapter::new(thread_manager),
+            GoalTurnHostAdapter::new(thread_manager.clone()),
             goal_service,
-            |config: &Config| config.features.enabled(codex_features::Feature::Goals),
+            |config: &Config| GoalExtensionConfig {
+                enabled: config.features.enabled(codex_features::Feature::Goals),
+                max_goal_token_budget: config.max_goal_token_budget,
+            },
         );
     }
     codex_git_attribution::install(
@@ -106,7 +114,12 @@ where
         git_attribution_base_url,
         http_client_factory,
     );
-    codex_guardian::install(&mut builder, guardian_agent_spawner);
+    codex_guardian_v2::install(
+        &mut builder,
+        guardian_agent_spawner,
+        auth_manager.clone(),
+        thread_manager.clone(),
+    );
     codex_memories_extension::install(&mut builder, codex_otel::global(), |config: &Config| {
         let memory_tool_enabled = config.features.enabled(codex_features::Feature::MemoryTool);
         codex_memories_extension::MemoriesExtensionConfig {
@@ -135,6 +148,7 @@ where
         codex_otel::global(),
         |config: &Config| codex_skills_extension::SkillsExtensionConfig {
             include_instructions: config.include_skill_instructions,
+            max_context_tokens: config.skill_max_context_tokens,
             bundled_skills_enabled: config.bundled_skills_enabled(),
             orchestrator_skills_enabled: config.orchestrator_skills_enabled,
             shadow_selection_enabled: config
@@ -216,6 +230,40 @@ const EXTENSION_WARNING_SUBSCRIBER_TIMEOUT: Duration = Duration::from_secs(10);
 impl ExtensionEventSink for AppServerExtensionEventSink {
     fn emit(&self, event: Event) {
         match event.msg {
+            EventMsg::ThreadQueueChanged(queue_event) => {
+                let thread_id = queue_event.thread_id;
+                if let Some(listener_command_tx) = self
+                    .thread_state_manager
+                    .current_listener_command_tx(thread_id)
+                {
+                    let command = ThreadListenerCommand::EmitThreadQueueChanged;
+                    if listener_command_tx.send(command).is_ok() {
+                        return;
+                    }
+                    tracing::warn!(
+                        "failed to enqueue extension queue update for {thread_id}: listener command channel is closed"
+                    );
+                }
+                let outgoing = Arc::clone(&self.outgoing);
+                let thread_state_manager = self.thread_state_manager.clone();
+                tokio::spawn(async move {
+                    let subscribed_connection_ids = thread_state_manager
+                        .subscribed_connection_ids(thread_id)
+                        .await;
+                    let outgoing = ThreadScopedOutgoingMessageSender::new(
+                        outgoing,
+                        subscribed_connection_ids,
+                        thread_id,
+                    );
+                    outgoing
+                        .send_server_notification(ServerNotification::ThreadQueueChanged(
+                            ThreadQueueChangedNotification {
+                                thread_id: thread_id.to_string(),
+                            },
+                        ))
+                        .await;
+                });
+            }
             EventMsg::ThreadGoalUpdated(thread_goal_event) => {
                 let thread_id = thread_goal_event.thread_id;
                 let turn_id = thread_goal_event.turn_id;

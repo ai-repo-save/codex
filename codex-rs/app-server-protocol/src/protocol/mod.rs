@@ -6,7 +6,6 @@ pub mod common;
 mod context_anchor_items;
 pub mod event_mapping;
 mod hook_prompt_items;
-mod image_generation_items;
 pub mod item_builders;
 mod mappers;
 mod serde_helpers;

@@ -341,7 +341,7 @@ enabled = false
                         agent_mailbox_status_notifier: Arc::new(NoopAgentMailboxStatusNotifier),
                         git_attribution_base_url: good_config.chatgpt_base_url.clone(),
                         http_client_factory: good_config.http_client_factory(),
-                        thread_store: Arc::clone(&thread_store),
+                        queue_service: None,
                     },
                 ),
                 Arc::new(CodexHomeUserInstructionsProvider::new(

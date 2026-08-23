@@ -6,6 +6,7 @@ use codex_config::config_toml::OrchestratorToml;
 use codex_config::types::MemoriesToml;
 use codex_features::AgentMailboxConfigToml;
 use codex_features::CurrentTimeReminderConfigToml;
+use codex_features::FEATURES;
 use codex_features::Feature;
 use codex_features::FeatureToml;
 use codex_features::FeaturesToml;
@@ -121,10 +122,11 @@ fn save_session_resolved_fields(sc: &SessionConfiguration, lock_config: &mut Con
     lock_config.service_tier = sc.service_tier.clone();
     lock_config.instructions = Some(sc.base_instructions.clone());
     lock_config.developer_instructions = sc.developer_instructions.clone();
-    lock_config.compact_prompt = sc.compact_prompt.clone();
+    lock_config.compact_prompt = sc.original_config_do_not_use.compact_prompt.clone();
     lock_config.personality = sc.personality;
     lock_config.approval_policy = Some(sc.approval_policy.value());
     lock_config.approvals_reviewer = Some(sc.approvals_reviewer);
+    lock_config.allow_login_shell = Some(sc.allow_login_shell);
 }
 
 /// Saves values stored on `Config` after higher-level resolution,
@@ -150,10 +152,8 @@ fn save_config_resolved_fields(
     // Feature aliases and feature configs need to be written in their resolved
     // form; otherwise replay can drift when a legacy key maps to the same
     // runtime feature.
-    let features = lock_config
-        .features
-        .get_or_insert_with(FeaturesToml::default);
-    features.materialize_resolved_enabled(config.features.get());
+    let mut features =
+        materialize_resolved_features(lock_config.features.take().unwrap_or_default(), config)?;
     let mut multi_agent_v2: MultiAgentV2ConfigToml =
         resolved_config_to_toml(&config.multi_agent_v2, "features.multi_agent_v2")?;
     multi_agent_v2.enabled = Some(config.features.enabled(Feature::MultiAgentV2));
@@ -180,6 +180,7 @@ fn save_config_resolved_fields(
         current_time_reminder.enabled = Some(config.features.enabled(Feature::CurrentTimeReminder));
         features.current_time_reminder = Some(FeatureToml::Config(current_time_reminder));
     }
+    lock_config.features = Some(features);
     lock_config.memories = Some(resolved_config_to_toml::<MemoriesToml>(
         &config.memories,
         "memories",
@@ -212,6 +213,34 @@ fn save_config_resolved_fields(
         .enabled = Some(config.orchestrator_mcp_enabled);
 
     Ok(())
+}
+
+fn materialize_resolved_features(
+    features: FeaturesToml,
+    config: &Config,
+) -> anyhow::Result<FeaturesToml> {
+    let mut value =
+        toml::Value::try_from(features).context("failed to serialize features for config lock")?;
+    let table = value
+        .as_table_mut()
+        .context("serialized features config must be a TOML table")?;
+    for key in codex_features::legacy_feature_keys() {
+        table.remove(key);
+    }
+    for spec in FEATURES {
+        let enabled = config.features.enabled(spec.id);
+        match table.get_mut(spec.key) {
+            Some(toml::Value::Table(feature)) => {
+                feature.insert("enabled".to_string(), toml::Value::Boolean(enabled));
+            }
+            _ => {
+                table.insert(spec.key.to_string(), toml::Value::Boolean(enabled));
+            }
+        }
+    }
+    value
+        .try_into()
+        .context("failed to deserialize resolved features for config lock")
 }
 
 fn drop_lockfile_inputs(lock_config: &mut ConfigToml) {
@@ -296,18 +325,22 @@ mod tests {
             .features
             .enable(Feature::AgentMailbox)
             .expect("agent_mailbox should be enableable in tests");
+        config.compact_prompt = Some("resolved compact prompt".to_string());
         sc.original_config_do_not_use = Arc::new(config);
         sc.base_instructions = "resolved instructions".to_string();
         sc.developer_instructions = Some("resolved developer instructions".to_string());
-        sc.compact_prompt = Some("resolved compact prompt".to_string());
 
         let lockfile = sc.to_config_lockfile_toml().expect("lock should serialize");
         let lock = &lockfile.config;
 
         assert_eq!(lock.instructions, Some(sc.base_instructions.clone()));
         assert_eq!(lock.developer_instructions, sc.developer_instructions);
-        assert_eq!(lock.compact_prompt, sc.compact_prompt);
+        assert_eq!(
+            lock.compact_prompt,
+            sc.original_config_do_not_use.compact_prompt
+        );
         assert_eq!(lock.model, Some(sc.collaboration_mode.model().to_string()));
+        assert_eq!(lock.allow_login_shell, Some(sc.allow_login_shell));
         assert_eq!(
             lock.model_reasoning_effort,
             sc.collaboration_mode.reasoning_effort()
@@ -411,7 +444,6 @@ mod tests {
         sc.original_config_do_not_use = Arc::new(config);
         sc.base_instructions = "catalog instructions".to_string();
         sc.developer_instructions = Some("catalog developer instructions".to_string());
-        sc.compact_prompt = Some("catalog compact prompt".to_string());
         sc.service_tier = Some("flex".to_string());
 
         let lockfile = sc.to_config_lockfile_toml().expect("lock should serialize");
@@ -427,6 +459,7 @@ mod tests {
         assert_eq!(lock.personality, None);
         assert_eq!(lock.approval_policy, None);
         assert_eq!(lock.approvals_reviewer, None);
+        assert_eq!(lock.allow_login_shell, None);
     }
 
     #[tokio::test]

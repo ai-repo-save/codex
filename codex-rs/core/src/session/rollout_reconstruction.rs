@@ -2,6 +2,7 @@ use super::context_anchor::context_rewind_carry_forward_items;
 use super::*;
 use crate::context::world_state::WorldStateSnapshot;
 use crate::context_manager::is_user_turn_boundary;
+use codex_history::ResponseItemEnvelope;
 use codex_protocol::protocol::ContextRewoundToAnchorEvent;
 use codex_protocol::protocol::SessionContextWindow;
 use std::collections::HashMap;
@@ -11,7 +12,7 @@ use uuid::Uuid;
 // the resume/fork hydration metadata derived from the same replay.
 #[derive(Debug)]
 pub(super) struct RolloutReconstruction {
-    pub(super) history: Vec<ResponseItem>,
+    pub(super) history: Vec<ResponseItemEnvelope>,
     pub(super) previous_turn_settings: Option<PreviousTurnSettings>,
     pub(super) reference_context_item: Option<TurnContextItem>,
     pub(super) world_state_baseline: Option<WorldStateSnapshot>,
@@ -32,8 +33,8 @@ struct ReconstructedWindow {
 #[derive(Debug)]
 struct PendingContextRewind {
     rewind: ContextRewoundToAnchorEvent,
-    anchor_history: Option<Vec<ResponseItem>>,
-    contribution_items: Vec<ResponseItem>,
+    anchor_history: Option<Vec<ResponseItemEnvelope>>,
+    contribution_items: Vec<ResponseItemEnvelope>,
 }
 
 #[derive(Debug, Default)]
@@ -59,7 +60,7 @@ struct ActiveReplaySegment<'a> {
     previous_turn_settings: Option<PreviousTurnSettings>,
     reference_context_item: TurnReferenceContextItem,
     world_state_replay: Vec<&'a RolloutItem>,
-    base_replacement_history: Option<&'a [ResponseItem]>,
+    base_replacement_history: Option<&'a [ResponseItemEnvelope]>,
     window: Option<ReconstructedWindow>,
 }
 
@@ -70,7 +71,7 @@ fn turn_ids_are_compatible(active_turn_id: Option<&str>, item_turn_id: Option<&s
 
 fn finalize_active_segment<'a>(
     active_segment: ActiveReplaySegment<'a>,
-    base_replacement_history: &mut Option<&'a [ResponseItem]>,
+    base_replacement_history: &mut Option<&'a [ResponseItemEnvelope]>,
     previous_turn_settings: &mut Option<PreviousTurnSettings>,
     reference_context_item: &mut TurnReferenceContextItem,
     world_state_replay: &mut Vec<&'a RolloutItem>,
@@ -146,7 +147,7 @@ impl Session {
                 _ => None,
             })
         };
-        let mut base_replacement_history: Option<&[ResponseItem]> = None;
+        let mut base_replacement_history: Option<&[ResponseItemEnvelope]> = None;
         let mut previous_turn_settings = None;
         let mut reference_context_item = TurnReferenceContextItem::NeverSet;
         let mut world_state_replay = Vec::new();
@@ -281,7 +282,8 @@ impl Session {
                 RolloutItem::ResponseItem(response_item) => {
                     let active_segment =
                         active_segment.get_or_insert_with(ActiveReplaySegment::default);
-                    active_segment.counts_as_user_turn |= is_user_turn_boundary(response_item);
+                    active_segment.counts_as_user_turn |=
+                        is_user_turn_boundary(&response_item.item);
                 }
                 RolloutItem::InterAgentCommunication(_) => {
                     let active_segment =
@@ -290,6 +292,7 @@ impl Session {
                 }
                 RolloutItem::EventMsg(_)
                 | RolloutItem::SessionMeta(_)
+                | RolloutItem::SecurityRiskScore(_)
                 | RolloutItem::InterAgentCommunicationMetadata { .. } => {}
             }
 
@@ -325,11 +328,11 @@ impl Session {
         .unwrap_or(u64::MAX);
 
         let mut history = ContextManager::new();
-        let mut context_anchors: HashMap<String, Vec<ResponseItem>> = HashMap::new();
+        let mut context_anchors: HashMap<String, Vec<ResponseItemEnvelope>> = HashMap::new();
         let mut pending_context_rewind: Option<PendingContextRewind> = None;
         let mut saw_legacy_compaction_without_replacement_history = false;
         if let Some(base_replacement_history) = base_replacement_history {
-            history.replace(base_replacement_history.to_vec());
+            history.replace_annotated(base_replacement_history.to_vec());
         }
         // Materialize exact history semantics from the replay-derived suffix. The eventual lazy
         // design should keep this same replay shape, but drive it from a resumable reverse source
@@ -350,7 +353,7 @@ impl Session {
                     {
                         if let Some(anchor_history) = pending_rewind.anchor_history {
                             context_anchors.clear();
-                            history.replace(anchor_history);
+                            history.replace_annotated(anchor_history);
                             let carry_forward = context_rewind_carry_forward_items(
                                 pending_rewind.rewind.anchor_id,
                                 pending_rewind.rewind.replacement_anchor_id,
@@ -366,12 +369,14 @@ impl Session {
                                 carry_forward.iter(),
                                 turn_context.model_info.truncation_policy.into(),
                             );
-                            history.record_items(
-                                pending_rewind.contribution_items.iter(),
+                            history.record_annotated_items(
+                                &pending_rewind.contribution_items,
                                 turn_context.model_info.truncation_policy.into(),
                             );
-                            context_anchors
-                                .insert(anchor.anchor_id.clone(), history.raw_items().to_vec());
+                            context_anchors.insert(
+                                anchor.anchor_id.clone(),
+                                history.annotated_items().to_vec(),
+                            );
                         } else {
                             warn!(
                                 anchor_id = %pending_rewind.rewind.anchor_id,
@@ -391,8 +396,8 @@ impl Session {
 
             match item {
                 RolloutItem::ResponseItem(response_item) => {
-                    history.record_items(
-                        std::iter::once(response_item),
+                    history.record_annotated_items(
+                        std::slice::from_ref(response_item),
                         turn_context.model_info.truncation_policy.into(),
                     );
                 }
@@ -409,7 +414,7 @@ impl Session {
                     if let Some(replacement_history) = &compacted.replacement_history {
                         // This should actually never happen, because the reverse loop above (to build rollout_suffix)
                         // should stop before any compaction that has Some replacement_history
-                        history.replace(replacement_history.clone());
+                        history.replace_annotated(replacement_history.clone());
                     } else {
                         saw_legacy_compaction_without_replacement_history = true;
                         // Legacy rollouts without `replacement_history` should rebuild the
@@ -420,20 +425,22 @@ impl Session {
                         // prompt shape.
                         // TODO(ccunningham): if we drop support for None replacement_history compaction items,
                         // we can get rid of this second loop entirely and just build `history` directly in the first loop.
-                        let input_messages = compact::collect_input_messages(history.raw_items());
+                        let input_messages =
+                            compact::collect_input_messages(history.annotated_items());
                         let rebuilt = compact::build_compacted_history(
                             Vec::new(),
                             &input_messages,
                             &compacted.message,
                         );
-                        history.replace(rebuilt);
+                        history.replace_annotated(rebuilt);
                     }
                 }
                 RolloutItem::EventMsg(EventMsg::ThreadRolledBack(rollback)) => {
                     history.drop_last_n_user_turns(rollback.num_turns);
                 }
                 RolloutItem::EventMsg(EventMsg::ContextAnchorSaved(anchor)) => {
-                    context_anchors.insert(anchor.anchor_id.clone(), history.raw_items().to_vec());
+                    context_anchors
+                        .insert(anchor.anchor_id.clone(), history.annotated_items().to_vec());
                 }
                 RolloutItem::EventMsg(EventMsg::ContextRewoundToAnchor(rewind)) => {
                     if rewind.replacement_anchor_id.is_some() {
@@ -446,7 +453,7 @@ impl Session {
                         context_anchors.get(&rewind.anchor_id).cloned()
                     {
                         context_anchors.clear();
-                        history.replace(anchor_history);
+                        history.replace_annotated(anchor_history);
                         let carry_forward = context_rewind_carry_forward_items(
                             rewind.anchor_id.clone(),
                             rewind.replacement_anchor_id.clone(),
@@ -472,6 +479,7 @@ impl Session {
                 RolloutItem::EventMsg(_)
                 | RolloutItem::TurnContext(_)
                 | RolloutItem::WorldState(_)
+                | RolloutItem::SecurityRiskScore(_)
                 | RolloutItem::SessionMeta(_) => {}
             }
         }
@@ -502,29 +510,21 @@ impl Session {
             match item {
                 RolloutItem::Compacted(_) => world_state_baseline = None,
                 RolloutItem::WorldState(world_state) if world_state.full => {
-                    world_state_baseline = match serde_json::from_value(world_state.state.clone()) {
-                        Ok(snapshot) => Some(snapshot),
-                        Err(err) => {
-                            tracing::warn!(%err, "failed to restore world-state snapshot");
-                            None
-                        }
-                    };
+                    world_state_baseline = Some(WorldStateSnapshot::from(&world_state.state));
                 }
                 RolloutItem::WorldState(world_state) => {
                     let Some(baseline) = world_state_baseline.as_mut() else {
                         tracing::warn!("ignored world-state patch without a full snapshot");
                         continue;
                     };
-                    if let Err(err) = baseline.apply_merge_patch(&world_state.state) {
-                        tracing::warn!(%err, "failed to apply world-state patch");
-                        world_state_baseline = None;
-                    }
+                    baseline.apply_merge_patch(&world_state.state);
                 }
                 RolloutItem::SessionMeta(_)
                 | RolloutItem::ResponseItem(_)
                 | RolloutItem::InterAgentCommunication(_)
                 | RolloutItem::InterAgentCommunicationMetadata { .. }
                 | RolloutItem::TurnContext(_)
+                | RolloutItem::SecurityRiskScore(_)
                 | RolloutItem::EventMsg(_) => {
                     unreachable!("only world-state replay items are collected")
                 }
@@ -538,7 +538,7 @@ impl Session {
             id: None,
         });
         RolloutReconstruction {
-            history: history.into_raw_items(),
+            history: history.into_annotated_items(),
             previous_turn_settings,
             reference_context_item,
             world_state_baseline,

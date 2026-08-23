@@ -18,6 +18,7 @@ use codex_protocol::models::ResponseInputItem;
 use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::openai_models::ReasoningEffortPreset;
+use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::user_input::UserInput;
@@ -28,6 +29,15 @@ use serde_json::Value as JsonValue;
 pub(crate) const MIN_WAIT_TIMEOUT_MS: i64 = DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS;
 pub(crate) const DEFAULT_WAIT_TIMEOUT_MS: i64 = 30_000;
 pub(crate) const MAX_WAIT_TIMEOUT_MS: i64 = HARD_MAX_MULTI_AGENT_V2_TIMEOUT_MS;
+pub(crate) const MAX_SPAWN_AGENT_MODEL_OVERRIDES: usize = 5;
+
+pub(crate) fn model_supports_multi_agent_backend(
+    model: &ModelPreset,
+    multi_agent_version: MultiAgentVersion,
+) -> bool {
+    multi_agent_version != MultiAgentVersion::V2
+        || model.multi_agent_version != Some(MultiAgentVersion::Disabled)
+}
 pub(crate) fn function_arguments(payload: ToolPayload) -> Result<String, FunctionCallError> {
     match payload {
         ToolPayload::Function { arguments } => Ok(arguments),
@@ -158,16 +168,17 @@ pub(crate) fn parse_collab_input(
 /// Builds the base config snapshot for a newly spawned sub-agent.
 ///
 /// The returned config starts from the parent's effective config and then refreshes the
-/// runtime-owned fields carried on `turn`, including model selection, reasoning settings,
-/// approval policy, sandbox, and cwd. Role-specific overrides are layered after this step;
-/// skipping this helper and cloning stale config state directly can send the child agent out with
-/// the wrong provider or runtime policy.
+/// runtime-owned fields carried by the turn, including model selection, reasoning settings,
+/// approval policy, sandbox, and cwd. Role-specific overrides are layered
+/// after this step; skipping this helper and cloning stale config state directly can send the child
+/// agent out with the wrong provider or runtime policy.
 pub(crate) fn build_agent_spawn_config(
     base_instructions: &BaseInstructions,
     turn: &TurnContext,
 ) -> Result<Config, FunctionCallError> {
     let mut config = build_agent_shared_config(turn)?;
     config.base_instructions = Some(base_instructions.text.clone());
+    config.base_instructions_provenance = base_instructions.provenance.clone();
     Ok(config)
 }
 
@@ -175,6 +186,7 @@ pub(crate) fn build_agent_resume_config(turn: &TurnContext) -> Result<Config, Fu
     let mut config = build_agent_shared_config(turn)?;
     // For resume, keep base instructions sourced from rollout/session metadata.
     config.base_instructions = None;
+    config.base_instructions_provenance = None;
     Ok(config)
 }
 
@@ -189,6 +201,15 @@ fn build_agent_shared_config(turn: &TurnContext) -> Result<Config, FunctionCallE
         .or_else(|| turn.model_info.default_reasoning_level.clone());
     config.model_reasoning_summary = Some(turn.reasoning_summary);
     config.developer_instructions = turn.developer_instructions.clone();
+    if turn.multi_agent_version == MultiAgentVersion::V2
+        && let Some(developer_instructions) = turn
+            .config
+            .multi_agent_v2
+            .subagent_developer_instructions
+            .clone()
+    {
+        config.developer_instructions = Some(developer_instructions);
+    }
     apply_spawn_agent_runtime_overrides(&mut config, turn)?;
 
     Ok(config)
@@ -207,8 +228,8 @@ pub(crate) fn reject_full_fork_agent_type_override(
 
 /// Copies runtime-only turn state onto a child config before it is handed to `AgentControl`.
 ///
-/// These values are chosen by the live turn rather than persisted config, so leaving them stale
-/// can make a child agent disagree with its parent about approval policy, cwd, or sandboxing.
+/// These values are chosen by the live turn rather than persisted config, so leaving them stale can
+/// make a child agent disagree with its parent about approval policy, cwd, or sandboxing.
 pub(crate) fn apply_spawn_agent_runtime_overrides(
     config: &mut Config,
     turn: &TurnContext,
@@ -216,7 +237,7 @@ pub(crate) fn apply_spawn_agent_runtime_overrides(
     config
         .permissions
         .approval_policy
-        .set(turn.approval_policy.value())
+        .set(turn.approval_policy())
         .map_err(|err| {
             FunctionCallError::RespondToModel(format!("approval_policy is invalid: {err}"))
         })?;
@@ -226,7 +247,12 @@ pub(crate) fn apply_spawn_agent_runtime_overrides(
     config.cwd = turn_cwd;
     config
         .permissions
-        .set_permission_profile(turn.permission_profile())
+        .set_permission_profile_from_session_snapshot(
+            turn.config
+                .permissions
+                .permission_profile_state()
+                .snapshot(),
+        )
         .map_err(|err| {
             FunctionCallError::RespondToModel(format!("permission_profile is invalid: {err}"))
         })?;
@@ -253,7 +279,11 @@ pub(crate) async fn apply_requested_spawn_agent_model_overrides(
             .models_manager
             .list_models(RefreshStrategy::Offline, config.http_client_factory())
             .await;
-        let selected_model_name = find_spawn_agent_model_name(&available_models, requested_model)?;
+        let selected_model_name = find_spawn_agent_model_name(
+            &available_models,
+            requested_model,
+            turn.multi_agent_version,
+        )?;
         let selected_model_info = session
             .services
             .models_manager
@@ -385,18 +415,24 @@ pub(crate) async fn apply_spawn_agent_role(
 fn find_spawn_agent_model_name(
     available_models: &[ModelPreset],
     requested_model: &str,
+    multi_agent_version: MultiAgentVersion,
 ) -> Result<String, FunctionCallError> {
     available_models
         .iter()
-        .find(|model| model.model == requested_model)
+        .find(|model| {
+            model.model == requested_model
+                && model_supports_multi_agent_backend(model, multi_agent_version)
+        })
         .map(|model| model.model.clone())
         .ok_or_else(|| {
-            let available =
-                codex_agent_control::select_spawn_agent_model_summaries(available_models)
-                    .into_iter()
-                    .map(|model| model.model.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
+            let available = available_models
+                .iter()
+                .filter(|model| model.show_in_picker)
+                .filter(|model| model_supports_multi_agent_backend(model, multi_agent_version))
+                .take(MAX_SPAWN_AGENT_MODEL_OVERRIDES)
+                .map(|model| model.model.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
             FunctionCallError::RespondToModel(format!(
                 "Unknown model `{requested_model}` for spawn_agent. Available models: {available}"
             ))

@@ -1,15 +1,16 @@
+use codex_history::ResponseItemEnvelope;
+use codex_history::RolloutItem;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::ContextAnchorSavedEvent;
 use codex_protocol::protocol::ContextRewoundToAnchorEvent;
 use codex_protocol::protocol::EventMsg;
-use codex_protocol::protocol::RolloutItem;
 
 #[derive(Clone, Debug)]
 pub(super) struct RewindPlan {
     source_items: Vec<RolloutItem>,
     pub(super) rewind_event: ContextRewoundToAnchorEvent,
-    contribution_items: Vec<ResponseItem>,
+    contribution_items: Vec<ResponseItemEnvelope>,
     replacement_anchor_id: String,
 }
 
@@ -31,7 +32,7 @@ impl RewindPlan {
         Self {
             source_items,
             rewind_event,
-            contribution_items,
+            contribution_items: contribution_items.into_iter().map(Into::into).collect(),
             replacement_anchor_id,
         }
     }

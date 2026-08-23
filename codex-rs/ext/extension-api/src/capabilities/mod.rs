@@ -1,7 +1,9 @@
 mod agent;
 mod agent_mailbox;
+mod conversation_history;
 mod events;
 mod goal_turn;
+mod metrics;
 mod response_items;
 
 pub use agent::AgentSpawnFuture;
@@ -12,6 +14,7 @@ pub use agent_mailbox::AgentMailboxHostFuture;
 pub use agent_mailbox::AgentMailboxHostHandle;
 pub use agent_mailbox::AgentMailboxTarget;
 pub use agent_mailbox::NoopAgentMailboxHost;
+pub use conversation_history::ConversationHistorySnapshot;
 pub use events::ExtensionEventSink;
 pub use events::ExtensionWarning;
 pub use events::NoopExtensionEventSink;
@@ -20,6 +23,7 @@ pub use goal_turn::GoalTurnHostFuture;
 pub use goal_turn::GoalTurnHostHandle;
 pub use goal_turn::GoalTurnHostRejection;
 pub use goal_turn::NoopGoalTurnHost;
+pub use metrics::ExtensionMetrics;
 pub use response_items::NoopResponseItemInjector;
 pub use response_items::ResponseItemInjectionFuture;
 pub use response_items::ResponseItemInjector;

@@ -34,7 +34,7 @@ async fn retained_response_items_for_context_rewind(
     call_id: &str,
 ) -> CodexResult<Vec<ResponseItem>> {
     let history = sess.clone_history().await;
-    let Some(function_call) = history.raw_items().iter().rev().find(|item| {
+    let Some(function_call) = history.raw_items().rev().find(|item| {
         matches!(
             item,
             ResponseItem::FunctionCall {
@@ -139,8 +139,8 @@ async fn apply_rewind_context_to_anchor(
         .await?;
     let (response, response_items) = match rewind_event {
         RewindContextToAnchorResult::Rewound {
-            rewind_event,
-            replacement_anchor,
+            ref rewind_event,
+            ref replacement_anchor,
         } => {
             sess.deliver_persisted_event(
                 turn_context,
@@ -149,13 +149,14 @@ async fn apply_rewind_context_to_anchor(
             .await;
             sess.deliver_persisted_event(
                 turn_context,
-                EventMsg::ContextAnchorSaved(replacement_anchor),
+                EventMsg::ContextAnchorSaved(replacement_anchor.clone()),
             )
             .await;
             let response = RewindContextToAnchorResponse::Rewound {
-                anchor_id: rewind_event.anchor_id,
+                anchor_id: rewind_event.anchor_id.clone(),
                 replacement_anchor_id: rewind_event
                     .replacement_anchor_id
+                    .clone()
                     .expect("successful context rewind should create replacement anchor"),
                 dropped_turns: rewind_event.dropped_turns,
                 response_items_reclaimed: rewind_event.response_items_reclaimed,

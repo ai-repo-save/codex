@@ -11,10 +11,9 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 
 use super::common;
 use super::prompt_output;
-use crate::engine::CommandShell;
+use crate::engine::ClaudeHooksEngine;
 use crate::engine::ConfiguredHandler;
 use crate::engine::HandlerRunResult;
-use crate::engine::PromptHookRunner;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
 use crate::schema::PostCompactCommandInput;
@@ -74,13 +73,11 @@ pub(crate) fn preview_pre(
 }
 
 pub(crate) async fn run_pre(
-    handlers: &[ConfiguredHandler],
-    shell: &CommandShell,
-    prompt_runner: Option<&dyn PromptHookRunner>,
+    engine: &ClaudeHooksEngine,
     request: PreCompactRequest,
 ) -> PreCompactOutcome {
     let matched = dispatcher::select_handlers(
-        handlers,
+        &engine.handlers,
         HookEventName::PreCompact,
         Some(request.trigger.as_str()),
     );
@@ -108,14 +105,11 @@ pub(crate) async fn run_pre(
     };
 
     let results = dispatcher::execute_handlers(
+        engine,
         matched,
         input_json,
-        dispatcher::HandlerExecutionContext {
-            shell,
-            prompt_runner,
-            cwd: request.cwd.as_path(),
-            turn_id: Some(request.turn_id),
-        },
+        request.cwd.as_path(),
+        Some(request.turn_id),
         parse_pre_completed,
     )
     .await;
@@ -160,12 +154,11 @@ pub(crate) fn preview_post(
 }
 
 pub(crate) async fn run_post(
-    handlers: &[ConfiguredHandler],
-    shell: &CommandShell,
+    engine: &ClaudeHooksEngine,
     request: PostCompactRequest,
 ) -> StatelessHookOutcome {
     let matched = dispatcher::select_handlers(
-        handlers,
+        &engine.handlers,
         HookEventName::PostCompact,
         Some(request.trigger.as_str()),
     );
@@ -195,14 +188,11 @@ pub(crate) async fn run_post(
     };
 
     let results = dispatcher::execute_handlers(
+        engine,
         matched,
         input_json,
-        dispatcher::HandlerExecutionContext {
-            shell,
-            prompt_runner: None,
-            cwd: request.cwd.as_path(),
-            turn_id: Some(request.turn_id),
-        },
+        request.cwd.as_path(),
+        Some(request.turn_id),
         parse_post_completed,
     )
     .await;
@@ -287,7 +277,9 @@ fn parse_pre_completed(
                                 });
                             }
                             let _ = parsed.universal.suppress_output;
-                            if !parsed.universal.continue_processing {
+                            if handler.can_apply_control_effects()
+                                && !parsed.universal.continue_processing
+                            {
                                 status = HookRunStatus::Stopped;
                                 should_stop = true;
                                 stop_reason = parsed.universal.stop_reason.clone();
@@ -297,7 +289,9 @@ fn parse_pre_completed(
                                         "PreCompact hook stopped execution".to_string()
                                     }),
                                 });
-                            } else if let Some(invalid_reason) = parsed.invalid_reason {
+                            } else if handler.can_apply_control_effects()
+                                && let Some(invalid_reason) = parsed.invalid_reason
+                            {
                                 status = HookRunStatus::Failed;
                                 entries.push(HookOutputEntry {
                                     kind: HookOutputEntryKind::Error,
@@ -409,7 +403,8 @@ fn parse_completed(
                         });
                     }
                     let _ = parsed.universal.suppress_output;
-                    if !parsed.universal.continue_processing {
+                    if handler.can_apply_control_effects() && !parsed.universal.continue_processing
+                    {
                         status = HookRunStatus::Stopped;
                         should_stop = true;
                         stop_reason = parsed.universal.stop_reason.clone();
@@ -420,7 +415,9 @@ fn parse_completed(
                                 .stop_reason
                                 .unwrap_or_else(|| format!("{event_label} hook stopped execution")),
                         });
-                    } else if let Some(invalid_reason) = parsed.invalid_reason {
+                    } else if handler.can_apply_control_effects()
+                        && let Some(invalid_reason) = parsed.invalid_reason
+                    {
                         status = HookRunStatus::Failed;
                         entries.push(HookOutputEntry {
                             kind: HookOutputEntryKind::Error,
@@ -488,7 +485,6 @@ mod tests {
     use crate::engine::ConfiguredHandler;
     use crate::engine::ConfiguredHandlerKind;
     use crate::engine::HandlerRunResult;
-    use crate::engine::command_runner::CommandRunResult;
 
     #[test]
     fn pre_compact_input_includes_lifecycle_metadata() {
@@ -714,16 +710,17 @@ mod tests {
         ConfiguredHandler {
             event_name,
             matcher: None,
-            kind: ConfiguredHandlerKind::Command {
-                command: "python3 compact_hook.py".to_string(),
-                timeout_sec: 5,
-            },
+            timeout_sec: 5,
             status_message: Some("running compact hook".to_string()),
             additional_context_limit: Default::default(),
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: codex_protocol::protocol::HookSource::User,
             display_order: 0,
-            env: std::collections::HashMap::new(),
+            kind: ConfiguredHandlerKind::Command {
+                command: "python3 compact_hook.py".to_string(),
+                r#async: false,
+                env: std::collections::HashMap::new(),
+            },
         }
     }
 
@@ -731,25 +728,25 @@ mod tests {
         ConfiguredHandler {
             event_name: HookEventName::PreCompact,
             matcher: None,
-            kind: ConfiguredHandlerKind::Prompt {
-                prompt: "$$ARGUMENTS".to_string(),
-                filter: None,
-                model: None,
-                reasoning_effort: None,
-                timeout_sec: 30,
-                fail_closed,
-            },
+            timeout_sec: 30,
             status_message: Some("running compact hook".to_string()),
             additional_context_limit: Default::default(),
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: codex_protocol::protocol::HookSource::User,
             display_order: 0,
-            env: std::collections::HashMap::new(),
+            kind: ConfiguredHandlerKind::Prompt {
+                prompt: "$$ARGUMENTS".to_string(),
+                filter: None,
+                model: None,
+                reasoning_effort: None,
+                fail_closed,
+                env: std::collections::HashMap::new(),
+            },
         }
     }
 
     fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> HandlerRunResult {
-        HandlerRunResult::completed(CommandRunResult {
+        HandlerRunResult {
             started_at: 1_700_000_000,
             completed_at: 1_700_000_001,
             duration_ms: 12,
@@ -757,6 +754,7 @@ mod tests {
             stdout: stdout.to_string(),
             stderr: stderr.to_string(),
             error: None,
-        })
+            prompt_filter_skipped: false,
+        }
     }
 }

@@ -4,6 +4,8 @@ use crate::context::ContextualUserFragment;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use codex_extension_api::RewindContextContributionInput;
+use codex_history::ResponseItemEnvelope;
+use codex_history::RolloutItem;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
@@ -12,7 +14,6 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::ContextAnchorSavedEvent;
 use codex_protocol::protocol::ContextRewoundToAnchorEvent;
 use codex_protocol::protocol::EventMsg;
-use codex_protocol::protocol::RolloutItem;
 use codex_utils_output_truncation::approx_token_count;
 use serde::Serialize;
 use uuid::Uuid;
@@ -284,7 +285,7 @@ fn completed_turn_items_since_anchor(
 
 fn list_context_anchors_from_rollout(
     rollout_items: &[RolloutItem],
-    current_history: &[ResponseItem],
+    current_history: &[ResponseItemEnvelope],
     limit: usize,
     current_collaboration_mode_kind: ModeKind,
 ) -> ListContextAnchorsResponse {
@@ -410,11 +411,11 @@ fn context_rewind_is_committed(
     false
 }
 
-fn approx_tokens_for_items(items: &[ResponseItem]) -> usize {
+fn approx_tokens_for_items(items: &[ResponseItemEnvelope]) -> usize {
     items
         .iter()
         .map(|item| {
-            serde_json::to_string(item)
+            serde_json::to_string(&item.item)
                 .ok()
                 .map(|text| approx_token_count(&text))
                 .unwrap_or_default()
@@ -424,7 +425,7 @@ fn approx_tokens_for_items(items: &[ResponseItem]) -> usize {
 
 fn rewind_benefit_since_anchor(
     anchor: &ContextAnchorSavedEvent,
-    current_history: &[ResponseItem],
+    current_history: &[ResponseItemEnvelope],
     current_rewind_call_id: &str,
     model_context_window: Option<i64>,
 ) -> ContextRewindBenefit {
@@ -436,7 +437,7 @@ fn rewind_benefit_since_anchor(
                 .iter()
                 .filter(|item| {
                     !matches!(
-                        item,
+                        &item.item,
                         ResponseItem::FunctionCall { call_id, .. }
                             if call_id == current_rewind_call_id
                     )
@@ -511,7 +512,7 @@ impl Session {
             .map_err(|err| CodexErr::InvalidRequest(err.to_string()))?;
 
         let history_boundary =
-            u64::try_from(self.clone_history().await.raw_items().len()).unwrap_or(u64::MAX);
+            u64::try_from(self.clone_history().await.annotated_items().len()).unwrap_or(u64::MAX);
         let event = ContextAnchorSavedEvent {
             anchor_id,
             label,
@@ -578,7 +579,7 @@ impl Session {
         let current_history = self.clone_history().await;
         let benefit = rewind_benefit_since_anchor(
             &active_anchor,
-            current_history.raw_items(),
+            current_history.annotated_items(),
             current_rewind_call_id,
             turn_context.model_context_window(),
         );
@@ -701,7 +702,7 @@ impl Session {
         let current_history = self.clone_history().await;
         Ok(list_context_anchors_from_rollout(
             &stored_history.items,
-            current_history.raw_items(),
+            current_history.annotated_items(),
             limit,
             self.collaboration_mode().await.mode,
         ))

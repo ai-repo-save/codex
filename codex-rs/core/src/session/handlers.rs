@@ -10,18 +10,19 @@ use tracing::Instrument;
 use tracing::debug_span;
 use tracing::info_span;
 
-use crate::session::SteerInputError;
-use crate::session::TurnInput;
 use crate::session::session::Session;
-use crate::session::session::SessionSettingsUpdate;
+use crate::session::thread_settings;
+use crate::session::turn_input;
 
 use crate::config::Config;
+use crate::context::NodeReplReviewEvidence;
 use crate::review_prompts::resolve_review_request;
 use crate::session::spawn_review_thread;
 use crate::tasks::CompactTask;
 use crate::tasks::UserShellCommandMode;
 use crate::tasks::UserShellCommandTask;
 use crate::tasks::execute_user_shell_command;
+use codex_history::RolloutItem;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
@@ -37,15 +38,14 @@ use codex_protocol::protocol::RealtimeConversationListVoicesResponseEvent;
 use codex_protocol::protocol::RealtimeVoicesList;
 use codex_protocol::protocol::ReviewDecision;
 use codex_protocol::protocol::ReviewRequest;
-use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::ThreadMemoryMode;
 use codex_protocol::protocol::ThreadRolledBackEvent;
-use codex_protocol::protocol::ThreadSettingsAppliedEvent;
 use codex_protocol::protocol::ThreadSettingsOverrides;
 use codex_protocol::protocol::TurnAbortReason;
 use codex_protocol::protocol::WarningEvent;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputResponse;
+use codex_thread_store::PersistContext;
 
 use crate::context_manager::is_user_turn_boundary;
 use codex_protocol::dynamic_tools::DynamicToolResponse;
@@ -78,38 +78,14 @@ pub async fn realtime_conversation_list_voices(sess: &Session, sub_id: String) {
     .await;
 }
 
-pub async fn user_input_or_turn(
-    sess: &Arc<Session>,
-    sub_id: String,
-    op: Op,
-    client_user_message_id: Option<String>,
-) {
-    user_input_or_turn_inner(sess, sub_id, op, client_user_message_id).await;
-}
-
-pub async fn update_thread_settings(
-    sess: &Arc<Session>,
-    sub_id: String,
-    thread_settings: ThreadSettingsOverrides,
-) {
-    apply_thread_settings(sess, &sub_id, thread_settings).await;
-}
-
 async fn apply_thread_settings(
-    sess: &Arc<Session>,
+    sess: &Session,
     sub_id: &str,
     thread_settings: ThreadSettingsOverrides,
 ) -> bool {
-    let updates = thread_settings_update(sess, thread_settings).await;
-    match sess.update_settings(updates).await {
-        Ok(()) => {
-            sess.send_event_raw_without_materializing_rollout(Event {
-                id: sub_id.to_string(),
-                msg: thread_settings_applied_event(sess).await,
-            })
-            .await;
-            true
-        }
+    let updates = thread_settings::prepare_update(sess, thread_settings).await;
+    match thread_settings::apply_update(sess, sub_id.to_string(), updates).await {
+        Ok(()) => true,
         Err(err) => {
             sess.send_event_raw(Event {
                 id: sub_id.to_string(),
@@ -123,155 +99,6 @@ async fn apply_thread_settings(
         }
     }
 }
-
-async fn thread_settings_update(
-    sess: &Session,
-    thread_settings: ThreadSettingsOverrides,
-) -> SessionSettingsUpdate {
-    let ThreadSettingsOverrides {
-        environments,
-        profile_workspace_roots,
-        approval_policy,
-        approvals_reviewer,
-        sandbox_policy,
-        permission_profile,
-        active_permission_profile,
-        windows_sandbox_level,
-        model,
-        effort,
-        summary,
-        service_tier,
-        collaboration_mode,
-        personality,
-    } = thread_settings;
-    let collaboration_mode = match collaboration_mode {
-        Some(collaboration_mode) => collaboration_mode,
-        None => {
-            let state = sess.state.lock().await;
-            // Model and reasoning effort live in CollaborationMode settings today, so
-            // partial thread-settings updates refresh those fields on the active mode.
-            state
-                .session_configuration
-                .collaboration_mode
-                .with_updates(model, effort, /*developer_instructions*/ None)
-        }
-    };
-    SessionSettingsUpdate {
-        environments,
-        profile_workspace_roots,
-        approval_policy,
-        approvals_reviewer,
-        sandbox_policy,
-        permission_profile,
-        active_permission_profile,
-        windows_sandbox_level,
-        collaboration_mode: Some(collaboration_mode),
-        reasoning_summary: summary,
-        service_tier,
-        personality,
-        ..Default::default()
-    }
-}
-
-pub(super) async fn thread_settings_applied_event(sess: &Session) -> EventMsg {
-    let snapshot = {
-        let state = sess.state.lock().await;
-        state.session_configuration.thread_config_snapshot()
-    };
-    EventMsg::ThreadSettingsApplied(ThreadSettingsAppliedEvent {
-        thread_settings: snapshot.into_thread_settings_snapshot(),
-    })
-}
-
-pub(super) async fn user_input_or_turn_inner(
-    sess: &Arc<Session>,
-    sub_id: String,
-    op: Op,
-    client_user_message_id: Option<String>,
-) {
-    let Op::UserInput {
-        items,
-        final_output_json_schema,
-        responsesapi_client_metadata,
-        additional_context,
-        thread_settings,
-    } = op
-    else {
-        unreachable!();
-    };
-    let emit_thread_settings_applied = thread_settings != ThreadSettingsOverrides::default();
-    let mut updates = if emit_thread_settings_applied {
-        thread_settings_update(sess, thread_settings).await
-    } else {
-        SessionSettingsUpdate::default()
-    };
-    updates.final_output_json_schema = Some(final_output_json_schema);
-
-    let Ok(current_context) = sess.new_turn_with_sub_id(sub_id.clone(), updates).await else {
-        // new_turn_with_sub_id already emits the error event.
-        return;
-    };
-    if emit_thread_settings_applied {
-        sess.send_event_raw_without_materializing_rollout(Event {
-            id: sub_id.clone(),
-            msg: thread_settings_applied_event(sess).await,
-        })
-        .await;
-    }
-    sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
-        .await;
-    match sess
-        .steer_input(
-            items.clone(),
-            additional_context.clone(),
-            /*expected_turn_id*/ None,
-            client_user_message_id.clone(),
-            responsesapi_client_metadata.clone(),
-        )
-        .await
-    {
-        Ok(_) => {
-            current_context.session_telemetry.user_prompt(&items);
-        }
-        Err(SteerInputError::NoActiveTurn(items)) => {
-            if let Some(responsesapi_client_metadata) = responsesapi_client_metadata {
-                current_context
-                    .turn_metadata_state
-                    .set_responsesapi_client_metadata(responsesapi_client_metadata);
-            }
-            current_context.session_telemetry.user_prompt(&items);
-            let additional_context_input = {
-                let mut state = sess.state.lock().await;
-                state.additional_context.merge(additional_context)
-            };
-            let mut task_input = additional_context_input
-                .into_iter()
-                .map(ResponseItem::from)
-                .map(TurnInput::ResponseItem)
-                .collect::<Vec<_>>();
-            if !items.is_empty() {
-                task_input.push(TurnInput::UserInput {
-                    content: items,
-                    client_id: client_user_message_id,
-                });
-            }
-            sess.spawn_task(
-                Arc::clone(&current_context),
-                task_input,
-                crate::tasks::RegularTask::new(),
-            )
-            .await;
-        }
-        Err(err) => {
-            sess.send_event_raw(Event {
-                id: sub_id,
-                msg: EventMsg::Error(err.to_error_event()),
-            })
-            .await;
-        }
-    }
-}
-
 /// Queues an inter-agent message, then lets the shared pending-work scheduler
 /// decide whether an idle session should start a regular turn.
 pub async fn inter_agent_communication(
@@ -279,6 +106,8 @@ pub async fn inter_agent_communication(
     sub_id: String,
     communication: InterAgentCommunication,
     thread_settings: ThreadSettingsOverrides,
+    parent_turn_id: Option<String>,
+    root_turn_id: Option<String>,
 ) {
     if thread_settings != ThreadSettingsOverrides::default()
         && !apply_thread_settings(sess, &sub_id, thread_settings).await
@@ -287,7 +116,11 @@ pub async fn inter_agent_communication(
     }
     let trigger_turn = communication.trigger_turn;
     sess.input_queue
-        .enqueue_mailbox_communication(communication)
+        .enqueue_mailbox_communication(
+            communication,
+            parent_turn_id.filter(|_| trigger_turn),
+            root_turn_id.filter(|_| trigger_turn),
+        )
         .await;
     crate::agent_communication::emit_agent_communication_receive(&sub_id);
     if trigger_turn || sess.has_outstanding_durable_sleep() {
@@ -340,6 +173,7 @@ pub async fn resolve_elicitation(
         // Preserve the legacy fallback for clients that only send an action.
         ElicitationAction::Accept => Some(content.unwrap_or_else(|| serde_json::json!({}))),
         ElicitationAction::Decline | ElicitationAction::Cancel => None,
+        _ => None,
     };
     let response = ElicitationResponse {
         action,
@@ -375,29 +209,18 @@ pub async fn exec_approval(
     if let ReviewDecision::ApprovedExecpolicyAmendment {
         proposed_execpolicy_amendment,
     } = &decision
-    {
-        match sess
+        && let Err(err) = sess
             .persist_execpolicy_amendment(proposed_execpolicy_amendment)
             .await
-        {
-            Ok(()) => {
-                sess.record_execpolicy_amendment_message(
-                    &event_turn_id,
-                    proposed_execpolicy_amendment,
-                )
-                .await;
-            }
-            Err(err) => {
-                let message = format!("Failed to apply execpolicy amendment: {err}");
-                tracing::warn!("{message}");
-                let warning = EventMsg::Warning(WarningEvent { message });
-                sess.send_event_raw(Event {
-                    id: event_turn_id.clone(),
-                    msg: warning,
-                })
-                .await;
-            }
-        }
+    {
+        let message = format!("Failed to apply execpolicy amendment: {err}");
+        tracing::warn!("{message}");
+        let warning = EventMsg::Warning(WarningEvent { message });
+        sess.send_event_raw(Event {
+            id: event_turn_id.clone(),
+            msg: warning,
+        })
+        .await;
     }
     match decision {
         ReviewDecision::Abort => {
@@ -530,6 +353,16 @@ pub async fn thread_rollback(sess: &Arc<Session>, sub_id: String, num_turns: u32
         .collect::<Vec<_>>();
     sess.apply_rollout_reconstruction(turn_context.as_ref(), replay_items.as_slice())
         .await;
+    if sess
+        .services
+        .thread_extension_data
+        .remove::<NodeReplReviewEvidence>()
+        .is_some()
+    {
+        sess.guardian_review_session
+            .invalidate_for_node_repl_evidence()
+            .await;
+    }
     sess.services
         .agent_control
         .rollout_budget()
@@ -562,7 +395,7 @@ pub(super) async fn persist_thread_memory_mode_update(
     mode: ThreadMemoryMode,
 ) -> anyhow::Result<()> {
     let live_thread = sess.live_thread_for_persistence("update thread memory mode")?;
-    live_thread.persist().await?;
+    live_thread.persist(PersistContext::Standard).await?;
     live_thread.flush().await?;
     live_thread
         .update_memory_mode(mode, /*include_archived*/ false)
@@ -598,6 +431,9 @@ async fn shutdown_session_runtime(sess: &Arc<Session>) {
     }
     let _ = sess.conversation.shutdown().await;
     sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
+    sess.hooks().shutdown().await;
+    sess.async_hook_results.close();
+    while sess.async_hook_results.try_recv().is_ok() {}
     sess.services
         .unified_exec_manager
         .terminate_all_processes()
@@ -633,7 +469,6 @@ pub async fn shutdown(sess: &Arc<Session>, sub_id: String) -> bool {
     let history = sess.clone_history().await;
     let turn_count = history
         .raw_items()
-        .iter()
         .filter(|item| is_user_turn_boundary(item))
         .count();
     sess.services.session_telemetry.counter(
@@ -719,7 +554,7 @@ pub(super) async fn submission_loop(
         debug!(?sub, "Submission");
         let dispatch_span = submission_dispatch_span(&sub);
         let should_exit = async {
-            match sub.op.clone() {
+            match sub.op {
                 Op::Interrupt => {
                     interrupt(&sess).await;
                     false
@@ -763,13 +598,26 @@ pub(super) async fn submission_loop(
                     realtime_conversation_list_voices(&sess, sub.id.clone()).await;
                     false
                 }
-                Op::UserInput { .. } => {
-                    user_input_or_turn(&sess, sub.id.clone(), sub.op, sub.client_user_message_id)
-                        .await;
+                Op::TurnInput {
+                    request,
+                    mode,
+                    reply,
+                } => {
+                    let result = turn_input::handle(&sess, *request, mode, sub.id.clone()).await;
+                    let _ = reply.send(result);
+                    false
+                }
+                Op::RecoverTurn {
+                    thread_settings,
+                    reply,
+                } => {
+                    let result =
+                        turn_input::handle_recovery(&sess, thread_settings, sub.id.clone()).await;
+                    let _ = reply.send(result);
                     false
                 }
                 Op::ThreadSettings { thread_settings } => {
-                    update_thread_settings(&sess, sub.id.clone(), thread_settings).await;
+                    thread_settings::update(&sess, sub.id.clone(), thread_settings).await;
                     false
                 }
                 Op::InterAgentCommunication {
@@ -781,6 +629,8 @@ pub(super) async fn submission_loop(
                         sub.id.clone(),
                         communication,
                         thread_settings,
+                        sub.parent_turn_id,
+                        sub.root_turn_id,
                     )
                     .await;
                     false

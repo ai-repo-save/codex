@@ -10,18 +10,21 @@ use crate::session::session::Session;
 use crate::session::turn_context::ToolExecutionMode;
 use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::LoadedUserInstructions;
+use codex_history::InitialHistory;
+use codex_history::ResponseItemEnvelope;
+use codex_history::RolloutItem;
 use codex_protocol::protocol::EventMsg;
-use codex_protocol::protocol::InitialHistory;
-use codex_protocol::protocol::Op;
-use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
+use codex_protocol::turn_input::TurnInputMode;
+use codex_protocol::turn_input::TurnInputRequest;
+use codex_protocol::turn_input::TurnInputSubmission;
+use codex_protocol::turn_input::TurnStartOptions;
 use codex_protocol::user_input::UserInput;
 use serde::Deserialize;
 use serde_json::Value;
 use std::future::Future;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
@@ -84,13 +87,17 @@ impl ConsultResponderCleanup {
             .await
     }
 
-    async fn submit(&self, op: Op) -> codex_protocol::error::Result<String> {
+    async fn submit_turn_input(
+        &self,
+        request: TurnInputRequest,
+        mode: TurnInputMode,
+    ) -> codex_protocol::error::Result<TurnInputSubmission> {
         self.io
             .lock()
             .await
             .as_ref()
             .expect("consult responder is available until shutdown")
-            .submit(op)
+            .submit_turn_input(request, mode)
             .await
     }
 
@@ -122,8 +129,8 @@ pub(super) async fn consult_parent(
     let deadline = Instant::now() + timeout;
     snapshot
         .history
-        .push(RolloutItem::ResponseItem(ContextualUserFragment::into(
-            ConsultParentContext,
+        .push(RolloutItem::ResponseItem(ResponseItemEnvelope::new(
+            ContextualUserFragment::into(ConsultParentContext),
         )));
     let instructions = match wait_for_consult_stage(
         parent_session.user_instructions(),
@@ -197,10 +204,8 @@ pub(super) async fn consult_parent(
             parent_trace: None,
             environment_selections,
             thread_extension_init: ExtensionDataInit::default(),
-            supports_openai_form_elicitation: parent_session
-                .services
-                .supports_openai_form_elicitation
-                .load(Ordering::Relaxed),
+            client_mcp_extensions: parent_session.services.client_mcp_extensions.clone(),
+            reserved_thread_id: None,
             analytics_events_client: None,
             thread_store: Arc::clone(&parent_session.services.thread_store),
             attestation_provider: parent_session.services.attestation_provider.clone(),
@@ -252,22 +257,30 @@ pub(super) async fn consult_parent(
     }
 
     let submitted = wait_for_consult_stage(
-        cleanup.submit(Op::UserInput {
-            items: vec![UserInput::Text {
+        cleanup.submit_turn_input(
+            TurnInputRequest::user_input(vec![UserInput::Text {
                 text: question,
                 text_elements: Vec::new(),
-            }],
-            final_output_json_schema: Some(consult_output_schema()),
-            responsesapi_client_metadata: None,
-            additional_context: Default::default(),
-            thread_settings: Default::default(),
-        }),
+            }])
+            .on_start(TurnStartOptions {
+                final_output_json_schema: Some(consult_output_schema()),
+                parent_turn_id: None,
+                root_turn_id: None,
+            }),
+            TurnInputMode::StartIfIdle,
+        ),
         cancellation_token,
         deadline,
     )
     .await;
     let expected_turn_id = match submitted {
-        ConsultStage::Completed(Ok(expected_turn_id)) => expected_turn_id,
+        ConsultStage::Completed(Ok(TurnInputSubmission::Started { turn_id })) => turn_id,
+        ConsultStage::Completed(Ok(submission)) => {
+            cleanup.shutdown().await;
+            return Err(FunctionCallError::RespondToModel(format!(
+                "consult responder did not start a turn: {submission:?}"
+            )));
+        }
         ConsultStage::Completed(Err(error)) => {
             cleanup.shutdown().await;
             return Err(FunctionCallError::RespondToModel(format!(

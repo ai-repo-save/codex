@@ -15,6 +15,7 @@ fn model_preset(id: &str, show_in_picker: bool) -> ModelPreset {
         model: format!("{id}-model"),
         display_name: format!("{id} display"),
         description: format!("{id} description"),
+        model_specialty: None,
         default_reasoning_effort: ReasoningEffort::Medium,
         supported_reasoning_efforts: vec![ReasoningEffortPreset {
             effort: ReasoningEffort::Medium,
@@ -44,12 +45,15 @@ fn spawn_agent_tool_v2_requires_task_name_and_lists_visible_models() {
     luna.multi_agent_version = Some(MultiAgentVersion::V1);
     let mut spark = model_preset("spark", /*show_in_picker*/ true);
     spark.multi_agent_version = None;
+    let mut disabled = model_preset("disabled", /*show_in_picker*/ true);
+    disabled.multi_agent_version = Some(MultiAgentVersion::Disabled);
     let tool = create_spawn_agent_tool_v2(SpawnAgentToolOptions {
         available_models: vec![
             model_preset("visible", /*show_in_picker*/ true),
             model_preset("hidden", /*show_in_picker*/ false),
             luna,
             spark,
+            disabled,
         ],
         agent_type_description: "role help".to_string(),
         expose_agent_type: true,
@@ -91,6 +95,7 @@ fn spawn_agent_tool_v2_requires_task_name_and_lists_visible_models() {
     assert!(description.contains("luna-model"));
     assert!(description.contains("spark-model"));
     assert!(!description.contains("hidden-model"));
+    assert!(!description.contains("disabled-model"));
     assert!(properties.contains_key("task_name"));
     assert!(properties.contains_key("message"));
     assert_eq!(
@@ -510,7 +515,9 @@ fn wait_agent_tool_v2_uses_timeout_only_summary_output() {
     assert_eq!(parameters.required.as_ref(), None);
     assert_eq!(
         output_schema.expect("wait output schema")["properties"]["message"]["description"],
-        json!("Brief wait summary without the agent's final content.")
+        json!(
+            "Brief wait summary without the agent's final content, including any timeout adjustment."
+        )
     );
 }
 

@@ -29,11 +29,14 @@ use codex_analytics::CompactionStrategy;
 use codex_analytics::CompactionTrigger;
 use codex_analytics::now_unix_seconds;
 use codex_async_utils::OrCancelExt;
+use codex_history::CodexHarnessMetadata;
+use codex_history::ResponseItemEnvelope;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::items::ContextCompactionItem;
 use codex_protocol::items::TurnItem;
+use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::InternalChatMessageMetadataPassthrough;
 use codex_protocol::models::ResponseInputItem;
@@ -50,8 +53,6 @@ use codex_utils_output_truncation::truncate_text;
 use futures::prelude::*;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
-
-use codex_model_provider_info::ModelProviderInfo;
 
 pub use codex_prompts::SUMMARIZATION_PROMPT;
 pub use codex_prompts::SUMMARY_PREFIX;
@@ -87,7 +88,7 @@ pub(crate) struct CompactedHistoryMetadata {
 pub(crate) async fn build_compaction_initial_context(
     sess: &Session,
     initial_context_injection: &InitialContextInjection,
-) -> (Vec<ResponseItem>, Option<Arc<WorldState>>) {
+) -> (Vec<ResponseItemEnvelope>, Option<Arc<WorldState>>) {
     // Return the rendered state with its items so history and its baseline stay identical.
     match initial_context_injection {
         InitialContextInjection::BeforeLastUserMessage {
@@ -100,14 +101,13 @@ pub(crate) async fn build_compaction_initial_context(
                     world_state.as_ref(),
                 )
                 .await;
-            (items, Some(Arc::clone(world_state)))
+            (
+                items.into_iter().map(ResponseItemEnvelope::new).collect(),
+                Some(Arc::clone(world_state)),
+            )
         }
         InitialContextInjection::DoNotInject => (Vec::new(), None),
     }
-}
-
-pub(crate) fn should_use_remote_compact_task(provider: &ModelProviderInfo) -> bool {
-    provider.supports_remote_compaction()
 }
 
 pub(crate) async fn run_inline_auto_compact_task(
@@ -366,8 +366,9 @@ async fn run_compact_task_inner_impl(
 
     abort_if_cancelled(cancellation_token)?;
     let history_snapshot = sess.clone_history().await;
-    let history_items = history_snapshot.raw_items();
-    let summary_suffix = get_last_assistant_message_from_turn(history_items).unwrap_or_default();
+    let history_items = history_snapshot.annotated_items();
+    let summary_suffix =
+        get_last_assistant_message_from_turn(history_snapshot.raw_items()).unwrap_or_default();
     let summary_text = format!("{SUMMARY_PREFIX}\n{summary_suffix}");
     let input_messages = collect_input_messages(history_items);
 
@@ -385,7 +386,11 @@ async fn run_compact_task_inner_impl(
         new_history =
             insert_initial_context_before_last_real_user_or_summary(new_history, initial_context);
     }
-    new_history.extend(retained_response_items);
+    new_history.extend(
+        retained_response_items
+            .into_iter()
+            .map(ResponseItemEnvelope::new),
+    );
     let reference_context_item = match initial_context_injection {
         InitialContextInjection::DoNotInject => None,
         InitialContextInjection::BeforeLastUserMessage { .. } => {
@@ -551,13 +556,14 @@ pub fn content_items_to_text(content: &[ContentItem]) -> Option<String> {
 pub(crate) struct CompactedUserMessage {
     message: String,
     internal_chat_message_metadata_passthrough: Option<InternalChatMessageMetadataPassthrough>,
+    harness_metadata: Option<CodexHarnessMetadata>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum CompactedInputMessage {
     User(CompactedUserMessage),
     Agent {
-        item: ResponseItem,
+        item: ResponseItemEnvelope,
         token_count: usize,
     },
 }
@@ -571,40 +577,54 @@ impl CompactedInputMessage {
     }
 }
 
-pub(crate) fn collect_input_messages(items: &[ResponseItem]) -> Vec<CompactedInputMessage> {
+pub(crate) fn collect_input_messages(items: &[ResponseItemEnvelope]) -> Vec<CompactedInputMessage> {
     items
         .iter()
-        .filter_map(|item| {
+        .filter_map(|envelope| {
+            let item = &envelope.item;
             if matches!(item, ResponseItem::AgentMessage { .. }) {
                 let token_count =
                     usize::try_from(crate::context_manager::estimate_item_token_count(item))
                         .unwrap_or(usize::MAX);
                 return Some(CompactedInputMessage::Agent {
-                    item: item.clone(),
+                    item: envelope.clone(),
                     token_count,
                 });
             }
-            match crate::event_mapping::parse_turn_item(item) {
-                Some(TurnItem::UserMessage(user)) => {
-                    if is_summary_message(&user.message()) {
-                        None
-                    } else {
-                        Some(CompactedInputMessage::User(CompactedUserMessage {
-                            message: user.message(),
-                            internal_chat_message_metadata_passthrough: match item {
-                                ResponseItem::Message {
-                                    internal_chat_message_metadata_passthrough,
-                                    ..
-                                } => internal_chat_message_metadata_passthrough.clone(),
-                                _ => None,
-                            },
-                        }))
-                    }
-                }
-                _ => None,
-            }
+            compacted_user_message(item, envelope.metadata.clone()).map(CompactedInputMessage::User)
         })
         .collect()
+}
+
+#[cfg(test)]
+pub(crate) fn collect_user_messages(items: &[ResponseItem]) -> Vec<CompactedUserMessage> {
+    items
+        .iter()
+        .filter_map(|item| compacted_user_message(item, /*harness_metadata*/ None))
+        .collect()
+}
+
+fn compacted_user_message(
+    item: &ResponseItem,
+    harness_metadata: Option<CodexHarnessMetadata>,
+) -> Option<CompactedUserMessage> {
+    let Some(TurnItem::UserMessage(user)) = crate::event_mapping::parse_turn_item(item) else {
+        return None;
+    };
+    if is_summary_message(&user.message()) {
+        return None;
+    }
+    Some(CompactedUserMessage {
+        message: user.message(),
+        internal_chat_message_metadata_passthrough: match item {
+            ResponseItem::Message {
+                internal_chat_message_metadata_passthrough,
+                ..
+            } => internal_chat_message_metadata_passthrough.clone(),
+            _ => None,
+        },
+        harness_metadata,
+    })
 }
 
 pub(crate) fn is_summary_message(message: &str) -> bool {
@@ -622,19 +642,29 @@ pub(crate) fn is_summary_message(message: &str) -> bool {
 ///   that item remains last (remote compaction may return only compaction items).
 /// - If there are no user messages or compaction items, append the context.
 pub(crate) fn insert_initial_context_before_last_real_user_or_summary(
-    mut compacted_history: Vec<ResponseItem>,
-    initial_context: Vec<ResponseItem>,
-) -> Vec<ResponseItem> {
+    mut compacted_history: Vec<ResponseItemEnvelope>,
+    initial_context: Vec<ResponseItemEnvelope>,
+) -> Vec<ResponseItemEnvelope> {
     let mut last_summary_index = None;
     let mut last_real_input_index = None;
     for (i, item) in compacted_history.iter().enumerate().rev() {
-        if let Some(TurnItem::UserMessage(user)) = crate::event_mapping::parse_turn_item(item)
-            && is_summary_message(&user.message())
+        if let ResponseItem::AgentMessage { content, .. } = &item.item
+            && !matches!(
+                content.first(),
+                Some(AgentMessageInputContent::InputText { text })
+                    if text.starts_with("Message Type: FINAL_ANSWER\n")
+            )
         {
-            last_summary_index.get_or_insert(i);
-            continue;
+            last_real_input_index = Some(i);
+            break;
         }
-        if crate::context_manager::is_user_turn_boundary(item) {
+        let Some(TurnItem::UserMessage(user)) = crate::event_mapping::parse_turn_item(&item.item)
+        else {
+            continue;
+        };
+        if is_summary_message(&user.message()) {
+            last_summary_index.get_or_insert(i);
+        } else if crate::context_manager::is_user_turn_boundary(&item.item) {
             last_real_input_index = Some(i);
             break;
         }
@@ -645,7 +675,7 @@ pub(crate) fn insert_initial_context_before_last_real_user_or_summary(
         .rev()
         .find_map(|(i, item)| {
             matches!(
-                item,
+                &item.item,
                 ResponseItem::Compaction { .. } | ResponseItem::ContextCompaction { .. }
             )
             .then_some(i)
@@ -668,10 +698,10 @@ pub(crate) fn insert_initial_context_before_last_real_user_or_summary(
 }
 
 pub(crate) fn build_compacted_history(
-    initial_context: Vec<ResponseItem>,
+    initial_context: Vec<ResponseItemEnvelope>,
     input_messages: &[CompactedInputMessage],
     summary_text: &str,
-) -> Vec<ResponseItem> {
+) -> Vec<ResponseItemEnvelope> {
     build_compacted_history_with_limit(
         initial_context,
         input_messages,
@@ -681,11 +711,11 @@ pub(crate) fn build_compacted_history(
 }
 
 fn build_compacted_history_with_limit(
-    mut history: Vec<ResponseItem>,
+    mut history: Vec<ResponseItemEnvelope>,
     input_messages: &[CompactedInputMessage],
     summary_text: &str,
     max_tokens: usize,
-) -> Vec<ResponseItem> {
+) -> Vec<ResponseItemEnvelope> {
     let mut selected_messages: Vec<CompactedInputMessage> = Vec::new();
     if max_tokens > 0 {
         let mut remaining = max_tokens;
@@ -705,6 +735,7 @@ fn build_compacted_history_with_limit(
                     internal_chat_message_metadata_passthrough: message
                         .internal_chat_message_metadata_passthrough
                         .clone(),
+                    harness_metadata: message.harness_metadata.clone(),
                 }));
                 break;
             } else {
@@ -716,16 +747,19 @@ fn build_compacted_history_with_limit(
 
     for message in &selected_messages {
         match message {
-            CompactedInputMessage::User(message) => history.push(ResponseItem::Message {
-                id: None,
-                role: "user".to_string(),
-                content: vec![ContentItem::InputText {
-                    text: message.message.clone(),
-                }],
-                phase: None,
-                internal_chat_message_metadata_passthrough: message
-                    .internal_chat_message_metadata_passthrough
-                    .clone(),
+            CompactedInputMessage::User(message) => history.push(ResponseItemEnvelope {
+                item: ResponseItem::Message {
+                    id: None,
+                    role: "user".to_string(),
+                    content: vec![ContentItem::InputText {
+                        text: message.message.clone(),
+                    }],
+                    phase: None,
+                    internal_chat_message_metadata_passthrough: message
+                        .internal_chat_message_metadata_passthrough
+                        .clone(),
+                },
+                metadata: message.harness_metadata.clone(),
             }),
             CompactedInputMessage::Agent { item, .. } => history.push(item.clone()),
         }
@@ -737,13 +771,13 @@ fn build_compacted_history_with_limit(
         summary_text.to_string()
     };
 
-    history.push(ResponseItem::Message {
+    history.push(ResponseItemEnvelope::new(ResponseItem::Message {
         id: None,
         role: "user".to_string(),
         content: vec![ContentItem::InputText { text: summary_text }],
         phase: None,
         internal_chat_message_metadata_passthrough: None,
-    });
+    }));
 
     history
 }

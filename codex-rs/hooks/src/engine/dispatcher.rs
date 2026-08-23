@@ -11,13 +11,12 @@ use codex_protocol::protocol::HookRunStatus;
 use codex_protocol::protocol::HookRunSummary;
 use codex_protocol::protocol::HookScope;
 
-use super::CommandShell;
+use super::ClaudeHooksEngine;
 use super::ConfiguredHandler;
 use super::ConfiguredHandlerKind;
 use super::HandlerRunResult;
-use super::command_runner::CommandRunResult;
 use super::command_runner::run_command;
-use super::prompt_runner::PromptHookRunner;
+use super::mcp_runner::run_mcp_tool;
 use super::prompt_runner::run_prompt;
 use crate::events::common::matches_matcher;
 
@@ -77,7 +76,7 @@ pub(crate) fn running_summary(handler: &ConfiguredHandler) -> HookRunSummary {
         id: handler.run_id(),
         event_name: handler.event_name,
         handler_type: handler.handler_type(),
-        execution_mode: HookExecutionMode::Sync,
+        execution_mode: handler.execution_mode(),
         scope: scope_for_event(handler.event_name),
         source_path: handler.source_path.clone(),
         source: handler.source,
@@ -91,29 +90,65 @@ pub(crate) fn running_summary(handler: &ConfiguredHandler) -> HookRunSummary {
     }
 }
 
-pub(crate) async fn execute_handlers<T>(
+pub(crate) async fn execute_handlers<T: 'static>(
+    engine: &ClaudeHooksEngine,
     handlers: Vec<ConfiguredHandler>,
     input_json: String,
-    context: HandlerExecutionContext<'_>,
+    cwd: &Path,
+    turn_id: Option<String>,
     parse: fn(&ConfiguredHandler, HandlerRunResult, Option<String>) -> ParsedHandler<T>,
 ) -> Vec<ParsedHandler<T>> {
-    let HandlerExecutionContext {
-        shell,
-        prompt_runner,
-        cwd,
-        turn_id,
-    } = context;
     let mut pending = FuturesUnordered::new();
     for (configured_order, handler) in handlers.into_iter().enumerate() {
+        if handler.execution_mode() == HookExecutionMode::Async {
+            engine.command_runtime.schedule_async_hook(
+                handler,
+                input_json.clone(),
+                cwd.to_path_buf(),
+                turn_id.clone(),
+                parse,
+            );
+            continue;
+        }
         let input_json = input_json.clone();
         let turn_id = turn_id.clone();
         pending.push(async move {
             let result = match &handler.kind {
-                ConfiguredHandlerKind::Command { .. } => HandlerRunResult::completed(
-                    run_command(shell, &handler, configured_order, &input_json, cwd).await,
-                ),
+                ConfiguredHandlerKind::Command { command, env, .. } => {
+                    run_command(
+                        &engine.command_runtime,
+                        &handler,
+                        command,
+                        env,
+                        &input_json,
+                        cwd,
+                    )
+                    .await
+                }
+                ConfiguredHandlerKind::McpTool {
+                    server,
+                    tool,
+                    input,
+                } => {
+                    run_mcp_tool(
+                        engine.mcp_executor.as_ref(),
+                        &handler,
+                        server,
+                        tool,
+                        input,
+                        &input_json,
+                    )
+                    .await
+                }
                 ConfiguredHandlerKind::Prompt { .. } => {
-                    run_prompt(prompt_runner, shell, &handler, &input_json, cwd).await
+                    run_prompt(
+                        engine.prompt_hook_runner.as_deref(),
+                        engine.command_runtime.shell(),
+                        &handler,
+                        &input_json,
+                        cwd,
+                    )
+                    .await
                 }
             };
             (configured_order, parse(&handler, result, turn_id))
@@ -141,28 +176,16 @@ pub(crate) fn prompt_filter_skipped<T: Default>(
     ParsedHandler {
         completed: HookCompletedEvent {
             turn_id,
-            run: completed_summary(
-                handler,
-                run_result.run_result(),
-                HookRunStatus::Completed,
-                Vec::new(),
-            ),
+            run: completed_summary(handler, run_result, HookRunStatus::Completed, Vec::new()),
         },
         data: T::default(),
         completion_order: 0,
     }
 }
 
-pub(crate) struct HandlerExecutionContext<'a> {
-    pub shell: &'a CommandShell,
-    pub prompt_runner: Option<&'a dyn PromptHookRunner>,
-    pub cwd: &'a Path,
-    pub turn_id: Option<String>,
-}
-
 pub(crate) fn completed_summary(
     handler: &ConfiguredHandler,
-    run_result: &CommandRunResult,
+    run_result: &HandlerRunResult,
     status: HookRunStatus,
     entries: Vec<codex_protocol::protocol::HookOutputEntry>,
 ) -> HookRunSummary {
@@ -170,7 +193,7 @@ pub(crate) fn completed_summary(
         id: handler.run_id(),
         event_name: handler.event_name,
         handler_type: handler.handler_type(),
-        execution_mode: HookExecutionMode::Sync,
+        execution_mode: handler.execution_mode(),
         scope: scope_for_event(handler.event_name),
         source_path: handler.source_path.clone(),
         source: handler.source,
@@ -216,16 +239,19 @@ pub(crate) fn hook_event_name_label(event_name: HookEventName) -> &'static str {
     }
 }
 
-pub(crate) fn hook_execution_mode_label(mode: HookExecutionMode) -> &'static str {
+/// Returns the canonical label for a hook execution mode.
+pub fn hook_execution_mode_label(mode: HookExecutionMode) -> &'static str {
     match mode {
         HookExecutionMode::Sync => "sync",
         HookExecutionMode::Async => "async",
     }
 }
 
-pub(crate) fn hook_handler_type_label(handler_type: HookHandlerType) -> &'static str {
+/// Returns the canonical label for a hook handler type.
+pub fn hook_handler_type_label(handler_type: HookHandlerType) -> &'static str {
     match handler_type {
         HookHandlerType::Command => "command",
+        HookHandlerType::McpTool => "mcp_tool",
         HookHandlerType::Prompt => "prompt",
         HookHandlerType::Agent => "agent",
     }
@@ -278,16 +304,17 @@ mod tests {
         ConfiguredHandler {
             event_name,
             matcher: matcher.map(str::to_owned),
-            kind: ConfiguredHandlerKind::Command {
-                command: command.to_string(),
-                timeout_sec: 5,
-            },
+            timeout_sec: 5,
             status_message: None,
             additional_context_limit: Default::default(),
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: HookSource::User,
             display_order,
-            env: std::collections::HashMap::new(),
+            kind: ConfiguredHandlerKind::Command {
+                command: command.to_string(),
+                r#async: false,
+                env: std::collections::HashMap::new(),
+            },
         }
     }
 
@@ -547,9 +574,6 @@ mod tests {
 
         let selected = select_handlers(&handlers, HookEventName::Stop, /*matcher_input*/ None);
 
-        assert_eq!(selected.len(), 3);
-        assert_eq!(selected[0].command(), Some("first"));
-        assert_eq!(selected[1].command(), Some("second"));
-        assert_eq!(selected[2].command(), Some("third"));
+        assert_eq!(selected, handlers);
     }
 }

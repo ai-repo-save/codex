@@ -177,6 +177,31 @@ impl RequestPluginInstallHandler {
                     "{argument_name} must match one of {source}"
                 ))
             })?;
+        let tool = if self.presentation == ToolSuggestPresentation::RecommendationContext {
+            let plugin_id = tool.id().to_string();
+            let auth = session.services.auth_manager.auth().await;
+            let plugins_config = turn.config.plugins_config_input();
+            match codex_core_plugins::hydrate_selected_recommended_plugin_install_metadata(
+                &plugins_config,
+                auth.as_ref(),
+                tool,
+            )
+            .await
+            {
+                Ok(Some(tool)) => tool,
+                Ok(None) => return Err(recommended_plugins_no_longer_available()),
+                Err(err) => {
+                    warn!(
+                        plugin_id,
+                        error = %err,
+                        "failed to hydrate selected recommended plugin install metadata"
+                    );
+                    return Err(recommended_plugin_metadata_retryable());
+                }
+            }
+        } else {
+            tool
+        };
         let tool_type = tool.tool_type();
 
         let suggestion_id = format!("request_plugin_install_{call_id}");
@@ -251,6 +276,7 @@ impl RequestPluginInstallHandler {
                 Some(ElicitationAction::Accept) => "accept",
                 Some(ElicitationAction::Decline) => "decline",
                 Some(ElicitationAction::Cancel) => "cancel",
+                Some(_) => "unknown",
                 None => "unavailable",
             };
             turn.session_telemetry.record_plugin_install_suggestion(
@@ -283,6 +309,18 @@ impl RequestPluginInstallHandler {
             Some(true),
         )))
     }
+}
+
+fn recommended_plugins_no_longer_available() -> FunctionCallError {
+    FunctionCallError::RespondToModel(
+        "The recommended plugins for this turn are no longer available.".to_string(),
+    )
+}
+
+fn recommended_plugin_metadata_retryable() -> FunctionCallError {
+    FunctionCallError::RespondToModel(
+        "The selected recommended plugin could not be verified right now. Retry request_plugin_install with the same plugin_id.".to_string(),
+    )
 }
 
 impl CoreToolRuntime for RequestPluginInstallHandler {}
@@ -455,20 +493,15 @@ async fn refresh_missing_requested_connectors(
     }
 
     let mcp_tools = mcp.tools();
-    let accessible_connectors = connectors::with_app_enabled_state(
-        connectors::accessible_connectors_from_mcp_tools(mcp_tools),
-        &turn.config,
-    );
+    let accessible_connectors = connectors::accessible_connectors_from_mcp_tools(mcp_tools);
     if all_requested_connectors_picked_up(expected_connector_ids, &accessible_connectors) {
         return Some(accessible_connectors);
     }
 
     match session.hard_refresh_latest_codex_apps_tools().await {
         Ok(mcp_tools) => {
-            let accessible_connectors = connectors::with_app_enabled_state(
-                connectors::accessible_connectors_from_mcp_tools(&mcp_tools),
-                &turn.config,
-            );
+            let accessible_connectors =
+                connectors::accessible_connectors_from_mcp_tools(&mcp_tools);
             connectors::refresh_accessible_connectors_cache_from_mcp_tools(
                 &turn.config,
                 auth,

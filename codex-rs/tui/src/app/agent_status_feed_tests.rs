@@ -139,6 +139,7 @@ fn agent_status_excludes_command_and_message_bodies() {
                 text: "Finished checking the focused TUI tests.".to_string(),
                 phase: None,
                 memory_citation: None,
+                delivery: None,
             },
             thread_id: "thread-child".to_string(),
             turn_id: "turn-1".to_string(),
@@ -156,7 +157,7 @@ fn agent_status_excludes_command_and_message_bodies() {
         .join("\n");
 
     insta::assert_snapshot!(rendered, @r###"
-    /agent
+    /subagents
     Sub-agents running
 
       • `/root/reviewer`
@@ -205,7 +206,7 @@ fn agent_status_excludes_reasoning_bodies() {
         .join("\n");
 
     insta::assert_snapshot!(rendered, @r###"
-    /agent
+    /subagents
     Sub-agents running
 
       • `/root/reviewer`

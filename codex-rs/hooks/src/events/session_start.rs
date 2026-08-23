@@ -11,14 +11,12 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 
 use super::common;
 use super::prompt_output;
-use crate::engine::CommandShell;
+use crate::engine::ClaudeHooksEngine;
 use crate::engine::ConfiguredHandler;
 use crate::engine::HandlerRunResult;
-use crate::engine::PromptHookRunner;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
 use crate::output_spill::AdditionalContext;
-use crate::output_spill::HookOutputSpiller;
 use crate::schema::NullableString;
 use crate::schema::SessionStartCommandInput;
 use crate::schema::SubagentStartCommandInput;
@@ -110,16 +108,12 @@ pub(crate) fn preview(
 }
 
 pub(crate) async fn run(
-    handlers: &[ConfiguredHandler],
-    shell: &CommandShell,
-    output_spiller: &HookOutputSpiller,
-    prompt_runner: Option<&dyn PromptHookRunner>,
+    engine: &ClaudeHooksEngine,
     request: SessionStartRequest,
     turn_id: Option<String>,
 ) -> SessionStartOutcome {
-    let session_id = request.session_id;
     let matched = dispatcher::select_handlers(
-        handlers,
+        &engine.handlers,
         request.target.event_name(),
         Some(request.target.matcher_input()),
     );
@@ -188,14 +182,11 @@ pub(crate) async fn run(
     };
 
     let results = dispatcher::execute_handlers(
+        engine,
         matched,
         input_json,
-        dispatcher::HandlerExecutionContext {
-            shell,
-            prompt_runner,
-            cwd: request.cwd.as_path(),
-            turn_id,
-        },
+        request.cwd.as_path(),
+        turn_id,
         parse_completed,
     )
     .await;
@@ -209,8 +200,10 @@ pub(crate) async fn run(
             .iter()
             .map(|result| result.data.additional_contexts_for_model.as_slice()),
     );
-    let additional_contexts = output_spiller
-        .maybe_spill_additional_contexts(session_id, additional_contexts)
+    let additional_contexts = engine
+        .command_runtime
+        .output_spiller()
+        .maybe_spill_additional_contexts(additional_contexts)
         .await;
 
     SessionStartOutcome {
@@ -284,7 +277,8 @@ fn parse_completed(
                                 );
                             }
                             let _ = parsed.universal.suppress_output;
-                            if handler.event_name == HookEventName::SessionStart
+                            if handler.can_apply_control_effects()
+                                && handler.event_name == HookEventName::SessionStart
                                 && !parsed.universal.continue_processing
                             {
                                 status = HookRunStatus::Stopped;
@@ -403,14 +397,18 @@ mod tests {
     use super::StartHookTarget;
     use super::parse_completed;
     use super::run;
+    use crate::engine::ClaudeHooksEngine;
     use crate::engine::CommandShell;
     use crate::engine::ConfiguredHandler;
     use crate::engine::ConfiguredHandlerKind;
     use crate::engine::HandlerRunResult;
     use crate::engine::PromptHookRequest;
     use crate::engine::PromptHookRunner;
-    use crate::engine::command_runner::CommandRunResult;
-    use crate::output_spill::HookOutputSpiller;
+    use crate::engine::command_runner::CommandHookRuntime;
+    use crate::mcp::HookMcpCall;
+    use crate::mcp::HookMcpExecutor;
+    use crate::output_spill::AdditionalContext;
+    use crate::output_spill::AdditionalContextLimit;
     use crate::schema::SessionStartCommandInput;
 
     #[derive(Clone)]
@@ -427,11 +425,19 @@ mod tests {
         }
     }
 
+    struct UnusedMcpExecutor;
+
+    impl HookMcpExecutor for UnusedMcpExecutor {
+        fn execute(&self, _call: HookMcpCall) -> BoxFuture<'_, anyhow::Result<String>> {
+            async { Ok(String::new()) }.boxed()
+        }
+    }
+
     #[tokio::test]
     async fn prompt_handler_receives_session_start_context() {
         let requests = Arc::new(Mutex::new(Vec::new()));
         let runner = RecordingRunner {
-            requests: requests.clone(),
+            requests: Arc::clone(&requests),
             output: r#"{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"prompt context"}}"#
                 .to_string(),
         };
@@ -458,16 +464,29 @@ mod tests {
         .expect("input JSON");
         let expected_prompt =
             format!("<untrusted-hook-event-json>\n{expected_input}\n</untrusted-hook-event-json>");
+        let (result_sender, _result_receiver) = async_channel::unbounded();
+        let command_runtime = CommandHookRuntime::new(
+            CommandShell {
+                program: "sh".to_string(),
+                args: vec!["-c".to_string()],
+            },
+            Arc::new(std::env::vars_os().collect()),
+            session_id,
+            result_sender,
+        );
+        let mut engine = ClaudeHooksEngine::new_with_prompt_runner(
+            /*enabled*/ false,
+            /*bypass_hook_trust*/ false,
+            /*config_layer_stack*/ None,
+            Vec::new(),
+            Vec::new(),
+            command_runtime,
+            Arc::new(UnusedMcpExecutor),
+            Some(Arc::new(runner)),
+        );
+        engine.handlers = vec![prompt_handler(/*fail_closed*/ false)];
 
-        let outcome = run(
-            &[prompt_handler(/*fail_closed*/ false)],
-            &shell(),
-            &HookOutputSpiller::new(),
-            Some(&runner),
-            request,
-            /*turn_id*/ None,
-        )
-        .await;
+        let outcome = run(&engine, request, /*turn_id*/ None).await;
 
         assert_eq!(
             outcome.additional_contexts,
@@ -487,8 +506,6 @@ mod tests {
             }]
         );
     }
-    use crate::output_spill::AdditionalContext;
-    use crate::output_spill::AdditionalContextLimit;
 
     #[test]
     fn plain_stdout_becomes_model_context() {
@@ -703,16 +720,17 @@ mod tests {
         ConfiguredHandler {
             event_name,
             matcher: None,
-            kind: ConfiguredHandlerKind::Command {
-                command: "echo hook".to_string(),
-                timeout_sec: 600,
-            },
+            timeout_sec: 600,
             status_message: None,
             additional_context_limit: Default::default(),
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: codex_protocol::protocol::HookSource::User,
             display_order: 0,
-            env: std::collections::HashMap::new(),
+            kind: ConfiguredHandlerKind::Command {
+                command: "echo hook".to_string(),
+                r#async: false,
+                env: std::collections::HashMap::new(),
+            },
         }
     }
 
@@ -724,32 +742,25 @@ mod tests {
         ConfiguredHandler {
             event_name,
             matcher: None,
+            timeout_sec: 30,
             kind: ConfiguredHandlerKind::Prompt {
                 prompt: "$$ARGUMENTS".to_string(),
                 filter: None,
                 model: None,
                 reasoning_effort: None,
-                timeout_sec: 30,
                 fail_closed,
+                env: std::collections::HashMap::new(),
             },
             status_message: None,
             additional_context_limit: Default::default(),
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: codex_protocol::protocol::HookSource::User,
             display_order: 0,
-            env: std::collections::HashMap::new(),
-        }
-    }
-
-    fn shell() -> CommandShell {
-        CommandShell {
-            program: "sh".to_string(),
-            args: vec!["-c".to_string()],
         }
     }
 
     fn run_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> HandlerRunResult {
-        HandlerRunResult::completed(CommandRunResult {
+        HandlerRunResult {
             started_at: 1,
             completed_at: 2,
             duration_ms: 1,
@@ -757,6 +768,7 @@ mod tests {
             stdout: stdout.to_string(),
             stderr: stderr.to_string(),
             error: None,
-        })
+            prompt_filter_skipped: false,
+        }
     }
 }

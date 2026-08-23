@@ -6,7 +6,6 @@ use codex_config::MatcherGroup;
 use codex_config::PromptHookFilterConfig;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::HookEventName;
-use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookSource;
 use codex_protocol::protocol::HookTrustStatus;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -18,6 +17,7 @@ use super::super::super::ConfiguredHandler;
 use super::super::super::ConfiguredHandlerKind;
 use super::super::super::ConfiguredPromptFilter;
 use super::super::super::HookListEntry;
+use super::super::super::HookListEntryHandler;
 use super::super::HookHandlerSource;
 use super::super::append_matcher_groups;
 
@@ -38,6 +38,7 @@ fn hook_handler_source<'a>(
         key_source: path.display().to_string(),
         source: hook_source(),
         is_managed: true,
+        requirement: super::super::HookRequirement::Optional,
         bypass_hook_trust: false,
         hook_states,
         env: HashMap::new(),
@@ -71,6 +72,24 @@ fn prompt_handler_with_filter(filter: PromptHookFilterConfig) -> HookHandlerConf
     }
 }
 
+fn required_hook_handler_source<'a>(
+    path: &'a AbsolutePathBuf,
+    hook_states: &'a HashMap<String, HookStateToml>,
+    required_load_errors: &'a mut Vec<String>,
+) -> HookHandlerSource<'a> {
+    HookHandlerSource {
+        path,
+        key_source: path.display().to_string(),
+        source: hook_source(),
+        is_managed: true,
+        requirement: super::super::HookRequirement::Required(required_load_errors),
+        bypass_hook_trust: false,
+        hook_states,
+        env: HashMap::new(),
+        plugin_id: None,
+    }
+}
+
 #[test]
 fn supported_prompt_hooks_enter_runtime_and_list_metadata() {
     let mut handlers = Vec::new();
@@ -93,7 +112,7 @@ fn supported_prompt_hooks_enter_runtime_and_list_metadata() {
             &mut hook_entries,
             &mut warnings,
             &mut display_order,
-            &hook_handler_source(&source_path, &hook_states),
+            &mut hook_handler_source(&source_path, &hook_states),
             event_name,
             vec![MatcherGroup {
                 matcher: Some("^Bash$".to_string()),
@@ -114,12 +133,12 @@ fn supported_prompt_hooks_enter_runtime_and_list_metadata() {
                 filter: None,
                 model: Some("gpt-test".to_string()),
                 reasoning_effort: Some(ReasoningEffort::High),
-                timeout_sec: 30,
                 fail_closed: true,
+                env: HashMap::new(),
             }
         );
-        assert_eq!(hook_entry.handler_type, HookHandlerType::Prompt);
-        assert_eq!(hook_entry.command, None);
+        assert_eq!(handler.timeout_sec, 30);
+        assert_eq!(hook_entry.handler, HookListEntryHandler::Prompt);
         assert_eq!(hook_entry.prompt.as_deref(), Some("Review $$ARGUMENTS"));
         assert_eq!(hook_entry.model.as_deref(), Some("gpt-test"));
         assert_eq!(hook_entry.reasoning_effort, Some(ReasoningEffort::High));
@@ -153,7 +172,7 @@ fn prompt_reasoning_effort_changes_normalized_hook_hash() {
         &mut hook_entries,
         &mut warnings,
         &mut display_order,
-        &hook_handler_source(&source_path, &hook_states),
+        &mut hook_handler_source(&source_path, &hook_states),
         HookEventName::PreToolUse,
         vec![
             MatcherGroup {
@@ -185,7 +204,7 @@ fn prompt_filter_normalization_uses_default_timeout_and_hashes_normalized_values
         &mut hook_entries,
         &mut warnings,
         &mut display_order,
-        &hook_handler_source(&source_path, &hook_states),
+        &mut hook_handler_source(&source_path, &hook_states),
         HookEventName::PreToolUse,
         vec![MatcherGroup {
             matcher: None,
@@ -228,10 +247,11 @@ fn prompt_filter_normalization_uses_default_timeout_and_hashes_normalized_values
                 }),
                 model: None,
                 reasoning_effort: None,
-                timeout_sec: 30,
                 fail_closed: false,
+                env: HashMap::new(),
             }
         );
+        assert_eq!(handler.timeout_sec, 30);
     }
     assert_eq!(hook_entries[0].current_hash, hook_entries[1].current_hash);
     assert_ne!(hook_entries[0].current_hash, hook_entries[2].current_hash);
@@ -252,7 +272,7 @@ fn invalid_prompt_filter_timeout_skips_only_that_handler() {
         &mut hook_entries,
         &mut warnings,
         &mut display_order,
-        &hook_handler_source(&source_path, &hook_states),
+        &mut hook_handler_source(&source_path, &hook_states),
         HookEventName::PreToolUse,
         vec![MatcherGroup {
             matcher: None,
@@ -283,10 +303,11 @@ fn invalid_prompt_filter_timeout_skips_only_that_handler() {
             }),
             model: None,
             reasoning_effort: None,
-            timeout_sec: 30,
             fail_closed: false,
+            env: HashMap::new(),
         }
     );
+    assert_eq!(handlers[0].timeout_sec, 30);
 }
 
 #[test]
@@ -302,7 +323,7 @@ fn prompt_filter_uses_platform_command_override() {
         &mut Vec::new(),
         &mut warnings,
         &mut display_order,
-        &hook_handler_source(&source_path, &hook_states),
+        &mut hook_handler_source(&source_path, &hook_states),
         HookEventName::PreToolUse,
         vec![MatcherGroup {
             matcher: None,
@@ -348,7 +369,7 @@ fn invalid_prompt_handlers_are_skipped_without_dropping_valid_siblings() {
         &mut hook_entries,
         &mut warnings,
         &mut display_order,
-        &hook_handler_source(&source_path, &hook_states),
+        &mut hook_handler_source(&source_path, &hook_states),
         HookEventName::PreToolUse,
         vec![MatcherGroup {
             matcher: None,
@@ -417,10 +438,11 @@ fn invalid_prompt_handlers_are_skipped_without_dropping_valid_siblings() {
             filter: None,
             model: Some("gpt-test".to_string()),
             reasoning_effort: Some(ReasoningEffort::High),
-            timeout_sec: 1,
             fail_closed: true,
+            env: HashMap::new(),
         }
     );
+    assert_eq!(handlers[0].timeout_sec, 1);
     assert_eq!(handlers[0].status_message, None);
     assert_eq!(hook_entries.len(), 1);
     assert_eq!(hook_entries[0].display_order, 0);
@@ -446,6 +468,9 @@ fn unsupported_events_skip_each_prompt_handler_without_lifecycle_or_metadata() {
     let mut display_order = 0;
     let source_path = source_path();
     let hook_states = std::collections::HashMap::new();
+    let mut required_load_errors = Vec::new();
+    let mut hook_source =
+        required_hook_handler_source(&source_path, &hook_states, &mut required_load_errors);
 
     for event_name in [
         HookEventName::PostToolUse,
@@ -458,7 +483,7 @@ fn unsupported_events_skip_each_prompt_handler_without_lifecycle_or_metadata() {
             &mut hook_entries,
             &mut warnings,
             &mut display_order,
-            &hook_handler_source(&source_path, &hook_states),
+            &mut hook_source,
             event_name,
             vec![MatcherGroup {
                 matcher: None,
@@ -484,4 +509,6 @@ fn unsupported_events_skip_each_prompt_handler_without_lifecycle_or_metadata() {
             2
         );
     }
+    drop(hook_source);
+    assert_eq!(required_load_errors, warnings);
 }

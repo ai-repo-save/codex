@@ -1,4 +1,5 @@
 use codex_protocol::openai_models::ModelPreset;
+use codex_protocol::protocol::MultiAgentVersion;
 use codex_tools::JsonSchema;
 use codex_tools::ResponsesApiNamespace;
 use codex_tools::ResponsesApiNamespaceTool;
@@ -708,7 +709,7 @@ fn wait_output_schema_v2() -> Value {
         "properties": {
             "message": {
                 "type": "string",
-                "description": "Brief wait summary without the agent's final content."
+                "description": "Brief wait summary without the agent's final content, including any timeout adjustment."
             },
             "timed_out": {
                 "type": "boolean",
@@ -831,7 +832,7 @@ fn spawn_agent_common_properties_v2(
         (
             "agent_type".to_string(),
             JsonSchema::string(Some(format!(
-                "Agent type override for the new agent. Omit unless explicitly asked. Set `fork_turns` to `none` or a positive integer when an explicit override is needed.\n{agent_type_description}"
+                "Agent type override for the new agent. Omit unless explicitly asked. The selected role applies regardless of how much parent history is inherited.\n{agent_type_description}"
             ))),
         ),
         (
@@ -1067,6 +1068,7 @@ pub fn select_spawn_agent_model_summaries(models: &[ModelPreset]) -> Vec<&ModelP
     models
         .iter()
         .filter(|model| model.show_in_picker)
+        .filter(|model| model.multi_agent_version != Some(MultiAgentVersion::Disabled))
         .filter(|model| {
             if PREFERRED_SPAWN_AGENT_MODELS.contains(&model.model.as_str()) {
                 true

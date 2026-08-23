@@ -11,13 +11,13 @@ use codex_config::MatcherGroup;
 use codex_config::PromptHookFilterConfig;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::HookEventName;
-use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookTrustStatus;
 
 use super::super::ConfiguredHandler;
 use super::super::ConfiguredHandlerKind;
 use super::super::ConfiguredPromptFilter;
 use super::super::HookListEntry;
+use super::super::HookListEntryHandler;
 use super::super::dispatcher;
 use super::super::prompt_runner;
 use super::HookHandlerSource;
@@ -35,7 +35,7 @@ pub(super) fn append_prompt_handler(
     hook_entries: &mut Vec<HookListEntry>,
     warnings: &mut Vec<String>,
     display_order: &mut i64,
-    source: &HookHandlerSource<'_>,
+    source: &mut HookHandlerSource<'_>,
     event_name: HookEventName,
     group: &MatcherGroup,
     group_index: usize,
@@ -52,28 +52,34 @@ pub(super) fn append_prompt_handler(
     seen_ids: &mut HashSet<String>,
 ) -> bool {
     if !prompt_runner::supports_event(event_name) {
-        warnings.push(format!(
-            "skipping prompt hook in {}: prompt hooks are not supported for {}",
-            source.path.display(),
-            dispatcher::hook_event_name_label(event_name)
-        ));
+        source.record_load_failure(
+            format!(
+                "skipping prompt hook in {}: prompt hooks are not supported for {}",
+                source.path.display(),
+                dispatcher::hook_event_name_label(event_name)
+            ),
+            warnings,
+        );
         return false;
     }
     if prompt.trim().is_empty() || prompt.len() > 16 * 1024 {
-        warnings.push(format!(
-            "skipping invalid hook prompt in {}",
-            source.path.display()
-        ));
+        source.record_load_failure(
+            format!("skipping invalid hook prompt in {}", source.path.display()),
+            warnings,
+        );
         return false;
     }
     if model
         .as_deref()
         .is_some_and(|model| model.trim().is_empty() || model.trim() != model)
     {
-        warnings.push(format!(
-            "skipping invalid prompt hook model in {}",
-            source.path.display()
-        ));
+        source.record_load_failure(
+            format!(
+                "skipping invalid prompt hook model in {}",
+                source.path.display()
+            ),
+            warnings,
+        );
         return false;
     }
     let filter = match filter {
@@ -86,10 +92,13 @@ pub(super) fn append_prompt_handler(
         None => None,
     };
     if timeout_sec.is_some_and(|timeout_sec| !(1..=600).contains(&timeout_sec)) {
-        warnings.push(format!(
-            "skipping invalid prompt hook timeout in {}",
-            source.path.display()
-        ));
+        source.record_load_failure(
+            format!(
+                "skipping invalid prompt hook timeout in {}",
+                source.path.display()
+            ),
+            warnings,
+        );
         return false;
     }
     let timeout_sec = timeout_sec.unwrap_or(30);
@@ -156,9 +165,8 @@ pub(super) fn append_prompt_handler(
         key: resolved_key.key,
         id: durable_id,
         event_name,
-        handler_type: HookHandlerType::Prompt,
+        handler: HookListEntryHandler::Prompt,
         matcher: matcher.map(ToOwned::to_owned),
-        command: None,
         prompt: Some(prompt.clone()),
         model: model.clone(),
         reasoning_effort: reasoning_effort.clone(),
@@ -192,20 +200,20 @@ pub(super) fn append_prompt_handler(
         handlers.push(ConfiguredHandler {
             event_name,
             matcher: matcher.map(ToOwned::to_owned),
+            timeout_sec,
             kind: ConfiguredHandlerKind::Prompt {
                 prompt,
                 filter: effective_filter,
                 model,
                 reasoning_effort,
-                timeout_sec,
                 fail_closed,
+                env: source.env.clone(),
             },
             status_message,
             additional_context_limit: Default::default(),
             source_path: source.path.clone(),
             source: source.source,
             display_order: *display_order,
-            env: source.env.clone(),
         });
     }
     *display_order += 1;
@@ -214,7 +222,7 @@ pub(super) fn append_prompt_handler(
 
 fn normalize_prompt_filter(
     filter: PromptHookFilterConfig,
-    source: &HookHandlerSource<'_>,
+    source: &mut HookHandlerSource<'_>,
     warnings: &mut Vec<String>,
 ) -> Option<ConfiguredPromptFilter> {
     let command = if cfg!(windows) {
@@ -223,20 +231,26 @@ fn normalize_prompt_filter(
         filter.command
     };
     if command.trim().is_empty() {
-        warnings.push(format!(
-            "skipping prompt hook with empty filter command in {}",
-            source.path.display()
-        ));
+        source.record_load_failure(
+            format!(
+                "skipping prompt hook with empty filter command in {}",
+                source.path.display()
+            ),
+            warnings,
+        );
         return None;
     }
     if filter
         .timeout_sec
         .is_some_and(|timeout_sec| !(1..=60).contains(&timeout_sec))
     {
-        warnings.push(format!(
-            "skipping prompt hook with invalid filter timeout in {}",
-            source.path.display()
-        ));
+        source.record_load_failure(
+            format!(
+                "skipping prompt hook with invalid filter timeout in {}",
+                source.path.display()
+            ),
+            warnings,
+        );
         return None;
     }
     Some(ConfiguredPromptFilter {

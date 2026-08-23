@@ -100,6 +100,7 @@ async fn prompt_runner_receives_raw_event_and_event_output_schema() {
 
         assert_eq!(result.exit_code, Some(0));
         assert_eq!(result.stdout, "{}");
+        assert!(!result.prompt_filter_skipped);
     }
     let requests = requests.lock().expect("request lock");
     assert_eq!(
@@ -171,6 +172,7 @@ async fn prompt_filter_skip_is_an_explicit_noop_for_all_supported_events() {
         assert_eq!(result.exit_code, Some(0));
         assert_eq!(result.stdout, "");
         assert_eq!(result.error, None);
+        assert!(result.prompt_filter_skipped);
     }
 
     assert!(requests.lock().expect("request lock").is_empty());
@@ -191,20 +193,20 @@ fn prompt_handler(event_name: HookEventName, fail_closed: bool) -> ConfiguredHan
     ConfiguredHandler {
         event_name,
         matcher: None,
-        kind: ConfiguredHandlerKind::Prompt {
-            prompt: "Review $$ARGUMENTS".to_string(),
-            filter: None,
-            model: Some("gpt-override".to_string()),
-            reasoning_effort: Some(ReasoningEffort::High),
-            timeout_sec: 30,
-            fail_closed,
-        },
+        timeout_sec: 30,
         status_message: None,
         additional_context_limit: Default::default(),
         source_path: codex_utils_absolute_path::AbsolutePathBuf::current_dir().expect("cwd"),
         source: codex_protocol::protocol::HookSource::User,
         display_order: 0,
-        env: std::collections::HashMap::new(),
+        kind: ConfiguredHandlerKind::Prompt {
+            prompt: "Review $$ARGUMENTS".to_string(),
+            filter: None,
+            model: Some("gpt-override".to_string()),
+            reasoning_effort: Some(ReasoningEffort::High),
+            fail_closed,
+            env: std::collections::HashMap::new(),
+        },
     }
 }
 

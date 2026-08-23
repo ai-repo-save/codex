@@ -33,6 +33,7 @@ use super::render::title_text;
 use super::render::title_with_agent;
 use super::render::wait_complete_lines;
 
+#[cfg(test)]
 pub(crate) fn tool_call_history_cell(
     item: &ThreadItem,
     agent_metadata: impl FnMut(ThreadId) -> AgentMetadata,

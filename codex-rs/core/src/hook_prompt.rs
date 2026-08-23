@@ -190,10 +190,11 @@ fn prompt_for_request(request: PromptHookRequest) -> Prompt {
             phase: None,
             internal_chat_message_metadata_passthrough: None,
         }],
-        tools: Vec::new(),
+        tools: Arc::default(),
         parallel_tool_calls: false,
         base_instructions: BaseInstructions {
             text: PROMPT_HOOK_BASE_INSTRUCTIONS.to_string(),
+            provenance: None,
         },
         output_schema: Some(strict_output_schema(request.output_schema)),
         output_schema_strict: true,

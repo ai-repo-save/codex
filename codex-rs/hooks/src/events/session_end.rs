@@ -10,7 +10,7 @@ use codex_protocol::protocol::HookRunSummary;
 use codex_utils_absolute_path::AbsolutePathBuf;
 
 use super::common;
-use crate::engine::CommandShell;
+use crate::engine::ClaudeHooksEngine;
 use crate::engine::ConfiguredHandler;
 use crate::engine::HandlerRunResult;
 use crate::engine::dispatcher;
@@ -48,12 +48,11 @@ pub(crate) fn preview(handlers: &[ConfiguredHandler]) -> Vec<HookRunSummary> {
 }
 
 pub(crate) async fn run(
-    handlers: &[ConfiguredHandler],
-    shell: &CommandShell,
+    engine: &ClaudeHooksEngine,
     request: SessionEndRequest,
 ) -> SessionEndOutcome {
     let matched = dispatcher::select_handlers(
-        handlers,
+        &engine.handlers,
         HookEventName::SessionEnd,
         Some(SESSION_END_REASON),
     );
@@ -81,14 +80,11 @@ pub(crate) async fn run(
     };
 
     let results = dispatcher::execute_handlers(
+        engine,
         matched,
         input_json,
-        dispatcher::HandlerExecutionContext {
-            shell,
-            prompt_runner: None,
-            cwd: request.cwd.as_path(),
-            turn_id: Some(request.turn_id),
-        },
+        request.cwd.as_path(),
+        Some(request.turn_id),
         parse_completed,
     )
     .await;
@@ -131,7 +127,7 @@ fn parse_completed(
     dispatcher::ParsedHandler {
         completed: HookCompletedEvent {
             turn_id,
-            run: dispatcher::completed_summary(handler, run_result.run_result(), status, entries),
+            run: dispatcher::completed_summary(handler, &run_result, status, entries),
         },
         data: (),
         completion_order: 0,

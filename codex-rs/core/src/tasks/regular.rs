@@ -4,6 +4,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::hook_runtime::run_pending_session_start_hooks;
 use crate::session::TurnInput;
+use crate::session::session::Session;
 use crate::session::turn::run_hooks_and_record_inputs;
 use crate::session::turn::run_turn;
 use crate::session::turn_context::TurnContext;
@@ -13,11 +14,11 @@ use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::protocol::TurnStartedEvent;
+use codex_thread_store::PersistContext;
 use tracing::Instrument;
 use tracing::trace_span;
 
 use super::SessionTask;
-use super::SessionTaskContext;
 use super::SessionTaskResult;
 
 #[derive(Default)]
@@ -40,13 +41,11 @@ impl SessionTask for RegularTask {
 
     async fn run(
         self: Arc<Self>,
-        session: Arc<SessionTaskContext>,
+        sess: Arc<Session>,
         ctx: Arc<TurnContext>,
         input: Vec<TurnInput>,
         cancellation_token: CancellationToken,
     ) -> SessionTaskResult {
-        let sess = session.clone_session();
-        let turn_extension_data = session.turn_extension_data();
         let run_turn_span = trace_span!("run_turn");
         // Regular turns emit `TurnStarted` inline so first-turn lifecycle does
         // not wait on startup prewarm resolution.
@@ -83,7 +82,7 @@ impl SessionTask for RegularTask {
         };
         let prewarmed_client_session = match prewarmed_client_session {
             SessionStartupPrewarmResolution::Cancelled => {
-                run_hooks_and_record_inputs(&sess, &ctx, &input).await;
+                run_hooks_and_record_inputs(&sess, &ctx, &input, PersistContext::Standard).await;
                 return Ok(None);
             }
             SessionStartupPrewarmResolution::Unavailable { .. } => None,
@@ -97,7 +96,6 @@ impl SessionTask for RegularTask {
             let last_agent_message = run_turn(
                 Arc::clone(&sess),
                 Arc::clone(&ctx),
-                Arc::clone(&turn_extension_data),
                 next_input,
                 prewarmed_client_session.take(),
                 cancellation_token.child_token(),

@@ -1,5 +1,5 @@
 use super::*;
-use codex_agent_control::create_interrupt_agent_tool_v2;
+use crate::tools::handlers::multi_agents_spec::create_interrupt_agent_tool_v2;
 use codex_protocol::error::CodexErrorDetails;
 use codex_tools::ToolSpec;
 

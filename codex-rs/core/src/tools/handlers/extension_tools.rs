@@ -6,6 +6,7 @@ use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
 use codex_tools::ConversationHistory;
 use codex_tools::ExtensionTurnItem;
+use codex_tools::ResponsesApiNamespaceTool;
 use codex_tools::ToolCall as ExtensionToolCall;
 use codex_tools::ToolEnvironment;
 use codex_tools::ToolName;
@@ -60,8 +61,33 @@ impl ToolExecutor<ToolInvocation> for ExtensionToolAdapter {
 }
 
 impl CoreToolRuntime for ExtensionToolAdapter {
+    fn is_builtin_control_tool(&self) -> bool {
+        let tool_name = self.0.tool_name();
+        tool_name.is_default_namespace()
+            && matches!(
+                tool_name.name.as_str(),
+                "get_goal" | "create_goal" | "update_goal"
+            )
+    }
+
     fn matches_kind(&self, payload: &ToolPayload) -> bool {
-        matches!(payload, ToolPayload::Function { .. })
+        match payload {
+            ToolPayload::Function { .. } => true,
+            ToolPayload::Custom { .. } => match self.0.spec() {
+                ToolSpec::Freeform(_) => true,
+                ToolSpec::Namespace(namespace) => namespace.tools.iter().any(|tool| {
+                    matches!(
+                        tool,
+                        ResponsesApiNamespaceTool::Custom(tool)
+                            if tool.name == self.0.tool_name().name
+                    )
+                }),
+                ToolSpec::Function(_)
+                | ToolSpec::ToolSearch { .. }
+                | ToolSpec::WebSearch { .. } => false,
+            },
+            ToolPayload::ToolSearch { .. } => false,
+        }
     }
 }
 
@@ -133,7 +159,7 @@ async fn to_extension_call(invocation: &ToolInvocation) -> ExtensionToolCall {
         };
         let additional_permissions = apply_granted_turn_permissions(
             invocation.session.as_ref(),
-            &environment.environment_id,
+            &environment.selection.environment_id,
             native_cwd.as_path(),
             SandboxPermissions::UseDefault,
             /*additional_permissions*/ None,
@@ -144,7 +170,7 @@ async fn to_extension_call(invocation: &ToolInvocation) -> ExtensionToolCall {
             .turn
             .file_system_sandbox_context(additional_permissions, environment);
         environments.push(ToolEnvironment {
-            environment_id: environment.environment_id.clone(),
+            environment_id: environment.selection.environment_id.clone(),
             cwd: native_cwd,
             file_system: environment.environment.get_filesystem(),
             file_system_sandbox_context,
@@ -286,6 +312,18 @@ mod tests {
         }
     }
 
+    #[test]
+    fn function_extensions_reject_custom_payloads() {
+        let handler = ExtensionToolAdapter::new(Arc::new(StubExtensionExecutor));
+
+        assert!(handler.matches_kind(&ToolPayload::Function {
+            arguments: "{}".to_string(),
+        }));
+        assert!(!handler.matches_kind(&ToolPayload::Custom {
+            input: "raw input".to_string(),
+        }));
+    }
+
     #[tokio::test]
     async fn exposes_generic_hook_payloads() {
         let handler = ExtensionToolAdapter::new(Arc::new(StubExtensionExecutor));
@@ -354,8 +392,15 @@ mod tests {
         session
             .record_conversation_items(&turn, std::slice::from_ref(&history_item))
             .await;
-        let mut expected_history_item = history_item.clone();
-        expected_history_item.set_turn_id_if_missing(&turn_id);
+        let expected_history_item = strip_response_item_id(
+            session
+                .clone_history()
+                .await
+                .raw_items()
+                .next()
+                .expect("history item")
+                .clone(),
+        );
         let raw_history_event = rx.recv().await.expect("history raw response item event");
         let EventMsg::RawResponseItem(raw_history_item) = raw_history_event.msg else {
             panic!("expected raw response item event");
@@ -444,6 +489,8 @@ mod tests {
             status: "in_progress".to_string(),
             revised_prompt: None,
             result: String::new(),
+            transparent_background: None,
+            failure: None,
             saved_path: None,
         });
         let expected_completed_item = ExtensionItem::ImageGeneration(ImageGenerationItem {
@@ -451,6 +498,8 @@ mod tests {
             status: "completed".to_string(),
             revised_prompt: Some("A tiny blue square".to_string()),
             result: "cG5n".to_string(),
+            transparent_background: Some(true),
+            failure: None,
             saved_path: Some(expected_path.clone()),
         });
         codex_tools::TurnItemEmitter::emit_started(
@@ -472,6 +521,8 @@ mod tests {
                     status: "completed".to_string(),
                     revised_prompt: Some("A tiny blue square".to_string()),
                     result: "cG5n".to_string(),
+                    transparent_background: Some(true),
+                    failure: None,
                     saved_path: Some(expected_path.clone()),
                 })],
             },

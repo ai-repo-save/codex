@@ -13,7 +13,6 @@ use super::CommandShell;
 use super::ConfiguredHandler;
 use super::ConfiguredHandlerKind;
 use super::HandlerRunResult;
-use super::command_runner::CommandRunResult;
 use super::filter_runner::PromptFilterOutcome;
 use super::filter_runner::run_prompt_filter;
 
@@ -65,36 +64,38 @@ pub(crate) async fn run_prompt(
         prompt,
         model,
         reasoning_effort,
-        timeout_sec,
         ..
     } = &handler.kind
     else {
-        return HandlerRunResult::completed(failed_prompt_run(
+        return failed_prompt_run(
             started_at,
             started,
             "command handler cannot run as a prompt hook".to_string(),
-        ));
+        );
     };
     if run_prompt_filter(shell, handler, input_json, cwd).await == PromptFilterOutcome::Skip {
-        return HandlerRunResult::prompt_filter_skipped(prompt_run_result(
+        return HandlerRunResult {
             started_at,
-            started,
-            Some(0),
-            String::new(),
-            /*error*/ None,
-        ));
+            completed_at: chrono::Utc::now().timestamp(),
+            duration_ms: started.elapsed().as_millis().try_into().unwrap_or(i64::MAX),
+            exit_code: Some(0),
+            stdout: String::new(),
+            stderr: String::new(),
+            error: None,
+            prompt_filter_skipped: true,
+        };
     }
     let Some(runner) = runner else {
-        return HandlerRunResult::completed(failed_prompt_run(
+        return failed_prompt_run(
             started_at,
             started,
             "prompt hook cannot run because no prompt runner is configured".to_string(),
-        ));
+        );
     };
     let rendered_prompt = match render_prompt(prompt, input_json) {
         Ok(rendered_prompt) => rendered_prompt,
         Err(error) => {
-            return HandlerRunResult::completed(failed_prompt_run(started_at, started, error));
+            return failed_prompt_run(started_at, started, error);
         }
     };
     let schemas = super::schema_loader::generated_hook_schemas();
@@ -110,14 +111,14 @@ pub(crate) async fn run_prompt(
         | HookEventName::SubagentStop
         | HookEventName::PostCompact
         | HookEventName::Stop => {
-            return HandlerRunResult::completed(failed_prompt_run(
+            return failed_prompt_run(
                 started_at,
                 started,
                 format!(
                     "prompt hooks are not supported for {}",
                     super::dispatcher::hook_event_name_label(handler.event_name)
                 ),
-            ));
+            );
         }
     };
     let request = PromptHookRequest {
@@ -128,22 +129,28 @@ pub(crate) async fn run_prompt(
         output_schema,
     };
 
-    match timeout(Duration::from_secs(*timeout_sec), runner.run(request)).await {
-        Ok(Ok(stdout)) => HandlerRunResult::completed(prompt_run_result(
+    match timeout(
+        Duration::from_secs(handler.timeout_sec),
+        runner.run(request),
+    )
+    .await
+    {
+        Ok(Ok(stdout)) => HandlerRunResult {
             started_at,
-            started,
-            Some(0),
+            completed_at: chrono::Utc::now().timestamp(),
+            duration_ms: started.elapsed().as_millis().try_into().unwrap_or(i64::MAX),
+            exit_code: Some(0),
             stdout,
-            /*error*/ None,
-        )),
-        Ok(Err(error)) => {
-            HandlerRunResult::completed(failed_prompt_run(started_at, started, error.to_string()))
-        }
-        Err(_) => HandlerRunResult::completed(failed_prompt_run(
+            stderr: String::new(),
+            error: None,
+            prompt_filter_skipped: false,
+        },
+        Ok(Err(error)) => failed_prompt_run(started_at, started, error.to_string()),
+        Err(_) => failed_prompt_run(
             started_at,
             started,
-            format!("prompt hook timed out after {timeout_sec}s"),
-        )),
+            format!("prompt hook timed out after {}s", handler.timeout_sec),
+        ),
     }
 }
 
@@ -170,31 +177,16 @@ fn render_prompt(prompt: &str, input_json: &str) -> Result<String, String> {
     Ok(rendered)
 }
 
-fn failed_prompt_run(started_at: i64, started: Instant, error: String) -> CommandRunResult {
-    prompt_run_result(
-        started_at,
-        started,
-        /*exit_code*/ None,
-        String::new(),
-        Some(error),
-    )
-}
-
-fn prompt_run_result(
-    started_at: i64,
-    started: Instant,
-    exit_code: Option<i32>,
-    stdout: String,
-    error: Option<String>,
-) -> CommandRunResult {
-    CommandRunResult {
+fn failed_prompt_run(started_at: i64, started: Instant, error: String) -> HandlerRunResult {
+    HandlerRunResult {
         started_at,
         completed_at: chrono::Utc::now().timestamp(),
         duration_ms: started.elapsed().as_millis().try_into().unwrap_or(i64::MAX),
-        exit_code,
-        stdout,
+        exit_code: None,
+        stdout: String::new(),
         stderr: String::new(),
-        error,
+        error: Some(error),
+        prompt_filter_skipped: false,
     }
 }
 

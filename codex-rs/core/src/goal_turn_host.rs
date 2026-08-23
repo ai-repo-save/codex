@@ -5,6 +5,9 @@ use codex_extension_api::GoalTurnHost;
 use codex_extension_api::GoalTurnHostRejection;
 use codex_protocol::ThreadId;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::turn_input::StartIfIdleSubmission;
+use codex_protocol::turn_input::TurnInput;
+use codex_protocol::turn_input::TurnInputRequest;
 
 use crate::CodexThread;
 use crate::ThreadManager;
@@ -56,10 +59,18 @@ impl GoalTurnHost for GoalTurnHostAdapter {
             let thread = GoalTurnHostAdapter { thread_manager }
                 .live_thread(thread_id)
                 .await?;
-            thread
-                .try_start_turn_if_idle(items)
+            let [item] = items.as_slice() else {
+                return Err(GoalTurnHostRejection::IdleTurnRejected);
+            };
+            match thread
+                .start_turn_if_idle(TurnInputRequest::new(TurnInput::ResponseItem(item.clone())))
                 .await
-                .map_err(|_| GoalTurnHostRejection::IdleTurnRejected)
+            {
+                Ok(StartIfIdleSubmission::Started { .. }) => Ok(()),
+                Ok(StartIfIdleSubmission::NotSubmitted { .. }) | Err(_) => {
+                    Err(GoalTurnHostRejection::IdleTurnRejected)
+                }
+            }
         }
     }
 
